@@ -35,6 +35,10 @@ class GridGraph():
         """Get the width of the grid (number of columns)."""
         return self.activities.shape[1]
 
+
+    # TODO: index do not correspond to the entries in the adjacency matrix
+    # the adjacency matrix considers only active nodes
+    # this is misleading - we should consider an alternative
     def coord_to_index(self, i, j):
         """Convert (i, j) grid coordinates to the associated vertex index."""
         return jnp.ravel_multi_index((i,j), self.activities.shape)
@@ -63,10 +67,10 @@ class GridGraph():
         """Return a list of active vertices."""
         return jnp.nonzero(self.activities.ravel())[0]
 
-    def active_vertices_coordinates(self):
+    def active_vertex_coordinate(self, i):
         """Get coordinates of active vertices."""
-        active_indices = self.list_active_vertices()
-        return jnp.array([self.index_to_coord(v) for v in active_indices])
+        active_index = self.list_active_vertices()[i]
+        return jnp.column_stack(self.index_to_coord(active_index))
 
     # def target_idx_and_nodes(self) -> Tuple[jnp.ndarray, jnp.ndarray]:
     #     """Return coordinates and nodes with non-zero target qualities."""
@@ -96,7 +100,7 @@ class GridGraph():
         neighbors = self.neighbors
         permeability_raster = self.vertex_weights
         
-        source_xy_coord = self.active_vertices_coordinates()
+        source_xy_coord = self.active_vertex_coordinate(jnp.arange(num_nodes))
         active_map = jnp.zeros_like(activities, dtype=int) - 1
         active_map = active_map.at[source_xy_coord[:,0], source_xy_coord[:,1]].set(jnp.arange(num_nodes))  # -1 if not an active vertex
         
