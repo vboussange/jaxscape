@@ -21,6 +21,7 @@ class GridGraph():
         """
         Initializes the GridGraph object.
         """
+        assert activities.shape == vertex_weights.shape
         self.activities = activities
         self.vertex_weights = vertex_weights
         self.neighbors = contiguity
@@ -40,15 +41,15 @@ class GridGraph():
     # the adjacency matrix considers only active nodes
     # this is misleading - we should consider an alternative
     def coord_to_index(self, i, j):
-        """Convert (i, j) grid coordinates to the associated vertex index."""
+        """Convert (i, j) grid coordinates to the associated passive vertex index."""
         return jnp.ravel_multi_index((i,j), self.activities.shape)
 
     def index_to_coord(self, v):
-        """Convert vertex index to (i, j) grid coordinates."""
+        """Convert passive vertex index `v` to (i, j) grid coordinates."""
         return jnp.unravel_index(v, self.activities.shape)
 
     def vertex_active(self, v):
-        """Check if vertex v is active."""
+        """Check if passive vertex index v is active."""
         return self.activities.ravel()[v]
 
     def vertex_active_coord(self, i, j):
@@ -64,13 +65,13 @@ class GridGraph():
         return self.nb_active() == self.activities.size
 
     def list_active_vertices(self):
-        """Return a list of active vertices."""
+        """Return a list of active vertices in passive vertex index."""
         return jnp.nonzero(self.activities.ravel())[0]
 
-    def active_vertex_coordinate(self, i):
-        """Get coordinates of active vertices."""
-        active_index = self.list_active_vertices()[i]
-        return jnp.column_stack(self.index_to_coord(active_index))
+    def active_vertex_index_to_coord(self, v):
+        """Get (i,j) coordinates of active vertex index `v`."""
+        passive_index = self.list_active_vertices()[v]
+        return jnp.column_stack(self.index_to_coord(passive_index))
 
     # def target_idx_and_nodes(self) -> Tuple[jnp.ndarray, jnp.ndarray]:
     #     """Return coordinates and nodes with non-zero target qualities."""
@@ -100,7 +101,7 @@ class GridGraph():
         neighbors = self.neighbors
         permeability_raster = self.vertex_weights
         
-        source_xy_coord = self.active_vertex_coordinate(jnp.arange(num_nodes))
+        source_xy_coord = self.active_vertex_index_to_coord(jnp.arange(num_nodes))
         active_map = jnp.zeros_like(activities, dtype=int) - 1
         active_map = active_map.at[source_xy_coord[:,0], source_xy_coord[:,1]].set(jnp.arange(num_nodes))  # -1 if not an active vertex
         

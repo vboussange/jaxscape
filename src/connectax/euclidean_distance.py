@@ -11,7 +11,7 @@ def euclidean_distance_matrix(grid, res):
     Returns:
     - Euclidean distance matrix scaled by `res`.
     """
-    coordinate_list = grid.active_vertex_coordinate(jnp.arange(grid.nb_active()))
+    coordinate_list = grid.active_vertex_index_to_coord(jnp.arange(grid.nb_active()))
     X = coordinate_list[:, 0]
     Y = coordinate_list[:, 1]
     Xmat = X[:, None] - X[None, :]

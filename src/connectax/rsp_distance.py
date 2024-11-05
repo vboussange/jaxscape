@@ -2,7 +2,6 @@ import jax
 import jax.numpy as jnp
 from jax.scipy.linalg import inv
 from jax.experimental import sparse
-import lineax as lx # TODO: use it!
 
 def fundamental_matrix(W):
     L = sparse.eye(W.shape[0]) - W
