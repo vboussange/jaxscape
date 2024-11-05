@@ -4,7 +4,7 @@ from jax.scipy.linalg import inv
 from jax.experimental import sparse
 
 def fundamental_matrix(W):
-    L = sparse.eye(W.shape[0]) - W
+    L = sparse.eye(W.shape[0], dtype=W.dtype, index_dtype=W.indices.dtype) - W
     return inv(L.todense())
 
 def mapnz(mat, f):
@@ -19,9 +19,9 @@ def dense(sp_mat):
 
 def rsp_distance(A, theta):
     C = mapnz(A, lambda x: -jnp.log(x))  # cost matrix with well-adapted movements
-    row_sum = A.sum(1).todense()
+    row_sum = A.sum(1).todense().reshape(-1, 1)
     Prw = A / row_sum  # random walk probability
-    W = Prw * jnp.exp(-theta * dense(C))
+    W = Prw * jnp.exp(-theta * C.todense()) # TODO: to optimze
     Z = fundamental_matrix(W)
 
     C_weighted = dense(C) * W
