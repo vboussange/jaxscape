@@ -20,12 +20,12 @@ class RSPGridGraph(GridGraph):
         
     def cost_matrix(self):
         if callable(self.cost_matrix):
-            return self._cost(self.adjacency_matrix())
+            return self._cost(self.get_adjacency_matrix())
         else:
             return self._cost
         
     def get_distance_matrix(self, theta):
-        return rsp_distance(theta, self.adjacency_matrix(), self.cost_matrix())
+        return rsp_distance(theta, self.get_adjacency_matrix(), self.cost_matrix())
 
 def fundamental_matrix(W):
     L = sparse.eye(W.shape[0], dtype=W.dtype, index_dtype=W.indices.dtype) - W

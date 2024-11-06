@@ -36,16 +36,7 @@ class GridGraph():
     def width(self):
         """Get the width of the grid (number of columns)."""
         return self.activities.shape[1]
-        
-    @property
-    def adjacency_matrix(self, contiguity=ROOK_CONTIGUITY):
-        if self._adjacency_matrix is None:
-            self._adjacency_matrix = build_adjacency_matrix(self)
-        return self._adjacency_matrix
 
-    # TODO: index do not correspond to the entries in the adjacency matrix
-    # the adjacency matrix considers only active nodes
-    # this is misleading - we should consider an alternative
     def coord_to_index(self, i, j):
         """Convert (i, j) grid coordinates to the associated passive vertex index."""
         return jnp.ravel_multi_index((i,j), self.activities.shape)
@@ -96,8 +87,7 @@ class GridGraph():
     def __repr__(self):
         return f"GridGraph of size {self.height}x{self.width}"
     
-    
-    def adjacency_matrix(self, neighbors=ROOK_CONTIGUITY):
+    def get_adjacency_matrix(self, neighbors=ROOK_CONTIGUITY):
         """
         Create a differentiable adjacency matrix based on the vertices and
         contiguity pattern of `gridgraph`.

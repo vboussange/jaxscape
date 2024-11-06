@@ -11,8 +11,8 @@ import numpy as np
 
 @pytest.fixture
 def sample_gridgraph():
-    activity = jnp.array([[1, 0, 1],
-                          [1, 1, 0]])  # 2x3 grid with some inactive cells
+    activity = jnp.array([[True, False, True],
+                          [True, True, False]])  # 2x3 grid with some inactive cells
     vertex_weights = jnp.ones((2, 3))  # Uniform weights for simplicity
     grid = GridGraph(activity, vertex_weights)
     return grid
@@ -68,9 +68,9 @@ def test_active_vertices_coordinates(sample_gridgraph):
     
 def test_node_values_to_raster():
     activities = jnp.array([
-        [1, 0, 1],
-        [0, 1, 0],
-        [1, 0, 1]
+        [True, False, True],
+        [False, True, False],
+        [True, False, True]
     ])
     vertex_weights = jnp.ones_like(activities)
     grid = GridGraph(activities, vertex_weights)
@@ -103,7 +103,7 @@ def test_adjacency_matrix():
     permeability_raster = jnp.ones((2,3))
     activities = jnp.ones(permeability_raster.shape, dtype=bool)
     grid = GridGraph(activities, permeability_raster)
-    edge_weights = grid.adjacency_matrix()
+    edge_weights = grid.get_adjacency_matrix()
     
     assert isinstance(edge_weights, BCOO)  # Ensure that the output is a sparse matrix
     assert edge_weights.shape == (6, 6)  # 2x3 grid flattened to 6 nodes
@@ -116,7 +116,7 @@ def test_adjacency_matrix():
     G.remove_node((0,0))
     activities = activities.at[0,0].set(False)
     grid = GridGraph(activities, permeability_raster)
-    adj_matrix = grid.adjacency_matrix().todense()
+    adj_matrix = grid.get_adjacency_matrix().todense()
     adj_matrix_nx = nx.adjacency_matrix(G).todense()
     assert jnp.array_equal(adj_matrix, adj_matrix_nx)
     
@@ -126,7 +126,7 @@ def test_adjacency_matrix():
         G[edge[0]][edge[1]]['weight'] = 5
     permeability_raster = permeability_raster.at[0,2].set(5)
     grid = GridGraph(activities, permeability_raster)
-    adj_matrix = grid.adjacency_matrix().todense()
+    adj_matrix = grid.get_adjacency_matrix().todense()
     adj_matrix_nx = nx.adjacency_matrix(G, weight='weight').todense()
     assert jnp.array_equal(adj_matrix, adj_matrix_nx)
 
@@ -137,7 +137,7 @@ def test_differentiability_adjacency_matrix():
 
     def objective(permeability_raster):
         grid = GridGraph(activities, permeability_raster)
-        edge_weights = grid.adjacency_matrix()
+        edge_weights = grid.get_adjacency_matrix()
         return edge_weights.sum()
         
     grad_objective = grad(objective)
@@ -145,6 +145,3 @@ def test_differentiability_adjacency_matrix():
     assert permeability_gradient[0, 0] == 2
     assert permeability_gradient[0, 1] == 3
     assert permeability_gradient[1, 1] == 4
-
-if __name__ == "__main__":
-    pytest.main()

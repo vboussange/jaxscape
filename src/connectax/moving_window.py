@@ -55,7 +55,7 @@ class WindowOperation:
 def get_valid_activities(hab_qual, activities):
     # TODO: the best would be to avoid transfer between numpy and jax array
     grid = GridGraph(activities, hab_qual)
-    A = grid.adjacency_matrix()
+    A = grid.get_adjacency_matrix()
     Anp = BCOO_to_sparse(A)
     _, labels = connected_components(Anp, directed=True, connection="strong")
     label = get_largest_component_label(labels)

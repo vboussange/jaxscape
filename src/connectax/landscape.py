@@ -14,7 +14,7 @@ class Landscape(GridGraph):
         self.proximity = proximity
         
     @property
-    def adjacency_matrix(self):
+    def get_adjacency_matrix(self):
         return self.proximity
     
     def functional_habitat(self):

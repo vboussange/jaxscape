@@ -56,7 +56,7 @@ def test_rsp_distance_matrix():
                      vertex_weights=habitat_suitability)
     
     # pruning grid graph to have only connected vertices active
-    A = grid.adjacency_matrix()
+    A = grid.get_adjacency_matrix()
     Anp = BCOO_to_sparse(A)
     _, labels = connected_components(Anp, directed=True, connection="strong")
     label = get_largest_component_label(labels)

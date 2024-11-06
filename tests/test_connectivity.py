@@ -14,9 +14,9 @@ def test_Landscape():
     grid = RSPGridGraph(activities=activities, 
                     vertex_weights=permeability_raster,
                     cost=well_adapted_movement)
-    adjacency_matrix = grid.adjacency_matrix()
+    get_adjacency_matrix = grid.get_adjacency_matrix()
     cost_matrix = grid.cost_matrix()
-    assert isinstance(adjacency_matrix, BCOO)
+    assert isinstance(get_adjacency_matrix, BCOO)
     assert isinstance(cost_matrix, BCOO)
 
 # def test_strongly_connected_components():

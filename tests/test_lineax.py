@@ -10,7 +10,7 @@ key = jr.PRNGKey(0)  # Random seed is explicit in JAX
 permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
 activities = jnp.ones(permeability_raster.shape, dtype=bool)
 grid = GridGraph(activities, permeability_raster)
-A = grid.adjacency_matrix()
+A = grid.get_adjacency_matrix()
 W = sparse.eye(A.shape[0]) - A
 
 matrix_key, vector_key = jr.split(jr.PRNGKey(0))
