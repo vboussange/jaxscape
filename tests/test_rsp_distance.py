@@ -2,15 +2,14 @@ import pytest
 import jax
 import jax.numpy as jnp
 from jax import grad
-from connectax.gridgraph import GridGraph
-from connectax.rsp_distance import rsp_distance
-from connectax.connectivity import Landscape, functional_habitat, BCOO_to_sparse, get_largest_component_label
+from connectax.rsp_distance import RSPGridGraph
+from connectax.landscape import Landscape
+from connectax.utils import BCOO_to_sparse, get_largest_component_label
 import xarray as xr
 from pathlib import Path
 from scipy.sparse.csgraph import connected_components
 import numpy as np
 import jax.random as jr
-from jax.experimental.sparse import BCOO
 
 jax.config.update("jax_enable_x64", True)
 
@@ -24,11 +23,11 @@ def test_rsp_distance_matrix():
                                     ])
     permeability_raster = jnp.ones((2, 2))
     activities = jnp.ones(permeability_raster.shape, dtype=bool)
-    grid = Landscape(activities=activities, 
+    grid = RSPGridGraph(activities=activities, 
                      vertex_weights=permeability_raster, 
                      cost= lambda x: x)
     theta = jnp.array(2.)
-    mat = grid.rsp_distance(theta)
+    mat = grid.get_distance_matrix(theta)
     assert jnp.allclose(mat, expected_cost_conscape, atol = 1e-4)
 
 # test with more complex setting with not activation of a node
@@ -37,15 +36,14 @@ def test_rsp_distance_matrix():
     permeability_raster = jr.uniform(key, (10, 10))
     activities = jnp.ones(permeability_raster.shape, dtype=bool)
     activities = activities.at[0, 0].set(False)
-    grid = GridGraph(activities, permeability_raster)
-    A = grid.adjacency_matrix()
+    grid = RSPGridGraph(activities=activities, 
+                     vertex_weights=permeability_raster)
     theta = 0.01
-    mat = rsp_distance(A, theta)
+    mat = grid.get_distance_matrix(theta)
     assert isinstance(mat, jax.Array)
-    assert A.shape[0] == 99
+    assert grid.nb_active() == 99
     
 # test with true raster
-# TOFIX: this is not working
 def test_rsp_distance_matrix():
     
     raster_path = Path("data/habitat_suitability.csv")
@@ -54,7 +52,8 @@ def test_rsp_distance_matrix():
     conscape_dist_path = Path("data/conscape_rsp_distance_to_i=19_j=6.csv")
     expected_cost_conscape = jnp.array(np.loadtxt(conscape_dist_path, delimiter=","))
     activities = habitat_suitability > 0
-    grid = GridGraph(activities, habitat_suitability)
+    grid = RSPGridGraph(activities=activities, 
+                     vertex_weights=habitat_suitability)
     
     # pruning grid graph to have only connected vertices active
     A = grid.adjacency_matrix()
@@ -64,13 +63,13 @@ def test_rsp_distance_matrix():
     vertex_belongs_to_largest_component_node = labels == label
     activities_pruned = grid.node_values_to_raster(vertex_belongs_to_largest_component_node)
     activities_pruned = activities_pruned == True
-    graph_pruned = Landscape(activities=activities_pruned, 
+    graph_pruned = RSPGridGraph(activities=activities_pruned, 
                              vertex_weights=habitat_suitability)
     
     
     # calculating distance to vertex 19, 6 in julia coordinates (corresponding to vertex 18, 5 in python coordinate)
     theta = jnp.array(0.01)
-    mat = graph_pruned.rsp_distance(theta)
+    mat = graph_pruned.get_distance_matrix(theta)
     vertex_index = graph_pruned.coord_to_active_vertex_index(18, 5)
     expected_cost = graph_pruned.node_values_to_raster(mat[:, vertex_index])
     
@@ -88,14 +87,14 @@ def test_differentiability_euclidean_distance_matrix():
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
     permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
     activities = jnp.ones(permeability_raster.shape, dtype=bool)
-
+    D = 1.
     def objective(permeability_raster):
-        grid = Landscape(activities=activities, vertex_weights=permeability_raster)
+        grid = RSPGridGraph(activities=activities, vertex_weights=permeability_raster)
         theta = jnp.array(0.01)
-        dist = grid.rsp_distance(theta)
-        active_ij = grid.active_vertex_index_to_coord(jnp.arange(grid.nb_active()))
-        q = permeability_raster[active_ij[:,0], active_ij[:,1]]
-        func = functional_habitat(q, dist)
+        dist = grid.get_distance_matrix(theta)
+        proximity = jnp.exp(-dist / D)
+        landscape = Landscape(permeability_raster, proximity)
+        func = landscape.functional_habitat()
         return func
         
     grad_objective = grad(objective)

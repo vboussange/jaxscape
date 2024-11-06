@@ -1,33 +1,27 @@
 import jax
 import jax.numpy as jnp
-from jax.experimental.sparse import BCOO
-from functools import partial
+from jax.experimental import sparse
 from scipy.sparse import coo_array
 import numpy as np
-from connectax.gridgraph import GridGraph
-from connectax.rsp_distance import well_adapted_movement, rsp_distance
-        
-class Landscape(GridGraph):
-    def __init__(self, cost=well_adapted_movement, **kwargs):
-        """
-        A grid graph with an adjacency matrix representing affinities, and a cost matrix, similar to the 
-        RSP framework. `cost_matrix` can be a function or a matrix
-        """
-        super().__init__(**kwargs)
-        self._cost = cost
-        
-    def cost_matrix(self):
-        if callable(self.cost_matrix):
-            return self._cost(self.adjacency_matrix())
-        else:
-            return self._cost
-        
-    def rsp_distance(self, theta):
-        return rsp_distance(theta, self.adjacency_matrix(), self.cost_matrix())
+
+
+def mapnz(mat, f):
+    indices, data = mat.indices, mat.data
+    mapped_values = f(data)
+    return sparse.BCOO((mapped_values, indices), shape=mat.shape)
+
+def dense(sp_mat):
+    if isinstance(sp_mat, sparse.BCOO):
+        return sp_mat.todense()
+    return sp_mat
+
+# cost function
+def well_adapted_movement(A):
+    return mapnz(A, lambda x: -jnp.log(x))
 
 
 def BCOO_to_sparse(A):
-    assert isinstance(A, BCOO)
+    assert isinstance(A, sparse.BCOO)
     ij = np.array(A.indices)
     v = np.array(A.data)
     sparse_matrix = coo_array((v, (ij[:,0], ij[:,1])), shape=A.shape)
@@ -43,9 +37,6 @@ def get_largest_component_label(labels):
 #     indices = bcoo.indices
 #     valid_indices = jnp.where(indices[:,0])
 #     return BCOO()
-
-def functional_habitat(q, K):
-    return q @ (K @ q) 
     
 # # not working
 # def strongly_connected_components_tarjan(adj_matrix: BCOO):

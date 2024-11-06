@@ -4,8 +4,8 @@ from math import ceil
 import numpy as np  # for NaN handling, not used in heavy computations
 import matplotlib.pyplot as plt
 from connectax.gridgraph import GridGraph
-from connectax.connectivity import BCOO_to_sparse, Landscape, functional_habitat, get_largest_component_label
-from connectax.rsp_distance import rsp_distance
+from connectax.utils import BCOO_to_sparse, get_largest_component_label
+from connectax.landscape import Landscape
 import jax
 from jax.experimental.sparse import BCOO
 from tqdm import tqdm
@@ -65,7 +65,7 @@ def get_valid_activities(hab_qual, activities):
     return activities_pruned
 
 # TODO: for now, we hardcode the distance to `rsp_distance`, but in the future, we should allow for arbitraty distance functions
-def run_analysis(window_op, D, distance_measure, **kwargs):
+def run_analysis(window_op, D, gridgraph, **kwargs):
     """Performs the sensitivity analysis on each valid window.
     `D` must be expressed in the unit of habitat quality in `window_op`.
     """
@@ -77,13 +77,12 @@ def run_analysis(window_op, D, distance_measure, **kwargs):
         def connectivity(hab_qual):
             # TODO: need to iterate through the connected components
             # for now, we only take the largest component, but we could build a loop here
-            landscape = Landscape(activities=valid_activities, 
+            grid = gridgraph(activities=valid_activities, 
                                     vertex_weights=hab_qual)
-            dist = distance_measure(landscape, **kwargs)
-            K = jnp.exp(-dist / D)
-            active_ij = landscape.active_vertex_index_to_coord(jnp.arange(landscape.nb_active()))
-            q = hab_qual[active_ij[:,0], active_ij[:,1]]
-            func = functional_habitat(q, K)
+            dist = grid.get_distance_matrix(**kwargs)
+            proximity = jnp.exp(-dist / D)
+            landscape = Landscape(hab_qual, proximity, valid_activities)
+            func = landscape.functional_habitat()
             return func
     
         grad_connectivity = grad(connectivity)

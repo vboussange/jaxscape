@@ -1,5 +1,16 @@
 import jax.numpy as jnp
 from jax import jit
+from connectax.gridgraph import GridGraph
+
+class EuclideanGridGraph(GridGraph):
+    def __init__(self, **kwargs):
+        """
+        A grid graph where distance returns `euclidean_distance`.
+        """
+        super().__init__(**kwargs)
+        
+    def get_distance_matrix(self, res):
+        return euclidean_distance(self, res)
 
 def euclidean_distance(grid, res):
     """

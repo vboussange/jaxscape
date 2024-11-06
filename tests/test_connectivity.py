@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from jax.experimental.sparse import BCOO
 from jax import random
 import jax.random as jr
-from connectax.connectivity import Landscape
+from connectax.utils import RSPGridGraph
 from connectax.rsp_distance import well_adapted_movement
 
 def test_Landscape():
@@ -11,7 +11,7 @@ def test_Landscape():
     permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
     activities = jnp.ones(permeability_raster.shape, dtype=bool)
 
-    grid = Landscape(activities=activities, 
+    grid = RSPGridGraph(activities=activities, 
                     vertex_weights=permeability_raster,
                     cost=well_adapted_movement)
     adjacency_matrix = grid.adjacency_matrix()
