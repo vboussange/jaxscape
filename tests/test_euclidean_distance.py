@@ -1,7 +1,7 @@
 import pytest
 import jax
 import jax.numpy as jnp
-from connectax.euclidean_distance import EuclideanGridGraph
+from connectax.euclidean_distance import EuclideanDistance
 from connectax.landscape import Landscape
 
 import networkx as nx
@@ -13,7 +13,7 @@ def test_euclidean_distance():
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
     permeability_raster = jr.uniform(key, (10, 10))
     activities = jnp.ones(permeability_raster.shape, dtype=bool)
-    grid = EuclideanGridGraph(activities=activities,
+    grid = EuclideanDistance(activities=activities,
                               vertex_weights = permeability_raster)
     dist = grid.get_distance_matrix(res=1.)
     assert dist[0,0] == 0
@@ -30,7 +30,7 @@ def test_differentiability_euclidean_distance():
     D = 1.
 
     def objective(permeability_raster):
-        grid = EuclideanGridGraph(activities=activities,
+        grid = EuclideanDistance(activities=activities,
                                     vertex_weights = permeability_raster)
         dist = grid.get_distance_matrix(res=1.)
         proximity = jnp.exp(-dist / D)

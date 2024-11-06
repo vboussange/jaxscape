@@ -4,7 +4,6 @@ from jax.experimental import sparse
 from scipy.sparse import coo_array
 import numpy as np
 
-
 def mapnz(mat, f):
     indices, data = mat.indices, mat.data
     mapped_values = f(data)

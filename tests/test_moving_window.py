@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 from connectax.moving_window import WindowOperation, run_analysis
 import xarray as xr
 from pathlib import Path
-from connectax.euclidean_distance import EuclideanGridGraph
-from connectax.rsp_distance import RSPGridGraph
+from connectax.euclidean_distance import EuclideanDistance
+from connectax.rsp_distance import RSPDistance
 
 # Example usage
 if __name__ == "__main__":
@@ -28,5 +28,5 @@ if __name__ == "__main__":
                                 buffer_size = int(3 * D_km))
     
     # Run analysis
-    output_array = run_analysis(window_op, D, EuclideanGridGraph, res=1.)
-    # output_array = run_analysis(window_op, D, RSPGridGraph.rsp_distance, theta=theta)
+    output_array = run_analysis(window_op, D, EuclideanDistance, res=1.)
+    # output_array = run_analysis(window_op, D, RSPDistance.rsp_distance, theta=theta)
