@@ -102,7 +102,8 @@ class GridGraph(eqx.Module):
     def __repr__(self):
         return f"GridGraph of size {self.height}x{self.width}"
     
-    @jit
+    # this function is difficult to make jit compatible, beause rows, cols and values are computed dynamically
+    # we may want to touch this upon later
     def get_adjacency_matrix(self, neighbors=ROOK_CONTIGUITY):
         """
         Create a differentiable adjacency matrix based on the vertices and

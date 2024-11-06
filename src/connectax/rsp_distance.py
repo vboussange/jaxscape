@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 from jax.scipy.linalg import inv
 from jax.experimental import sparse
+from jax import jit
 from connectax.gridgraph import GridGraph
 from connectax.utils import well_adapted_movement
 
@@ -31,6 +32,7 @@ def fundamental_matrix(W):
     L = sparse.eye(W.shape[0], dtype=W.dtype, index_dtype=W.indices.dtype) - W
     return inv(L.todense())
 
+@jit
 def rsp_distance(theta, A, C):
     row_sum = A.sum(1).todense()
     Prw = A / row_sum  # random walk probability
