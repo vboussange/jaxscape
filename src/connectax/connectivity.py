@@ -76,6 +76,7 @@ def strongly_connected_components_tarjan(adj_matrix: BCOO):
 
 
 def BCOO_to_sparse(A):
+    assert isinstance(A, BCOO)
     ij = np.array(A.indices)
     v = np.array(A.data)
     sparse_matrix = coo_array((v, (ij[:,0], ij[:,1])), shape=A.shape)
@@ -87,13 +88,10 @@ def get_largest_component(labels):
     largest_component_nodes = np.where(labels == largest_component_label)[0]
     return largest_component_nodes
 
-def prune_matrix(bcoo, vertices):
-    indices = bcoo.indices
-    valid_indices = jnp.where(indices[:,0])
-    return BCOO()
-
-
-
+# def prune_matrix(bcoo, vertices):
+#     indices = bcoo.indices
+#     valid_indices = jnp.where(indices[:,0])
+#     return BCOO()
 
 def functional_habitat(q, K):
     return q @ (K @ q)
