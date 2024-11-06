@@ -6,6 +6,7 @@ import networkx as nx
 from jax.experimental.sparse import BCOO
 from functools import partial
 import equinox as eqx
+from jax import lax
 
 # Neighboring indices in the grid
 ROOK_CONTIGUITY = jnp.array([
@@ -30,7 +31,7 @@ class GridGraph(eqx.Module):
         assert activities.dtype == "bool"
         self.activities = activities
         self.vertex_weights = vertex_weights
-        self.nb_active = activities.sum()
+        self.nb_active = int(activities.sum())
 
     @property
     def height(self):
@@ -102,48 +103,63 @@ class GridGraph(eqx.Module):
     def __repr__(self):
         return f"GridGraph of size {self.height}x{self.width}"
     
-    # this function is difficult to make jit compatible, beause rows, cols and values are computed dynamically
-    # we may want to touch this upon later
+    @jit
     def get_adjacency_matrix(self, neighbors=ROOK_CONTIGUITY):
         """
         Create a differentiable adjacency matrix based on the vertices and
-        contiguity pattern of `gridgraph`.
+        contiguity pattern of gridgraph.
         """
         # Get shape of raster
         activities = self.activities
         nrows, ncols = activities.shape
         num_nodes = self.nb_active
         permeability_raster = self.vertex_weights
-        
+        # Get coordinates of active nodes
         source_xy_coord = self.active_vertex_index_to_coord(jnp.arange(num_nodes))
-        active_map = jnp.zeros_like(activities, dtype=int) - 1
-        active_map = active_map.at[source_xy_coord[:,0], source_xy_coord[:,1]].set(jnp.arange(num_nodes))  # -1 if not an active vertex
-        
-        rows, cols, values = [], [], []
-        
-        for neighb in neighbors:
-            candidate_target_xy_coord = source_xy_coord + neighb
-            
-            # filter edges with out out-of-bound indices
-            edge_validity = (candidate_target_xy_coord[:, 0] >= 0) & (candidate_target_xy_coord[:, 0] < nrows) & (candidate_target_xy_coord[:, 1] >= 0) & (candidate_target_xy_coord[:, 1] < ncols)
+        # Build a map from (i,j) to active node indices
+        active_map = jnp.full_like(activities, fill_value=-1, dtype=int)
+        active_map = active_map.at[source_xy_coord[:,0], source_xy_coord[:,1]].set(jnp.arange(num_nodes))
 
-            # filter out edges with inactive target pixels
-            edge_validity = edge_validity * activities[candidate_target_xy_coord[:,0], candidate_target_xy_coord[:,1]]
-            
-            source_node_coord = active_map[source_xy_coord[:, 0][edge_validity], source_xy_coord[:, 1][edge_validity]]
-            target_node_coord = active_map[candidate_target_xy_coord[:, 0][edge_validity], candidate_target_xy_coord[:, 1][edge_validity]]
-            
-            # Connectivity values based on permeability
-            value = permeability_raster[candidate_target_xy_coord[:, 0][edge_validity], candidate_target_xy_coord[:, 1][edge_validity]]
+        num_neighbors = neighbors.shape[0]
+        # Compute candidate target coordinates
+        candidate_target_xy_coord = source_xy_coord[:, None, :] + neighbors[None, :, :]  # Shape (num_nodes, num_neighbors, 2)
 
-            values.extend(value)
-            rows.extend(source_node_coord)
-            cols.extend(target_node_coord)
+        # Compute edge validity
+        in_bounds = (
+            (candidate_target_xy_coord[..., 0] >= 0) & (candidate_target_xy_coord[..., 0] < nrows) &
+            (candidate_target_xy_coord[..., 1] >= 0) & (candidate_target_xy_coord[..., 1] < ncols)
+        )
 
-        # Stack results into arrays for COO format
-        data = jnp.array(values)
-        row_col_indices = jnp.vstack([jnp.array(rows), jnp.array(cols)]).T
+        # Check if target nodes are active
+        candidate_i = candidate_target_xy_coord[..., 0].clip(0, nrows - 1)
+        candidate_j = candidate_target_xy_coord[..., 1].clip(0, ncols - 1)
+        target_active = activities[candidate_i, candidate_j]
+        edge_validity = in_bounds & target_active
 
-        A = BCOO((data, row_col_indices), shape=(num_nodes, num_nodes))
+        # For invalid edges, set indices to 0
+        candidate_target_xy_coord_valid = jnp.where(edge_validity[..., None], candidate_target_xy_coord, 0)
+
+        # Get target node indices
+        target_node_indices = active_map[candidate_target_xy_coord_valid[..., 0], candidate_target_xy_coord_valid[..., 1]]
+        target_node_indices = jnp.where(edge_validity, target_node_indices, 0)
+
+        # Source node indices
+        source_node_indices = jnp.broadcast_to(jnp.arange(num_nodes)[:, None], (num_nodes, num_neighbors))
+        source_node_indices = jnp.where(edge_validity, source_node_indices, 0)
+
+        # Get values (edge weights)
+        values = permeability_raster[candidate_target_xy_coord_valid[..., 0], candidate_target_xy_coord_valid[..., 1]]
+        values = jnp.where(edge_validity, values, 0.0)
+
+        # Flatten arrays
+        source_node_indices = source_node_indices.ravel()
+        target_node_indices = target_node_indices.ravel()
+        values = values.ravel()
+
+        # Construct indices array
+        row_col_indices = jnp.stack([source_node_indices, target_node_indices], axis=1)
+
+        # Create BCOO matrix
+        A = BCOO((values, row_col_indices), shape=(num_nodes, num_nodes))
 
         return A
