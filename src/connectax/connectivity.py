@@ -5,9 +5,10 @@ from functools import partial
 from scipy.sparse import coo_array
 import numpy as np
 from connectax.gridgraph import GridGraph
+from connectax.rsp_distance import well_adapted_movement, rsp_distance
         
 class Landscape(GridGraph):
-    def __init__(self, cost=None, **kwargs):
+    def __init__(self, cost=well_adapted_movement, **kwargs):
         """
         A grid graph with an adjacency matrix representing affinities, and a cost matrix, similar to the 
         RSP framework. `cost_matrix` can be a function or a matrix
@@ -20,6 +21,9 @@ class Landscape(GridGraph):
             return self._cost(self.adjacency_matrix())
         else:
             return self._cost
+        
+    def rsp_distance(self, theta):
+        return rsp_distance(theta, self.adjacency_matrix(), self.cost_matrix())
 
 
 def BCOO_to_sparse(A):
@@ -30,10 +34,10 @@ def BCOO_to_sparse(A):
     return sparse_matrix
 
 
-def get_largest_component(labels):
+def get_largest_component_label(labels):
     largest_component_label = np.bincount(labels).argmax()
-    largest_component_nodes = np.where(labels == largest_component_label)[0]
-    return largest_component_nodes
+    # largest_component_nodes = np.where(labels == largest_component_label)[0]
+    return largest_component_label
 
 # def prune_matrix(bcoo, vertices):
 #     indices = bcoo.indices

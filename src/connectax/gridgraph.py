@@ -23,6 +23,7 @@ class GridGraph():
         Initializes the GridGraph object.
         """
         assert activities.shape == vertex_weights.shape
+        assert activities.dtype == "bool"
         self.activities = activities
         self.vertex_weights = vertex_weights
         self.neighbors = contiguity
@@ -78,13 +79,14 @@ class GridGraph():
         """Get (i,j) coordinates of active vertex index `v`."""
         passive_index = self.list_active_vertices()[v]
         return jnp.column_stack(self.index_to_coord(passive_index))
-
-    # def target_idx_and_nodes(self) -> Tuple[jnp.ndarray, jnp.ndarray]:
-    #     """Return coordinates and nodes with non-zero target qualities."""
-    #     active_vertices = self.list_active_vertices()
-    #     nodes = jnp.array([v for v in active_vertices if self.target_qualities.ravel()[v] > 0])
-    #     coords = jnp.array([self.index_to_coord(v) for v in nodes])
-    #     return coords, nodes
+    
+    def coord_to_active_vertex_index(self, i, j):
+        """Get (i,j) coordinates of active vertex index `v`."""
+        num_nodes = self.nb_active()
+        source_xy_coord = self.active_vertex_index_to_coord(jnp.arange(num_nodes))
+        active_map = jnp.zeros_like(self.activities, dtype=int) - 1
+        active_map = active_map.at[source_xy_coord[:,0], source_xy_coord[:,1]].set(jnp.arange(num_nodes))  # -1 if not an active vertex
+        return active_map[i, j]
     
     def node_values_to_raster(self, values):
         canvas = jnp.full((self.height, self.width), jnp.nan)
@@ -98,16 +100,10 @@ class GridGraph():
     
 def build_adjacency_matrix(gridgraph):
     """
-    Create a differentiable grid graph based on a permeability raster in JAX.
-
-    Args:
-        permeability_raster (jnp.ndarray): A 2D array representing permeability values.
-
-    Returns:
-        BCOO: A sparse matrix representing the connectivity in the grid graph, 
-            where the values are based on the permeability raster.
+    Create a differentiable adjacency matrix based on the vertices and
+    contiguity pattern of `gridgraph`.
     """
-    assert isinstance(gridgraph, GridGraph) # not working
+    assert isinstance(gridgraph, GridGraph)
     # Get shape of raster
     activities = gridgraph.activities
     nrows, ncols = activities.shape
@@ -119,7 +115,6 @@ def build_adjacency_matrix(gridgraph):
     active_map = jnp.zeros_like(activities, dtype=int) - 1
     active_map = active_map.at[source_xy_coord[:,0], source_xy_coord[:,1]].set(jnp.arange(num_nodes))  # -1 if not an active vertex
     
-    # Collect data for sparse matrix
     rows, cols, values = [], [], []
     
     for neighb in neighbors:
@@ -131,23 +126,20 @@ def build_adjacency_matrix(gridgraph):
         # filter out edges with inactive target pixels
         edge_validity = edge_validity * activities[candidate_target_xy_coord[:,0], candidate_target_xy_coord[:,1]]
         
-
         source_node_coord = active_map[source_xy_coord[:, 0][edge_validity], source_xy_coord[:, 1][edge_validity]]
         target_node_coord = active_map[candidate_target_xy_coord[:, 0][edge_validity], candidate_target_xy_coord[:, 1][edge_validity]]
         
         # Connectivity values based on permeability
         value = permeability_raster[candidate_target_xy_coord[:, 0][edge_validity], candidate_target_xy_coord[:, 1][edge_validity]]
 
-        # Append values and indices
         values.extend(value)
         rows.extend(source_node_coord)
         cols.extend(target_node_coord)
 
-    # Stack results into arrays for BCOO format
+    # Stack results into arrays for COO format
     data = jnp.array(values)
     row_col_indices = jnp.vstack([jnp.array(rows), jnp.array(cols)]).T
 
-    # Create sparse matrix in BCOO format
-    graph = BCOO((data, row_col_indices), shape=(num_nodes, num_nodes))
+    A = BCOO((data, row_col_indices), shape=(num_nodes, num_nodes))
 
-    return graph
+    return A

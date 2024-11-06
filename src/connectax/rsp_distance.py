@@ -22,8 +22,7 @@ def dense(sp_mat):
 def well_adapted_movement(A):
     return mapnz(A, lambda x: -jnp.log(x))
 
-def rsp_distance(A, theta):
-    C = well_adapted_movement(A) # cost matrix with well-adapted movements
+def rsp_distance(theta, A, C):
     row_sum = A.sum(1).todense()
     Prw = A / row_sum  # random walk probability
     W = Prw * jnp.exp(-theta * C.todense()) # TODO: to optimze
