@@ -1,7 +1,10 @@
 from connectax.gridgraph import GridGraph, ROOK_CONTIGUITY
 import jax.numpy as jnp
+from jax import jit
 
 class Landscape(GridGraph):
+    proximity: jnp.ndarray
+
     def __init__(self, habitat_quality, proximity, activities=None):
         """
         A landscape, which takes in a proximity matrix `K` and a habitat quality raster `habitat_quality`.
@@ -17,8 +20,9 @@ class Landscape(GridGraph):
     def get_adjacency_matrix(self):
         return self.proximity
     
+    @jit
     def functional_habitat(self):
-        active_ij = self.active_vertex_index_to_coord(jnp.arange(self.nb_active()))
+        active_ij = self.active_vertex_index_to_coord(jnp.arange(self.nb_active))
         q = self.vertex_weights[active_ij[:,0], active_ij[:,1]]
         K = self.proximity
         return q @ (K @ q) 

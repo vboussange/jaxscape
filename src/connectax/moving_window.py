@@ -20,11 +20,14 @@ class WindowOperation:
         assert isinstance(window_size, int)
         assert isinstance(buffer_size, int)
         
+        width, height = raster_data.shape
         self.raster_data = raster_data
         self.window_size = window_size
         self.buffer_size = buffer_size
         self.total_window_size = self.window_size + 2 * self.buffer_size
         self.output_array = jnp.full(self.raster_data.shape, jnp.nan)
+        self.x_steps = int((width - 2 * buffer_size) // window_size)
+        self.y_steps = int((height - 2 * buffer_size) // window_size)
 
     def replace_missing(self, array, value=jnp.nan):
         """Replace missing data in the array with specified value."""
@@ -37,13 +40,16 @@ class WindowOperation:
             y_start:y_start + self.total_window_size
         ]
         return self.replace_missing(window)
+    
+    @property
+    def nb_steps(self):
+        return (self.x_steps-1) * (self.y_steps - 1)
+
 
     def iterate_windows(self):
         """Yield buffered windows for computation, skipping empty areas."""
-        width, height = self.raster_data.shape
-        x_steps = int((width - 2 * self.buffer_size) // self.window_size)
-        y_steps = int((height - 2 * self.buffer_size) // self.window_size)
-
+        x_steps = self.x_steps
+        y_steps = self.y_steps
         for i in range(1, x_steps - 1):
             for j in range(1, y_steps - 1):
                 x_start, y_start = i * self.window_size, j * self.window_size
@@ -65,11 +71,11 @@ def get_valid_activities(hab_qual, activities):
     return activities_pruned
 
 # TODO: for now, we hardcode the distance to `rsp_distance`, but in the future, we should allow for arbitraty distance functions
-def run_analysis(window_op, D, gridgraph, **kwargs):
+def run_analysis(window_op, D, distance):
     """Performs the sensitivity analysis on each valid window.
     `D` must be expressed in the unit of habitat quality in `window_op`.
     """
-    for x_start, y_start, hab_qual in tqdm(window_op.iterate_windows(), total=window_op.total_window_size, desc="Running Analysis"):
+    for x_start, y_start, hab_qual in tqdm(window_op.iterate_windows(), total=window_op.nb_steps, desc="Running Analysis"):
         # Build grid graph and calculate Euclidean distances
         activities = hab_qual > 0
         valid_activities = get_valid_activities(hab_qual, activities)
@@ -77,9 +83,9 @@ def run_analysis(window_op, D, gridgraph, **kwargs):
         def connectivity(hab_qual):
             # TODO: need to iterate through the connected components
             # for now, we only take the largest component, but we could build a loop here
-            grid = gridgraph(activities=valid_activities, 
+            gridgraph = GridGraph(activities=valid_activities, 
                                     vertex_weights=hab_qual)
-            dist = grid.get_distance_matrix(**kwargs)
+            dist = distance.get_distance_matrix(gridgraph)
             proximity = jnp.exp(-dist / D)
             landscape = Landscape(hab_qual, proximity, valid_activities)
             func = landscape.functional_habitat()

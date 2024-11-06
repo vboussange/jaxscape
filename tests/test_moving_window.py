@@ -14,7 +14,6 @@ if __name__ == "__main__":
     D_km = 1.0
     D = D_km * 20 # TODO: to be changed
     sp_name = "Salmo trutta"
-    theta = jnp.array(0.01)
     
     path = Path("data/large_extent_habitat_suitability.nc")
     with xr.open_dataset(path, engine="netcdf4", decode_coords="all") as da: 
@@ -27,6 +26,11 @@ if __name__ == "__main__":
                                 window_size = 40, 
                                 buffer_size = int(3 * D_km))
     
-    # Run analysis
-    output_array = run_analysis(window_op, D, EuclideanDistance, res=1.)
+    
+    distance = EuclideanDistance(res=1.)
+    output_array = run_analysis(window_op, D, distance)
+    
+    theta = jnp.array(0.01)
+    distance = RSPDistance(theta)
+    output_array = run_analysis(window_op, D, distance)
     # output_array = run_analysis(window_op, D, RSPDistance.rsp_distance, theta=theta)

@@ -6,14 +6,13 @@ from jax import jit
 from connectax.utils import well_adapted_movement
 from connectax.distance import Distance
 from typing import Callable, Union
-import equinox as eqx
+from jax import jit
 # here the _cost function poses a problem
 # you should debug this with https://docs.kidger.site/equinox/all-of-equinox/
 # another option would be to NOT subclass GridGraph as eqx.Module
 
 class RSPDistance(Distance):
-    _cost: Union[Callable[[jnp.ndarray], jnp.ndarray], jnp.ndarray]
-    def __init__(self, cost=well_adapted_movement):
+    def __init__(self, theta, cost=well_adapted_movement):
         """
         Requires `cost`,
         which can be either a `jax.experimental.sparse.BCOO` matrix or a
@@ -24,24 +23,24 @@ class RSPDistance(Distance):
         """
         super().__init__()
         self._cost = cost
+        self.theta = theta
         
-    def cost_matrix(self):
+    def cost_matrix(self, grid):
         if callable(self.cost_matrix):
-            return self._cost(self.get_adjacency_matrix())
+            return self._cost(grid.get_adjacency_matrix())
         else:
             return self._cost
         
-    def get_distance_matrix(self, theta):
-        A = self.get_adjacency_matrix()
-        C = self.cost_matrix()
-        return rsp_distance(theta, A, C)
+    def get_distance_matrix(self, grid):
+        A = grid.get_adjacency_matrix()
+        C = self.cost_matrix(grid)
+        return rsp_distance(self.theta, A, C)
 
 def fundamental_matrix(W):
     L = sparse.eye(W.shape[0], dtype=W.dtype, index_dtype=W.indices.dtype) - W
     return inv(L.todense())
 
-@eqx.filter_jit
-@eqx.filter_grad
+@jit
 def rsp_distance(theta, A, C):
     row_sum = A.sum(1).todense()
     Prw = A / row_sum  # random walk probability

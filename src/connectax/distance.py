@@ -3,5 +3,5 @@ from abc import ABC, abstractmethod
 
 class Distance(ABC):
     @abstractmethod
-    def distance(self):
+    def get_distance_matrix(self):
         pass
