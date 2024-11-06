@@ -15,7 +15,6 @@ ROOK_CONTIGUITY = [
 
 class GridGraph():
     def __init__(self,
-                 *,
                  activities,
                  vertex_weights,
                  adjacency_matrix = None,
@@ -102,7 +101,7 @@ def build_adjacency_matrix(gridgraph):
         BCOO: A sparse matrix representing the connectivity in the grid graph, 
             where the values are based on the permeability raster.
     """
-    assert isinstance(gridgraph, GridGraph)
+    assert isinstance(gridgraph, GridGraph) # not working
     # Get shape of raster
     activities = gridgraph.activities
     nrows, ncols = activities.shape

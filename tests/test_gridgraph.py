@@ -12,8 +12,7 @@ def sample_gridgraph():
     activity = jnp.array([[1, 0, 1],
                           [1, 1, 0]])  # 2x3 grid with some inactive cells
     vertex_weights = jnp.ones((2, 3))  # Uniform weights for simplicity
-    edge_weights = jnp.ones((2, 3))    # Uniform weights for simplicity
-    grid = GridGraph(activity, vertex_weights, edge_weights)
+    grid = GridGraph(activity, vertex_weights)
     return grid
 
 
@@ -61,7 +60,7 @@ def test_list_active_vertices(sample_gridgraph):
 
 
 def test_active_vertices_coordinates(sample_gridgraph):
-    active_coords = sample_gridgraph.active_vertices_coordinates()
+    active_coords = sample_gridgraph.active_vertex_index_to_coord(jnp.arange(sample_gridgraph.nb_active()))
     expected_coords = jnp.array([[0, 0], [0, 2], [1, 0], [1, 1]])
     assert jnp.array_equal(active_coords, expected_coords)
 
