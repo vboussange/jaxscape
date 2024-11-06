@@ -1,7 +1,7 @@
 import jax.numpy as jnp
 from jax import jit
 
-def euclidean_distance_matrix(grid, res):
+def euclidean_distance(grid, res):
     """
     Calculate the Euclidean distance on CPU.
     Args:

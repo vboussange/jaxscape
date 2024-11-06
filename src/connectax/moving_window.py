@@ -4,10 +4,11 @@ from math import ceil
 import numpy as np  # for NaN handling, not used in heavy computations
 import matplotlib.pyplot as plt
 from connectax.gridgraph import GridGraph
-from connectax.connectivity import BCOO_to_sparse, get_largest_component, functional_habitat
+from connectax.connectivity import BCOO_to_sparse, Landscape, functional_habitat, get_largest_component_label
 from connectax.rsp_distance import rsp_distance
 import jax
 from jax.experimental.sparse import BCOO
+from tqdm import tqdm
 
 from scipy.sparse.csgraph import connected_components
 from scipy.sparse import csr_matrix
@@ -51,45 +52,54 @@ class WindowOperation:
                 if jnp.any(~jnp.isnan(window)):
                     yield x_start, y_start, window
                     
-def _get_vertices_largest_component(A):
-    # Anp = BCOO_to_sparse(A)
-    Anp = csr_matrix(np.array(A))
+def get_valid_activities(hab_qual, activities):
     # TODO: the best would be to avoid transfer between numpy and jax array
+    grid = GridGraph(activities, hab_qual)
+    A = grid.adjacency_matrix()
+    Anp = BCOO_to_sparse(A)
     _, labels = connected_components(Anp, directed=True, connection="strong")
-    return get_largest_component(labels)
+    label = get_largest_component_label(labels)
+    vertex_belongs_to_largest_component_node = labels == label
+    activities_pruned = grid.node_values_to_raster(vertex_belongs_to_largest_component_node)
+    activities_pruned = activities_pruned == True
+    return activities_pruned
 
 # TODO: for now, we hardcode the distance to `rsp_distance`, but in the future, we should allow for arbitraty distance functions
-def run_analysis(window_op, theta, D):
+def run_analysis(window_op, D, distance_measure, **kwargs):
     """Performs the sensitivity analysis on each valid window.
     `D` must be expressed in the unit of habitat quality in `window_op`.
     """
-    for x_start, y_start, hab_qual in window_op.iterate_windows():
+    for x_start, y_start, hab_qual in tqdm(window_op.iterate_windows(), total=window_op.total_window_size, desc="Running Analysis"):
         # Build grid graph and calculate Euclidean distances
         activities = hab_qual > 0
-        
+        valid_activities = get_valid_activities(hab_qual, activities)
+
         def connectivity(hab_qual):
-            grid = GridGraph(activities, hab_qual)
-            A = grid.adjacency_matrix().todense()
             # TODO: need to iterate through the connected components
-            # for now, we only take the largest component
-            vertices = jax.lax.stop_gradient(_get_vertices_largest_component(A))
-            # A = BCSR.from_bcoo(A)
-            _A = BCOO.fromdense(A[vertices, :][:, vertices]) # this operation is very slow, we should change it
-            dist = rsp_distance(_A, theta)
+            # for now, we only take the largest component, but we could build a loop here
+            landscape = Landscape(activities=valid_activities, 
+                                    vertex_weights=hab_qual)
+            dist = distance_measure(landscape, **kwargs)
             K = jnp.exp(-dist / D)
-            active_ij = grid.active_vertex_index_to_coord(jnp.arange(grid.nb_active()))
+            active_ij = landscape.active_vertex_index_to_coord(jnp.arange(landscape.nb_active()))
             q = hab_qual[active_ij[:,0], active_ij[:,1]]
             func = functional_habitat(q, K)
             return func
     
-        # TODO: Victor, you stopped here
-        grad_connectivity = jit(grad(connectivity))
+        grad_connectivity = grad(connectivity)
         dcon = grad_connectivity(hab_qual)
 
         # Store results into the core window area of the output array
-        core_range = slice(window_op.buffer_size, window_op.buffer_size + window_op.window_size)
+        x_core_start = x_start + window_op.buffer_size
+        x_core_end = x_core_start + window_op.window_size
+        y_core_start = y_start + window_op.buffer_size
+        y_core_end = y_core_start + window_op.window_size
+
+        # Update the output array within the specified core region
         window_op.output_array = window_op.output_array.at[
-            x_start + core_range, y_start + core_range
-        ].set(dcon[core_range, core_range])
+            x_core_start:x_core_end, y_core_start:y_core_end
+        ].set(dcon[window_op.buffer_size:window_op.buffer_size + window_op.window_size,
+                window_op.buffer_size:window_op.buffer_size + window_op.window_size])
+
 
     return window_op.output_array

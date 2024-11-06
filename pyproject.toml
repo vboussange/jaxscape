@@ -24,7 +24,7 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: CPython",
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
-dependencies = ["equinox", "jax"]
+dependencies = ["equinox", "jax", "tqdm"]
 
 [project.urls]
 Documentation = "https://github.com/Victor Boussange/connectax#readme"
@@ -34,6 +34,6 @@ Source = "https://github.com/Victor Boussange/connectax"
 [project.optional-dependencies]
 tests = [
   "pytest",
-  "pytest-cov"
+  "pytest-cov",
   "rasterio"
 ]
