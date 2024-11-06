@@ -5,6 +5,8 @@ from connectax.gridgraph import GridGraph, ROOK_CONTIGUITY  # Replace 'your_modu
 import networkx as nx
 from networkx import grid_2d_graph
 from jax import grad, jit
+import jax.random as jr
+import numpy as np
 
 
 @pytest.fixture
@@ -63,7 +65,40 @@ def test_active_vertices_coordinates(sample_gridgraph):
     active_coords = sample_gridgraph.active_vertex_index_to_coord(jnp.arange(sample_gridgraph.nb_active()))
     expected_coords = jnp.array([[0, 0], [0, 2], [1, 0], [1, 1]])
     assert jnp.array_equal(active_coords, expected_coords)
+    
+def test_node_values_to_raster():
+    activities = jnp.array([
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1]
+    ])
+    vertex_weights = jnp.ones_like(activities)
+    grid = GridGraph(activities, vertex_weights)
 
+
+    # Define values for the active nodes
+    active_values = jnp.array([10, 20, 30, 40, 50])  # Should match the number of active nodes
+
+    # Expected raster output based on the grid configuration and active values
+    expected_raster = jnp.array([
+        [10, np.nan, 20],
+        [np.nan, 30, np.nan],
+        [40, np.nan, 50]
+    ])
+    
+    # # Generate expected raster dynamically
+    # expected_raster = jnp.full((grid.height, grid.width), jnp.nan)
+    # active_coords = grid.active_vertex_index_to_coord(jnp.arange(grid.nb_active()))
+    # for coord, value in zip(active_coords, active_values):
+    #     expected_raster = expected_raster.at[tuple(coord)].set(value)
+
+    output_raster = grid.node_values_to_raster(active_values)
+
+    assert jnp.array_equal(jnp.isnan(output_raster), jnp.isnan(expected_raster)), "NaN positions mismatch"
+    assert jnp.allclose(output_raster[~jnp.isnan(output_raster)], expected_raster[~jnp.isnan(expected_raster)]), "Values mismatch"
+
+
+# test against networkx
 def test_adjacency_matrix():
     permeability_raster = jnp.ones((2,3))
     activities = jnp.ones(permeability_raster.shape, dtype=bool)
@@ -73,17 +108,28 @@ def test_adjacency_matrix():
     assert isinstance(edge_weights, BCOO)  # Ensure that the output is a sparse matrix
     assert edge_weights.shape == (6, 6)  # 2x3 grid flattened to 6 nodes
     
+    # trivial connectivity
     G = grid_2d_graph(2, 3, create_using=nx.DiGraph)
     assert jnp.array_equal(nx.adjacency_matrix(G).toarray(), edge_weights.todense())
-    
 
+    # not all nodes active
     G.remove_node((0,0))
-    activities2 = activities.at[0,0].set(False)
-    grid2 = GridGraph(activities2, permeability_raster)
-    edge_weights2 = grid2.adjacency_matrix()
-    assert jnp.array_equal(nx.adjacency_matrix(G).toarray(), edge_weights2.todense())
+    activities = activities.at[0,0].set(False)
+    grid = GridGraph(activities, permeability_raster)
+    adj_matrix = grid.adjacency_matrix().todense()
+    adj_matrix_nx = nx.adjacency_matrix(G).todense()
+    assert jnp.array_equal(adj_matrix, adj_matrix_nx)
+    
+    
+    # not all nodes active, not trivial connectivity
+    for edge in [((0, 1), (0, 2)), ((1,2), (0, 2))]:
+        G[edge[0]][edge[1]]['weight'] = 5
+    permeability_raster = permeability_raster.at[0,2].set(5)
+    grid = GridGraph(activities, permeability_raster)
+    adj_matrix = grid.adjacency_matrix().todense()
+    adj_matrix_nx = nx.adjacency_matrix(G, weight='weight').todense()
+    assert jnp.array_equal(adj_matrix, adj_matrix_nx)
 
-import jax.random as jr
 def test_differentiability_adjacency_matrix():
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
     permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability

@@ -85,6 +85,12 @@ class GridGraph():
     #     nodes = jnp.array([v for v in active_vertices if self.target_qualities.ravel()[v] > 0])
     #     coords = jnp.array([self.index_to_coord(v) for v in nodes])
     #     return coords, nodes
+    
+    def node_values_to_raster(self, values):
+        canvas = jnp.full((self.height, self.width), jnp.nan)
+        vertices_coord = self.active_vertex_index_to_coord(jnp.arange(self.nb_active()))
+        canvas = canvas.at[vertices_coord[:,0], vertices_coord[:,1]].set(values)
+        return canvas
 
     def __repr__(self):
         return f"GridGraph of size {self.height}x{self.width}"
