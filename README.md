@@ -1,19 +1,17 @@
-# connectax
+<h1 align='center'>JaxScape</h1>
 
-[![PyPI - Version](https://img.shields.io/pypi/v/connectax.svg)](https://pypi.org/project/connectax)
-[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/connectax.svg)](https://pypi.org/project/connectax)
+<!-- [![PyPI - Version](https://img.shields.io/pypi/v/connectax.svg)](https://pypi.org/project/connectax)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/connectax.svg)](https://pypi.org/project/connectax) -->
 
------
+<!-- ----- -->
 
-## Table of Contents
+JaxScape is a JAX library for ecological connectivity analysis at scales. It leverages JAX capabilities to accelerates heavy distance computation on GPUs, and permits sensitivity analysis and what by leveraging JAX Automatic differentiation abilities.
 
-- [Installation](#installation)
-- [License](#license)
 
 ## Installation
 
 ```console
-pip install connectax
+pip install jaxscape
 ```
 
 ## License

@@ -17,6 +17,9 @@ from connectax.moving_window import WindowOperation
 from connectax.euclidean_distance import EuclideanDistance
 from connectax.rsp_distance import RSPDistance
 
+import matplotlib.pyplot as plt
+
+
 # Calculate the latitudinal and longitudinal resolution of a raster
 def calculate_resolution(raster):
     lat_resolution = abs(raster.y.diff(dim='y').mean().values)
@@ -70,24 +73,28 @@ def load_habitat_suitability(sp_name, path_ncfile=Path("data/large_extent_habita
 # Example usage
 if __name__ == "__main__":
     sp_name = "Salmo trutta"
-    D_km = jnp.array(100.0)
+    D_km = jnp.array(4.0)
     
-    params_computation = {"window_size": 100, "cut_off": 0.1}
-    alpha = jnp.array(21.0)
+    params_computation = {"window_size": 20, "cut_off": 0.1}
     habitat_quality_raster, res = load_habitat_suitability(sp_name)
-    D = D_km / alpha
+    plt.imshow(jnp.where(~jnp.isnan(habitat_quality_raster), habitat_quality_raster, 0))
+    plt.show()
+    
+    D = D_km * 1000 # converting into meter, unit of res
     assert np.isclose(res[0], res[1], atol=1.0), "Cannot handle different x, y resolution"
 
     window_op = WindowOperation(shape=habitat_quality_raster.shape, 
                                 window_size=params_computation["window_size"], 
-                                buffer_size=int(3 * D_km / res[0]))
+                                buffer_size=int(3 * D_km * 1e3/ res[0]))
     
     distance = EuclideanDistance(res=1.0)
     sensitivity_raster = run_sensitivity_analysis(habitat_quality_raster, window_op, D, distance, params_computation["cut_off"])
 
-    # Uncomment to visualize the results
-    # plt.imshow(sensitivity_raster)
-    # plt.show()
+    plt.imshow(sensitivity_raster)
+    plt.show()
+    
     # theta = jnp.array(0.01)
+    # alpha = jnp.array(21.0) 
+    # D = D_km / alpha # need to convert D in ecological distance
     # distance = RSPDistance(theta=theta)
     # sensitivity_raster = run_sensitivity_analysis(habitat_quality_raster, window_op, D, distance, params_computation["cut_off"])
