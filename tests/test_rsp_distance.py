@@ -6,7 +6,6 @@ from connectax.rsp_distance import RSPDistance
 from connectax.landscape import Landscape
 from connectax.gridgraph import GridGraph
 from connectax.utils import BCOO_to_sparse, get_largest_component_label
-import xarray as xr
 from pathlib import Path
 from scipy.sparse.csgraph import connected_components
 import numpy as np
@@ -25,10 +24,9 @@ def test_rsp_distance_matrix():
     permeability_raster = jnp.ones((2, 2))
     activities = jnp.ones(permeability_raster.shape, dtype=bool)
     grid = GridGraph(activities=activities, 
-                     vertex_weights=permeability_raster, 
-                     cost= lambda x: x)
+                     vertex_weights=permeability_raster)
     theta = jnp.array(2.)
-    distance = RSPDistance(theta)
+    distance = RSPDistance(theta, cost= lambda x: x)
     mat = distance(grid)
     assert jnp.allclose(mat, expected_cost_conscape, atol = 1e-4)
 
@@ -44,7 +42,7 @@ def test_rsp_distance_matrix():
     distance = RSPDistance(theta)
     mat = distance(grid)
     assert isinstance(mat, jax.Array)
-    assert grid.nb_active() == 99
+    assert grid.nb_active == 99
     
 # test with true raster
 def test_rsp_distance_matrix():
@@ -67,15 +65,15 @@ def test_rsp_distance_matrix():
     activities_pruned = grid.node_values_to_raster(vertex_belongs_to_largest_component_node)
     activities_pruned = activities_pruned == True
     graph_pruned = GridGraph(activities=activities_pruned, 
-                             vertex_weights=habitat_suitability)
+                             vertex_weights=habitat_suitability) # broken
     
     
     # calculating distance to vertex 19, 6 in julia coordinates (corresponding to vertex 18, 5 in python coordinate)
     theta = jnp.array(0.01)
     distance = RSPDistance(theta)
-    mat = distance(grid)
+    mat = distance(graph_pruned)
     vertex_index = graph_pruned.coord_to_active_vertex_index(18, 5)
-    expected_cost = graph_pruned.node_values_to_raster(mat[:, vertex_index])
+    expected_cost = graph_pruned.node_values_to_raster(mat[:, vertex_index]) # broken test
     
     # TODO: here rtol = 1e0, which is way too high
     # a simple comparision of heatmap plots show similar patterns though

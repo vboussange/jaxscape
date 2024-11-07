@@ -1,12 +1,7 @@
-from typing import Callable, Tuple
 import jax.numpy as jnp
 from jax import jit
-import numpy as np
-import networkx as nx
 from jax.experimental.sparse import BCOO
-from functools import partial
 import equinox as eqx
-from jax import lax
 
 # Neighboring indices in the grid
 ROOK_CONTIGUITY = jnp.array([
@@ -29,6 +24,7 @@ class GridGraph(eqx.Module):
         """
         assert activities.shape == vertex_weights.shape
         assert activities.dtype == "bool"
+        # assert activities.sum() == nb_active
         self.activities = activities
         self.vertex_weights = vertex_weights
         self.nb_active = int(activities.sum())

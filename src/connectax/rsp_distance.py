@@ -4,14 +4,18 @@ from jax.scipy.linalg import inv
 from jax.experimental import sparse
 from jax import jit
 from connectax.utils import well_adapted_movement
-from connectax.distance import Distance
+from connectax.distance import AbstractDistance
 from typing import Callable, Union
 from jax import jit
+import equinox as eqx
 # here the _cost function poses a problem
 # you should debug this with https://docs.kidger.site/equinox/all-of-equinox/
 # another option would be to NOT subclass GridGraph as eqx.Module
 
-class RSPDistance(Distance):
+class RSPDistance(AbstractDistance):
+    theta: jnp.ndarray
+    _cost: Union[Callable[jnp.ndarray, jnp.ndarray], jnp.ndarray] = eqx.field(static=True)
+
     def __init__(self, theta, cost=well_adapted_movement):
         """
         Requires `cost`,
@@ -21,7 +25,6 @@ class RSPDistance(Distance):
         `jax.experimental.sparse.BCOO` cost matrix. `cost` defaults to
         `well_adapted_movement` function.
         """
-        super().__init__()
         self._cost = cost
         self.theta = theta
         
@@ -35,7 +38,7 @@ class RSPDistance(Distance):
         A = grid.get_adjacency_matrix()
         C = self.cost_matrix(grid)
         return rsp_distance(self.theta, A, C)
-
+    
 def fundamental_matrix(W):
     L = sparse.eye(W.shape[0], dtype=W.dtype, index_dtype=W.indices.dtype) - W
     return inv(L.todense())

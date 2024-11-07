@@ -1,14 +1,14 @@
 import jax.numpy as jnp
 from jax import jit
-from connectax.gridgraph import GridGraph
-from connectax.distance import Distance
+from connectax.distance import AbstractDistance
+import equinox as eqx
 
-class EuclideanDistance(Distance):
+class EuclideanDistance(AbstractDistance):
+    res: jnp.ndarray
     def __init__(self, res):
         """
         Calculate the Euclidean distance.
         """
-        super().__init__()
         self.res = res
         
     def __call__(self, grid):

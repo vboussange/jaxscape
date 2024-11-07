@@ -15,7 +15,7 @@ def test_euclidean_distance():
     activities = jnp.ones(permeability_raster.shape, dtype=bool)
     grid = GridGraph(activities=activities,
                               vertex_weights = permeability_raster)
-    distance = EuclideanDistance(res=1.)
+    distance = EuclideanDistance(res=jnp.array(1.))
     dist = distance(grid)
     assert dist[0,0] == 0
     source_idx = 0
@@ -43,6 +43,27 @@ def test_differentiability_euclidean_distance():
     grad_objective = grad(objective)
     dobj = grad_objective(permeability_raster)
     assert isinstance(dobj, jax.Array)
+    
+
+# def test_jit_differentiability_euclidean_distance():
+#     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
+#     permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
+#     activities = jnp.ones(permeability_raster.shape, dtype=bool)
+#     D = 1.
+#     distance = EuclideanDistance(res=1.)
+#     grid = GridGraph(activities=activities,
+#                     vertex_weights = permeability_raster)
+#     def objective(grid):
+
+#         dist = distance(grid)
+#         proximity = jnp.exp(-dist / D)
+#         landscape = Landscape(permeability_raster, proximity)
+#         func = landscape.functional_habitat()
+#         return func
+        
+#     grad_objective = jit(grad(objective))
+#     dobj = grad_objective(permeability_raster)
+#     assert isinstance(dobj, jax.Array)
 
 if __name__ == "__main__":
     pytest.main()

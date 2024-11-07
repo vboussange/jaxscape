@@ -3,6 +3,7 @@ import jax.numpy as jnp
 from jax import jit
 
 # TODO: we may also want to name this class "ExplicitGridGraph"
+# We also need to avoid calling super().__init__, and rather define an AbstractGridGraph object
 class Landscape(GridGraph):
     proximity: jnp.ndarray
 
