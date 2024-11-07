@@ -37,7 +37,7 @@ def test_differentiability_euclidean_distance():
         dist = distance(grid)
         proximity = jnp.exp(-dist / D)
         landscape = Landscape(permeability_raster, proximity)
-        func = landscape.functional_habitat()
+        func = landscape.equivalent_connected_habitat()
         return func
         
     grad_objective = grad(objective)
@@ -60,7 +60,7 @@ def test_jit_differentiability_euclidean_distance():
         dist = distance(grid)
         proximity = jnp.exp(-dist / D)
         landscape = Landscape(permeability_raster, proximity, nb_active=nb_active)
-        func = landscape.functional_habitat()
+        func = landscape.equivalent_connected_habitat()
         return func
         
     grad_objective = jit(grad(objective))

@@ -28,25 +28,50 @@ Here we calculate the contribution of each pixel to the functional habitat conne
 
 ```python
 import jax
-import jaxscape
+import jax.numpy as jnp
+from jaxscape.rsp_distance import RSPDistance
+from jaxscape.gridgraph import GridGraph
+from jaxscape.landscape import Landscape
+import matplotlib.pyplot as plt
 
-
-D = 1. # dispersal distance
+D = 1.0  # dispersal distance
 theta = jnp.array(0.01)
-distance = jaxscape.RSPDistance(theta)
+distance = RSPDistance(theta)
 
+# Define a habitat suitability raster
+habitat_suitability = jnp.array(
+    [
+        [1, 1, 1, 0, 0, 0, 0, 0],
+        [1, 1, 1, 0, 0, 0, 0, 0],
+        [1, 1, 1, 0, 0, 0, 0, 0],
+        [0, 0, 1, 1, 0, 0, 0, 0],
+        [0, 0, 0, 1, 1, 1, 1, 1],
+        [0, 0, 0, 0, 0, 1, 1, 1],
+        [0, 0, 0, 0, 0, 1, 1, 1],
+    ],
+    dtype="float32",
+)
+plt.imshow(habitat_suitability)
+activities = habitat_suitability > 0
+
+# `equivalent_connected_habitat` calculation
+# We first need to calculate a distance, 
+# that we transform into an ecological proximity
 def calculate_ech(habitat_quality):
-    grid = jaxscape.GridGraph(activities=activities, vertex_weights=habitat_quality)
+    grid = GridGraph(activities=activities, vertex_weights=habitat_quality)
     dist = distance(grid)
     proximity = jnp.exp(-dist / D)
-    landscape = jaxscape.Landscape(habitat_quality, proximity)
+    landscape = Landscape(habitat_quality, proximity)
     ech = landscape.equivalent_connected_habitat()
     return ech
-    
-grad_ech = grad(calculate_ech)
-sensitivities = grad_ech(habitat_quality)
 
-plt.imshow(sensitivities)
+# derivative of w.r.t pixel habitat suitability 
+# represents pixel contribution to landscape connectivity
+grad_ech = jax.grad(calculate_ech)
+sensitivities = grad_ech(habitat_suitability)
+
+plt.imshow(jnp.log(sensitivities))
+plt.show()
 ```
 
 ## License

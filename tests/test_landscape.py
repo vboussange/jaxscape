@@ -14,5 +14,5 @@ def test_Landscape():
     A = grid.get_adjacency_matrix()
     permeability_raster = permeability_raster.at[1,1].set(0.)
     land = Landscape(habitat_quality=permeability_raster, proximity=A, activities=grid.activities)
-    func = land.functional_habitat()
+    func = land.equivalent_connected_habitat()
     assert func == (A.sum()/2 - 4) # we lose 1 vertex connected to 4 neighbors, as its quality is set 0.

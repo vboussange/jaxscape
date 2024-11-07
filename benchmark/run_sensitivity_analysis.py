@@ -51,7 +51,7 @@ def run_sensitivity_analysis(habitat_quality_raster, window_op, D, distance, cut
             dist = distance(gridgraph)
             proximity = jnp.exp(-dist / D) > cut_off # we would ideally convert it to a BCOO matrix, but it is not jit compatible
             landscape = Landscape(hab_qual, proximity, valid_activities, nb_active = nb_active)
-            return landscape.functional_habitat()
+            return landscape.equivalent_connected_habitat()
 
         # Compute the gradient of connectivity with respect to habitat quality
         grad_connectivity_in_window = jit(grad(compute_connectivity_in_window))

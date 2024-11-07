@@ -165,8 +165,8 @@ class GridGraph(eqx.Module):
         return A
     
     @jit
-    def functional_habitat(self):
+    def equivalent_connected_habitat(self):
         active_ij = self.active_vertex_index_to_coord(jnp.arange(self.nb_active))
         q = self.vertex_weights[active_ij[:,0], active_ij[:,1]]
         K = self.get_adjacency_matrix()
-        return q @ (K @ q) / jnp.array(2, dtype=q.dtype)
+        return jnp.sqrt(q @ (K @ q))
