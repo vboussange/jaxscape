@@ -3,8 +3,8 @@ import jax.numpy as jnp
 from jax.scipy.linalg import inv
 from jax.experimental import sparse
 from jax import jit
-from connectax.utils import well_adapted_movement
-from connectax.distance import AbstractDistance
+from jaxscape.utils import well_adapted_movement
+from jaxscape.distance import AbstractDistance
 from typing import Callable, Union
 from jax import jit
 import equinox as eqx

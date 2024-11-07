@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "connectax"
+name = "jaxscape"
 version = "0.0.1"
 description = ''
 readme = "README.md"
@@ -27,9 +27,9 @@ classifiers = [
 dependencies = ["equinox", "jax", "tqdm", "sciparse", "numpy"]
 
 [project.urls]
-Documentation = "https://github.com/Victor Boussange/connectax#readme"
-Issues = "https://github.com/Victor Boussange/connectax/issues"
-Source = "https://github.com/Victor Boussange/connectax"
+Documentation = "https://github.com/Victor Boussange/jaxscape#readme"
+Issues = "https://github.com/Victor Boussange/jaxscape/issues"
+Source = "https://github.com/Victor Boussange/jaxscape"
 
 [project.optional-dependencies]
 tests = [

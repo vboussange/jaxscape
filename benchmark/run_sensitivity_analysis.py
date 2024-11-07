@@ -10,12 +10,12 @@ from pathlib import Path
 
 from scipy.sparse.csgraph import connected_components
 
-from connectax.gridgraph import GridGraph
-from connectax.utils import BCOO_to_sparse, get_largest_component_label
-from connectax.landscape import Landscape
-from connectax.moving_window import WindowOperation
-from connectax.euclidean_distance import EuclideanDistance
-from connectax.rsp_distance import RSPDistance
+from jaxscape.gridgraph import GridGraph
+from jaxscape.utils import BCOO_to_sparse, get_largest_component_label
+from jaxscape.landscape import Landscape
+from jaxscape.moving_window import WindowOperation
+from jaxscape.euclidean_distance import EuclideanDistance
+from jaxscape.rsp_distance import RSPDistance
 
 import matplotlib.pyplot as plt
 

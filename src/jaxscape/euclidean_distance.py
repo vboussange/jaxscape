@@ -1,6 +1,6 @@
 import jax.numpy as jnp
 from jax import jit
-from connectax.distance import AbstractDistance
+from jaxscape.distance import AbstractDistance
 import equinox as eqx
 
 class EuclideanDistance(AbstractDistance):

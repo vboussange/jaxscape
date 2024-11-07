@@ -2,8 +2,8 @@ import jax.numpy as jnp
 from jax.experimental.sparse import BCOO
 from jax import random
 import jax.random as jr
-from connectax.gridgraph import GridGraph
-from connectax.landscape import Landscape
+from jaxscape.gridgraph import GridGraph
+from jaxscape.landscape import Landscape
 
 def test_Landscape():
     permeability_raster = jnp.ones((10, 10)) 

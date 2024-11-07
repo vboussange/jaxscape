@@ -1,9 +1,9 @@
 import pytest
 import jax
 import jax.numpy as jnp
-from connectax.euclidean_distance import EuclideanDistance
-from connectax.landscape import Landscape
-from connectax.gridgraph import GridGraph
+from jaxscape.euclidean_distance import EuclideanDistance
+from jaxscape.landscape import Landscape
+from jaxscape.gridgraph import GridGraph
 import networkx as nx
 from networkx import grid_2d_graph
 from jax import grad, jit

@@ -1,7 +1,7 @@
 import pytest
 import jax.numpy as jnp
 from jax.experimental.sparse import BCOO
-from connectax.gridgraph import GridGraph, ROOK_CONTIGUITY  # Replace 'your_module' with the actual module name
+from jaxscape.gridgraph import GridGraph, ROOK_CONTIGUITY  # Replace 'your_module' with the actual module name
 import networkx as nx
 from networkx import grid_2d_graph
 from jax import grad, jit

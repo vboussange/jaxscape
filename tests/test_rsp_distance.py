@@ -2,11 +2,11 @@ import pytest
 import jax
 import jax.numpy as jnp
 from jax import grad, jit
-from connectax.rsp_distance import RSPDistance
-from connectax.landscape import Landscape
-from connectax.gridgraph import GridGraph
-from connectax.utils import BCOO_to_sparse, get_largest_component_label
-from connectax.utils import well_adapted_movement
+from jaxscape.rsp_distance import RSPDistance
+from jaxscape.landscape import Landscape
+from jaxscape.gridgraph import GridGraph
+from jaxscape.utils import BCOO_to_sparse, get_largest_component_label
+from jaxscape.utils import well_adapted_movement
 from pathlib import Path
 from scipy.sparse.csgraph import connected_components
 import numpy as np

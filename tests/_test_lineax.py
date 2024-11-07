@@ -2,7 +2,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import lineax as lx
 import jax.random as jr
-from connectax.gridgraph import GridGraph
+from jaxscape.gridgraph import GridGraph
 from jax.experimental import sparse
 from jax.scipy.sparse.linalg import gmres, splu
 

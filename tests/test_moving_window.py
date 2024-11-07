@@ -1,6 +1,6 @@
 import pytest
 import jax.numpy as jnp
-from connectax.moving_window import WindowOperation  # Adjust as necessary for your module path
+from jaxscape.moving_window import WindowOperation  # Adjust as necessary for your module path
 
 @pytest.fixture
 def sample_raster_data():

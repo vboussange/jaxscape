@@ -1,4 +1,4 @@
-from connectax.gridgraph import GridGraph, ROOK_CONTIGUITY
+from jaxscape.gridgraph import GridGraph, ROOK_CONTIGUITY
 import jax.numpy as jnp
 from jax import jit
 

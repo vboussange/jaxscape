@@ -1,4 +1,4 @@
-# from connectax.connectivity import strongly_connected_components
+# from jaxscape.connectivity import strongly_connected_components
 import jax.numpy as jnp
 from jax.experimental.sparse import BCOO
 from jax import random
