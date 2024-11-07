@@ -6,7 +6,7 @@ import numpy as np
 
 def mapnz(mat, f):
     indices, data = mat.indices, mat.data
-    mapped_values = f(data)
+    mapped_values = jnp.where(data > 0, f(data), 0.)
     return sparse.BCOO((mapped_values, indices), shape=mat.shape)
 
 def dense(sp_mat):

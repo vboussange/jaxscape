@@ -41,29 +41,31 @@ def test_differentiability_euclidean_distance():
         return func
         
     grad_objective = grad(objective)
-    dobj = grad_objective(permeability_raster)
+    dobj = grad_objective(permeability_raster) # 1.26 ms ± 13.8 μs per loop (mean ± std. dev. of 7 runs, 1,000 loops each)
     assert isinstance(dobj, jax.Array)
     
 
-# def test_jit_differentiability_euclidean_distance():
-#     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
-#     permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
-#     activities = jnp.ones(permeability_raster.shape, dtype=bool)
-#     D = 1.
-#     distance = EuclideanDistance(res=1.)
-#     grid = GridGraph(activities=activities,
-#                     vertex_weights = permeability_raster)
-#     def objective(grid):
+def test_jit_differentiability_euclidean_distance():
+    key = jr.PRNGKey(0)  # Random seed is explicit in JAX
+    permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
+    activities = jnp.ones(permeability_raster.shape, dtype=bool)
+    nb_active = int(activities.sum())
+    D = 1.
+    distance = EuclideanDistance(res=1.)
 
-#         dist = distance(grid)
-#         proximity = jnp.exp(-dist / D)
-#         landscape = Landscape(permeability_raster, proximity)
-#         func = landscape.functional_habitat()
-#         return func
+    def objective(permeability_raster):
+        grid = GridGraph(activities=activities,
+                        vertex_weights = permeability_raster,
+                        nb_active=nb_active)
+        dist = distance(grid)
+        proximity = jnp.exp(-dist / D)
+        landscape = Landscape(permeability_raster, proximity, nb_active=nb_active)
+        func = landscape.functional_habitat()
+        return func
         
-#     grad_objective = jit(grad(objective))
-#     dobj = grad_objective(permeability_raster)
-#     assert isinstance(dobj, jax.Array)
+    grad_objective = jit(grad(objective))
+    dobj = grad_objective(permeability_raster) # 70.6 μs ± 4.6 μs per loop (mean ± std. dev. of 7 runs, 10,000 loops each)
+    assert isinstance(dobj, jax.Array)
 
 if __name__ == "__main__":
     pytest.main()

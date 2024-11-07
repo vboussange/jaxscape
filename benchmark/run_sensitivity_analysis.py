@@ -47,7 +47,7 @@ grad_connectivity_in_window = grad(compute_connectivity_in_window)
 # Perform sensitivity analysis across multiple windows
 def run_sensitivity_analysis(habitat_quality_raster, window_op, D, distance, cut_off):
     sensitivity_raster = jnp.full_like(habitat_quality_raster, jnp.nan)
-    for x_start, y_start, hab_qual in tqdm(window_op.iterate_windows(habitat_quality_raster), total=window_op.nb_steps, desc="Running Analysis"):
+    for x_start, y_start, hab_qual in tqdm(window_op.iterate_windows(habitat_quality_raster), total=window_op.nb_steps, desc="Running sensitivity analysis"):
         activities = hab_qual > 0
         valid_activities = get_valid_activities(hab_qual, activities)
         
@@ -69,7 +69,7 @@ if __name__ == "__main__":
     sp_name = "Salmo trutta"
     D_km = jnp.array(100.0)
     
-    params_computation = {"window_size": 40, "cut_off": 0.1}
+    params_computation = {"window_size": 100, "cut_off": 0.1}
     alpha = jnp.array(21.0)
     habitat_quality_raster, res = load_habitat_suitability(sp_name)
     D = D_km / alpha

@@ -6,6 +6,7 @@ from connectax.rsp_distance import RSPDistance
 from connectax.landscape import Landscape
 from connectax.gridgraph import GridGraph
 from connectax.utils import BCOO_to_sparse, get_largest_component_label
+from connectax.utils import well_adapted_movement
 from pathlib import Path
 from scipy.sparse.csgraph import connected_components
 import numpy as np
@@ -40,7 +41,11 @@ def test_rsp_distance_matrix():
                      vertex_weights=permeability_raster)
     theta = 0.01
     distance = RSPDistance(theta)
+    cost = distance.cost_matrix(grid)
+    assert cost.sum() > 0
+
     mat = distance(grid)
+    assert jnp.any(~jnp.isnan(mat))
     assert isinstance(mat, jax.Array)
     assert grid.nb_active == 99
     

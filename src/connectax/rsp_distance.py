@@ -14,7 +14,7 @@ import equinox as eqx
 
 class RSPDistance(AbstractDistance):
     theta: jnp.ndarray
-    _cost: Union[Callable[jnp.ndarray, jnp.ndarray], jnp.ndarray] = eqx.field(static=True)
+    _cost: Union[Callable[jnp.ndarray, jnp.ndarray], jnp.ndarray]
 
     def __init__(self, theta, cost=well_adapted_movement):
         """

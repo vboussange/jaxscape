@@ -18,7 +18,8 @@ class GridGraph(eqx.Module):
     
     def __init__(self,
                  activities,
-                 vertex_weights):
+                 vertex_weights,
+                 nb_active=None):
         """
         Initializes the GridGraph object.
         """
@@ -27,7 +28,10 @@ class GridGraph(eqx.Module):
         # assert activities.sum() == nb_active
         self.activities = activities
         self.vertex_weights = vertex_weights
-        self.nb_active = int(activities.sum())
+        if nb_active is None:
+            self.nb_active = int(activities.sum())
+        else:
+            self.nb_active = nb_active
 
     @property
     def height(self):
@@ -156,6 +160,13 @@ class GridGraph(eqx.Module):
         row_col_indices = jnp.stack([source_node_indices, target_node_indices], axis=1)
 
         # Create BCOO matrix
-        A = BCOO((values, row_col_indices), shape=(num_nodes, num_nodes))
+        A = BCOO((values, row_col_indices), shape=(num_nodes, num_nodes)) # not compatible with jit .sum_duplicates()
 
         return A
+    
+    @jit
+    def functional_habitat(self):
+        active_ij = self.active_vertex_index_to_coord(jnp.arange(self.nb_active))
+        q = self.vertex_weights[active_ij[:,0], active_ij[:,1]]
+        K = self.get_adjacency_matrix()
+        return q @ (K @ q) / jnp.array(2, dtype=q.dtype)
