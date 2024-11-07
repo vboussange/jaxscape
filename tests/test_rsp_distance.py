@@ -1,7 +1,7 @@
 import pytest
 import jax
 import jax.numpy as jnp
-from jax import grad
+from jax import grad, jit
 from connectax.rsp_distance import RSPDistance
 from connectax.landscape import Landscape
 from connectax.gridgraph import GridGraph
@@ -107,9 +107,35 @@ def test_differentiability_euclidean_distance_matrix():
         return func
         
     grad_objective = grad(objective)
+    # %timeit grad_objective(permeability_raster) # 71.2 ms ± 16.4 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
     dobj = grad_objective(permeability_raster)
     assert isinstance(dobj, jax.Array)
     # TODO: implement proper test
+    
+
+def test_jit_differentiability_euclidean_distance():
+    key = jr.PRNGKey(0)  # Random seed is explicit in JAX
+    permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
+    activities = jnp.ones(permeability_raster.shape, dtype=bool)
+    nb_active = int(activities.sum())
+    D = 1.
+    theta = jnp.array(0.01)
+    distance = RSPDistance(theta=theta)
+
+    def objective(permeability_raster):
+        grid = GridGraph(activities=activities,
+                        vertex_weights = permeability_raster,
+                        nb_active=nb_active)
+        dist = distance(grid)
+        proximity = jnp.exp(-dist / D)
+        landscape = Landscape(permeability_raster, proximity, nb_active=nb_active)
+        func = landscape.functional_habitat()
+        return func
+        
+    grad_objective = jit(grad(objective))
+    # %timeit grad_objective(permeability_raster) # 13 μs ± 4.18 μs per loop (mean ± std. dev. of 7 runs, 1 loop each)
+    dobj = grad_objective(permeability_raster)
+    assert isinstance(dobj, jax.Array)
     
 if __name__ == "__main__":
     pytest.main()
