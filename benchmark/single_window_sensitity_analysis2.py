@@ -23,7 +23,6 @@ habitat_suitability = jnp.array(
     dtype="float32",
 )
 plt.imshow(habitat_suitability)
-plt.show()
 activities = habitat_suitability > 0
 
 # `equivalent_connected_habitat` calculation
@@ -34,8 +33,8 @@ def calculate_ech(habitat_quality):
     dist = distance(grid)
     proximity = jnp.exp(-dist / D)
     landscape = Landscape(habitat_quality, proximity)
-    ech = landscape.equivalent_connected_habitat()
-    return ech
+    ech = landscape.get_adjacency_matrix()
+    return ech.sum()
 
 # derivative of w.r.t pixel habitat suitability 
 # represents pixel contribution to landscape connectivity

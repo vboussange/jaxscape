@@ -35,23 +35,29 @@ from jaxscape.landscape import Landscape
 import matplotlib.pyplot as plt
 
 D = 1.0  # dispersal distance
-theta = jnp.array(0.01)
+theta = jnp.array(1.)
 distance = RSPDistance(theta)
 
 # Define a habitat suitability raster
 habitat_suitability = jnp.array(
     [
         [1, 1, 1, 0, 0, 0, 0, 0],
-        [1, 1, 1, 0, 0, 0, 0, 0],
+        [1, 2, 1, 0, 0, 0, 0, 0],
         [1, 1, 1, 0, 0, 0, 0, 0],
         [0, 0, 1, 1, 0, 0, 0, 0],
         [0, 0, 0, 1, 1, 1, 1, 1],
-        [0, 0, 0, 0, 0, 1, 1, 1],
+        [0, 0, 0, 0, 0, 1, 2, 1],
         [0, 0, 0, 0, 0, 1, 1, 1],
     ],
     dtype="float32",
 )
 plt.imshow(habitat_suitability)
+plt.show()
+```
+<div align="center"><img src="habitat_quality.png" alt="Sensitivities"></div>
+
+
+```python
 activities = habitat_suitability > 0
 
 # `equivalent_connected_habitat` calculation
@@ -70,9 +76,11 @@ def calculate_ech(habitat_quality):
 grad_ech = jax.grad(calculate_ech)
 sensitivities = grad_ech(habitat_suitability)
 
-plt.imshow(jnp.log(sensitivities))
+plt.imshow(sensitivities)
 plt.show()
 ```
+<div align="center"><img src="sensitivities.png" alt="Sensitivities"></div>
+
 
 ## License
 
