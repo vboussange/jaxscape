@@ -3,21 +3,7 @@ import jax.numpy as jnp
 from jax.experimental.sparse import BCOO
 from jax import random
 import jax.random as jr
-from connectax.utils import RSPDistance
-from connectax.rsp_distance import well_adapted_movement
 
-def test_Landscape():
-    key = jr.PRNGKey(0)  # Random seed is explicit in JAX
-    permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
-    activities = jnp.ones(permeability_raster.shape, dtype=bool)
-
-    grid = RSPDistance(activities=activities, 
-                    vertex_weights=permeability_raster,
-                    cost=well_adapted_movement)
-    get_adjacency_matrix = grid.get_adjacency_matrix()
-    cost_matrix = grid.cost_matrix()
-    assert isinstance(get_adjacency_matrix, BCOO)
-    assert isinstance(cost_matrix, BCOO)
 
 # def test_strongly_connected_components():
 #     # Helper function to build a sparse BCOO graph

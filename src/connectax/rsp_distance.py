@@ -31,7 +31,7 @@ class RSPDistance(Distance):
         else:
             return self._cost
         
-    def get_distance_matrix(self, grid):
+    def __call__(self, grid):
         A = grid.get_adjacency_matrix()
         C = self.cost_matrix(grid)
         return rsp_distance(self.theta, A, C)

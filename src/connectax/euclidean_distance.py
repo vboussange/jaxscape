@@ -11,7 +11,7 @@ class EuclideanDistance(Distance):
         super().__init__()
         self.res = res
         
-    def get_distance_matrix(self, grid):
+    def __call__(self, grid):
         return euclidean_distance(grid, self.res)
 
 @jit
