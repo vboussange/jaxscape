@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 from jaxscape.rsp_distance import RSPDistance
 from jaxscape.gridgraph import GridGraph
-from jaxscape.landscape import Landscape
+from jaxscape.rastergraph import Landscape
 import matplotlib.pyplot as plt
 
 D = 1.0  # dispersal distance

@@ -2,6 +2,7 @@ import jax.numpy as jnp
 from jax import jit
 from jax.experimental.sparse import BCOO
 import equinox as eqx
+import abc
 
 # Neighboring indices in the grid
 ROOK_CONTIGUITY = jnp.array([
@@ -10,6 +11,19 @@ ROOK_CONTIGUITY = jnp.array([
                 (0, 1),  # right
                 (0, -1),  # left
                 ])
+
+# Neighboring indices in the grid
+QUEEN_CONTIGUITY = jnp.array([
+                (1, 0),    # down
+                (-1, 0),   # up
+                (0, 1),    # right
+                (0, -1),   # left
+                (1, 1),    # down-right
+                (1, -1),   # down-left
+                (-1, 1),   # up-right
+                (-1, -1)   # up-left
+                ])
+    
 
 class GridGraph(eqx.Module):
     activities: jnp.ndarray
@@ -32,7 +46,10 @@ class GridGraph(eqx.Module):
             self.nb_active = int(activities.sum())
         else:
             self.nb_active = nb_active
-
+            
+    def __repr__(self):
+        return f"GridGraph of size {self.height}x{self.width}"
+    
     @property
     def height(self):
         """Get the height of the grid (number of rows)."""
@@ -85,6 +102,13 @@ class GridGraph(eqx.Module):
         return jnp.column_stack(self.index_to_coord(passive_index))
     
     @jit
+    def get_active_vertices_weights(self):
+        """Get a 1D array of active vertices weights."""
+        active_ij = self.active_vertex_index_to_coord(jnp.arange(self.nb_active))
+        q = self.vertex_weights[active_ij[:,0], active_ij[:,1]]
+        return q
+    
+    @jit
     def coord_to_active_vertex_index(self, i, j):
         """Get (i,j) coordinates of active vertex index `v`."""
         num_nodes = self.nb_active
@@ -94,14 +118,12 @@ class GridGraph(eqx.Module):
         return active_map[i, j]
     
     @jit
-    def node_values_to_raster(self, values):
+    def node_values_to_array(self, values):
+        """Reshapes the 1D array values of active vertices to the underlying 2D grid."""
         canvas = jnp.full((self.height, self.width), jnp.nan)
         vertices_coord = self.active_vertex_index_to_coord(jnp.arange(self.nb_active))
         canvas = canvas.at[vertices_coord[:,0], vertices_coord[:,1]].set(values)
         return canvas
-
-    def __repr__(self):
-        return f"GridGraph of size {self.height}x{self.width}"
     
     @jit
     def get_adjacency_matrix(self, neighbors=ROOK_CONTIGUITY):
@@ -166,7 +188,26 @@ class GridGraph(eqx.Module):
     
     @jit
     def equivalent_connected_habitat(self):
-        active_ij = self.active_vertex_index_to_coord(jnp.arange(self.nb_active))
-        q = self.vertex_weights[active_ij[:,0], active_ij[:,1]]
+        q = self.get_active_vertices_weights()
         K = self.get_adjacency_matrix()
         return jnp.sqrt(q @ (K @ q))
+    
+# We need to avoid calling super().__init__, and rather define an AbstractGridGraph object, see https://docs.kidger.site/equinox/pattern/
+# class AbstractGridGraph(eqx.Module):
+#     @abc.abstractmethod
+#     def init(self, activities, vertex_weights, nb_active):
+#         raise NotImplementedError
+
+class ExplicitGridGraph(GridGraph):
+    adjacency_matrix: jnp.ndarray
+
+    def __init__(self, *args, adjacency_matrix, **kwargs):
+        """
+        A grid graph with adjacency matrix explicitly defined.
+        """
+        # assert int(activities.sum()) == proximity.shape[0], "The number of nodes in the graph defined by `proximity` should correspond to the number of active vertices defined in `activities`"
+        super().__init__(*args, **kwargs)
+        self.adjacency_matrix = adjacency_matrix
+        
+    def get_adjacency_matrix(self):
+        return self.adjacency_matrix

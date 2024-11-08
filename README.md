@@ -31,7 +31,6 @@ import jax
 import jax.numpy as jnp
 from jaxscape.rsp_distance import RSPDistance
 from jaxscape.gridgraph import GridGraph
-from jaxscape.landscape import Landscape
 import matplotlib.pyplot as plt
 
 D = 1.0  # dispersal distance
@@ -60,15 +59,15 @@ plt.show()
 ```python
 activities = habitat_suitability > 0
 
-# `equivalent_connected_habitat` calculation
+# Equivalent connected habitat calculation.
 # We first need to calculate a distance, 
 # that we transform into an ecological proximity
 def calculate_ech(habitat_quality):
     grid = GridGraph(activities=activities, vertex_weights=habitat_quality)
     dist = distance(grid)
-    proximity = jnp.exp(-dist / D)
-    landscape = Landscape(habitat_quality, proximity)
-    ech = landscape.equivalent_connected_habitat()
+    K = jnp.exp(-dist / D)
+    q = grid.get_active_vertices_weights()
+    ech = jnp.sqrt(q @ (K @ q)) 
     return ech
 
 # derivative of w.r.t pixel habitat suitability 

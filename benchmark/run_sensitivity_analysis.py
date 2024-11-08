@@ -10,9 +10,8 @@ from pathlib import Path
 
 from scipy.sparse.csgraph import connected_components
 
-from jaxscape.gridgraph import GridGraph
+from jaxscape.gridgraph import GridGraph, ExplicitGridGraph
 from jaxscape.utils import BCOO_to_sparse, get_largest_component_label
-from jaxscape.landscape import Landscape
 from jaxscape.moving_window import WindowOperation
 from jaxscape.euclidean_distance import EuclideanDistance
 from jaxscape.rsp_distance import RSPDistance
@@ -50,7 +49,10 @@ def run_sensitivity_analysis(habitat_quality_raster, window_op, D, distance, cut
                                 nb_active = nb_active)
             dist = distance(gridgraph)
             proximity = jnp.exp(-dist / D) > cut_off # we would ideally convert it to a BCOO matrix, but it is not jit compatible
-            landscape = Landscape(hab_qual, proximity, valid_activities, nb_active = nb_active)
+            landscape = ExplicitGridGraph(vertex_weights = hab_qual, 
+                                          adjacency_matrix= proximity, 
+                                          activities = valid_activities, 
+                                          nb_active = nb_active)
             return landscape.equivalent_connected_habitat()
 
         # Compute the gradient of connectivity with respect to habitat quality

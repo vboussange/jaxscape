@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 from jax import grad, jit
 from jaxscape.rsp_distance import RSPDistance
-from jaxscape.landscape import Landscape
+from jaxscape.rastergraph import Landscape
 from jaxscape.gridgraph import GridGraph
 from jaxscape.utils import BCOO_to_sparse, get_largest_component_label
 from jaxscape.utils import well_adapted_movement
