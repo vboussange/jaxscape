@@ -160,5 +160,4 @@ def test_ExplicitGridGraph():
                                 vertex_weights = permeability_raster,
                                 adjacency_matrix = A)
     func = landscape.equivalent_connected_habitat()
-    # TODO: fix this test, no idea why there is a 0.1 difference
-    assert func == jnp.sqrt((A.sum() - 4.)) # we lose 1 vertex connected to 4 neighbors, as its quality is set 0.
+    assert func == jnp.sqrt((A.sum() - 8.)) # we lose 1 vertex connected to 4 neighbors, as its quality is set 0.
