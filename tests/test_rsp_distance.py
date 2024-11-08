@@ -86,7 +86,7 @@ def test_rsp_distance_matrix():
     activities_pruned = grid.node_values_to_array(vertex_belongs_to_largest_component_node)
     activities_pruned = activities_pruned == True
     graph_pruned = GridGraph(activities=activities_pruned, 
-                             vertex_weights=habitat_suitability) # broken
+                             vertex_weights=habitat_suitability)
     
     
     # calculating distance to vertex 19, 6 in julia coordinates (corresponding to vertex 18, 5 in python coordinate)
@@ -94,14 +94,8 @@ def test_rsp_distance_matrix():
     distance = RSPDistance(theta)
     mat = distance(graph_pruned)
     vertex_index = graph_pruned.coord_to_active_vertex_index(18, 5)
-    expected_cost = graph_pruned.node_values_to_array(mat[:, vertex_index]) # broken test
-    
-    # TODO: here rtol = 1e0, which is way too high
-    # a simple comparision of heatmap plots show similar patterns though
-    # we suspect a difference in the linear algebra solve
-    # import matplotlib.pyplot as plt
-    # plt.imshow(expected_cost)
-    # plt.imshow(expected_cost_conscape)
+    expected_cost = graph_pruned.node_values_to_array(mat[:, vertex_index])
+
     assert jnp.allclose(expected_cost[~jnp.isnan(expected_cost)], expected_cost_conscape[~jnp.isnan(expected_cost_conscape)], rtol = 1e-6)
     assert jnp.allclose(jnp.isnan(expected_cost), jnp.isnan(expected_cost_conscape))    
 

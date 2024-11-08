@@ -58,9 +58,8 @@ class RasterGraph(eqx.Module):
     #     else:
     #         raise ValueError("Invalid index format. Use rast[i, j] for index-based access.")
         
-    def get_distance(self, loc1, loc2):
+    def get_distance(self, loc1):
+        "Returns a distance matrix between all locations specified in `loc1`."
         i1, j1 = self.index(*loc1)
-        i2, j2 = self.index(*loc2)
         v1s = self.gridgraph.coord_to_active_vertex_index(i1, j1) # todo: to check
-        v2s = self.gridgraph.coord_to_active_vertex_index(i2, j2) # todo: to check
-        return self.gridgraph.get_adjacency_matrix()[v1s, v2s].todense()
+        return self.gridgraph.get_adjacency_matrix()[v1s, :][:, v1s]

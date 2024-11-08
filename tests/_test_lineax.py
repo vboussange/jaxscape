@@ -6,6 +6,7 @@ from jaxscape.gridgraph import GridGraph
 from jax.experimental import sparse
 from jax.scipy.sparse.linalg import gmres, splu
 
+# TODO: you may 
 key = jr.PRNGKey(0)  # Random seed is explicit in JAX
 permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
 activities = jnp.ones(permeability_raster.shape, dtype=bool)
