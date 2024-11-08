@@ -2,7 +2,7 @@ import pytest
 import jax
 import jax.numpy as jnp
 from jax import grad, jit
-from jaxscape.rsp_distance import RSPDistance
+from jaxscape.rsp_distance import RSPDistance, rsp_distance
 from jaxscape.gridgraph import GridGraph, ExplicitGridGraph
 from jaxscape.utils import BCOO_to_sparse, get_largest_component_label
 from jaxscape.utils import well_adapted_movement
@@ -10,6 +10,7 @@ from pathlib import Path
 from scipy.sparse.csgraph import connected_components
 import numpy as np
 import jax.random as jr
+from jax.experimental.sparse import BCOO
 
 jax.config.update("jax_enable_x64", True)
 
@@ -38,7 +39,7 @@ def test_rsp_distance_matrix():
     activities = activities.at[0, 0].set(False)
     grid = GridGraph(activities=activities, 
                      vertex_weights=permeability_raster)
-    theta = 0.01
+    theta = jnp.array(0.01)
     distance = RSPDistance(theta)
     cost = distance.cost_matrix(grid)
     assert cost.sum() > 0
@@ -47,6 +48,22 @@ def test_rsp_distance_matrix():
     assert jnp.any(~jnp.isnan(mat))
     assert isinstance(mat, jax.Array)
     assert grid.nb_active == 99
+    
+def test_rsp_distance():
+    A = BCOO.fromdense(jnp.array(
+    [
+        [0, 1.2, 1.2, 0, 0, 0],
+        [1.2, 0, 0, 1.2, 0, 0],
+        [1.2, 0, 0, 0, 1.2, 0],
+        [0, 1.5, 0, 0, 0, 1.5],
+        [0, 0, 1.5, 0, 0, 1.5],
+        [0, 0, 0, 1.5, 1.5, 0]
+    ],
+    dtype="float32",
+    ))
+    theta = jnp.array(1.)
+    C = well_adapted_movement(A)
+    rsp_distance(theta, A, C)
     
 # test with true raster
 def test_rsp_distance_matrix():
@@ -85,10 +102,9 @@ def test_rsp_distance_matrix():
     # import matplotlib.pyplot as plt
     # plt.imshow(expected_cost)
     # plt.imshow(expected_cost_conscape)
-    assert jnp.allclose(expected_cost[~jnp.isnan(expected_cost)], expected_cost_conscape[~jnp.isnan(expected_cost_conscape)], rtol = 1e0)    
+    assert jnp.allclose(expected_cost[~jnp.isnan(expected_cost)], expected_cost_conscape[~jnp.isnan(expected_cost_conscape)], rtol = 1e-6)
     assert jnp.allclose(jnp.isnan(expected_cost), jnp.isnan(expected_cost_conscape))    
 
-import jax.random as jr
 def test_differentiability_euclidean_distance_matrix():
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
     permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability

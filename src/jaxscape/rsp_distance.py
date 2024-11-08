@@ -5,6 +5,7 @@ from jax.experimental import sparse
 from jax import jit
 from jaxscape.utils import well_adapted_movement
 from jaxscape.distance import AbstractDistance
+from jaxscape.utils import mapnz
 from typing import Callable, Union
 from jax import jit
 import equinox as eqx
@@ -34,6 +35,7 @@ class RSPDistance(AbstractDistance):
         else:
             return self._cost
         
+    @eqx.filter_jit
     def __call__(self, grid):
         A = grid.get_adjacency_matrix()
         C = self.cost_matrix(grid)
@@ -45,7 +47,7 @@ def fundamental_matrix(W):
 
 @jit
 def rsp_distance(theta, A, C):
-    row_sum = A.sum(1).todense()
+    row_sum = A.sum(1).todense()[:, None]
     Prw = A / row_sum  # random walk probability
     W = Prw * jnp.exp(-theta * C.todense()) # TODO: to optimze
     Z = fundamental_matrix(W)
@@ -55,6 +57,6 @@ def rsp_distance(theta, A, C):
     C̄ = jnp.where(Z != 0, C̄ / Z, jnp.inf)  # Set to infinity where Z is zero
 
     diag_C̄ = jnp.diag(C̄)
-    C̄ = C̄ - diag_C̄[:, None]
+    C̄ = C̄ - diag_C̄[None, :]
 
     return C̄
