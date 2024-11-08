@@ -2,8 +2,7 @@ import pytest
 import jax
 import jax.numpy as jnp
 from jaxscape.euclidean_distance import EuclideanDistance
-from jaxscape.rastergraph import Landscape
-from jaxscape.gridgraph import GridGraph
+from jaxscape.gridgraph import GridGraph, ExplicitGridGraph
 import networkx as nx
 from networkx import grid_2d_graph
 from jax import grad, jit
@@ -33,10 +32,12 @@ def test_differentiability_euclidean_distance():
 
     def objective(permeability_raster):
         grid = GridGraph(activities=activities,
-                                    vertex_weights = permeability_raster)
+                        vertex_weights = permeability_raster)
         dist = distance(grid)
         proximity = jnp.exp(-dist / D)
-        landscape = Landscape(permeability_raster, proximity)
+        landscape = ExplicitGridGraph(activities=activities, 
+                                      vertex_weights = permeability_raster,
+                                      adjacency_matrix = proximity)
         func = landscape.equivalent_connected_habitat()
         return func
         
@@ -59,7 +60,10 @@ def test_jit_differentiability_euclidean_distance():
                         nb_active=nb_active)
         dist = distance(grid)
         proximity = jnp.exp(-dist / D)
-        landscape = Landscape(permeability_raster, proximity, nb_active=nb_active)
+        landscape = ExplicitGridGraph(activities=activities, 
+                                      vertex_weights = permeability_raster,
+                                      adjacency_matrix = proximity,
+                                      nb_active=nb_active)
         func = landscape.equivalent_connected_habitat()
         return func
         

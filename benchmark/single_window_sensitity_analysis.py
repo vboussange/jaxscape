@@ -1,8 +1,7 @@
 import jax
 import jax.numpy as jnp
 from jaxscape.rsp_distance import RSPDistance
-from jaxscape.gridgraph import GridGraph
-from jaxscape.rastergraph import Landscape
+from jaxscape.gridgraph import GridGraph, ExplicitGridGraph
 import matplotlib.pyplot as plt
 
 D = 1.0  # dispersal distance
@@ -33,7 +32,9 @@ def calculate_ech(habitat_quality):
     grid = GridGraph(activities=activities, vertex_weights=habitat_quality)
     dist = distance(grid)
     proximity = jnp.exp(-dist / D)
-    landscape = Landscape(habitat_quality, proximity)
+    landscape = ExplicitGridGraph(activities=activities, 
+                                  vertex_weights=habitat_quality, 
+                                  adjacency_matrix=proximity)
     ech = landscape.equivalent_connected_habitat()
     return ech
 
@@ -60,7 +61,7 @@ plt.show()
 #     _, labels = connected_components(Anp, directed=True, connection="strong")
 #     label = get_largest_component_label(labels)
 #     vertex_belongs_to_largest_component_node = labels == label
-#     return grid.node_values_to_raster(vertex_belongs_to_largest_component_node) == True
+#     return grid.node_values_to_array(vertex_belongs_to_largest_component_node) == True
 
 # valid_activities = get_valid_activities(habitat_suitability, activities)
 # habitat_suitability = habitat_suitability * valid_activities

@@ -33,7 +33,7 @@ def get_valid_activities(hab_qual, activities):
     _, labels = connected_components(Anp, directed=True, connection="strong")
     label = get_largest_component_label(labels)
     vertex_belongs_to_largest_component_node = labels == label
-    return grid.node_values_to_raster(vertex_belongs_to_largest_component_node) == True
+    return grid.node_values_to_array(vertex_belongs_to_largest_component_node) == True
 
 # Perform sensitivity analysis across multiple windows
 def run_sensitivity_analysis(habitat_quality_raster, window_op, D, distance, cut_off):

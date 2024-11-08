@@ -108,9 +108,11 @@ class GridGraph(eqx.Module):
         q = self.vertex_weights[active_ij[:,0], active_ij[:,1]]
         return q
     
-    @jit
+    # @jit
     def coord_to_active_vertex_index(self, i, j):
         """Get (i,j) coordinates of active vertex index `v`."""
+        if ~jnp.all(self.activities[i,j]):
+            raise IndexError("Vertices at i = {i}, j = {j} is not active")
         num_nodes = self.nb_active
         source_xy_coord = self.active_vertex_index_to_coord(jnp.arange(num_nodes))
         active_map = jnp.zeros_like(self.activities, dtype=int) - 1

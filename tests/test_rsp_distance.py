@@ -3,8 +3,7 @@ import jax
 import jax.numpy as jnp
 from jax import grad, jit
 from jaxscape.rsp_distance import RSPDistance
-from jaxscape.rastergraph import Landscape
-from jaxscape.gridgraph import GridGraph
+from jaxscape.gridgraph import GridGraph, ExplicitGridGraph
 from jaxscape.utils import BCOO_to_sparse, get_largest_component_label
 from jaxscape.utils import well_adapted_movement
 from pathlib import Path
@@ -52,10 +51,10 @@ def test_rsp_distance_matrix():
 # test with true raster
 def test_rsp_distance_matrix():
     
-    raster_path = Path("data/habitat_suitability.csv")
+    raster_path = Path(__file__).parent / "data/habitat_suitability.csv"
     habitat_suitability = jnp.array(np.loadtxt(raster_path, delimiter=","))
 
-    conscape_dist_path = Path("data/conscape_rsp_distance_to_i=19_j=6.csv")
+    conscape_dist_path = Path(__file__).parent /  "data/conscape_rsp_distance_to_i=19_j=6.csv"
     expected_cost_conscape = jnp.array(np.loadtxt(conscape_dist_path, delimiter=","))
     activities = habitat_suitability > 0
     grid = GridGraph(activities=activities, 
@@ -67,7 +66,7 @@ def test_rsp_distance_matrix():
     _, labels = connected_components(Anp, directed=True, connection="strong")
     label = get_largest_component_label(labels)
     vertex_belongs_to_largest_component_node = labels == label
-    activities_pruned = grid.node_values_to_raster(vertex_belongs_to_largest_component_node)
+    activities_pruned = grid.node_values_to_array(vertex_belongs_to_largest_component_node)
     activities_pruned = activities_pruned == True
     graph_pruned = GridGraph(activities=activities_pruned, 
                              vertex_weights=habitat_suitability) # broken
@@ -78,7 +77,7 @@ def test_rsp_distance_matrix():
     distance = RSPDistance(theta)
     mat = distance(graph_pruned)
     vertex_index = graph_pruned.coord_to_active_vertex_index(18, 5)
-    expected_cost = graph_pruned.node_values_to_raster(mat[:, vertex_index]) # broken test
+    expected_cost = graph_pruned.node_values_to_array(mat[:, vertex_index]) # broken test
     
     # TODO: here rtol = 1e0, which is way too high
     # a simple comparision of heatmap plots show similar patterns though
@@ -102,7 +101,9 @@ def test_differentiability_euclidean_distance_matrix():
         grid = GridGraph(activities=activities, vertex_weights=permeability_raster)
         dist = distance(grid)
         proximity = jnp.exp(-dist / D)
-        landscape = Landscape(permeability_raster, proximity)
+        landscape = ExplicitGridGraph(activities=activities, 
+                                  vertex_weights=permeability_raster, 
+                                  adjacency_matrix=proximity)
         func = landscape.equivalent_connected_habitat()
         return func
         
@@ -128,7 +129,10 @@ def test_jit_differentiability_euclidean_distance():
                         nb_active=nb_active)
         dist = distance(grid)
         proximity = jnp.exp(-dist / D)
-        landscape = Landscape(permeability_raster, proximity, nb_active=nb_active)
+        landscape = ExplicitGridGraph(activities=activities, 
+                            vertex_weights=permeability_raster, 
+                            adjacency_matrix=proximity,
+                            nb_active=nb_active)
         func = landscape.equivalent_connected_habitat()
         return func
         

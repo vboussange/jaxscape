@@ -1,13 +1,14 @@
 import pytest
 import jax.numpy as jnp
 from jax.experimental.sparse import BCOO
-from jaxscape.gridgraph import GridGraph, ROOK_CONTIGUITY  # Replace 'your_module' with the actual module name
+from jaxscape.gridgraph import GridGraph, ExplicitGridGraph, ROOK_CONTIGUITY  # Replace 'your_module' with the actual module name
 import networkx as nx
 from networkx import grid_2d_graph
 from jax import grad, jit
 import jax.random as jr
 import numpy as np
 
+# TODO: implement test ROOK_CONTIGUITY vs QUEEN_CONTIGUITY
 
 @pytest.fixture
 def sample_gridgraph():
@@ -93,7 +94,7 @@ def test_node_values_to_raster():
     # for coord, value in zip(active_coords, active_values):
     #     expected_raster = expected_raster.at[tuple(coord)].set(value)
 
-    output_raster = grid.node_values_to_raster(active_values)
+    output_raster = grid.node_values_to_array(active_values)
 
     assert jnp.array_equal(jnp.isnan(output_raster), jnp.isnan(expected_raster)), "NaN positions mismatch"
     assert jnp.allclose(output_raster[~jnp.isnan(output_raster)], expected_raster[~jnp.isnan(expected_raster)]), "Values mismatch"
@@ -146,3 +147,18 @@ def test_differentiability_adjacency_matrix():
     assert permeability_gradient[0, 0] == 2
     assert permeability_gradient[0, 1] == 3
     assert permeability_gradient[1, 1] == 4
+    
+def test_ExplicitGridGraph():
+    permeability_raster = jnp.ones((10, 10)) 
+    activities = jnp.ones(permeability_raster.shape, dtype=bool)
+
+    grid = GridGraph(activities=activities, 
+                    vertex_weights=permeability_raster)
+    A = grid.get_adjacency_matrix()
+    permeability_raster = permeability_raster.at[1,1].set(0.)
+    landscape = ExplicitGridGraph(activities=activities, 
+                                vertex_weights = permeability_raster,
+                                adjacency_matrix = A)
+    func = landscape.equivalent_connected_habitat()
+    # TODO: fix this test, no idea why there is a 0.1 difference
+    assert func == jnp.sqrt((A.sum() - 4.)) # we lose 1 vertex connected to 4 neighbors, as its quality is set 0.
