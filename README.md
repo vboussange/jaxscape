@@ -1,16 +1,35 @@
 <h1 align='center'>JAXScape</h1>
 
+-----
+
 <!-- [![PyPI - Version](https://img.shields.io/pypi/v/jaxscape.svg)](https://pypi.org/project/jaxscape)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/jaxscape.svg)](https://pypi.org/project/jaxscape) -->
 
-JAXScape is a JAX library for ecological connectivity analysis at scales. It leverages JAX's capabilities to accelerates heavy computations on CPUs/GPUs/TPUs, and enables sensitivity analysis at low cost by lifting automatic differentiation.
+JAXScape is a minimal JAX library for connectivity analysis at scales. In the spirit of PyTorch, Equinox, BlackJAX or Flux, JAXScape aims to provide key utilities to build your own connectivity analysis workflow, including
 
------
+- differentiable graph builds
+- differentiable graph distance metrics
+- moving window utilities
+- graph to raster mappings
 
-JAXScape implements:
-- differentiable methods to derive permeability maps based on rasters of habitat suitability,
-- differentiable distance metrics, including euclidean distance, randomized shortest path (and soon to be, least-cost-path and resistance distance),
-- parallelizable utilities for moving window calculations.
+JAXScape leverages JAX's capabilities to accelerate distance computations on CPUs/GPUs/TPUs, while ensuring differentiability of all implemented classes and methods for awesome sensitivity analysis and optimization.
+
+
+## Features 🚀
+- [x] `GridGraph` with differentiable adjacency matrix method
+- [x] Euclidean distance
+- [x] Randomized shortest path distance ([REF](https://arxiv.org/pdf/1212.1666))
+- [x] Moving window generator
+- [ ] Linear solver choices, based on [Lineax](https://github.com/patrick-kidger/lineax)
+- [ ] Preconditioners for Krylov-based solvers (GMRES, Conjugate Gradient)
+  - See [AlgebraicMultigrid.jl](https://github.com/JuliaLinearAlgebra/)  or [PyAMG](https://github.com/pyamg/pyamg)
+- [ ] Landmark implementation (see [ConScape](https://conscape.org/notebooks/nbk_landmarks.html))
+- [ ] Differentiable connected component algorithm (see https://github.com/jax-ml/jax/issues/24737)
+- [ ] Least-cost path (see https://github.com/srush/torch-queue/)
+- [ ] Resistance distance (see [CircuitScape.jl](https://github.com/Circuitscape/Circuitscape.jl/blob/master/src/core.jl) implementation)
+- [ ] Benchmark
+  - scaling with number of nodes, CPU/GPU (python based)
+  - benchmark against CircuitScape and ConScape (Julia based)
 
 ## Installation
 
