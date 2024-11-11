@@ -8,13 +8,13 @@ import timeit
 import lineax as lx
 
 # Define matrix size and seed
-# N = 1000
-# key = jr.PRNGKey(0)
+N = 1000
+key = jr.PRNGKey(0)
 
-# # Generate random sparse matrix and construct L matrix
-# W = random_bcoo(key, (N, N), nse=int(0.0001))
-# L = sparse.eye(W.shape[0], dtype=W.dtype, index_dtype=W.indices.dtype) - W
-# b = jnp.identity(W.shape[0], dtype=W.dtype)
+# Generate random sparse matrix and construct L matrix
+W = random_bcoo(key, (N, N), nse=int(0.0001))
+L = sparse.eye(W.shape[0], dtype=W.dtype, index_dtype=W.indices.dtype) - W
+b = jnp.identity(W.shape[0], dtype=W.dtype)
 
 # Function to benchmark GMRES solve
 def gmres_solve():
@@ -56,3 +56,8 @@ def benchmark(method, func):
 benchmark("GMRES", gmres_solve)
 benchmark("Inverse", inverse_solve)
 benchmark("Lineax", lineax_solve)
+
+
+# TODO: it is unclear whether the lineax batch solve mode using
+# `FunctionLinearOperator` and `eval_shape` is as efficient as the `inv` function.
+# You should also test these in a realistic setting in the `_test_lineax.py` file.
