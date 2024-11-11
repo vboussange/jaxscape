@@ -20,10 +20,19 @@ JAXScape leverages JAX's capabilities to accelerate distance computations on CPU
 - [x] Euclidean distance
 - [x] Randomized shortest path distance ([REF](https://arxiv.org/pdf/1212.1666))
 - [x] Moving window generator
-- [ ] Linear solver choices, based on [Lineax](https://github.com/patrick-kidger/lineax)
-- [ ] Preconditioners for Krylov-based solvers (GMRES, Conjugate Gradient)
-  - See [AlgebraicMultigrid.jl](https://github.com/JuliaLinearAlgebra/)  or [PyAMG](https://github.com/pyamg/pyamg)
-- [ ] Landmark implementation (see [ConScape](https://conscape.org/notebooks/nbk_landmarks.html))
+  - Inspiration from Omniscape should be considered, see https://docs.circuitscape.org/Omniscape.jl/stable/
+- [ ] Linear solver choice, based on [Lineax](https://github.com/patrick-kidger/lineax)
+  - [ ] Preconditioners for Krylov-based solvers (GMRES, Conjugate Gradient)
+    - See [AlgebraicMultigrid.jl](https://github.com/JuliaLinearAlgebra/)  or [PyAMG](https://github.com/pyamg/pyamg)
+    - You may exlcude this from differentiation! therefore you could directly rely on pyAMG
+    - you may want to have a regularisation step, see https://github.com/Circuitscape/Circuitscape.jl/blob/fff12fe43e5af5be00f4056a87460ad07966e432/src/core.jl#L152
+  - CHOLMOD, 
+    - see https://docs.circuitscape.org/Circuitscape.jl/latest/ and https://github.com/Circuitscape/Circuitscape.jl/blob/fff12fe43e5af5be00f4056a87460ad07966e432/src/core.jl#L610-L616
+    - and https://github.com/Circuitscape/Circuitscape.jl/blob/fff12fe43e5af5be00f4056a87460ad07966e432/src/core.jl#L487-L491
+  - This requires a benchmark of lineax solvers against simple `jnp.linalg.inv` currently used
+- [ ] Landmark or focal node implementation 
+  - see [ConScape](https://conscape.org/notebooks/nbk_landmarks.html) landmarks and
+  - CircuitScape focal nodes https://docs.circuitscape.org/Circuitscape.jl/latest/usage/
 - [ ] Differentiable connected component algorithm (see https://github.com/jax-ml/jax/issues/24737)
 - [ ] Least-cost path (see https://github.com/srush/torch-queue/)
 - [ ] Resistance distance (see [CircuitScape.jl](https://github.com/Circuitscape/Circuitscape.jl/blob/master/src/core.jl) implementation)
@@ -103,3 +112,7 @@ plt.show()
 ## License
 
 `jaxscape` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.
+
+
+## Notes
+- Rook contiguity will increase computational complexity

@@ -4,7 +4,7 @@ import lineax as lx
 import jax.random as jr
 from jaxscape.gridgraph import GridGraph
 from jax.experimental import sparse
-from jax.scipy.sparse.linalg import gmres, splu
+from jax.scipy.sparse.linalg import gmres, cg
 
 # TODO: you may 
 key = jr.PRNGKey(0)  # Random seed is explicit in JAX
@@ -16,6 +16,7 @@ W = sparse.eye(A.shape[0]) - A
 
 matrix_key, vector_key = jr.split(jr.PRNGKey(0))
 operator = lx.MatrixLinearOperator(A)
+vector = sparse.eye(A.shape[0])
 solution = lx.linear_solve(operator, vector, solver=lx.CG(rtol=1e-3, atol=1e-3))
 
 A = sparse.random_bcoo(key, (10, 10), nse=0.1)
