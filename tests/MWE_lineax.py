@@ -8,7 +8,7 @@ import timeit
 import lineax as lx
 
 # Define matrix size and seed
-N = 1000
+N = 10
 key = jr.PRNGKey(0)
 
 # Generate random sparse matrix and construct L matrix

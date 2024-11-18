@@ -3,6 +3,32 @@ import jax.numpy as jnp
 from jax.experimental.sparse import BCOO
 from jax import random
 import jax.random as jr
+from jaxscape.utils import bcoo_diag
+
+def test_bcoo_diag():
+        diagonal = jnp.array([1, 2, 3])
+        sparse_matrix = bcoo_diag(diagonal)
+        
+        assert isinstance(sparse_matrix, BCOO)
+        assert sparse_matrix.shape == (3, 3)
+        assert sparse_matrix.nse == 3
+        assert jnp.array_equal(sparse_matrix.todense(), jnp.diag(diagonal))
+
+        diagonal = jnp.array([4, 5])
+        sparse_matrix = bcoo_diag(diagonal)
+        
+        assert isinstance(sparse_matrix, BCOO)
+        assert sparse_matrix.shape == (2, 2)
+        assert sparse_matrix.nse == 2
+        assert jnp.array_equal(sparse_matrix.todense(), jnp.diag(diagonal))
+
+        diagonal = jnp.array([])
+        sparse_matrix = bcoo_diag(diagonal)
+        
+        assert isinstance(sparse_matrix, BCOO)
+        assert sparse_matrix.shape == (0, 0)
+        assert sparse_matrix.nse == 0
+        assert jnp.array_equal(sparse_matrix.todense(), jnp.diag(diagonal))
 
 
 # def test_strongly_connected_components():

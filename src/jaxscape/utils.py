@@ -3,6 +3,7 @@ import jax.numpy as jnp
 from jax.experimental import sparse
 from scipy.sparse import coo_array
 import numpy as np
+from jax.experimental.sparse import BCOO
 
 def mapnz(mat, f):
     indices, data = mat.indices, mat.data
@@ -31,6 +32,27 @@ def get_largest_component_label(labels):
     largest_component_label = np.bincount(labels).argmax()
     # largest_component_nodes = np.where(labels == largest_component_label)[0]
     return largest_component_label
+
+def bcoo_diag(diagonal):
+    """
+    Create a sparse diagonal matrix in BCOO format from the given diagonal elements.
+
+    Args:
+        diagonal (array-like): A 1D array of elements to be placed on the diagonal of the matrix.
+
+    Returns:
+        BCOO: A sparse matrix in BCOO format with the given diagonal elements.
+
+    Example:
+        >>> diagonal = jnp.array([1, 2, 3])
+        >>> sparse_matrix = bcoo_diag(diagonal)
+        >>> print(sparse_matrix)
+        BCOO(float32[3,3], nse=3)
+    """
+    n = len(diagonal)
+    indices = jnp.column_stack([jnp.arange(n), jnp.arange(n)])
+    sparse_matrix = BCOO((diagonal, indices), shape=(n, n))
+    return sparse_matrix
 
 # def prune_matrix(bcoo, vertices):
 #     indices = bcoo.indices

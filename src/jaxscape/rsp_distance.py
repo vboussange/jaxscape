@@ -42,6 +42,7 @@ class RSPDistance(AbstractDistance):
         return rsp_distance(self.theta, A, C)
     
 def fundamental_matrix(W):
+    # normalised graph laplacian
     L = sparse.eye(W.shape[0], dtype=W.dtype, index_dtype=W.indices.dtype) - W
     return inv(L.todense())
 

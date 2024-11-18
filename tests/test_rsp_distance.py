@@ -99,7 +99,7 @@ def test_rsp_distance_matrix():
     assert jnp.allclose(expected_cost[~jnp.isnan(expected_cost)], expected_cost_conscape[~jnp.isnan(expected_cost_conscape)], rtol = 1e-6)
     assert jnp.allclose(jnp.isnan(expected_cost), jnp.isnan(expected_cost_conscape))    
 
-def test_differentiability_euclidean_distance_matrix():
+def test_differentiability_rsp_distance_matrix():
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
     permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
     activities = jnp.ones(permeability_raster.shape, dtype=bool)
@@ -124,7 +124,7 @@ def test_differentiability_euclidean_distance_matrix():
     # TODO: implement proper test
     
 
-def test_jit_differentiability_euclidean_distance():
+def test_jit_differentiability_rsp_distance():
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
     permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
     activities = jnp.ones(permeability_raster.shape, dtype=bool)
