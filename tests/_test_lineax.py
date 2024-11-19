@@ -11,7 +11,7 @@ import timeit
 from jax import jit
 import equinox as eqx
 
-N = 10
+N = 20
 key = jr.PRNGKey(0)  # Random seed is explicit in JAX
 permeability_raster = jr.uniform(key, (N, N))  # Start with a uniform permeability
 activities = jnp.ones(permeability_raster.shape, dtype=bool)
@@ -43,19 +43,35 @@ def inverse_solve():
     error = jnp.linalg.norm(Idense - (Lreg @ x))
     return x, error
 
+@jit
+def linalg_solve():
+    x = jnp.linalg.solve(Lreg.todense(), Idense)
+    error = jnp.linalg.norm(Idense - (Lreg @ x))
+    return x, error
+
 # Function to benchmark lineax solve
-def lineax_solve(solver):
+def lineax_sparse_solve(solver):
     def f(x):
         return Lreg @ x
-    in_structure = jax.eval_shape(lambda: Idense)
+    in_structure = jax.ShapeDtypeStruct((Lreg.shape[0],), Lreg.dtype)
     operator = lx.FunctionLinearOperator(f, in_structure)
-    @eqx.filter_jit
-    def solve():
-        x = lx.linear_solve(operator, Idense, solver=solver).value
-        error = jnp.linalg.norm(Idense - (Lreg @ x))
-        return x, error
+    def solve_single(b):
+        x = lx.linear_solve(operator, b, solver=solver).value
+        return x
+    X = jax.vmap(solve_single, in_axes=1, out_axes=1)(I)
+    error = jnp.linalg.norm(Idense - (Lreg @ X))
+    return X, error
 
-    return solve()
+# Function to benchmark lineax solve
+def lineax_solve(solver):
+    operator = lx.MatrixLinearOperator(Lreg.todense())
+    state = solver.init(operator, options={})
+    def solve_single(b):
+        x = lx.linear_solve(operator, b, solver=solver, state=state).value
+        return x
+    X = jax.vmap(solve_single, in_axes=1, out_axes=1)(Idense)
+    error = jnp.linalg.norm(Idense - (Lreg @ X))
+    return X, error
 
 # def lineax_solve(solver):
 #     def f(x):
@@ -80,14 +96,19 @@ benchmark("Inverse", inverse_solve)
 # Inverse solve error: 4.254667e-01
 # Inverse average time: 10.93 ms
 
+benchmark("linalg.solve", linalg_solve)
 # solver = lx.GMRES(atol=1e-3, rtol=1e-3) # similarly, does not converge
 # benchmark("Lineax",lambda: lineax_solve(solver))
 
-solver = lx.LU()
-benchmark("Lineax",lambda: lineax_solve(solver))
+myfun = jit(lambda: lineax_solve(lx.LU()))
+benchmark("Lineax", myfun)
 
-# does not seem to work
-solver = lx.SVD()
-benchmark("Lineax",lambda: lineax_solve(solver))
+myfun = jit(lambda: lineax_solve(lx.SVD()))
+benchmark("Lineax", myfun)
 # Lineax solve error: 3.837553e-01
 # Lineax average time: 2714.45 ms
+
+myfun = jit(lambda: lineax_sparse_solve(lx.LU()))
+benchmark("Lineax", myfun)
+# does not work, needs some nbatch
+

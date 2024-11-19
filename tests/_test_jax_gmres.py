@@ -72,7 +72,7 @@ def rsp_distance_gmres(theta, A, C):
     return C̄
 
 key = jr.key(0)
-permeability_raster = jr.uniform(key, (20, 20))
+permeability_raster = jr.uniform(key, (10, 10))
 activities = jnp.ones(permeability_raster.shape, dtype=bool)
 
 grid = GridGraph(activities=activities,
@@ -85,7 +85,7 @@ C = well_adapted_movement(A) # BCOO matrix
 # C̄ = rsp_distance(theta, A, C)
 C̄_gmres = rsp_distance_gmres(theta, A, C)
 C̄_inv = rsp_distance_inv(theta, A, C)
-assert jnp.allclose(C̄_inv, C̄_gmres, rtol=1e-1) # not converging for large matrices
+assert jnp.allclose(C̄_inv, C̄_gmres, rtol=1e-3) # not converging for large matrices
 
 %timeit rsp_distance_gmres(theta, A, C) # 11.6 ms ± 70.7 μs per loop (mean ± std. dev. of 7 runs, 100 loops each)
 %timeit rsp_distance_inv(theta, A, C) # 23.7 ms ± 436 μs per loop (mean ± std. dev. of 7 runs, 100 loops each)

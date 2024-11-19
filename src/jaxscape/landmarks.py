@@ -56,7 +56,6 @@ def coarse_graining(grid, npix):
     half_width = npix // 2
     row_indices = jnp.arange(half_width, grid.height - half_width, npix)
     col_indices = jnp.arange(half_width, grid.width - half_width, npix)
-
     x, y = jnp.meshgrid(row_indices, col_indices)
     
     # potential landmarks
@@ -71,11 +70,7 @@ def coarse_graining(grid, npix):
     
     # final landmarks (magnetised to closest active vertices)
     xy = xy_active_vertices[0, :, idx_closest_vertex]
-
-    # Compute coarse-grained values
     values = sum_neighborhood(grid, xy, npix)
-
     coarse_target_matrix = BCOO((values, xy), shape=(grid.height, grid.width)) # dimension to be checked
-
 
     return coarse_target_matrix

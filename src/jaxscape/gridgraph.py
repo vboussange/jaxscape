@@ -94,7 +94,6 @@ class GridGraph(eqx.Module):
         rows, cols = jnp.nonzero(self.activities, size=self.nb_active)  # No `size` argument used here
         return self.coord_to_index(rows, cols)
 
-    
     # @jit
     def active_vertex_index_to_coord(self, v):
         """Get (i,j) coordinates of active vertex index `v`."""
