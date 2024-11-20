@@ -43,15 +43,18 @@ def run_sensitivity_analysis(habitat_quality_raster, window_op, D, distance, cut
         valid_activities = get_valid_activities(hab_qual, activities)
         nb_active = int(valid_activities.sum())
         
+        
+        # TODO: you may want to jit compile this function and the gradient outside the loop!
+        # This could be the cause of kernel crashes
         def compute_connectivity_in_window(hab_qual):
             gridgraph = GridGraph(activities=valid_activities, 
                                 vertex_weights=hab_qual,
                                 nb_active = nb_active)
             dist = distance(gridgraph)
-            proximity = jnp.exp(-dist / D) > cut_off # we would ideally convert it to a BCOO matrix, but it is not jit compatible
+            proximity = jnp.exp(-dist / D) # > cut_off # we would ideally convert it to a BCOO matrix, but it is not jit compatible
             landscape = ExplicitGridGraph(vertex_weights = hab_qual, 
                                           adjacency_matrix= proximity, 
-                                          activities = valid_activities, 
+                                          activities = activities, 
                                           nb_active = nb_active)
             return landscape.equivalent_connected_habitat()
 
@@ -66,7 +69,9 @@ def run_sensitivity_analysis(habitat_quality_raster, window_op, D, distance, cut
     return sensitivity_raster
 
 # Load habitat suitability data from a NetCDF file
-def load_habitat_suitability(sp_name, path_ncfile=Path("data/large_extent_habitat_suitability.nc")):
+def load_habitat_suitability(sp_name, 
+                             path_ncfile=Path("data/large_extent_habitat_suitability.nc",
+                                              )):
     with xr.open_dataset(path_ncfile, engine="netcdf4", decode_coords="all") as da: 
         habitat_suitability = da[sp_name] / 100
     res = calculate_resolution(da)
@@ -77,7 +82,7 @@ if __name__ == "__main__":
     sp_name = "Salmo trutta"
     D_km = jnp.array(4.0)
     
-    params_computation = {"window_size": 20, "cut_off": 0.1}
+    params_computation = {"window_size": 100, "cut_off": 0.1}
     habitat_quality_raster, res = load_habitat_suitability(sp_name)
     plt.imshow(jnp.where(~jnp.isnan(habitat_quality_raster), habitat_quality_raster, 0))
     plt.show()
@@ -89,14 +94,14 @@ if __name__ == "__main__":
                                 window_size=params_computation["window_size"], 
                                 buffer_size=int(3 * D_km * 1e3/ res[0]))
     
-    distance = EuclideanDistance(res=1.0)
+    distance = EuclideanDistance(res=res[1])
     sensitivity_raster = run_sensitivity_analysis(habitat_quality_raster, window_op, D, distance, params_computation["cut_off"])
 
     plt.imshow(sensitivity_raster)
     plt.show()
     
-    # theta = jnp.array(0.01)
-    # alpha = jnp.array(21.0) 
-    # D = D_km / alpha # need to convert D in ecological distance
-    # distance = RSPDistance(theta=theta)
-    # sensitivity_raster = run_sensitivity_analysis(habitat_quality_raster, window_op, D, distance, params_computation["cut_off"])
+    theta = jnp.array(0.01)
+    alpha = jnp.array(21.0) 
+    D = D_km / alpha # need to convert D in ecological distance
+    distance = RSPDistance(theta=theta)
+    sensitivity_raster = run_sensitivity_analysis(habitat_quality_raster, window_op, D, distance, params_computation["cut_off"])

@@ -40,6 +40,7 @@ def _full_resistance_distance(A):
         Resistance distance matrix.
     """
     L = graph_laplacian(A)
+    # V = pinv(L.todense(), hermitian=True)  # TODO: in the future, we want to only permit undirected graphs for resistance distance calculation, hence enforce `hermitian`
     V = pinv(L.todense())  # Moore-Penrose pseudoinverse of Laplacian
 
     # Compute resistance distances
