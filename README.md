@@ -66,6 +66,8 @@ JAXScape leverages JAX's capabilities to accelerate distance computations on CPU
   - https://github.com/patrick-kidger/lineax/issues/8#issuecomment-2218396564
     
 - [ ] Differentiable connected component algorithm (see https://github.com/jax-ml/jax/issues/24737)
+  - but an external call (pure_callback, see https://jax.readthedocs.io/en/latest/external-callbacks.html) to scipy/cusparse connected component libraries could do for our purposes (but not support of differentiation)
+  - see https://github.com/dfm/extending-jax and take inspiration from https://github.com/arpastrana/jax_fdm/blob/main/src/jax_fdm/equilibrium/sparse.py 🏃‍♀️
 
 ### Benchmark
 - [ ] scaling with number of nodes, CPU/GPU (python based)
