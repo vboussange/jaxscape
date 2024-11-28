@@ -154,3 +154,10 @@ plt.show()
 
 ## Notes
 - Rook contiguity will increase computational complexity
+
+## Related packages
+- `gdistance`
+- ConScape
+- circuitscape
+- graphhab
+- conefor

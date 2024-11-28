@@ -30,7 +30,7 @@ class RSPDistance(AbstractDistance):
         self.theta = theta
         
     def cost_matrix(self, grid):
-        if callable(self.cost_matrix):
+        if callable(self._cost):
             return self._cost(grid.get_adjacency_matrix())
         else:
             return self._cost
