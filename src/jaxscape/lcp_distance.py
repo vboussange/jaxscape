@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from jaxscape.distance import AbstractDistance
 from jax.experimental.sparse import BCOO
 from jax import lax, ops
-
+import equinox
 class LCPDistance(AbstractDistance):
         
     def __call__(self, grid, landmarks=None):
@@ -26,6 +26,7 @@ def floyd_warshall(D):
     n = D.shape[0]
     ks = jnp.arange(n)
     
+    @equinox.filter_checkpoint
     def per_k_update(D, k):
         D_ik = D[:, k][:, None]           # Shape: (n, 1)
         D_kj = D[k, :][None, :]           # Shape: (1, n)
@@ -44,7 +45,8 @@ def _bellman_ford(adj: BCOO, source: int):
 
     W_indices = adj.indices  # Shape: (nnz, 2)
     W_data = adj.data        # Shape: (nnz,)
-
+    
+    @equinox.filter_checkpoint
     def body_fun(i, D):
         D_u = D[W_indices[:, 0]]          # D[u] for each edge (u, v)
         D_u_plus_w = D_u + W_data         # D[u] + w(u, v)
