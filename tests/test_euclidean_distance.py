@@ -6,6 +6,7 @@ from jaxscape.gridgraph import GridGraph, ExplicitGridGraph
 import networkx as nx
 from networkx import grid_2d_graph
 from jax import grad, jit
+import jax.random as jr
 
 import jax.random as jr
 def test_euclidean_distance():
@@ -22,7 +23,6 @@ def test_euclidean_distance():
     source_xy_coord = grid.active_vertex_index_to_coord(jnp.array([source_idx, target_idx]))
     assert dist[source_idx, target_idx] == jnp.sqrt(jnp.sum((source_xy_coord[0,:] - source_xy_coord[1,:])**2))
     
-import jax.random as jr
 def test_differentiability_euclidean_distance():
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
     permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
