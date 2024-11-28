@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 def calculate_resolution(raster):
     lat_resolution = abs(raster.y.diff(dim='y').mean().values)
     lon_resolution = abs(raster.x.diff(dim='x').mean().values)
-    return lat_resolution, lon_resolution       
+    return lat_resolution, lon_resolution
 
 # Filter valid activities based on connected components
 def get_valid_activities(hab_qual, activities):
