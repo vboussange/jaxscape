@@ -47,24 +47,12 @@ def _bellman_ford(adj: BCOO, source: int):
     W_data = adj.data        # Shape: (nnz,)
     
     @equinox.filter_checkpoint
-    def body_fun(i, D):
-        D_u = D[W_indices[:, 0]]          # D[u] for each edge (u, v)
-        D_u_plus_w = D_u + W_data         # D[u] + w(u, v)
+    def body_fun(D, _):
+        D_u_plus_w = D[W_indices[:, 0]] + W_data
+        D_v_min = ops.segment_min(D_u_plus_w, W_indices[:, 1], num_segments=N)
+        return jnp.minimum(D, D_v_min), None
 
-        # Perform segment_min over destination nodes v
-        D_v_min = ops.segment_min(
-            D_u_plus_w,
-            W_indices[:, 1],
-            num_segments=N
-        )
-
-        # Update distances without branching
-        D = jnp.minimum(D, D_v_min)
-
-        return D
-
-    D = lax.fori_loop(0, N - 1, body_fun, D)
-
+    D, _ = lax.scan(body_fun, D, None, length=N - 1)
     return D
 
 bellman_ford = jax.vmap(_bellman_ford, in_axes=(None, 0))

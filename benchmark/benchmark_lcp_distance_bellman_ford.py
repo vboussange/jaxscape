@@ -14,7 +14,7 @@ import equinox
 import time
 from jaxscape.lcp_distance import _bellman_ford
 
-path_results = Path("results/ResistanceDistance")
+path_results = Path("results/BellmanFordDistance")
 path_results.mkdir(parents=True, exist_ok=True)
 
 distance = LCPDistance()
@@ -38,7 +38,7 @@ calculate_d_ech_dp = equinox.filter_jit(equinox.filter_grad(calculate_ech)) # se
 node_sizes = jnp.arange(20, 100, 20)
 D = jnp.array(1.0, dtype="float32")
 
-def benchmark(device):
+def benchmark(device, fun):
     times = []
     for size in node_sizes:
         print(f"Calculating ECH for size {size} on {device}")
@@ -50,14 +50,14 @@ def benchmark(device):
         nb_active = int(activities.sum())
         
         # Warm-up to avoid measuring compile time
-        calculate_d_ech_dp(jax.device_put(habitat_permability, device), 
+        fun(jax.device_put(habitat_permability, device), 
                            jax.device_put(habitat_quality), 
                            jax.device_put(activities), 
                            1.0, 
                            nb_active).block_until_ready()
         
         start_time = time.time()
-        calculate_d_ech_dp(jax.device_put(habitat_permability, device), 
+        fun(jax.device_put(habitat_permability, device), 
                            jax.device_put(habitat_quality), 
                            jax.device_put(activities), 
                            1.0, 
