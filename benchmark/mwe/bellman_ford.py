@@ -3,36 +3,26 @@ import jax.numpy as jnp
 from jax import lax, ops
 import networkx as nx
 from jax.experimental.sparse import BCOO
+import equinox
 
-@jax.jit
-def bellman_ford(W_data, W_indices, source: int):
-    N = adj.shape[0]
-    D = jnp.full(N, jnp.inf)
-    D = D.at[source].set(0.0)
+@equinox.filter_jit
+def bellman_ford(W_data, W_indices, source, nb_nodes):
+    D = jnp.full(nb_nodes, jnp.inf).at[source].set(0.0)
     
-    @jax.checkpoint
-    def body_fun(i, D):
-        D_u = D[W_indices[:, 0]]
-        D_u_plus_w = D_u + W_data
+    def body_fun(D, _):
+        D_u_plus_w = D[W_indices[:, 0]] + W_data
+        D_v_min = ops.segment_min(D_u_plus_w, W_indices[:, 1], num_segments=nb_nodes)
+        return jnp.minimum(D, D_v_min), None
 
-        D_v_min = ops.segment_min(
-            D_u_plus_w,
-            W_indices[:, 1],
-            num_segments=N
-        )
-        D = jnp.minimum(D, D_v_min)
-        return D
-    D = lax.fori_loop(0, N - 1, body_fun, D)
+    D, _ = lax.scan(body_fun, D, None, length=nb_nodes - 1)
     return D
 
-N = 500  # Grid size
+N = 100
 G = nx.grid_2d_graph(N, N, create_using=nx.DiGraph)
-adj_matrix = nx.adjacency_matrix(G)
-adj = BCOO.from_scipy_sparse(adj_matrix)
+adj = BCOO.from_scipy_sparse(nx.adjacency_matrix(G))
+nb_nodes = adj.shape[0]
+W_data, W_indices = adj.data.astype(jnp.float32), adj.indices
+dist_to_node = bellman_ford(W_data, W_indices, 0, nb_nodes)  # Forward pass works
 
-W_data = adj.data.astype(jnp.float32)
-W_indices = adj.indices
-dist_to_node = bellman_ford(W_data, W_indices, 0) # This works beautifully
-
-grad_bellman = jax.grad(lambda *args: jnp.sum(bellman_ford(*args))) 
-W_data_grad = grad_bellman(W_data, W_indices, 0) # This fails with: XlaRuntimeError: RESOURCE_EXHAUSTED: Out of memory while ...
+grad_bellman = equinox.filter_grad(lambda *args: jnp.sum(bellman_ford(*args))) 
+W_data_grad = grad_bellman(W_data, W_indices, 0, nb_nodes) # This fails with: XlaRuntimeError: RESOURCE_EXHAUSTED: Out of memory while ...
