@@ -9,7 +9,7 @@ from jaxscape.gridgraph import GridGraph, ExplicitGridGraph
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-path_results = Path("results/ResistanceDistance")
+path_results = Path("results/LCPDistance")
 path_results.mkdir(parents=True, exist_ok=True)
 
 # Define a habitat permeability raster

@@ -13,7 +13,6 @@ class WindowOperation:
         self.window_size = window_size
         self.buffer_size = buffer_size
         self.total_window_size = self.window_size + 2 * self.buffer_size
-        self.output_array = jnp.full(self.shape, jnp.nan)
         self.x_steps = int((shape[0] - 2 * buffer_size) // window_size)
         self.y_steps = int((shape[1] - 2 * buffer_size) // window_size)
 
@@ -31,6 +30,7 @@ class WindowOperation:
     
     def update_raster_from_window(self, x_start, y_start, raster, raster_window):
         """Extract a buffered window from the raster data."""
+        assert isinstance(raster, jax.Array)
 
         # Store results into the core window area of the output array
         x_core_start = x_start + self.buffer_size
@@ -60,5 +60,4 @@ class WindowOperation:
                 x_start, y_start = i * self.window_size, j * self.window_size
                 window = self.extract_window(x_start, y_start, raster)
                 
-                if jnp.any(~jnp.isnan(window)):
-                    yield x_start, y_start, window
+                yield x_start, y_start, window

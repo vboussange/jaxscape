@@ -7,7 +7,7 @@ from jaxscape.distance import AbstractDistance
 from typing import Union
 import equinox as eqx
 from typing import Callable, Union
-from jaxscape.utils import bcoo_diag
+from jaxscape.utils import bcoo_diag, mapnz
 import lineax as lx
 from jax import vmap
 
@@ -15,6 +15,7 @@ class ResistanceDistance(AbstractDistance):
     @eqx.filter_jit
     def __call__(self, grid, landmarks=None):
         A = grid.get_adjacency_matrix()
+        # A = mapnz(A, lambda x: 1/x)
         if landmarks is None:
             return _full_resistance_distance(A)
         else:

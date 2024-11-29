@@ -9,7 +9,9 @@ class LCPDistance(AbstractDistance):
     def __call__(self, grid, landmarks=None):
             A = grid.get_adjacency_matrix()
             if landmarks is None:
-                D = 1 / A.todense()
+                # using floyd warshall to calculate all to all distances
+                D = A.todense()
+                D = jnp.where(D == 0, jnp.inf, D)
                 return floyd_warshall(D)
             else:
                 if landmarks.ndim == 1:
