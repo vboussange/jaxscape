@@ -1,3 +1,7 @@
+"""
+Reproducing out of memory issue with Bellman Ford algorithm
+"""
+
 import jax
 import jax.numpy as jnp
 from jax import lax, ops

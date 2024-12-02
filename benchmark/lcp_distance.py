@@ -40,7 +40,7 @@ ax.scatter([focal_pixel_coord[0]], [focal_pixel_coord[1]], c="tab:red")
 ax.set_axis_off()
 fig.savefig(path_results / "distance_to_node.png", dpi=300)
 
-habitat_quality = jnp.ones((N, N), dtype="float32") * 0
+habitat_quality = jnp.ones((N, N), dtype="float32") * 0.0
 habitat_quality = habitat_quality.at[N-2, 1].set(1.)
 habitat_quality = habitat_quality.at[N-2, N-2].set(1.)
 fig, ax = plt.subplots()
@@ -56,11 +56,12 @@ def calculate_ech(habitat_permability, habitat_quality, activities, D):
     dist = distance(grid)
     # scaling
     # dist = dist / dist.max()
-    proximity = jnp.exp(-dist / D)
-    landscape = ExplicitGridGraph(activities=activities, 
-                                  vertex_weights=habitat_quality, 
-                                  adjacency_matrix=proximity)
-    ech = landscape.equivalent_connected_habitat()
+    # proximity = jnp.exp(-dist / D)
+    # landscape = ExplicitGridGraph(activities=activities, 
+    #                               vertex_weights=habitat_quality, 
+    #                               adjacency_matrix=proximity)
+    # ech = landscape.equivalent_connected_habitat()
+    ech = jnp.sum(dist)
     return ech
 
 calculate_d_ech_dp = jax.grad(calculate_ech) # sensitivity to permeability
