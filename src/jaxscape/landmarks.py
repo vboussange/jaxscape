@@ -69,6 +69,7 @@ def coarse_graining(grid, npix):
     idx_closest_vertex = jnp.argmin(dist, axis=1)
     
     # final landmarks (magnetised to closest active vertices)
+    # TODO: magnetisation is not a good idea, because it introduces doublons, where some regions are counted several times
     xy = xy_active_vertices[0, :, idx_closest_vertex]
     values = sum_neighborhood(grid, xy, npix)
     coarse_target_matrix = BCOO((values, xy), shape=(grid.height, grid.width)) # dimension to be checked

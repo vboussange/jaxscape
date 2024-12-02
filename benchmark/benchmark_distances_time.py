@@ -14,7 +14,6 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 import equinox
 import time
-from jaxscape.lcp_distance import floyd_warshall
 import json
 
 path_results = Path("results/benchmarks/")
@@ -59,7 +58,7 @@ def benchmark(device, fun, distance):
             times.append(float('inf'))  # Use infinity to indicate failure
     return times
 
-def plot_benchmark(cpu_times, gpu_times, distance_name):
+def plot_benchmark(node_sizes, cpu_times, gpu_times, distance_name):
     fig, ax = plt.subplots()
     ax.plot(node_sizes**2, cpu_times, marker='o', label='CPU')
     ax.plot(node_sizes**2, gpu_times, marker='o', label='GPU')
@@ -72,41 +71,53 @@ def plot_benchmark(cpu_times, gpu_times, distance_name):
     ax.set_title(f'Benchmark for {distance_name}')
     return fig, ax
 
-distances = [ResistanceDistance(), LCPDistance(), RSPDistance(theta=jnp.array(1e-3, dtype="float32"))]
 
-# Forward pass
-node_sizes = jnp.arange(10, 50, 5)
-# Save results before plotting
-results = {
-    "forward_pass_times": {},
-    "backward_pass_times": {}
-}
+def run_benchmark():
+    distances = [ResistanceDistance(), LCPDistance(), RSPDistance(theta=jnp.array(1e-3, dtype="float32"))]
 
-for distance in distances:
-    results["forward_pass_times"][distance.__class__.__name__] = {
-        "cpu": benchmark(jax.devices("cpu")[0], calculate_ech, distance),
-        "gpu": benchmark(jax.devices("gpu")[0], calculate_ech, distance)
-    }
-    results["backward_pass_times"][distance.__class__.__name__] = {
-        "cpu": benchmark(jax.devices("cpu")[0], calculate_d_ech_dp, distance),
-        "gpu": benchmark(jax.devices("gpu")[0], calculate_d_ech_dp, distance)
+    # Forward pass
+    node_sizes = jnp.arange(10, 50, 5)
+    # Save results before plotting
+    results = {
+        "forward_pass_times": {},
+        "backward_pass_times": {},
+        "node_sizes": node_sizes.tolist()
     }
 
-with open(path_results / "benchmark_results.json", "w") as f:
-    json.dump(results, f, indent=4)
+    for distance in distances:
+        results["forward_pass_times"][distance.__class__.__name__] = {
+            "cpu": benchmark(jax.devices("cpu")[0], calculate_ech, distance),
+            "gpu": benchmark(jax.devices("gpu")[0], calculate_ech, distance)
+        }
+        results["backward_pass_times"][distance.__class__.__name__] = {
+            "cpu": benchmark(jax.devices("cpu")[0], calculate_d_ech_dp, distance),
+            "gpu": benchmark(jax.devices("gpu")[0], calculate_d_ech_dp, distance)
+        }
 
-# Plot all distances on the same graph for forward pass
-colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k']
-for res_key, res in results.items():
-    fig, ax = plt.subplots()
-    for i, (distance_name, times) in enumerate(res.items()):
-        color = colors[i % len(colors)]
-        ax.plot(node_sizes**2, times["cpu"], marker='o', linestyle='-', color=color, label=f'CPU {distance_name}')
-        ax.plot(node_sizes**2, times["gpu"], marker='v', linestyle='--', color=color, label=f'GPU {distance_name}')
-    ax.set_xlabel('Nb. of nodes.')
-    ax.set_ylabel('Computation time (s)')
-    ax.set_yscale("log")
-    ax.grid(True)
-    ax.legend()
-    ax.set_title(f'Benchmark for {res_key.replace("_", " ").title()}')
-    fig.savefig(path_results / f"benchmark_{res_key}_all_distances.png")
+    with open(path_results / "benchmark_results.json", "w") as f:
+        json.dump(results, f, indent=4)
+        
+        
+if __name__ == "__main__":
+    if False:
+        run_benchmark()
+    else:
+        with open(path_results / "benchmark_results.json", "r") as f:
+            results = json.load(f)
+
+    node_sizes = jnp.array(results["node_sizes"])
+    # Plot all distances on the same graph for forward pass
+    colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k']
+    for res_key, res in results.items():
+        fig, ax = plt.subplots()
+        for i, (distance_name, times) in enumerate(res.items()):
+            color = colors[i % len(colors)]
+            ax.plot(node_sizes**2, times["cpu"], marker='o', linestyle='-', color=color, label=f'CPU {distance_name}')
+            ax.plot(node_sizes**2, times["gpu"], marker='v', linestyle='--', color=color, label=f'GPU {distance_name}')
+        ax.set_xlabel('Nb. of nodes')
+        ax.set_ylabel('Computation time (s)')
+        ax.set_yscale("log")
+        ax.grid(True)
+        ax.legend()
+        ax.set_title(f'{res_key.replace("_", " ").title()}')
+        fig.savefig(path_results / f"benchmark_{res_key}_all_distances.png")

@@ -24,21 +24,6 @@ def test_floyd_warshall():
     shortest_paths_scipy = sp.floyd_warshall(D, directed=True)
     assert jnp.allclose(shortest_paths_jax, shortest_paths_scipy) # pass 
 
-def test_floyd_warshall_differentiability():
-    # direct `floyd_warshall` test
-    D = jnp.array([
-        [0,     3,   jnp.inf, 7],
-        [8,     0,     2,     jnp.inf],
-        [5,     jnp.inf, 0,     1],
-        [2,     jnp.inf, jnp.inf, 0]
-    ])
-    
-    def myfun(D):
-        return jnp.sum(floyd_warshall(D))
-
-    grad_myfun = grad(myfun)
-    grad_myfun(D) # pass
-
 
 def test_bellman_ford():
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
@@ -61,22 +46,41 @@ def test_bellman_ford():
     distance_mat_scipy = scipy_bellman_ford(A_scipy, indices=sources, return_predecessors=False)
     assert jnp.allclose(distance_mat_jaxscape, distance_mat_scipy)
     
-def test_bellman_ford_differentiability():
+def test_bellman_ford_floyd_warshall_differentiability():
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
     permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
     activities = jnp.ones(permeability_raster.shape, dtype=bool)
 
-    def myfun(permeability_raster):
+    def sum_bellman_ford(permeability_raster):
         grid = GridGraph(activities=activities,
                     vertex_weights = permeability_raster,
                     nb_active = permeability_raster.size)
         A = grid.get_adjacency_matrix()
-        distances_jax = bellman_ford(A, jnp.array([1]))
+        distances_jax = bellman_ford(A, jnp.arange(permeability_raster.size))
         return jnp.sum(distances_jax)
     
-    grad_myfun = jit(grad(myfun))
-    sensitivity = grad_myfun(permeability_raster)
-    assert isinstance(sensitivity, jax.Array)
+    grad_sum_bellman_ford = jit(grad(sum_bellman_ford))
+    sensitivity_bellman_ford = grad_sum_bellman_ford(permeability_raster)
+    
+    def sum_floyd_warshall(permeability_raster):
+        grid = GridGraph(activities=activities,
+                    vertex_weights = permeability_raster,
+                    nb_active = permeability_raster.size)
+        A = grid.get_adjacency_matrix()
+        D = A.todense()
+        D = jnp.where(D == 0, jnp.inf, D)
+        distances_jax = floyd_warshall(D)
+        return jnp.sum(distances_jax)
+    
+
+    grad_sum_floyd_warshall = jit(grad(sum_floyd_warshall))
+    sensitivity_floyd_warshall = grad_sum_floyd_warshall(permeability_raster)
+    
+    # import matplotlib.pyplot as plt
+    # plt.imshow(sensitivity_bellman_ford)
+    # plt.imshow(sensitivity_floyd_warshall)
+    
+    assert jnp.allclose(sensitivity_bellman_ford, sensitivity_floyd_warshall, rtol=1e-1)
 
 def test_LCPDistance_landmarks_sparse():
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
