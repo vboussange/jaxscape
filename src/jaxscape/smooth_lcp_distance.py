@@ -6,10 +6,17 @@ from jax import lax, ops
 import equinox
 
 class SmoothLCPDistance(AbstractDistance):
-    def __call__(self, grid, landmarks, tau=1e-10):
+    tau: float = equinox.field(static=True)
+    def __init__(self, tau: float = 1e-10):
+        """
+        Calculates least cost distance using Bellman Ford with a smooth minimum based on LogSumExp.
+        """
+        self.tau = tau
+        
+    def __call__(self, grid, landmarks):
             A = grid.get_adjacency_matrix()
             assert landmarks.ndim == 1, "Landmarks must be a 1D array where each element is a vertex index"
-            return bellman_ford_smoothmin(A.data, A.indices, grid.nb_active, landmarks, tau)
+            return bellman_ford_smoothmin(A.data, A.indices, grid.nb_active, landmarks, self.tau)
 
 def segment_logsumexp(data, segment_ids, num_segments):
     # This follows implementation of jax.numpy.logsumexp

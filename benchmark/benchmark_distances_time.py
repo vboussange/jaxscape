@@ -8,6 +8,7 @@ import jax
 import jax.numpy as jnp
 from jaxscape.resistance_distance import ResistanceDistance
 from jaxscape.lcp_distance import LCPDistance
+from jaxscape.smooth_lcp_distance import SmoothLCPDistance
 from jaxscape.rsp_distance import RSPDistance
 from jaxscape.gridgraph import GridGraph
 import matplotlib.pyplot as plt
@@ -34,7 +35,7 @@ def calculate_ech(habitat_permability, activities, nb_active, distance):
 calculate_d_ech_dp = equinox.filter_jit(equinox.filter_grad(calculate_ech)) # sensitivity to permeability
 D = jnp.array(1.0, dtype="float32")
 
-def benchmark(device, fun, distance):
+def benchmark(device, fun, distance, node_sizes):
     times = []
     for size in node_sizes:
         try:
@@ -73,7 +74,10 @@ def plot_benchmark(node_sizes, cpu_times, gpu_times, distance_name):
 
 
 def run_benchmark():
-    distances = [ResistanceDistance(), LCPDistance(), RSPDistance(theta=jnp.array(1e-3, dtype="float32"))]
+    distances = [ResistanceDistance(), 
+                 LCPDistance(), 
+                #  SmoothLCPDistance(tau=1e-10), requires landmarks
+                 RSPDistance(theta=jnp.array(1e-3, dtype="float32"))]
 
     # Forward pass
     node_sizes = jnp.arange(10, 50, 5)
@@ -86,21 +90,23 @@ def run_benchmark():
 
     for distance in distances:
         results["forward_pass_times"][distance.__class__.__name__] = {
-            "cpu": benchmark(jax.devices("cpu")[0], calculate_ech, distance),
-            "gpu": benchmark(jax.devices("gpu")[0], calculate_ech, distance)
+            "cpu": benchmark(jax.devices("cpu")[0], calculate_ech, distance, node_sizes),
+            "gpu": benchmark(jax.devices("gpu")[0], calculate_ech, distance, node_sizes)
         }
         results["backward_pass_times"][distance.__class__.__name__] = {
-            "cpu": benchmark(jax.devices("cpu")[0], calculate_d_ech_dp, distance),
-            "gpu": benchmark(jax.devices("gpu")[0], calculate_d_ech_dp, distance)
+            "cpu": benchmark(jax.devices("cpu")[0], calculate_d_ech_dp, distance, node_sizes),
+            "gpu": benchmark(jax.devices("gpu")[0], calculate_d_ech_dp, distance, node_sizes)
         }
 
     with open(path_results / "benchmark_results.json", "w") as f:
         json.dump(results, f, indent=4)
         
+    return results
+        
         
 if __name__ == "__main__":
-    if False:
-        run_benchmark()
+    if True:
+        results = run_benchmark()
     else:
         with open(path_results / "benchmark_results.json", "r") as f:
             results = json.load(f)
