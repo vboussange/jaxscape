@@ -132,8 +132,8 @@ def test_adjacency_matrix():
     adj_matrix_nx = nx.adjacency_matrix(G, weight='weight').todense()
     assert jnp.array_equal(adj_matrix, adj_matrix_nx)
     
-# test against networkx
-def test_adjacency_matrix():
+# test of custom fun
+def test_adjacency_matrix_custom_fun():
     permeability_raster = jnp.ones((2,3))
     activities = jnp.ones(permeability_raster.shape, dtype=bool)
     grid = GridGraph(activities, permeability_raster)
