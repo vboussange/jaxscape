@@ -1,7 +1,7 @@
 import pytest
 import jax.numpy as jnp
 from jaxscape.moving_window import WindowOperation  # Adjust as necessary for your module path
-
+import jax.random as jr
 @pytest.fixture
 def sample_raster_data():
     """Provides a sample raster data array for testing."""
@@ -61,3 +61,29 @@ def test_iterate_windows(window_op, sample_raster_data):
     x_start, y_start, _ = windows[0]
     assert x_start == 0
     assert y_start == 0
+    
+def test_update_raster_from_window():
+    """Test update_raster_from_window method updates raster correctly."""
+    def run_calculation(window):
+        return window
+
+    def make_raster(N=102):
+        key = jr.PRNGKey(0)  # Random seed is explicit in JAX
+        return jr.uniform(key, (N, N), dtype="float32")  # Start with a uniform permeability
+
+    window_size = 20
+    buffer_size = 1
+
+    permeability = make_raster()
+    
+    window_op = WindowOperation(shape=permeability.shape, 
+                                window_size=window_size, 
+                                buffer_size=buffer_size)
+    
+    # use pmap distribute the computation to multiple devices
+    raster = jnp.full_like(permeability, jnp.nan)
+    for window in window_op.iterate_windows(permeability):
+        x_start, y_start, res = run_calculation(window)
+        raster = window_op.update_raster_from_window(x_start, y_start, raster, res)
+        
+    assert jnp.allclose(raster[1:-1,1:-1], permeability[1:-1,1:-1])

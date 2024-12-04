@@ -8,7 +8,9 @@ class WindowOperation:
         assert isinstance(shape, tuple)
         assert isinstance(window_size, int)
         assert isinstance(buffer_size, int)
-        
+        for i in range(2):
+            assert (shape[i] - 2 * buffer_size) % window_size == 0, f"`(shape[{i}] - 2 * buffer_size)`  must be divisible by `window_size`, consider padding the raster data."
+
         self.shape = shape
         self.window_size = window_size
         self.buffer_size = buffer_size
