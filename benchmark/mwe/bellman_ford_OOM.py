@@ -1,7 +1,8 @@
 """
 Reproducing out of memory issue with Bellman Ford algorithm
 """
-
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'  # Use GPU 0
 import jax
 import jax.numpy as jnp
 from jax import lax, ops
@@ -9,9 +10,10 @@ import networkx as nx
 from jax.experimental.sparse import BCOO
 from equinox import filter_jit, filter_grad, filter_checkpoint, filter_vmap
 from jax import jacfwd
+import matplotlib.pyplot as plt
 
 def bellman_ford(W_data, W_indices, source, nb_nodes):
-    D = jnp.full(nb_nodes, jnp.inf).at[source].set(0.0)
+    D = jnp.full(nb_nodes, jnp.inf, dtype=W_data.dtype).at[source].set(0.0)
     
     @filter_checkpoint
     def body_fun(D, _):
@@ -21,25 +23,31 @@ def bellman_ford(W_data, W_indices, source, nb_nodes):
 
     D, _ = lax.scan(body_fun, D, None, length=nb_nodes - 1)
     return D
+jit_bellman_ford = filter_jit(bellman_ford)
 
-N = 200
+def loss_fn(W_data, W_indices, source, nb_nodes):
+    return jnp.sum(bellman_ford(W_data, W_indices, source, nb_nodes))
+
+grad_loss_fn = filter_grad(filter_jit(loss_fn))
+
+N = 300
 G = nx.grid_2d_graph(N, N, create_using=nx.DiGraph)
 adj = BCOO.from_scipy_sparse(nx.adjacency_matrix(G))
 nb_nodes = adj.shape[0]
 
 device = jax.devices("gpu")[0]
-W_data, W_indices = jax.device_put(adj.data.astype(jnp.float32), device), jax.device_put(adj.indices, device)
+W_data, W_indices = jax.device_put(adj.data.astype(jnp.bfloat16), device), jax.device_put(adj.indices, device)
 
-jit_bellman_ford = filter_jit(bellman_ford)
-dist_to_node = jit_bellman_ford(W_data, W_indices, 0, nb_nodes)  # Forward pass works
+# Forward pass
+dist_to_node = jit_bellman_ford(W_data, W_indices, 0, nb_nodes)
+# this works up to N = 1000
 
-def loss_fn(W_data, W_indices, source, nb_nodes):
-    return jnp.sum(bellman_ford(W_data, W_indices, source, nb_nodes))
+dist_to_node = dist_to_node.reshape(N, N)
+plt.imshow(dist_to_node.reshape(N, N), cmap='viridis')
 
-# backward mode
-grad_loss_fn = filter_grad(filter_jit(loss_fn))
-W_data_grad = grad_loss_fn(W_data, W_indices, 0, nb_nodes) # This fails for N > 200
-# with: XlaRuntimeError: RESOURCE_EXHAUSTED: Out of memory while ...
+# backward pass
+W_data_grad = grad_loss_fn(W_data, W_indices, 0, nb_nodes) # This fails for N > 300
+# for 500x500 grid, requires 116.42GiB of memory
 
 # vmapping grad_loss_fn
 vmap_grad_loss_fn = filter_vmap(grad_loss_fn, in_axes=(None, None, 0, None))

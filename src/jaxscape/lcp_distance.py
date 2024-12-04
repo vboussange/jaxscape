@@ -9,10 +9,9 @@ class LCPDistance(AbstractDistance):
     def __call__(self, grid, landmarks=None):
             A = grid.get_adjacency_matrix()
             if landmarks is None:
-                # using floyd warshall to calculate all to all distances
-                D = A.todense()
-                D = jnp.where(D == 0, jnp.inf, D)
-                return floyd_warshall(D)
+                # D = 1 / A.todense()
+                # return floyd_warshall(D) # floyd warshall is not differentiable
+                return bellman_ford(A, jnp.arange(grid.nb_active))
             else:
                 if landmarks.ndim == 1:
                     # already vertex indices
@@ -25,6 +24,7 @@ class LCPDistance(AbstractDistance):
                     
 
 def floyd_warshall(D):
+    # D must be a cost matrix
     n = D.shape[0]
     ks = jnp.arange(n)
     
@@ -42,11 +42,11 @@ def floyd_warshall(D):
 
 def _bellman_ford(adj: BCOO, source: int):
     N = adj.shape[0]
-    D = jnp.full(N, jnp.inf)
+    D = jnp.full(N, jnp.inf, dtype=adj.data.dtype) # distance matrix
     D = D.at[source].set(0.0)
 
     W_indices = adj.indices  # Shape: (nnz, 2)
-    W_data = adj.data        # Shape: (nnz,)
+    W_data = 1 / adj.data # Shape: (nnz,), we convert proximity to cost
     
     @equinox.filter_checkpoint
     def body_fun(D, _):

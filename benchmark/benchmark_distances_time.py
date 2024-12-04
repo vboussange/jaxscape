@@ -76,7 +76,7 @@ def plot_benchmark(node_sizes, cpu_times, gpu_times, distance_name):
 def run_benchmark():
     distances = [ResistanceDistance(), 
                  LCPDistance(), 
-                #  SmoothLCPDistance(tau=1e-10), requires landmarks
+                #  SmoothLCPDistance(tau=1e-10), requires landmarks, similar to LCPDistance
                  RSPDistance(theta=jnp.array(1e-3, dtype="float32"))]
 
     # Forward pass
@@ -105,7 +105,7 @@ def run_benchmark():
         
         
 if __name__ == "__main__":
-    if True:
+    if False:
         results = run_benchmark()
     else:
         with open(path_results / "benchmark_results.json", "r") as f:
@@ -114,7 +114,7 @@ if __name__ == "__main__":
     node_sizes = jnp.array(results["node_sizes"])
     # Plot all distances on the same graph for forward pass
     colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k']
-    for res_key, res in results.items():
+    for res_key, res in list(results.items())[:2]:
         fig, ax = plt.subplots()
         for i, (distance_name, times) in enumerate(res.items()):
             color = colors[i % len(colors)]

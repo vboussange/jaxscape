@@ -2,6 +2,8 @@
 We represent euclidean distance and ECH sensitivity in a simple setting
 # TODO: you want to add the scale here
 """
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'  # Use GPU 0
 import jax
 import jax.numpy as jnp
 from jaxscape.resistance_distance import ResistanceDistance
@@ -54,9 +56,8 @@ fig.savefig(path_results / "habitat_suitability.png", dpi=300)
 def calculate_ech(habitat_permability, habitat_quality, activities, D):
     grid = GridGraph(activities=activities, vertex_weights=habitat_permability)
     dist = distance(grid)
-    # scaling
-    # dist = dist / dist.max()
-    proximity = jnp.exp(-dist / D)
+
+    proximity = jnp.exp(- dist / D)
     landscape = ExplicitGridGraph(activities=activities, 
                                   vertex_weights=habitat_quality, 
                                   adjacency_matrix=proximity)
@@ -68,7 +69,7 @@ calculate_d_ech_dq = jax.grad(calculate_ech, argnums=1) # sensitivity to quality
 
 
 fig, axs = plt.subplots(2, 3)
-for i, D in enumerate([5e-1, 5, 5e1]):
+for i, D in enumerate(jnp.array([5e-1, 5e0, 5e1])):
     # sensitivity to quality
     d_ech_dq = calculate_d_ech_dq(habitat_permability, habitat_quality, activities, D)
     axs[0,i].imshow(d_ech_dq)
@@ -76,10 +77,13 @@ for i, D in enumerate([5e-1, 5, 5e1]):
     
     # sensitivity to permeability
     d_ech_dp = calculate_d_ech_dp(habitat_permability, habitat_quality, activities, D)
-    axs[1,i].imshow(d_ech_dp)
+    cbar = axs[1,i].imshow(d_ech_dp)
+    cbar = fig.colorbar(cbar, ax=axs[1,i], shrink=0.4)
+    cbar.ax.tick_params(labelsize=8)
 for ax in axs.flat:
     ax.axis('off')
-axs[0,1].set_title("Contribution of habitat quality")
-axs[1,1].set_title("Contribution of permeability")
+axs[0,1].set_title("$\\frac{\\partial \\text{ECH}}{\\partial q}$")
+axs[1,1].set_title("$\\frac{\\partial \\text{ECH}}{\\partial p}$")
+fig.suptitle("ResistanceDistance")
+fig.tight_layout()
 fig.savefig(path_results / "sensitivities.png", dpi=300)
-

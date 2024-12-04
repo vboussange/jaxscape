@@ -55,22 +55,12 @@ ax.axis('off')
 fig.savefig(path_results / "habitat_suitability.png", dpi=300)
 
 # Here the rationale is that when habitat permeability is affected, both likelihood and cost increase
-def calculate_ech(habitat_permability, habitat_quality, activities, D, theta):
+distance = RSPDistance(theta=jnp.array(1e-1), cost=cost_mat)
+def calculate_ech(habitat_permability, habitat_quality, activities, D):
     grid = GridGraph(activities=activities, vertex_weights=habitat_permability)
-    # TODO: investigate the effect of cost function
-    cost_mat = mapnz(grid.get_adjacency_matrix(), lambda x: 1/x )
-    distance = RSPDistance(theta=theta, cost=cost_mat)
     dist = distance(grid)
-    # scaling
-    # TODO: when scaling, we affect the gradient calculation
-    # which creates unwanted behavior. We want to change this.
-    # dist = dist / dist.max()
-    
-    # TODO: this metrics of proximity is not good because it involves an exponential that 
-    # can produce over or underflow. You may want to have a hard threshold (jnp.where(dist < D, 1/dist, 0)
-    # You could also say that proximity is simply
-    # proximity = jnp.exp(-dist / D)
-    proximity = -dist / D
+
+    proximity = jnp.exp(- dist / D)
     landscape = ExplicitGridGraph(activities=activities, 
                                   vertex_weights=habitat_quality, 
                                   adjacency_matrix=proximity)
@@ -79,35 +69,25 @@ def calculate_ech(habitat_permability, habitat_quality, activities, D, theta):
 
 calculate_d_ech_dp = jax.grad(calculate_ech) # sensitivity to permeability
 calculate_d_ech_dq = jax.grad(calculate_ech, argnums=1) # sensitivity to quality
-Ds = jnp.array([0.1, 1, 10])
 
-# plotting sensitivity to quality
-fig, axs = plt.subplots(3, 3)
-for i, D in enumerate(Ds):
-    for j, theta in enumerate(thetas):
-        # sensitivity to quality
-        d_ech_dq = calculate_d_ech_dq(habitat_permability, habitat_quality, activities, D, theta)
-        ax = axs[j, i]
-        ax.imshow(d_ech_dq)
-        ax.text(0.5, -0.2, f"D={D:0.1e}\n$\\theta$ = {theta:0.1e}", ha='center', va='center', transform=ax.transAxes)
+
+fig, axs = plt.subplots(2, 3)
+for i, D in enumerate(jnp.array([5e-1, 5e0, 5e1])):
+    # sensitivity to quality
+    d_ech_dq = calculate_d_ech_dq(habitat_permability, habitat_quality, activities, D)
+    axs[0,i].imshow(d_ech_dq)
+    axs[0,i].text(0.5, -0.1, f"D={D:0.1e}", ha='center', va='center', transform=axs[0,i].transAxes)
+    
+    # sensitivity to permeability
+    d_ech_dp = calculate_d_ech_dp(habitat_permability, habitat_quality, activities, D)
+    cbar = axs[1,i].imshow(d_ech_dp)
+    cbar = fig.colorbar(cbar, ax=axs[1,i], shrink=0.4)
+    cbar.ax.tick_params(labelsize=8)
 for ax in axs.flat:
     ax.axis('off')
+axs[0,1].set_title("$\\frac{\\partial \\text{ECH}}{\\partial q}$")
+axs[1,1].set_title("$\\frac{\\partial \\text{ECH}}{\\partial p}$")
+fig.suptitle(f"RSPDistance, $\\theta=${distance.theta:0.0e}")
 fig.tight_layout()
-fig.savefig(path_results / "contribution_of_habitat_quality.png", dpi=300)
-
-
-# plotting sensitivity to permeability
-fig, axs = plt.subplots(3, 3)
-for i, D in enumerate(Ds):
-    for j, theta in enumerate(thetas):
-        # sensitivity to quality
-        d_ech_dp = calculate_d_ech_dp(habitat_permability, habitat_quality, activities, D, theta)
-        ax = axs[j, i]
-        ax.imshow(d_ech_dp)
-        ax.text(0.5, -0.2, f"D={D:0.1e}\n$\\theta$ = {theta:0.1e}", ha='center', va='center', transform=ax.transAxes)
-for ax in axs.flat:
-    ax.axis('off')
-fig.tight_layout()
-fig.savefig(path_results / "contribution_of_permeability.png", dpi=300)
-
+fig.savefig(path_results / "sensitivities.png", dpi=300)
 
