@@ -35,7 +35,6 @@ def sum_neighborhood(grid, xy, npix):
     values = grid.vertex_weights[positions_clipped[:, :, 0], positions_clipped[:, :, 1]]  # Shape: (n, npix*npix)
     values = jnp.where(mask, values, jnp.nan)
     sums = jnp.nansum(values, axis=1)
-
     return sums
 
 

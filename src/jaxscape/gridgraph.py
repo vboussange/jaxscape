@@ -60,6 +60,7 @@ class GridGraph(eqx.Module):
         """Get the width of the grid (number of columns)."""
         return self.activities.shape[1]
 
+    # TODO: `coord_to_index` and `index_to_coord` are not used and could be removed
     # @jit
     def coord_to_index(self, i, j):
         """Convert (i, j) grid coordinates to the associated passive vertex index."""
@@ -110,8 +111,9 @@ class GridGraph(eqx.Module):
     # @jit
     def coord_to_active_vertex_index(self, i, j):
         """Get (i,j) coordinates of active vertex index `v`."""
-        if ~jnp.all(self.activities[i,j]):
-            raise IndexError(f"Vertices at i = {i}, j = {j} is not active")
+        # TODO: error raising is not compatible with jit
+        # if ~jnp.all(self.activities[i,j]):
+        #     raise IndexError(f"Vertices at i = {i}, j = {j} is not active")
         num_nodes = self.nb_active
         source_xy_coord = self.active_vertex_index_to_coord(jnp.arange(num_nodes))
         active_map = jnp.zeros_like(self.activities, dtype=int) - 1

@@ -9,37 +9,38 @@ from pathlib import Path
 from jaxscape.moving_window import WindowOperation
 import jax.random as jr
 from jaxscape.gridgraph import GridGraph
-from jaxscape.lcp_distance import _bellman_ford
+from jaxscape.resistance_distance import _full_resistance_distance
+from jaxscape.landmarks import coarse_graining
 import equinox
+from tqdm import tqdm
+from functools import partial
 
-def make_raster(N=1002):
+def make_raster(N=1010):
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
     return jr.uniform(key, (N, N), dtype="float32")  # Start with a uniform permeability
 
-def calculate_ech_scan(habitat_permability):
+def calculate_ech_scan(habitat_permability, landmark_buffer=2):
     activities = jnp.ones_like(habitat_permability, dtype="bool")
     grid = GridGraph(activities=activities, 
                      vertex_weights=habitat_permability,
                      nb_active=habitat_permability.size)
     
-    ech = jnp.array(0, dtype=habitat_permability.dtype)
     A = grid.get_adjacency_matrix()
-    
-    @equinox.filter_checkpoint
-    def body_fun(ech, source):
-        dist = _bellman_ford(A, source)
-        return ech + dist.sum(), None
-
-    ech, _ = lax.scan(body_fun, ech, jnp.arange(1))
+    landmarks = coarse_graining(grid, landmark_buffer)
+    sources_xy = landmarks.indices
+    sources = grid.coord_to_active_vertex_index(sources_xy[:,0], sources_xy[:,1])
+    print("Nb. of sources:", len(sources))
+    dist = _full_resistance_distance(A)
+    ech = jnp.exp(-dist[:,sources]).sum()
     # todo: modify to use landmarks instead of 1
     return ech
 
 calculate_d_ech_dp_scan = equinox.filter_jit(equinox.filter_grad(calculate_ech_scan)) # sensitivity to permeability
 
 # Parallelize over devices, processing one window per device
-@jax.pmap
-def run_calculation_pmap(hab_qual, x_start, y_start):
-    res = calculate_d_ech_dp_scan(hab_qual)
+@equinox.filter_pmap
+def run_calculation_pmap(hab_qual, x_start, y_start, landmark_buffer):
+    res = calculate_d_ech_dp_scan(hab_qual, landmark_buffer)
     return x_start, y_start, res
 
 def update_raster(raster, x_starts, y_starts, res_array):
@@ -52,16 +53,24 @@ def update_raster(raster, x_starts, y_starts, res_array):
     return raster
 
 if __name__ == "__main__":
-    window_size = 200
-    buffer_size = 1
-    threshold = 0.1 # todo: to use
+    N = 110
+    window_size = 100
+    buffer_size = 5
+    landmark_buffer = 0
     result_path = Path("./results")
     device = "cpu"
 
-    permeability = make_raster()
+    permeability = make_raster(N)
+    
+    cbar = plt.imshow(permeability, 
+                      )
+    plt.colorbar(cbar)
+    plt.show()
 
     window_op = WindowOperation(
-        shape=permeability.shape, window_size=window_size, buffer_size=buffer_size
+        shape=permeability.shape, 
+        window_size=window_size, 
+        buffer_size=buffer_size
     )
 
     # Collect windows
@@ -88,7 +97,7 @@ if __name__ == "__main__":
     num_windows = hab_quals.shape[0]
 
     # Process windows in batches of num_devices
-    for i in range(0, num_windows, num_devices):
+    for i in tqdm(range(0, num_windows, num_devices), desc="Processing windows"):
         # Extract the current batch
         hab_quals_batch = hab_quals[i:i+num_devices]
         x_starts_batch = x_starts[i:i+num_devices]
@@ -107,7 +116,7 @@ if __name__ == "__main__":
 
         # Run the calculation in parallel across devices
         x_starts_pmap, y_starts_pmap, res_pmap = run_calculation_pmap(
-            hab_quals_batch, x_starts_batch, y_starts_batch
+            hab_quals_batch, x_starts_batch, y_starts_batch, landmark_buffer
         )
 
         # Remove padding if any
@@ -120,6 +129,13 @@ if __name__ == "__main__":
         raster = update_raster(raster, x_starts_pmap, y_starts_pmap, res_pmap)
 
     # Display the resulting raster
-    cbar = plt.imshow(raster, vmin=-1000)
+    cbar = plt.imshow(raster, 
+                      vmax=12000, 
+                      vmin=0
+                      )
     plt.colorbar(cbar)
     plt.show()
+
+    # plot correlation between permeability and resistance distance
+    plt.scatter(permeability.flatten(), raster.flatten(), s=1)
+    plt.yscale('log')
