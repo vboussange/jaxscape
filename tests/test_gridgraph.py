@@ -131,6 +131,15 @@ def test_adjacency_matrix():
     adj_matrix = grid.get_adjacency_matrix().todense()
     adj_matrix_nx = nx.adjacency_matrix(G, weight='weight').todense()
     assert jnp.array_equal(adj_matrix, adj_matrix_nx)
+    
+# test against networkx
+def test_adjacency_matrix():
+    permeability_raster = jnp.ones((2,3))
+    activities = jnp.ones(permeability_raster.shape, dtype=bool)
+    grid = GridGraph(activities, permeability_raster)
+    edge_weights = grid.get_adjacency_matrix(fun=lambda x, y: 4 * (x + y))
+    assert jnp.all(edge_weights.data[edge_weights.data >0] == 8)
+    
 
 def test_differentiability_adjacency_matrix():
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX

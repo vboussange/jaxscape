@@ -129,7 +129,7 @@ class GridGraph(eqx.Module):
         return canvas
     
     # @jit
-    def get_adjacency_matrix(self, neighbors=ROOK_CONTIGUITY):
+    def get_adjacency_matrix(self, fun = lambda x, y: y, neighbors=ROOK_CONTIGUITY):
         """
         Create a differentiable adjacency matrix based on the vertices and
         contiguity pattern of gridgraph.
@@ -162,10 +162,10 @@ class GridGraph(eqx.Module):
         edge_validity = in_bounds & target_active
 
         # For invalid edges, set indices to 0
-        candidate_target_xy_coord_valid = jnp.where(edge_validity[..., None], candidate_target_xy_coord, 0)
+        target_xy_coord = jnp.where(edge_validity[..., None], candidate_target_xy_coord, 0)
 
         # Get target node indices
-        target_node_indices = active_map[candidate_target_xy_coord_valid[..., 0], candidate_target_xy_coord_valid[..., 1]]
+        target_node_indices = active_map[target_xy_coord[..., 0], target_xy_coord[..., 1]]
         target_node_indices = jnp.where(edge_validity, target_node_indices, 0)
 
         # Source node indices
@@ -173,7 +173,8 @@ class GridGraph(eqx.Module):
         source_node_indices = jnp.where(edge_validity, source_node_indices, 0)
 
         # Get values (edge weights)
-        values = permeability_raster[candidate_target_xy_coord_valid[..., 0], candidate_target_xy_coord_valid[..., 1]]
+        values = fun(permeability_raster[source_xy_coord[:, None, 0], source_xy_coord[:, None, 1]],
+                     permeability_raster[target_xy_coord[..., 0], target_xy_coord[..., 1]])
         values = jnp.where(edge_validity, values, 0.0)
 
         # Flatten arrays
