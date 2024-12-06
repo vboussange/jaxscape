@@ -15,7 +15,7 @@ from jax.experimental.sparse import BCOO
 class RSPDistance(AbstractDistance):
     theta: jnp.ndarray
     _cost: Union[Callable[jnp.ndarray, jnp.ndarray], jnp.ndarray]
-
+    
     def __init__(self, theta, cost=well_adapted_movement):
         """
         Requires `cost`,

@@ -16,6 +16,7 @@ from pathlib import Path
 import equinox
 import time
 import json
+import equinox as eqx
 
 path_results = Path("results/benchmarks/")
 path_results.mkdir(parents=True, exist_ok=True)
@@ -72,7 +73,6 @@ def plot_benchmark(node_sizes, cpu_times, gpu_times, distance_name):
     ax.set_title(f'Benchmark for {distance_name}')
     return fig, ax
 
-
 def run_benchmark():
     distances = [ResistanceDistance(), 
                  LCPDistance(), 
@@ -105,7 +105,7 @@ def run_benchmark():
         
         
 if __name__ == "__main__":
-    if False:
+    if True:
         results = run_benchmark()
     else:
         with open(path_results / "benchmark_results.json", "r") as f:

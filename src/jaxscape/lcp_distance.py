@@ -10,7 +10,7 @@ class LCPDistance(AbstractDistance):
     """
     Compute the shortest path distances in a grid. Currently relies on Bellman-Ford algorithm, with complexity O(V * E * L) where L is the number of landmarks.
     """
-
+    @equinox.filter_jit
     def __call__(self, grid, landmarks=None):
         A = grid.get_adjacency_matrix()
         if landmarks is None:

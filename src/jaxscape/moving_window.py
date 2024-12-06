@@ -30,8 +30,8 @@ class WindowOperation:
         ]
         return window
     
-    def update_raster_from_window(self, x_start, y_start, raster, raster_window):
-        """Extract a buffered window from the raster data."""
+    def update_raster(self, x_start, y_start, raster, raster_window):
+        """Returns an updated `raster` by replacing its values with that of `raster_window`, positioned at `x_start`, `y_start`."""
         assert isinstance(raster, jax.Array)
 
         # Store results into the core window area of the output array

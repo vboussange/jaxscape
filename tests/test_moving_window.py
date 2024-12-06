@@ -61,7 +61,7 @@ def test_iterate_windows(window_op, sample_raster_data):
     assert y_start == 0
     
 def test_update_raster_from_window():
-    """Test update_raster_from_window method updates raster correctly."""
+    """Test update_raster method updates raster correctly."""
     def run_calculation(window):
         return window
 
@@ -82,6 +82,6 @@ def test_update_raster_from_window():
     raster = jnp.full_like(permeability, jnp.nan)
     for window in window_op.iterate_windows(permeability):
         x_start, y_start, res = run_calculation(window)
-        raster = window_op.update_raster_from_window(x_start, y_start, raster, res)
+        raster = window_op.update_raster(x_start, y_start, raster, res)
         
     assert jnp.allclose(raster[1:-1,1:-1], permeability[1:-1,1:-1])

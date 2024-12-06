@@ -64,7 +64,7 @@ def run_sensitivity_analysis(habitat_quality_raster, window_op, D, distance, cut
         
         # Call the gradient function on the window's habitat quality
         sensitivity_raster_window = grad_connectivity_in_window(hab_qual)
-        sensitivity_raster = window_op.update_raster_from_window(x_start, y_start, sensitivity_raster, sensitivity_raster_window)
+        sensitivity_raster = window_op.update_raster(x_start, y_start, sensitivity_raster, sensitivity_raster_window)
     
     return sensitivity_raster
 
