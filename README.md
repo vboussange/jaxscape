@@ -17,65 +17,13 @@ JAXScape is a minimal JAX library for connectivity analysis at scales. It provid
 JAXScape leverages JAX's capabilities to accelerate distance computations on CPUs/GPUs/TPUs, while ensuring differentiability of all implemented classes and methods for awesome sensitivity analysis and optimization.
 
 
-## Features and roadmap 🚀
-### Raster to graphs
-- [x] `GridGraph` with differentiable adjacency matrix method
-
-### Distances
-<!-- - Euclidean distance
-  - [x] all-to-all calculation
-  - [ ] all-to-few calculation
-  - [ ] one-to-one calculation -->
-
-- **Least-cost path**
-  - [x] Bellman-Ford (one-to-all)
-  - [x] Floyd-Warshall (all-to-all)
-  - [ ] Differentiable Djikstra or A* (see implementation [here](https://github.com/srush/torch-queue/))
-
-- **Resistance distance**
-  - [x] all-to-all calculation with dense solver (`pinv`, resulting in full distance matrix materialization)
-  - [-] advanced mode with direct solvers (laplacian factorization, cannot scale to large landscape)
-    - Must rely on lineax, with wrapper over specialized solver for sparse systems:
-      - UMFPACK and CHOLMOD (see implementation [here](https://github.com/arpastrana/jax_fdm/blob/main/src/jax_fdm/equilibrium/sparse.py) where scipy.spsolve is wrapped in JAX and vjp has been implemented - could also work with CHOLMOD) 🏃‍♀️ 
-      - `jax.experimental.sparse.linalg.spsolve`
-  - [ ] advanced mode with indirect solvers (no laplacian factorization, requires preconditioning)
-      - GMRES/CG with preconditioners for Krylov-based solvers
-      - See [AlgebraicMultigrid.jl](https://github.com/JuliaLinearAlgebra/)  or [PyAMG](https://github.com/pyamg/pyamg)
-      - See also [lineax issues](https://github.com/patrick-kidger/lineax/issues/116)
-- **Randomized shortest path distance** ([REF](https://arxiv.org/pdf/1212.1666))
-  - [x] all-to-all calculation (distance matrix materialization)
-  - [-] all-to-few calculation
-    - Should be based on direct or inderict solvers, similarly to ResistanceDistance
-  <!-- - see [ConScape](https://conscape.org/notebooks/nbk_landmarks.html) landmarks and
-  - CircuitScape focal nodes https://docs.circuitscape.org/Circuitscape.jl/latest/usage/ -->
-  - [ ] one-to-one calculation
-
-### Utilities
-- [x] Moving window generator    
-- [ ] Differentiable connected component algorithm (see [here](https://github.com/jax-ml/jax/issues/24737))
-  - An external call to scipy/cusparse connected component libraries could do for our purposes (but not support of differentiation)
-  - see [jax doc](https://github.com/dfm/extending-jax), [doc on pure callbacks](https://jax.readthedocs.io/en/latest/external-callbacks.html) a cool concrete example [here](https://github.com/arpastrana/jax_fdm/blob/main/src/jax_fdm/equilibrium/sparse.py)
-
-### Benchmark
-- [x] scaling with number of nodes, CPU/GPU
-- [x] Moving window tests
-- [ ] benchmark against CircuitScape and ConScape (Julia based)
-
 ## Installation
 
 ```console
 pip install git+https://github.com/vboussange/jaxscape.git
 ```
 
-## Documentation
-
-To build.
-- Show utilization of different distance metrics
-- Show influence of \theta for RSP metrics, similar to https://conscape.org/notebooks/nbk_getting_started.html
-- Show optimization of \theta, see REF
-- Show landscape priorization
-
-## Quick example
+## Quick start
 
 Let's define our graph. 
 
@@ -158,13 +106,62 @@ plt.colorbar(cbar)
 
 For a more advanced example with windowed sensitivity analysis and dispatch on multiple GPUs, see `benchmark/moving_window_*.py`
 
+
+## Features and roadmap 🚀
+### Raster to graphs
+- [x] `GridGraph` with differentiable adjacency matrix method
+
+### Distances
+<!-- - Euclidean distance
+  - [x] all-to-all calculation
+  - [ ] all-to-few calculation
+  - [ ] one-to-one calculation -->
+
+- **Least-cost path**
+  - [x] Bellman-Ford (one-to-all)
+  - [x] Floyd-Warshall (all-to-all)
+  - [ ] Differentiable Djikstra or A* (see implementation [here](https://github.com/srush/torch-queue/))
+
+- **Resistance distance**
+  - [x] all-to-all calculation with dense solver (`pinv`, resulting in full distance matrix materialization)
+  - [-] advanced mode with direct solvers (laplacian factorization, cannot scale to large landscape)
+    - Must rely on lineax, with wrapper over specialized solver for sparse systems:
+      - UMFPACK and CHOLMOD (see implementation [here](https://github.com/arpastrana/jax_fdm/blob/main/src/jax_fdm/equilibrium/sparse.py) where scipy.spsolve is wrapped in JAX and vjp has been implemented - could also work with CHOLMOD) 🏃‍♀️ 
+      - `jax.experimental.sparse.linalg.spsolve`
+  - [ ] advanced mode with indirect solvers (no laplacian factorization, requires preconditioning)
+      - GMRES/CG with preconditioners for Krylov-based solvers
+      - See [AlgebraicMultigrid.jl](https://github.com/JuliaLinearAlgebra/)  or [PyAMG](https://github.com/pyamg/pyamg)
+      - See also [lineax issues](https://github.com/patrick-kidger/lineax/issues/116)
+- **Randomized shortest path distance** ([REF](https://arxiv.org/pdf/1212.1666))
+  - [x] all-to-all calculation (distance matrix materialization)
+  - [-] all-to-few calculation
+    - Should be based on direct or inderict solvers, similarly to ResistanceDistance
+  <!-- - see [ConScape](https://conscape.org/notebooks/nbk_landmarks.html) landmarks and
+  - CircuitScape focal nodes https://docs.circuitscape.org/Circuitscape.jl/latest/usage/ -->
+  - [ ] one-to-one calculation
+
+### Utilities
+- [x] Moving window generator    
+- [ ] Differentiable connected component algorithm (see [here](https://github.com/jax-ml/jax/issues/24737))
+  - An external call to scipy/cusparse connected component libraries could do for our purposes (but not support of differentiation)
+  - see [jax doc](https://github.com/dfm/extending-jax), [doc on pure callbacks](https://jax.readthedocs.io/en/latest/external-callbacks.html) a cool concrete example [here](https://github.com/arpastrana/jax_fdm/blob/main/src/jax_fdm/equilibrium/sparse.py)
+
+### Benchmark
+- [x] scaling with number of nodes, CPU/GPU
+- [x] Moving window tests
+- [ ] benchmark against CircuitScape and ConScape (Julia based)
+
+<!-- ## Documentation
+
+To build.
+- Show utilization of different distance metrics
+- Show influence of \theta for RSP metrics, similar to https://conscape.org/notebooks/nbk_getting_started.html
+- Show optimization of \theta, see REF
+- Show landscape priorization -->
+
 ## License
 
 `jaxscape` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.
-
-
-## Notes
-- Rook contiguity will increase computational complexity
 
 ## Related packages
 - gdistance
