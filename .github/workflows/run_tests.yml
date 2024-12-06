@@ -2,7 +2,12 @@ name: Run tests
 
 on:
   pull_request:
-
+    branches:
+      - main
+  push:
+    branches:
+      - main
+    tags: '*'
 jobs:
   run-test:
     strategy:
