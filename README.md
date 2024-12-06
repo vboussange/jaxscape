@@ -29,21 +29,18 @@ JAXScape leverages JAX's capabilities to accelerate distance computations on CPU
 - **Least-cost path**
   - [x] Bellman-Ford (one-to-all)
   - [x] Floyd-Warshall (all-to-all)
-  - [ ] Differentiable Djikstra or A* (see https://github.com/srush/torch-queue/)
+  - [ ] Differentiable Djikstra or A* (see implementation [here](https://github.com/srush/torch-queue/))
 
 - **Resistance distance**
   - [x] all-to-all calculation with dense solver (`pinv`, resulting in full distance matrix materialization)
   - [-] advanced mode with direct solvers (laplacian factorization, cannot scale to large landscape)
-    - Must rely on lineax, with specialize solver for sparse systems:
-      - UMFPACK (see implementation [here](https://github.com/arpastrana/jax_fdm/blob/main/src/jax_fdm/equilibrium/sparse.py) where scipy.spsolve is wrapped in JAX and vjp has been implemented - could also work with CHOLMOD) 🏃‍♀️ 
-      - CHOLMOD
-        - see https://docs.circuitscape.org/Circuitscape.jl/latest/ and https://github.com/Circuitscape/Circuitscape.jl/blob/fff12fe43e5af5be00f4056a87460ad07966e432/src/core.jl#L610-L616
-        - and https://github.com/Circuitscape/Circuitscape.jl/blob/fff12fe43e5af5be00f4056a87460ad07966e432/src/core.jl#L487-L491
+    - Must rely on lineax, with wrapper over specialized solver for sparse systems:
+      - UMFPACK and CHOLMOD (see implementation [here](https://github.com/arpastrana/jax_fdm/blob/main/src/jax_fdm/equilibrium/sparse.py) where scipy.spsolve is wrapped in JAX and vjp has been implemented - could also work with CHOLMOD) 🏃‍♀️ 
       - `jax.experimental.sparse.linalg.spsolve`
   - [ ] advanced mode with indirect solvers (no laplacian factorization, requires preconditioning)
       - GMRES/CG with preconditioners for Krylov-based solvers
       - See [AlgebraicMultigrid.jl](https://github.com/JuliaLinearAlgebra/)  or [PyAMG](https://github.com/pyamg/pyamg)
-      - See lineax issues in https://github.com/patrick-kidger/lineax/issues/116
+      - See also [lineax issues](https://github.com/patrick-kidger/lineax/issues/116)
 - **Randomized shortest path distance** ([REF](https://arxiv.org/pdf/1212.1666))
   - [x] all-to-all calculation (distance matrix materialization)
   - [-] all-to-few calculation
@@ -54,9 +51,9 @@ JAXScape leverages JAX's capabilities to accelerate distance computations on CPU
 
 ### Utilities
 - [x] Moving window generator    
-- [ ] Differentiable connected component algorithm (see https://github.com/jax-ml/jax/issues/24737)
-  - An external call (pure_callback, see https://jax.readthedocs.io/en/latest/external-callbacks.html) to scipy/cusparse connected component libraries could do for our purposes (but not support of differentiation)
-  - see https://github.com/dfm/extending-jax and take inspiration from https://github.com/arpastrana/jax_fdm/blob/main/src/jax_fdm/equilibrium/sparse.py
+- [ ] Differentiable connected component algorithm (see [here](https://github.com/jax-ml/jax/issues/24737))
+  - An external call to scipy/cusparse connected component libraries could do for our purposes (but not support of differentiation)
+  - see [jax doc](https://github.com/dfm/extending-jax), [doc on pure callbacks](https://jax.readthedocs.io/en/latest/external-callbacks.html) a cool concrete example [here](https://github.com/arpastrana/jax_fdm/blob/main/src/jax_fdm/equilibrium/sparse.py)
 
 ### Benchmark
 - [x] scaling with number of nodes, CPU/GPU
