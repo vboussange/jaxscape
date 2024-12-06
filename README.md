@@ -1,4 +1,5 @@
-<!-- <h1 align='center'>JAXScape</h1> -->
+[![tests](https://github.com/vboussange/jaxscape/actions/workflows/run_tests.yml/badge.svg)](https://github.com/vboussange/jaxscape/actions/workflows/run_tests.yml)
+
 <div align="center">
   <img src="examples/logo.png" alt="JAXScape Logo" width="500">
 </div>
@@ -6,8 +7,6 @@
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/jaxscape.svg)](https://pypi.org/project/jaxscape) -->
 
 ---
-
-[![tests](https://github.com/vboussange/jaxscape/actions/workflows/run_tests.yml/badge.svg)](https://github.com/vboussange/jaxscape/actions/workflows/run_tests.yml)
 
 JAXScape is a minimal JAX library for connectivity analysis at scales. It provide key utilities to build your own connectivity analysis workflow, including
 
