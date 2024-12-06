@@ -11,7 +11,7 @@ class RasterGraph(eqx.Module):
         
     def __init__(self, gridgraph, x_coords, y_coords):
         """
-        An explicit grid graph with `lat` `lon` accessors.
+        An ExplicitGridGraph with `lat` `lon` accessors.
         """
         # assert int(activities.sum()) == proximity.shape[0], "The number of nodes in the graph defined by `proximity` should correspond to the number of active vertices defined in `activities`"
         assert len(x_coords) == gridgraph.width
@@ -47,19 +47,3 @@ class RasterGraph(eqx.Module):
         """
         i, j = self.index(lon, lat)
         return self.iloc(i, j)
-
-    # def __getitem__(self, indices):
-    #     """
-    #     Allows access with rast[i, j] syntax.
-    #     """
-    #     if isinstance(indices, tuple) and len(indices) == 2:
-    #         i, j = indices
-    #         return self.iloc(i, j)
-    #     else:
-    #         raise ValueError("Invalid index format. Use rast[i, j] for index-based access.")
-        
-    def get_distance(self, loc1):
-        "Returns a distance matrix between all locations specified in `loc1`."
-        i1, j1 = self.index(*loc1)
-        v1s = self.gridgraph.coord_to_active_vertex_index(i1, j1) # todo: to check
-        return self.gridgraph.get_adjacency_matrix()[v1s, :][:, v1s]

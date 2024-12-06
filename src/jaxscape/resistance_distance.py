@@ -1,15 +1,11 @@
 import jax
 import jax.numpy as jnp
 from jax.numpy.linalg import pinv
-from jax.experimental import sparse
-from jax import jit
+from jax.experimental.sparse import BCOO
 from jaxscape.distance import AbstractDistance
-from typing import Union
 import equinox as eqx
-from typing import Callable, Union
-from jaxscape.utils import bcoo_diag, mapnz
 import lineax as lx
-from jax import vmap
+from jaxscape.utils import graph_laplacian
 
 class ResistanceDistance(AbstractDistance):        
     @eqx.filter_jit
@@ -17,21 +13,14 @@ class ResistanceDistance(AbstractDistance):
         A = grid.get_adjacency_matrix()
         # A = mapnz(A, lambda x: 1/x)
         if landmarks is None:
-            return _full_resistance_distance(A)
+            return resistance_distance(A)
         else:
-            landmark_indices = grid.coord_to_active_vertex_index(landmarks[:, 0], landmarks[:, 1])
-            return _landmark_resistance_distance(A, landmark_indices)
-
-def graph_laplacian(A):
-    """
-    Computes the graph Laplacian given an adjacency matrix A.
-    """
-    D = bcoo_diag(A.sum(axis=1).todense())  # Degree matrix
-    L = D - A  # Laplacian matrix
-    return L
+            raise NotImplementedError
+            # landmark_indices = grid.coord_to_active_vertex_index(landmarks[:, 0], landmarks[:, 1])
+            # return _landmark_resistance_distance(A, landmark_indices)
 
 @eqx.filter_jit
-def _full_resistance_distance(A):
+def resistance_distance(A: BCOO):
     # see implementation here: https://networkx.org/documentation/stable/_modules/networkx/algorithms/distance_measures.html#resistance_distance
     """
     Computes the resistance distance matrix.
@@ -51,38 +40,19 @@ def _full_resistance_distance(A):
     return R
 
 @eqx.filter_jit
-def _landmark_resistance_distance(A, landmark_indices):
+def calculate_voltage(A, currents, solver=lx.SVD()):
     """
-    Computes the resistance distances between all nodes and a set of landmark nodes.
+    Computes the voltage given adjacency matrix and currents.
 
-    Args:
-        A: Adjacency matrix (sparse BCOO).
-        landmarks: Indices of landmarks (array-like).
-
-    Returns:
-        Resistance distance matrix of shape (n_nodes, n_landmarks).
-    TODO: to be implemented. To avoid calculating full pseudo inverse of laplacian, 
-    you need to find a way to approximate its diaonal terms. This can be done with 
+    TODO: to be implemented.
     """
-    L = graph_laplacian(A)
-    n_nodes = L.shape[0]
-    n_landmarks = len(landmark_indices)
-
-    # Prepare the RHS matrix for all landmarks
-    indices = jnp.column_stack([landmark_indices,jnp.arange(len(landmark_indices))])
-    B = sparse.BCOO((jnp.ones(indices.shape[0]), indices), shape=(n_nodes, n_landmarks))
-    # Solve L_g V = B
-    V = pinv(L.todense())  # Moore-Penrose pseudoinverse of Laplacian
-
+    raise NotImplementedError
+    # L = graph_laplacian(A)
+    # Lreg = ...
     ## This returns Vjl with l being landmarks, but we also need Vjj
     ## This is tricky to obtain
-    # operator = lx.MatrixLinearOperator(A.todense())
-    # solver = lx.SVD()
+    # operator = lx.MatrixLinearOperator(Lreg)
     # state = solver.init(operator, options={})
-    # def solve_single(b):
-    #     x = lx.linear_solve(operator, b, solver=solver, state=state).value
-    #     return x
-    # V = vmap(solve_single, in_axes=1, out_axes=1)(B.todense())
-    # complete to calculate R, which must be a n_nodes x n_landmarks
-    
-    # return R
+    # you may want to store state for future use
+    # x = lx.linear_solve(operator, currents, solver=solver, state=state).value
+    # x

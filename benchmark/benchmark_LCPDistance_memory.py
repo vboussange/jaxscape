@@ -5,7 +5,7 @@ different implementations of the ECH using LCP distance
 import jax
 from jax import lax
 import jax.numpy as jnp
-from jaxscape.lcp_distance import _bellman_ford
+from jaxscape.lcp_distance import bellman_ford
 from jaxscape.gridgraph import GridGraph
 import matplotlib.pyplot as plt
 from pathlib import Path
@@ -34,7 +34,7 @@ def calculate_ech_scan(habitat_permability, activities, nb_active):
     
     @equinox.filter_checkpoint
     def body_fun(ech, source):
-        dist = _bellman_ford(A, source)
+        dist = bellman_ford(A, source)
         return ech + dist.sum(), None
 
     ech, _ = lax.scan(body_fun, ech, jnp.arange(nb_active))
@@ -66,7 +66,7 @@ plt.imshow(sensitivity)
     
 #     @equinox.filter_checkpoint
 #     def compute_dist(source):
-#         dist = _bellman_ford(A, source)
+#         dist = bellman_ford(A, source)
 #         return dist.sum()
 
 #     distances = jax.vmap(compute_dist)(sources)
@@ -95,7 +95,7 @@ plt.imshow(sensitivity)
     
 #     A = grid.get_adjacency_matrix()
     
-#     dist = _bellman_ford(A, source)
+#     dist = bellman_ford(A, source)
 #     return dist.sum()
 
 # calculate_d_ech_dp_source = equinox.filter_jit(equinox.filter_grad(calculate_ech_source)) # sensitivity to permeability

@@ -1,15 +1,13 @@
 import jax
-import pytest
-import networkx as nx
 from jax import grad, jit
 import jax.numpy as jnp
-from jaxscape.lcp_distance import floyd_warshall, bellman_ford, LCPDistance
+from jaxscape.lcp_distance import floyd_warshall, bellman_ford, bellman_ford_multi_sources, LCPDistance
 from jaxscape.gridgraph import GridGraph, ExplicitGridGraph
 import scipy.sparse.csgraph as sp
 import jax.random as jr
-from jaxscape.utils import mapnz
 from scipy.sparse.csgraph import bellman_ford as scipy_bellman_ford
 from scipy.sparse import csr_matrix
+from jax.experimental.sparse import BCOO
 
 def test_floyd_warshall():
     # direct `floyd_warshall` test
@@ -19,10 +17,12 @@ def test_floyd_warshall():
         [5,     jnp.inf, 0,     1],
         [2,     jnp.inf, jnp.inf, 0]
     ])
+    
+    A = BCOO.fromdense(1 / D)
 
-    shortest_paths_jax = floyd_warshall(D)
+    shortest_paths_jax = floyd_warshall(A)
     shortest_paths_scipy = sp.floyd_warshall(D, directed=True)
-    assert jnp.allclose(shortest_paths_jax, shortest_paths_scipy) # pass 
+    assert jnp.allclose(shortest_paths_jax, shortest_paths_scipy) 
 
 
 def test_bellman_ford():
@@ -33,18 +33,18 @@ def test_bellman_ford():
                 vertex_weights = permeability_raster)
 
     A = grid.get_adjacency_matrix()
-    distances_jax = bellman_ford(A, jnp.array([1]))
+    distances_jax = bellman_ford(A, 1)
 
-    A_scipy = A.todense()
-    distances_scipy = scipy_bellman_ford(A_scipy, indices=1, return_predecessors=False)
+    D = 1 / A.todense()
+    distances_scipy = scipy_bellman_ford(D, indices=1, return_predecessors=False)
 
-    assert jnp.allclose(distances_scipy, distances_jax)
+    assert jnp.allclose(distances_scipy, distances_jax, rtol=1e-5)
     
     # many sources
     sources = jnp.array([0, 5, 10])  # Replace with your landmark nodes
-    distance_mat_jaxscape = bellman_ford(A, sources)
-    distance_mat_scipy = scipy_bellman_ford(A_scipy, indices=sources, return_predecessors=False)
-    assert jnp.allclose(distance_mat_jaxscape, distance_mat_scipy)
+    distance_mat_jaxscape = bellman_ford_multi_sources(A, sources)
+    distance_mat_scipy = scipy_bellman_ford(D, indices=sources, return_predecessors=False)
+    assert jnp.allclose(distance_mat_jaxscape, distance_mat_scipy, rtol=1e-5)
     
 def test_bellman_ford_floyd_warshall_differentiability():
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
@@ -56,7 +56,7 @@ def test_bellman_ford_floyd_warshall_differentiability():
                     vertex_weights = permeability_raster,
                     nb_active = permeability_raster.size)
         A = grid.get_adjacency_matrix()
-        distances_jax = bellman_ford(A, jnp.arange(permeability_raster.size))
+        distances_jax = bellman_ford_multi_sources(A, jnp.arange(permeability_raster.size))
         return jnp.sum(distances_jax)
     
     grad_sum_bellman_ford = jit(grad(sum_bellman_ford))
@@ -67,9 +67,7 @@ def test_bellman_ford_floyd_warshall_differentiability():
                     vertex_weights = permeability_raster,
                     nb_active = permeability_raster.size)
         A = grid.get_adjacency_matrix()
-        D = A.todense()
-        D = jnp.where(D == 0, jnp.inf, D)
-        distances_jax = floyd_warshall(D)
+        distances_jax = floyd_warshall(A)
         return jnp.sum(distances_jax)
     
 
@@ -91,7 +89,7 @@ def test_LCPDistance_landmarks_sparse():
     distance = LCPDistance()
     
     landmarks = jnp.array([1, 3, 5])
-    D = csr_matrix(grid.get_adjacency_matrix().todense())
+    D = 1 / grid.get_adjacency_matrix().todense()
     lcp_scipy_landmarks = sp.floyd_warshall(D, directed=True)[landmarks, :]
     lcp_jax_landmarks = distance(grid, landmarks=landmarks)
     assert jnp.allclose(lcp_scipy_landmarks, lcp_jax_landmarks, rtol=1e-2)

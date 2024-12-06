@@ -2,13 +2,12 @@ import jax
 import jax.numpy as jnp
 from jax.scipy.linalg import inv
 from jax.experimental import sparse
-from jax import jit
 from jaxscape.utils import well_adapted_movement
 from jaxscape.distance import AbstractDistance
 from jaxscape.utils import mapnz
 from typing import Callable, Union
-from jax import jit
 import equinox as eqx
+from jax.experimental.sparse import BCOO
 # here the _cost function poses a problem
 # you should debug this with https://docs.kidger.site/equinox/all-of-equinox/
 # another option would be to NOT subclass GridGraph as eqx.Module
@@ -46,8 +45,8 @@ def fundamental_matrix(W):
     L = sparse.eye(W.shape[0], dtype=W.dtype, index_dtype=W.indices.dtype) - W
     return inv(L.todense())
 
-@jit
-def rsp_distance(theta, A, C):
+@eqx.filter_jit
+def rsp_distance(theta: float, A: BCOO, C: BCOO):
     row_sum = A.sum(1).todense()[:, None]
     Prw = A / row_sum  # random walk probability
     W = Prw * jnp.exp(-theta * C.todense()) # TODO: to optimze

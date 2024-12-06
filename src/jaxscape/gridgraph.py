@@ -35,7 +35,10 @@ class GridGraph(eqx.Module):
                  vertex_weights,
                  nb_active=None):
         """
-        Initializes the GridGraph object.
+        Initializes a GridGraph object.
+        `activities` is a boolean array of shape (height, width) indicating which vertices should be included in the graph.
+        `vertex_weights` is a 2D array of shape (height, width) containing the weights of each vertex.
+        `nb_active` is the number of active vertices in the graph, and should be defined in a jit context.
         """
         assert activities.shape == vertex_weights.shape
         assert activities.dtype == "bool"
@@ -128,11 +131,15 @@ class GridGraph(eqx.Module):
         canvas = canvas.at[vertices_coord[:,0], vertices_coord[:,1]].set(values)
         return canvas
     
-    # @jit
+    @eqx.filter_jit
     def get_adjacency_matrix(self, fun = lambda x, y: y, neighbors=ROOK_CONTIGUITY):
         """
-        Create a differentiable adjacency matrix based on the vertices and
-        contiguity pattern of gridgraph.
+        Create an adjacency matrix from the vertices weights of the `GridGraph`
+        object. `fun` is a function applied to define the edge weigh based the
+        source and target vertex weights. It takes two arrays and returns an
+        array of the same size. Defaults to assigning the target vertex weight.
+        `neighbors` defines the contiguity pattern, and can be either
+        `ROOK_CONTIGUITY` or `QUEEN_CONTIGUITY`.
         """
         # Get shape of raster
         activities = self.activities

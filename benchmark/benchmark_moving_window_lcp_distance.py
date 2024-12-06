@@ -9,7 +9,7 @@ from pathlib import Path
 from jaxscape.moving_window import WindowOperation
 import jax.random as jr
 from jaxscape.gridgraph import GridGraph
-from jaxscape.lcp_distance import _bellman_ford
+from jaxscape.lcp_distance import bellman_ford
 from jaxscape.landmarks import coarse_graining
 import equinox
 from tqdm import tqdm
@@ -33,7 +33,7 @@ def calculate_ech_scan(habitat_permability, landmark_buffer=2):
     ech = jnp.array(0, dtype=habitat_permability.dtype)
     @equinox.filter_checkpoint
     def body_fun(ech, source):
-        dist = _bellman_ford(A, source)
+        dist = bellman_ford(A, source)
         return ech + dist.sum(), None
 
     ech, _ = lax.scan(body_fun, ech, sources)

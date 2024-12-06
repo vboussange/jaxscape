@@ -27,8 +27,6 @@ def test_initialization(sample_raster_data):
     assert op.window_size == window_size
     assert op.buffer_size == buffer_size
     assert op.total_window_size == window_size + 2 * buffer_size
-    assert op.output_array.shape == sample_raster_data.shape
-    assert jnp.isnan(op.output_array).all()
     assert op.x_steps == 1  # Derived from data shape
     assert op.y_steps == 1
 

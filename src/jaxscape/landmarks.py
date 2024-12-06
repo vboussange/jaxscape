@@ -1,8 +1,9 @@
 from jax import numpy as jnp
 from jax import jit
 from jax.experimental.sparse import BCOO
+import equinox as eqx
 
-
+@eqx.filter_jit
 def sum_neighborhood(grid, xy, npix):
     """
     Computes the sum of pixels within an npix x npix neighborhood around each target in xy.
@@ -39,7 +40,7 @@ def sum_neighborhood(grid, xy, npix):
 
 
 
-
+@eqx.filter_jit
 def coarse_graining(grid, buffer_size):
     """
     Creates a coarse-grained matrix of target qualities by aggregating npix pixels

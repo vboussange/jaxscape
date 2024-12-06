@@ -9,7 +9,7 @@ from pathlib import Path
 from jaxscape.moving_window import WindowOperation
 import jax.random as jr
 from jaxscape.gridgraph import GridGraph
-from jaxscape.resistance_distance import _full_resistance_distance
+from jaxscape.resistance_distance import resistance_distance
 from jaxscape.landmarks import coarse_graining
 import equinox
 from tqdm import tqdm
@@ -30,7 +30,7 @@ def calculate_ech_scan(habitat_permability, landmark_buffer=2):
     sources_xy = landmarks.indices
     sources = grid.coord_to_active_vertex_index(sources_xy[:,0], sources_xy[:,1])
     print("Nb. of sources:", len(sources))
-    dist = _full_resistance_distance(A)
+    dist = resistance_distance(A)
     ech = jnp.exp(-dist[:,sources]).sum()
     # todo: modify to use landmarks instead of 1
     return ech

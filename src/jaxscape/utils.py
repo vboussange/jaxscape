@@ -5,7 +5,34 @@ from scipy.sparse import coo_array
 import numpy as np
 from jax.experimental.sparse import BCOO
 
+def graph_laplacian(A):
+    """
+    Computes the graph Laplacian given an adjacency matrix A.
+    """
+    D = bcoo_diag(A.sum(axis=1).todense())  # Degree matrix
+    L = D - A  # Laplacian matrix
+    return L
+
 def mapnz(mat, f):
+    """
+    Apply a function to the non-zero elements of a sparse matrix.
+    Parameters:
+    mat (sparse.BCOO): A sparse matrix in BCOO format.
+    f (callable): A function to apply to the non-zero elements of the matrix.
+    Returns:
+    sparse.BCOO: A new sparse matrix with the function applied to its non-zero elements.
+    Example:
+    >>> import jax.numpy as jnp
+    >>> from jax.experimental import sparse
+    >>> mat = sparse.BCOO.fromdense(jnp.array([[1, 0], [0, 2]]))
+    >>> def square(x):
+    ...     return x ** 2
+    >>> new_mat = mapnz(mat, square)
+    >>> new_mat.todense()
+    DeviceArray([[1, 0],
+                 [0, 4]], dtype=int32)
+    """
+    
     indices, data = mat.indices, mat.data
     mapped_values = jnp.where(data > 0, f(data), 0.)
     return sparse.BCOO((mapped_values, indices), shape=mat.shape)

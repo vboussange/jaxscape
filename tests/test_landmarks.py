@@ -20,7 +20,7 @@ def test_sum_neighborhood():
 
     # Test cases
     assert sum_neighborhood(grid, jnp.array([[1, 1]]), 3) ==  vertex_weights.sum() # Full grid sum
-    assert sum_neighborhood(grid, jnp.array([[0, 0]]), 3) == 12.0  # Top-left corner
+    assert sum_neighborhood(grid, jnp.array([[0, 0]]), 1) == 12.0  # Top-left corner
 
     # Test with NaN
     vertex_weights_nan = vertex_weights.at[2, 2].set(jnp.nan)

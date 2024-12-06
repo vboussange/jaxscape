@@ -13,7 +13,7 @@ import jax.random as jr
 from jax import jit, grad
 from jaxscape.gridgraph import GridGraph
 
-def _bellman_ford(W_data, W_indices, N, source: int):
+def bellman_ford(W_data, W_indices, N, source: int):
     D = jnp.full(N, jnp.inf)
     D = D.at[source].set(0.0)
     
@@ -36,7 +36,7 @@ def test_bellman_ford_differentiability():
     A = grid.get_adjacency_matrix()
     W_indices, W_data = A.indices, A.data
     def sum_bellman_ford(W_data):
-        distances_jax = _bellman_ford(W_data, W_indices, A.shape[0], 0)
+        distances_jax = bellman_ford(W_data, W_indices, A.shape[0], 0)
         return jnp.sum(distances_jax)
     
     grad_sum_bellman_ford = jit(grad(sum_bellman_ford))

@@ -6,7 +6,7 @@ import os
 os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "1"
 from jax import lax
 import jax.numpy as jnp
-from jaxscape.resistance_distance import _full_resistance_distance
+from jaxscape.resistance_distance import resistance_distance
 from jaxscape.gridgraph import GridGraph
 import matplotlib.pyplot as plt
 from pathlib import Path
@@ -32,7 +32,7 @@ def calculate_ech_scan(habitat_permability, activities, nb_active):
                      nb_active=nb_active)
     
     A = grid.get_adjacency_matrix()
-    dist = _full_resistance_distance(A)
+    dist = resistance_distance(A)
     return dist.sum()
 
 calculate_d_ech_dp_scan = equinox.filter_jit(equinox.filter_grad(calculate_ech_scan)) # sensitivity to permeability
