@@ -27,15 +27,6 @@ classifiers = [
 dependencies = ["equinox", "jax", "tqdm", "sciparse", "numpy", "lineax"]
 
 [project.urls]
-Documentation = "https://github.com/Victor Boussange/jaxscape#readme"
-Issues = "https://github.com/Victor Boussange/jaxscape/issues"
-Source = "https://github.com/Victor Boussange/jaxscape"
-
-[project.optional-dependencies]
-tests = [
-  "pytest",
-  "pytest-cov",
-  "networkx",
-  "jax",
-  "numpy",
-]
+Documentation = "https://github.com/vboussange/jaxscape#readme"
+Issues = "https://github.com/vboussange/jaxscape/issues"
+Source = "https://github.com/vboussange/jaxscape"

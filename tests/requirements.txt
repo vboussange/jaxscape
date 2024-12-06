@@ -1,0 +1,5 @@
+pytest
+networkx
+jax
+numpy
+scipy
