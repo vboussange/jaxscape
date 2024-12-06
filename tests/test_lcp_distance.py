@@ -6,7 +6,6 @@ from jaxscape.gridgraph import GridGraph, ExplicitGridGraph
 import scipy.sparse.csgraph as sp
 import jax.random as jr
 from scipy.sparse.csgraph import bellman_ford as scipy_bellman_ford
-from scipy.sparse import csr_matrix
 from jax.experimental.sparse import BCOO
 
 def test_floyd_warshall():
@@ -80,7 +79,7 @@ def test_bellman_ford_floyd_warshall_differentiability():
     
     assert jnp.allclose(sensitivity_bellman_ford, sensitivity_floyd_warshall, rtol=1e-1)
 
-def test_LCPDistance_landmarks_sparse():
+def test_LCPDistance_sources_sparse():
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
     permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
     activities = jnp.ones(permeability_raster.shape, dtype=bool)
@@ -88,11 +87,11 @@ def test_LCPDistance_landmarks_sparse():
                 vertex_weights = permeability_raster)
     distance = LCPDistance()
     
-    landmarks = jnp.array([1, 3, 5])
+    sources = jnp.array([1, 3, 5])
     D = 1 / grid.get_adjacency_matrix().todense()
-    lcp_scipy_landmarks = sp.floyd_warshall(D, directed=True)[landmarks, :]
-    lcp_jax_landmarks = distance(grid, landmarks=landmarks)
-    assert jnp.allclose(lcp_scipy_landmarks, lcp_jax_landmarks, rtol=1e-2)
+    lcp_scipy_sources = sp.floyd_warshall(D, directed=True)[sources, :]
+    lcp_jax_sources = distance(grid, sources=sources)
+    assert jnp.allclose(lcp_scipy_sources, lcp_jax_sources, rtol=1e-2)
 
 
 def test_differentiability_lcp_distance():    
@@ -117,12 +116,12 @@ def test_differentiability_lcp_distance():
     dobj = grad_objective(permeability_raster) # 1.26 ms ± 13.8 μs per loop (mean ± std. dev. of 7 runs, 1,000 loops each)
     assert isinstance(dobj, jax.Array)
     
-    # test with landmarks
-    landmarks = jnp.array([0, 1, 2])
+    # test with sources
+    sources = jnp.array([0, 1, 2])
     def objective(permeability_raster):
         grid = GridGraph(activities=activities,
                         vertex_weights = permeability_raster)
-        dist = distance(grid, landmarks)
+        dist = distance(grid, sources)
 
         return jnp.sum(dist)
         

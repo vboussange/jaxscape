@@ -10,6 +10,7 @@ from scipy.sparse.csgraph import connected_components
 import numpy as np
 import jax.random as jr
 from jax.experimental.sparse import BCOO
+from jaxscape.utils import mapnz
 
 jax.config.update("jax_enable_x64", True)
 
@@ -61,7 +62,9 @@ def test_rsp_distance():
     dtype="float32",
     ))
     theta = jnp.array(1.)
-    rsp_distance(theta, A)
+    C = mapnz(A, lambda x: -jnp.log(x))
+    dist = rsp_distance(theta, A, C)
+    assert isinstance(dist, jax.Array)
     
 # test with true raster
 def test_rsp_distance_matrix():
