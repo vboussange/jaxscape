@@ -1,8 +1,6 @@
 """
-Benchmark the computation time of the equivalent connected habitat (ECH) for different network sizes on CPU vs GPU.
-
-NOTE: Forward pass working, but gradient computation overloads
-TODO: you may want to calculate the gradient only w.r.t non zero edges, which is currently not the case
+Benchmark the computation time of for forward and backward pass of equivalent
+connected habitat (ECH) for different network sizes on CPU vs GPU.
 """
 import jax
 import jax.numpy as jnp

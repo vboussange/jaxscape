@@ -42,10 +42,6 @@ def dense(sp_mat):
         return sp_mat.todense()
     return sp_mat
 
-# cost function
-def well_adapted_movement(A):
-    return mapnz(A, lambda x: -jnp.log(x))
-
 
 def BCOO_to_sparse(A):
     assert isinstance(A, sparse.BCOO)

@@ -2,7 +2,6 @@ import jax
 import jax.numpy as jnp
 from jax.scipy.linalg import inv
 from jax.experimental import sparse
-from jaxscape.utils import well_adapted_movement
 from jaxscape.distance import AbstractDistance
 from jaxscape.utils import mapnz
 from typing import Callable, Union
@@ -16,29 +15,36 @@ class RSPDistance(AbstractDistance):
     theta: jnp.ndarray
     _cost: Union[Callable[jnp.ndarray, jnp.ndarray], jnp.ndarray]
     
-    def __init__(self, theta, cost=well_adapted_movement):
+    def __init__(self, theta, cost=lambda x: -jnp.log(x)):
         """
-        Requires `cost`,
-        which can be either a `jax.experimental.sparse.BCOO` matrix or a
-        function taking an adjacency matrix of type
-        `jax.experimental.sparse.BCOO` and returning a
-        `jax.experimental.sparse.BCOO` cost matrix. `cost` defaults to
-        `well_adapted_movement` function.
+        Randomized shortest path distance. Requires the temperature parameter
+        `theta` and `cost`, which can be either a `jax.experimental.sparse.BCOO`
+        matrix or a function that will be used to map all non zero element of
+        the adjacency matrix to create the cost matrix. `cost` defaults to the
+        well adapted movement cost function `lambda x: -jnp.log(x))`.
         """
         self._cost = cost
         self.theta = theta
         
     def cost_matrix(self, grid):
         if callable(self._cost):
-            return self._cost(grid.get_adjacency_matrix())
+            return mapnz(grid.get_adjacency_matrix(), self._cost)
         else:
             return self._cost
         
+    """
+    Compute the randomized shortest path from all vertices to `targets`, or from all to all vertices if
+    targets is `None`. 
+    """
     @eqx.filter_jit
-    def __call__(self, grid):
+    def __call__(self, grid, targets=None):
         A = grid.get_adjacency_matrix()
         C = self.cost_matrix(grid)
-        return rsp_distance(self.theta, A, C)
+        if targets is None:
+            return rsp_distance(self.theta, A, C)
+        else:
+            # This is a hack to get the resistance distance to targets, but it is not efficient
+            return rsp_distance(self.theta, A, C)[:, targets]
     
 def fundamental_matrix(W):
     # normalised graph laplacian

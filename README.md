@@ -1,11 +1,13 @@
-<h1 align='center'>JAXScape</h1>
-
------
-
+<!-- <h1 align='center'>JAXScape</h1> -->
+<div align="center">
+  <img src="examples/logo.png" alt="JAXScape Logo" width="500">
+</div>
 <!-- [![PyPI - Version](https://img.shields.io/pypi/v/jaxscape.svg)](https://pypi.org/project/jaxscape)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/jaxscape.svg)](https://pypi.org/project/jaxscape) -->
 
-JAXScape is a minimal JAX library for connectivity analysis at scales. In the spirit of PyTorch, Equinox, BlackJAX or Flux, JAXScape aims to provide key utilities to build your own connectivity analysis workflow, including
+---
+
+JAXScape is a minimal JAX library for connectivity analysis at scales. It provide key utilities to build your own connectivity analysis workflow, including
 
 - differentiable raster to graph and graph to raster mappings
 - differentiable graph distance metrics
@@ -14,70 +16,57 @@ JAXScape is a minimal JAX library for connectivity analysis at scales. In the sp
 JAXScape leverages JAX's capabilities to accelerate distance computations on CPUs/GPUs/TPUs, while ensuring differentiability of all implemented classes and methods for awesome sensitivity analysis and optimization.
 
 
-## Features 🚀
+## Features and roadmap 🚀
 ### Raster to graphs
 - [x] `GridGraph` with differentiable adjacency matrix method
-  - [x] edge assigned target pixel value
-  - [ ] add option to calculate edge as weighted mean of source and target values 🏃‍♀️
 
 ### Distances
-- Euclidean distance
+<!-- - Euclidean distance
   - [x] all-to-all calculation
   - [ ] all-to-few calculation
-  - [ ] one-to-one calculation
-- Randomized shortest path distance ([REF](https://arxiv.org/pdf/1212.1666))
-  - [x] all-to-all calculation (distance matrix materialization)
-  - [ ] all-to-few calculation 🏃‍♀️
-    - Should be based on implementation in ResistanceDistance
-  <!-- - see [ConScape](https://conscape.org/notebooks/nbk_landmarks.html) landmarks and
-  - CircuitScape focal nodes https://docs.circuitscape.org/Circuitscape.jl/latest/usage/ -->
-  - [ ] one-to-one calculation (no distance matrix materialization) 🏃‍♀️
-- Resistance distance (see [CircuitScape.jl](https://github.com/Circuitscape/Circuitscape.jl/blob/master/src/core.jl) implementation)
+  - [ ] one-to-one calculation -->
+
+- **Least-cost path**
+  - [x] Bellman-Ford (one-to-all)
+  - [x] Floyd-Warshall (all-to-all)
+  - [ ] Differentiable Djikstra or A* (see https://github.com/srush/torch-queue/)
+
+- **Resistance distance**
+  - [x] all-to-all calculation with dense solver (`pinv`, resulting in full distance matrix materialization)
+  - [-] advanced mode with direct solvers (laplacian factorization, cannot scale to large landscape)
+    - Must rely on lineax, with specialize solver for sparse systems:
+      - UMFPACK (see implementation [here](https://github.com/arpastrana/jax_fdm/blob/main/src/jax_fdm/equilibrium/sparse.py) where scipy.spsolve is wrapped in JAX and vjp has been implemented - could also work with CHOLMOD) 🏃‍♀️ 
+      - CHOLMOD
+        - see https://docs.circuitscape.org/Circuitscape.jl/latest/ and https://github.com/Circuitscape/Circuitscape.jl/blob/fff12fe43e5af5be00f4056a87460ad07966e432/src/core.jl#L610-L616
+        - and https://github.com/Circuitscape/Circuitscape.jl/blob/fff12fe43e5af5be00f4056a87460ad07966e432/src/core.jl#L487-L491
+      - `jax.experimental.sparse.linalg.spsolve`
+  - [ ] advanced mode with indirect solvers (no laplacian factorization, requires preconditioning)
+      - GMRES/CG with preconditioners for Krylov-based solvers
+      - See [AlgebraicMultigrid.jl](https://github.com/JuliaLinearAlgebra/)  or [PyAMG](https://github.com/pyamg/pyamg)
+      - See lineax issues in https://github.com/patrick-kidger/lineax/issues/116
+- **Randomized shortest path distance** ([REF](https://arxiv.org/pdf/1212.1666))
   - [x] all-to-all calculation (distance matrix materialization)
   - [-] all-to-few calculation
-    - Implementation still uses pseudo inverse
-  - [ ] one-to-one calculation (no distance matrix materialization)
-- Least-cost path (see https://github.com/srush/torch-queue/)
-
-## Core
-  - [x] Dense solvers (`jnp.linalg.solve` (using LU) or `pinv` (using SVD))
-    - you may want to have a regularisation step, see https://github.com/Circuitscape/Circuitscape.jl/blob/fff12fe43e5af5be00f4056a87460ad07966e432/src/core.jl#L152
-  - integration of lineax for choice of solver
-    - This requires a benchmark of lineax solvers against simple `jnp.linalg.inv` currently used, see https://github.com/patrick-kidger/lineax/issues/115
-  - [ ] Dense solver for undirected networks (Cholesky factorization)
-  - Specialized direct solvers
-    - [ ] UMFPACK (see implementation [here](https://github.com/arpastrana/jax_fdm/blob/main/src/jax_fdm/equilibrium/sparse.py) where scipy.spsolve is wrapped in JAX and vjp has been implemented - could also work with CHOLMOD) 🏃‍♀️ 
-    - [ ] CHOLMOD
-      - see https://docs.circuitscape.org/Circuitscape.jl/latest/ and https://github.com/Circuitscape/Circuitscape.jl/blob/fff12fe43e5af5be00f4056a87460ad07966e432/src/core.jl#L610-L616
-      - and https://github.com/Circuitscape/Circuitscape.jl/blob/fff12fe43e5af5be00f4056a87460ad07966e432/src/core.jl#L487-L491
-    - [ ] `jax.experimental.sparse.linalg.spsolve`
-  - Indirect solvers
-    - [ ] GMRES/CG with preconditioners for Krylov-based solvers
-      - See [AlgebraicMultigrid.jl](https://github.com/JuliaLinearAlgebra/)  or [PyAMG](https://github.com/pyamg/pyamg)
-      - You may exlcude this from differentiation! therefore you could directly rely on pyAMG
-      - See lineax issues in https://github.com/patrick-kidger/lineax/issues/116
+    - Should be based on direct or inderict solvers, similarly to ResistanceDistance
+  <!-- - see [ConScape](https://conscape.org/notebooks/nbk_landmarks.html) landmarks and
+  - CircuitScape focal nodes https://docs.circuitscape.org/Circuitscape.jl/latest/usage/ -->
+  - [ ] one-to-one calculation
 
 ### Utilities
-- [x] Moving window generator
-  - Inspiration from Omniscape should be considered, see https://docs.circuitscape.org/Omniscape.jl/stable/
-- [x] Sensitivity calculated with materialized distance matrix
-- [ ] Sensitivity calculated without materialization of distance matrix
-  - But this could not be possible, see https://github.com/patrick-kidger/lineax/issues/8#issuecomment-2218396564
-  - https://github.com/patrick-kidger/lineax/issues/8#issuecomment-2218396564
-    
+- [x] Moving window generator    
 - [ ] Differentiable connected component algorithm (see https://github.com/jax-ml/jax/issues/24737)
-  - but an external call (pure_callback, see https://jax.readthedocs.io/en/latest/external-callbacks.html) to scipy/cusparse connected component libraries could do for our purposes (but not support of differentiation)
-  - see https://github.com/dfm/extending-jax and take inspiration from https://github.com/arpastrana/jax_fdm/blob/main/src/jax_fdm/equilibrium/sparse.py 🏃‍♀️
+  - An external call (pure_callback, see https://jax.readthedocs.io/en/latest/external-callbacks.html) to scipy/cusparse connected component libraries could do for our purposes (but not support of differentiation)
+  - see https://github.com/dfm/extending-jax and take inspiration from https://github.com/arpastrana/jax_fdm/blob/main/src/jax_fdm/equilibrium/sparse.py
 
 ### Benchmark
-- [ ] scaling with number of nodes, CPU/GPU (python based)
+- [x] scaling with number of nodes, CPU/GPU
+- [x] Moving window tests
 - [ ] benchmark against CircuitScape and ConScape (Julia based)
-- [ ] Moving window tests
 
 ## Installation
 
 ```console
-pip install jaxscape
+pip install git+https://github.com/vboussange/jaxscape.git
 ```
 
 ## Documentation
@@ -90,62 +79,86 @@ To build.
 
 ## Quick example
 
-Here we calculate the contribution of each pixel to the functional habitat connectivity of the landscape.
+Let's define our graph. 
 
 ```python
-import jax
 import jax.numpy as jnp
-from jaxscape.rsp_distance import RSPDistance
 from jaxscape.gridgraph import GridGraph
-import matplotlib.pyplot as plt
+import numpy as np
 
-D = 1.0  # dispersal distance
-theta = jnp.array(1.)
-distance = RSPDistance(theta)
+# loading jax array representing permeability
+permeability = jnp.array(np.loadtxt("permeability.csv", delimiter=","))
 
-# Define a habitat suitability raster
-habitat_suitability = jnp.array(
-    [
-        [1, 1, 1, 0, 0, 0, 0, 0],
-        [1, 2, 1, 0, 0, 0, 0, 0],
-        [1, 1, 1, 0, 0, 0, 0, 0],
-        [0, 0, 1, 1, 0, 0, 0, 0],
-        [0, 0, 0, 1, 1, 1, 1, 1],
-        [0, 0, 0, 0, 0, 1, 2, 1],
-        [0, 0, 0, 0, 0, 1, 1, 1],
-    ],
-    dtype="float32",
-)
-plt.imshow(habitat_suitability)
-plt.show()
+# we discard pixels with permeability equal to 0
+activities = permeability > 0
+plt.imshow(permeability, cmap="gray")
+plt.axis("off")
+
+grid = GridGraph(activities=activities, vertex_weights=permeability)
 ```
-<div align="center"><img src="habitat_quality.png" alt="Sensitivities"></div>
+
+
+Let's calculate some distances on the grid graph. We will specifically calculate and project the distance of all pixels to the top left pixel
 
 
 ```python
-activities = habitat_suitability > 0
+from jaxscape.resistance_distance import ResistanceDistance
+from jaxscape.lcp_distance import LCPDistance
+from jaxscape.rsp_distance import RSPDistance
 
-# Equivalent connected habitat calculation.
-# We first need to calculate a distance, 
-# that we transform into an ecological proximity
-def calculate_ech(habitat_quality):
-    grid = GridGraph(activities=activities, vertex_weights=habitat_quality)
-    dist = distance(grid)
-    K = jnp.exp(-dist / D)
-    q = grid.get_active_vertices_weights()
-    ech = jnp.sqrt(q @ (K @ q)) 
-    return ech
+# Calculating distances of all pixels to top left pixel
+source = grid.coord_to_active_vertex_index([0], [0])
 
-# derivative of w.r.t pixel habitat suitability 
-# represents pixel contribution to landscape connectivity
-grad_ech = jax.grad(calculate_ech)
-sensitivities = grad_ech(habitat_suitability)
+distances = {
+    "LCP distance": LCPDistance(),
+    "Resistance distance": ResistanceDistance(),
+    "RSP distance": RSPDistance(theta=0.01, cost=lambda x: 1 / x)
+}
 
-plt.imshow(sensitivities)
+fig, axs = plt.subplots(1, 3, figsize=(10, 4))
+for ax, (title, distance) in zip(axs, distances.items()):
+    dist_to_node = distance(grid, source)
+    cbar = ax.imshow(grid.node_values_to_array(dist_to_node.ravel()), cmap="magma")
+    ax.axis("off")
+    ax.set_title(title)
+    fig.colorbar(cbar, ax=ax, shrink=0.2)
+
+fig.suptitle("Distance to top left pixel")
+plt.tight_layout()
 plt.show()
 ```
-<div align="center"><img src="sensitivities.png" alt="Sensitivities"></div>
+<div align="center"><img src="examples/distances.png" alt="Distances"  width="600"></div>
 
+But what's really cool about jaxscape is that you can autodiff through thoses distances! Here we calculate the gradient of the average path length of the graph w.r.t pixel permeability
+
+```python
+
+# we need to provide the number of active vertices, for jit compilation
+@eqx.filter_jit
+def average_path_length(permeability, activities, nb_active, distance):
+    grid = GridGraph(activities=activities, 
+                     vertex_weights=permeability,
+                     nb_active=nb_active)
+    dist = distance(grid)
+    return dist.sum() / nb_active**2
+
+grad_connectivity = jax.grad(average_path_length)
+nb_active = int(activities.sum())
+
+
+distance = LCPDistance()
+average_path_length(permeability, activities, nb_active, distance)
+
+
+sensitivities = grad_connectivity(permeability, activities, nb_active, distance)
+plt.figure()
+cbar = plt.imshow(sensitivities, cmap = "magma")
+plt.title("Gradient of APL w.r.t pixel's permeability")
+plt.colorbar(cbar)
+```
+<div align="center"><img src="examples/sensitivities.png" alt="Sensitivities"  width="400"></div>
+
+For a more advanced example with windowed sensitivity analysis and dispatch on multiple GPUs, see `benchmark/moving_window_*.py`
 
 ## License
 
@@ -156,8 +169,8 @@ plt.show()
 - Rook contiguity will increase computational complexity
 
 ## Related packages
-- `gdistance`
+- gdistance
 - ConScape
-- circuitscape
+- Circuitscape
 - graphhab
 - conefor

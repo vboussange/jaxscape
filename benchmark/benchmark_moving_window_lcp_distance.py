@@ -48,8 +48,9 @@ if __name__ == "__main__":
     N = 610
     window_size = 100
     buffer_size = 5
-    n_landmarks = 10 # number of lamdmarks for each window, that we place uniformaly across
-    result_path = Path("./results")
+    n_landmarks = 20 # number of lamdmarks for each window, that we place uniformaly across
+    result_path = Path("./results/WindowOperation")
+    result_path.mkdir(parents=True, exist_ok=True)
 
     permeability = make_raster(N)
 
@@ -101,7 +102,7 @@ if __name__ == "__main__":
 
 
     fig, ax = plt.subplots()
-    cbar = ax.imshow(raster, vmax=0.5)
+    cbar = ax.imshow(raster, vmax=1.)
     fig.colorbar(cbar, ax=ax)
     plt.show()
-    fig.savefig(result_path / "benchmark_lcp.png", dpi=400)
+    fig.savefig(result_path / "lcp_moving_window.png", dpi=400)
