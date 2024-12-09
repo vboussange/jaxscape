@@ -1,8 +1,6 @@
 """
-Benchmark the computation time of the equivalent connected habitat (ECH) for different network sizes on CPU vs GPU.
-
-NOTE: Forward pass working, but gradient computation overloads
-TODO: you may want to calculate the gradient only w.r.t non zero edges, which is currently not the case
+Benchmark the computation time of for forward and backward pass of equivalent
+connected habitat (ECH) for different network sizes on CPU vs GPU.
 """
 import jax
 import jax.numpy as jnp
@@ -16,6 +14,7 @@ from pathlib import Path
 import equinox
 import time
 import json
+import equinox as eqx
 
 path_results = Path("results/benchmarks/")
 path_results.mkdir(parents=True, exist_ok=True)
@@ -72,7 +71,6 @@ def plot_benchmark(node_sizes, cpu_times, gpu_times, distance_name):
     ax.set_title(f'Benchmark for {distance_name}')
     return fig, ax
 
-
 def run_benchmark():
     distances = [ResistanceDistance(), 
                  LCPDistance(), 
@@ -105,7 +103,7 @@ def run_benchmark():
         
         
 if __name__ == "__main__":
-    if False:
+    if True:
         results = run_benchmark()
     else:
         with open(path_results / "benchmark_results.json", "r") as f:

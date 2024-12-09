@@ -1,0 +1,6 @@
+pytest
+networkx
+jax
+numpy
+scipy
+pytest-cov

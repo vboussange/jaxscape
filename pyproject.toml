@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "jaxscape"
-version = "0.0.1"
+version = "0.0.2"
 description = ''
 readme = "README.md"
 requires-python = ">=3.8"
@@ -24,18 +24,9 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: CPython",
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
-dependencies = ["equinox", "jax", "tqdm", "sciparse", "numpy"]
+dependencies = ["equinox", "jax", "tqdm", "sciparse", "numpy", "lineax"]
 
 [project.urls]
-Documentation = "https://github.com/Victor Boussange/jaxscape#readme"
-Issues = "https://github.com/Victor Boussange/jaxscape/issues"
-Source = "https://github.com/Victor Boussange/jaxscape"
-
-[project.optional-dependencies]
-tests = [
-  "pytest",
-  "pytest-cov",
-  "networkx",
-  "jax",
-  "numpy"
-]
+Documentation = "https://github.com/vboussange/jaxscape#readme"
+Issues = "https://github.com/vboussange/jaxscape/issues"
+Source = "https://github.com/vboussange/jaxscape"

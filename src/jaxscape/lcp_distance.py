@@ -8,21 +8,23 @@ import equinox
 
 class LCPDistance(AbstractDistance):
     """
-    Compute the shortest path distances in a grid. Currently relies on Bellman-Ford algorithm, with complexity O(V * E * L) where L is the number of landmarks.
+    Compute the shortest path distances from `sources` to all vertices, or
+    from all to all if sources not provided. Currently relies on Bellman-Ford
+    algorithm, with complexity O(V * E * S) where L is the number of sources.
     """
-
-    def __call__(self, grid, landmarks=None):
+    @equinox.filter_jit
+    def __call__(self, grid, sources=None):
         A = grid.get_adjacency_matrix()
-        if landmarks is None:
+        if sources is None:
             # return floyd_warshall(A) # floyd warshall is not differentiable
             return bellman_ford_multi_sources(A, jnp.arange(grid.nb_active))
         else:
-            if landmarks.ndim == 1:
+            if sources.ndim == 1:
                 # already vertex indices
-                return bellman_ford_multi_sources(A, landmarks)
-            elif landmarks.ndim == 2:
+                return bellman_ford_multi_sources(A, sources)
+            elif sources.ndim == 2:
                 landmark_indices = grid.coord_to_active_vertex_index(
-                    landmarks[:, 0], landmarks[:, 1]
+                    sources[:, 0], sources[:, 1]
                 )
                 return bellman_ford_multi_sources(A, landmark_indices)
             else:

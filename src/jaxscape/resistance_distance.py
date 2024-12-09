@@ -7,17 +7,19 @@ import equinox as eqx
 import lineax as lx
 from jaxscape.utils import graph_laplacian
 
-class ResistanceDistance(AbstractDistance):        
+class ResistanceDistance(AbstractDistance):
+    """
+    Compute the resistance distances from all to `targets`, or to all if `targets` is None.
+    """     
     @eqx.filter_jit
-    def __call__(self, grid, landmarks=None):
+    def __call__(self, grid, targets=None):
         A = grid.get_adjacency_matrix()
         # A = mapnz(A, lambda x: 1/x)
-        if landmarks is None:
+        if targets is None:
             return resistance_distance(A)
         else:
-            raise NotImplementedError
-            # landmark_indices = grid.coord_to_active_vertex_index(landmarks[:, 0], landmarks[:, 1])
-            # return _landmark_resistance_distance(A, landmark_indices)
+            # This is a hack to get the resistance distance to targets, but it is not efficient
+            return resistance_distance(A)[:, targets]
 
 @eqx.filter_jit
 def resistance_distance(A: BCOO):

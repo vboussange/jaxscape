@@ -5,12 +5,12 @@ from jax import grad, jit
 from jaxscape.rsp_distance import RSPDistance, rsp_distance
 from jaxscape.gridgraph import GridGraph, ExplicitGridGraph
 from jaxscape.utils import BCOO_to_sparse, get_largest_component_label
-from jaxscape.utils import well_adapted_movement
 from pathlib import Path
 from scipy.sparse.csgraph import connected_components
 import numpy as np
 import jax.random as jr
 from jax.experimental.sparse import BCOO
+from jaxscape.utils import mapnz
 
 jax.config.update("jax_enable_x64", True)
 
@@ -62,8 +62,9 @@ def test_rsp_distance():
     dtype="float32",
     ))
     theta = jnp.array(1.)
-    C = well_adapted_movement(A)
-    rsp_distance(theta, A, C)
+    C = mapnz(A, lambda x: -jnp.log(x))
+    dist = rsp_distance(theta, A, C)
+    assert isinstance(dist, jax.Array)
     
 # test with true raster
 def test_rsp_distance_matrix():

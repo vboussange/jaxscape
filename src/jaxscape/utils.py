@@ -9,7 +9,7 @@ def graph_laplacian(A):
     """
     Computes the graph Laplacian given an adjacency matrix A.
     """
-    D = bcoo_diag(A.sum(axis=1).todense())  # Degree matrix
+    D = bcoo_diag(A.sum(axis=1).todense(), indices_dtype=A.indices.dtype)  # Degree matrix
     L = D - A  # Laplacian matrix
     return L
 
@@ -42,10 +42,6 @@ def dense(sp_mat):
         return sp_mat.todense()
     return sp_mat
 
-# cost function
-def well_adapted_movement(A):
-    return mapnz(A, lambda x: -jnp.log(x))
-
 
 def BCOO_to_sparse(A):
     assert isinstance(A, sparse.BCOO)
@@ -60,7 +56,7 @@ def get_largest_component_label(labels):
     # largest_component_nodes = np.where(labels == largest_component_label)[0]
     return largest_component_label
 
-def bcoo_diag(diagonal):
+def bcoo_diag(diagonal, indices_dtype=jnp.int32):
     """
     Create a sparse diagonal matrix in BCOO format from the given diagonal elements.
 
@@ -77,7 +73,7 @@ def bcoo_diag(diagonal):
         BCOO(float32[3,3], nse=3)
     """
     n = len(diagonal)
-    indices = jnp.column_stack([jnp.arange(n), jnp.arange(n)])
+    indices = jnp.column_stack([jnp.arange(n, dtype=indices_dtype), jnp.arange(n, dtype=indices_dtype)])
     sparse_matrix = BCOO((diagonal, indices), shape=(n, n))
     return sparse_matrix
 

@@ -2,136 +2,136 @@
     "forward_pass_times": {
         "ResistanceDistance": {
             "cpu": [
-                0.007107973098754883,
-                0.010950565338134766,
-                0.030804157257080078,
-                0.0863492488861084,
-                0.307711124420166,
-                0.712458610534668,
-                1.023576259613037,
-                1.6920595169067383
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity
             ],
             "gpu": [
-                0.005016803741455078,
-                0.010536432266235352,
-                0.021610260009765625,
-                0.04131031036376953,
-                0.08190774917602539,
-                0.15239286422729492,
-                0.23308253288269043,
-                0.37216639518737793
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity
             ]
         },
         "LCPDistance": {
             "cpu": [
-                0.16594600677490234,
-                0.44173312187194824,
-                1.580758810043335,
-                6.625680685043335,
-                16.957183599472046,
-                49.72792673110962,
-                84.57451057434082,
-                194.21467423439026
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity
             ],
             "gpu": [
-                0.10270023345947266,
-                0.10488724708557129,
-                0.09761953353881836,
-                0.10771918296813965,
-                0.1656641960144043,
-                0.2745780944824219,
-                0.4595909118652344,
-                0.8631675243377686
-            ]
-        },
-        "RSPDistance": {
-            "cpu": [
-                0.0915536880493164,
-                0.48586130142211914,
-                1.6358180046081543,
-                5.176574945449829,
-                15.215470314025879,
-                37.132941484451294,
-                81.11700391769409,
-                203.40679335594177
-            ],
-            "gpu": [
-                0.003072023391723633,
-                0.0039560794830322266,
-                0.011742353439331055,
-                0.03868818283081055,
-                0.10359048843383789,
-                0.24287629127502441,
-                0.5396533012390137,
-                1.1033997535705566
-            ]
-        }
-    },
-    "backward_pass_times": {
-        "ResistanceDistance": {
-            "cpu": [
-                0.006760835647583008,
-                0.02021312713623047,
-                0.04699110984802246,
-                0.16822123527526855,
-                0.33344197273254395,
-                6.874570608139038,
-                1.3090927600860596,
-                8.007851839065552
-            ],
-            "gpu": [
-                0.004144191741943359,
-                0.009747505187988281,
-                0.0212249755859375,
-                0.041124820709228516,
-                0.0836343765258789,
-                0.14523768424987793,
-                0.2383272647857666,
-                0.38183116912841797
-            ]
-        },
-        "LCPDistance": {
-            "cpu": [
-                0.10263228416442871,
-                1.132577896118164,
-                5.510700225830078,
-                25.186569690704346,
-                73.2385413646698,
-                191.33178663253784,
-                379.80833768844604,
-                809.2391097545624
-            ],
-            "gpu": [
-                0.0056154727935791016,
-                0.014194726943969727,
-                0.035573720932006836,
-                0.10743236541748047,
-                0.30012011528015137,
-                0.774484395980835,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
                 Infinity,
                 Infinity
             ]
         },
         "RSPDistance": {
             "cpu": [
-                0.2159595489501953,
-                1.3188579082489014,
-                5.0515429973602295,
-                17.70380973815918,
-                51.393720626831055,
-                153.90157198905945,
-                273.119154214859,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
                 Infinity
             ],
             "gpu": [
-                0.0039014816284179688,
-                0.006917715072631836,
-                0.02477240562438965,
-                0.06854701042175293,
-                0.20482659339904785,
-                0.6395378112792969,
-                1.4181454181671143,
-                3.2156875133514404
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity
+            ]
+        }
+    },
+    "backward_pass_times": {
+        "ResistanceDistance": {
+            "cpu": [
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity
+            ],
+            "gpu": [
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity
+            ]
+        },
+        "LCPDistance": {
+            "cpu": [
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity
+            ],
+            "gpu": [
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity
+            ]
+        },
+        "RSPDistance": {
+            "cpu": [
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity
+            ],
+            "gpu": [
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity,
+                Infinity
             ]
         }
     },
