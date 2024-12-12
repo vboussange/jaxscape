@@ -83,3 +83,30 @@ class WindowOperation:
                 window = self.extract_window(x_start, y_start, raster)
                 
                 yield x_start, y_start, window
+                
+    def iterate_window_batches(self, raster, batch_size):
+        """Yield batches of buffered windows with a batch dimension."""
+        batch_x_starts = []
+        batch_y_starts = []
+        batch_windows = []
+
+        for i in range(self.x_steps):
+            for j in range(self.y_steps):
+                x_start = i * self.window_size
+                y_start = j * self.window_size
+                window = self.extract_window(x_start, y_start, raster)
+
+                batch_x_starts.append(x_start)
+                batch_y_starts.append(y_start)
+                batch_windows.append(window)
+
+                if len(batch_windows) == batch_size:
+                    window_batch = jnp.stack(batch_windows, axis=0)
+                    yield batch_x_starts, batch_y_starts, window_batch
+                    batch_x_starts = []
+                    batch_y_starts = []
+                    batch_windows = []
+
+        if batch_windows:
+            window_batch = jnp.stack(batch_windows, axis=0)
+            yield batch_x_starts, batch_y_starts, window_batch

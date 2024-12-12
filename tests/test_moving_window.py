@@ -85,3 +85,45 @@ def test_update_raster_from_window():
         raster = window_op.update_raster(x_start, y_start, raster, res)
         
     assert jnp.allclose(raster[1:-1,1:-1], permeability[1:-1,1:-1])
+    
+def test_iterate_window_batches():
+    """Test that iterate_window_batches yields correct batches of windows."""
+    sample_raster_data = jnp.arange(100).reshape((10, 10)).astype(float)
+    
+    # Define window operation parameters
+    window_size = 2
+    buffer_size = 1
+    batch_size = 3
+
+    # Initialize WindowOperation
+    window_op = WindowOperation(
+        shape=sample_raster_data.shape, 
+        window_size=window_size, 
+        buffer_size=buffer_size
+    )
+    
+    # Collect the batches
+    batches = list(window_op.iterate_window_batches(sample_raster_data, batch_size))
+    
+    # Compute expected number of windows and batches
+    x_steps = window_op.x_steps
+    y_steps = window_op.y_steps
+    total_windows = x_steps * y_steps
+    expected_batches = (total_windows + batch_size - 1) // batch_size  # Ceiling division
+
+    assert len(batches) == expected_batches, f"Expected {expected_batches} batches, got {len(batches)}"
+
+    raster = jnp.full_like(sample_raster_data, jnp.nan)
+
+    for batch_x_starts, batch_y_starts, window_batch in batches:
+        batch_length = len(batch_x_starts)
+        assert batch_length == window_batch.shape[0], "Inconsistent batch sizes"
+        
+        for i in range(batch_length):
+            x_start = batch_x_starts[i]
+            y_start = batch_y_starts[i]
+            window = window_batch[i]
+            
+            raster = window_op.update_raster_with_window(x_start, y_start, raster, window)
+
+    assert jnp.allclose(raster[1:-1,1:-1], sample_raster_data[1:-1,1:-1])
