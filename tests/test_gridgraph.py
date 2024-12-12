@@ -88,16 +88,36 @@ def test_node_values_to_raster():
         [40, np.nan, 50]
     ])
     
-    # # Generate expected raster dynamically
-    # expected_raster = jnp.full((grid.height, grid.width), jnp.nan)
-    # active_coords = grid.active_vertex_index_to_coord(jnp.arange(grid.nb_active()))
-    # for coord, value in zip(active_coords, active_values):
-    #     expected_raster = expected_raster.at[tuple(coord)].set(value)
 
     output_raster = grid.node_values_to_array(active_values)
 
     assert jnp.array_equal(jnp.isnan(output_raster), jnp.isnan(expected_raster)), "NaN positions mismatch"
     assert jnp.allclose(output_raster[~jnp.isnan(output_raster)], expected_raster[~jnp.isnan(expected_raster)]), "Values mismatch"
+
+def test_array_to_node_values():
+    activities = jnp.array([
+        [True, False, True],
+        [False, True, False],
+        [True, False, True]
+    ])
+    vertex_weights = jnp.ones_like(activities)
+    grid = GridGraph(activities, vertex_weights)
+
+
+    # Define values for the active nodes
+    expected_values = jnp.array([10, 20, 30, 40, 50])  # Should match the number of active nodes
+
+    # Expected raster output based on the grid configuration and active values
+    array = jnp.array([
+        [10, np.nan, 20],
+        [np.nan, 30, np.nan],
+        [40, np.nan, 50]
+    ])
+    
+
+    values = grid.array_to_node_values(array)
+
+    assert jnp.allclose(expected_values, values), "Values mismatch"
 
 
 # test against networkx

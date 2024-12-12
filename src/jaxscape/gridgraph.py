@@ -105,11 +105,23 @@ class GridGraph(eqx.Module):
         return jnp.column_stack(self.index_to_coord(passive_index))
     
     # @jit
+    def node_values_to_array(self, values):
+        """Reshapes the 1D array values of active vertices to the underlying 2D grid."""
+        canvas = jnp.full((self.height, self.width), jnp.nan)
+        vertices_coord = self.active_vertex_index_to_coord(jnp.arange(self.nb_active))
+        canvas = canvas.at[vertices_coord[:,0], vertices_coord[:,1]].set(values)
+        return canvas
+    
+    def array_to_node_values(self, array):
+        """Reshapes the 1D array values of active vertices to the underlying 2D grid."""
+        active_ij = self.active_vertex_index_to_coord(jnp.arange(self.nb_active))
+        q = array[active_ij[:,0], active_ij[:,1]]
+        return q
+    
+    # @jit
     def get_active_vertices_weights(self):
         """Get a 1D array of active vertices weights."""
-        active_ij = self.active_vertex_index_to_coord(jnp.arange(self.nb_active))
-        q = self.vertex_weights[active_ij[:,0], active_ij[:,1]]
-        return q
+        return self.array_to_node_values(self.vertex_weights)
     
     # @jit
     def coord_to_active_vertex_index(self, i, j):
@@ -122,14 +134,6 @@ class GridGraph(eqx.Module):
         active_map = jnp.zeros_like(self.activities, dtype=int) - 1
         active_map = active_map.at[source_xy_coord[:,0], source_xy_coord[:,1]].set(jnp.arange(num_nodes))  # -1 if not an active vertex
         return active_map[i, j]
-    
-    # @jit
-    def node_values_to_array(self, values):
-        """Reshapes the 1D array values of active vertices to the underlying 2D grid."""
-        canvas = jnp.full((self.height, self.width), jnp.nan)
-        vertices_coord = self.active_vertex_index_to_coord(jnp.arange(self.nb_active))
-        canvas = canvas.at[vertices_coord[:,0], vertices_coord[:,1]].set(values)
-        return canvas
     
     @eqx.filter_jit
     def get_adjacency_matrix(self, fun = lambda x, y: y, neighbors=ROOK_CONTIGUITY):
