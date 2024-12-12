@@ -16,7 +16,7 @@ import equinox
 from tqdm import tqdm
 
 def make_raster(N=1010):
-    key = jr.PRNGKey(0)  # Random seed is explicit in JAX
+    key = jr.PRNGKey(1)  # Random seed is explicit in JAX
     return jr.uniform(key, (N, N), minval=0.1, maxval=0.9, dtype="float32")  # Start with a uniform permeability
 
 def calculate_connectivity(habitat_permability, distance):
@@ -28,7 +28,7 @@ def calculate_connectivity(habitat_permability, distance):
                      vertex_weights=habitat_permability,
                      nb_active=habitat_permability.size)
     # TODO: this is a hacky fix
-    window_center = jnp.array([[habitat_permability.size//2+1, habitat_permability.size//2+1]])
+    window_center = jnp.array([[habitat_permability.shape[0]//2+1, habitat_permability.shape[1]//2+1]])
     dist = distance(grid, window_center)
     connectivity = jnp.sum(jnp.exp(-dist/dist.size/2))
     return connectivity
@@ -43,14 +43,14 @@ def batch_run_calculation(window_op, distance, raster, hab_qual, x_start, y_star
     
     # TODO: replace by a lax.scan loop
     for i, (xx, yy) in enumerate(zip(x_start, y_start)):
-        raster = window_op.update_raster_with_window(xx, yy, raster, res[i, ...])
+        raster = window_op.add_window_to_raster(xx, yy, raster, res[i, ...])
 
     return raster
 
 if __name__ == "__main__":
     N = 100
     window_size = 1
-    buffer_size = 20
+    buffer_size = 10
     result_path = Path("./results/WindowOperation2")
     result_path.mkdir(parents=True, exist_ok=True)
 
@@ -65,7 +65,7 @@ if __name__ == "__main__":
     # TODO: implement batch processing
     batch_size = 10 # for now, we process one window at a time
 
-    raster = jnp.full_like(permeability, jnp.nan)
+    raster = jnp.zeros_like(permeability)
 
     for window in tqdm(window_op.iterate_windows(permeability), desc="Batch progress"):
         x_start, y_start, hab_qual = window
@@ -77,7 +77,7 @@ if __name__ == "__main__":
         raster = batch_run_calculation(window_op, distance, raster, hab_qual, x_start, y_start)
 
     fig, ax = plt.subplots()
-    cbar = ax.imshow(raster, vmax=1.)
+    cbar = ax.imshow(raster, vmax=60)
     fig.colorbar(cbar, ax=ax)
     plt.show()
-    fig.savefig(result_path / "lcp_moving_window.png", dpi=400)
+    # fig.savefig(result_path / "lcp_moving_window.png", dpi=400)

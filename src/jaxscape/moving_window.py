@@ -59,7 +59,15 @@ class WindowOperation:
             y_start:y_start+self.total_window_size
         ].set(raster_window)
 
+    def add_window_to_raster(self, x_start, y_start, raster, raster_window):
+        """Modify `raster` by adding `raster_window`."""
+        assert isinstance(raster, jax.Array)
 
+        # Update the output array within the specified core region
+        return raster.at[
+            x_start:x_start+self.total_window_size, 
+            y_start:y_start+self.total_window_size
+        ].add(raster_window)
     
     @property
     def nb_steps(self):
