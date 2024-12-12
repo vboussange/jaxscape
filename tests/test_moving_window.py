@@ -4,7 +4,7 @@ from jaxscape.moving_window import WindowOperation  # Adjust as necessary for yo
 import jax.random as jr
 import jax
 import timeit
-
+import numpy as np
 @pytest.fixture
 def sample_raster_data():
     """Provides a sample raster data array for testing."""
@@ -36,7 +36,7 @@ def test_initialization(sample_raster_data):
 
 def test_extract_window(window_op, sample_raster_data):
     """Test window extraction with buffering and NaN replacement."""
-    xy = jnp.array([0, 0])
+    xy = np.array([0, 0])
     result = window_op.extract_window(xy, sample_raster_data)
     
     expected = jnp.array([
@@ -176,4 +176,29 @@ def test_eager_iterator():
     for i, (xy, w) in enumerate(window_op.lazy_iterator(permeability)):
         assert jnp.allclose(w, windows[1][i])
         assert jnp.allclose(xy, windows[0][i])
+        
+def test_add_window_to_raster():
+    """Test add_window_to_raster method adds window values correctly."""
+    def make_raster(N=10):
+        key = jr.PRNGKey(0)  # Random seed is explicit in JAX
+        return jr.uniform(key, (N, N), dtype="float32")  # Start with a uniform permeability
 
+    window_size = 2
+    buffer_size = 1
+
+    raster = make_raster()
+    window_op = WindowOperation(shape=raster.shape, 
+                                window_size=window_size, 
+                                buffer_size=buffer_size)
+    
+    xy = np.array([0, 0])
+    window = jnp.ones((window_op.total_window_size, window_op.total_window_size), dtype="float32")
+    
+    updated_raster = window_op.add_window_to_raster(xy, raster, window)
+    
+    expected_raster = raster.at[
+        xy[0]:xy[0] + window_op.total_window_size, 
+        xy[1]:xy[1] + window_op.total_window_size
+    ].add(window)
+    
+    assert jnp.allclose(updated_raster, expected_raster), "add_window_to_raster did not add the window values correctly"

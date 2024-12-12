@@ -1,9 +1,16 @@
 import jax
-from jax import vmap
+from jax import lax, vmap
 import jax.numpy as jnp
-import equinox
+import equinox as eqx
 
-class WindowOperation:
+class WindowOperation(eqx.Module):
+    shape: int = eqx.field(static=True)
+    window_size: int = eqx.field(static=True)
+    buffer_size: int = eqx.field(static=True)
+    total_window_size: int = eqx.field(static=True)
+    x_steps: int = eqx.field(static=True)
+    y_steps: int = eqx.field(static=True)
+
     """Handles window-based operations on raster data."""
     def __init__(self, shape, window_size, buffer_size):
         assert isinstance(shape, tuple)
@@ -62,16 +69,33 @@ class WindowOperation:
             y_start:y_start+self.total_window_size
         ].set(raster_window)
 
+
+    @eqx.filter_jit
     def add_window_to_raster(self, xy, raster, raster_window):
         """Modify `raster` by adding `raster_window`."""
         assert isinstance(raster, jax.Array)
         x_start, y_start = xy
 
-        # Update the output array within the specified core region
-        return raster.at[
-            x_start:x_start+self.total_window_size, 
-            y_start:y_start+self.total_window_size
-        ].add(raster_window)
+        slice_shape = (self.total_window_size, self.total_window_size)
+
+        # Dynamically slice out the region we want to update
+        current_slice = lax.dynamic_slice(
+            raster, 
+            start_indices=(x_start, y_start), 
+            slice_sizes=slice_shape
+        )
+
+        # Add the raster_window to the sliced region
+        updated_slice = current_slice + raster_window
+
+        # Dynamically update the original raster with the updated slice
+        updated_raster = lax.dynamic_update_slice(
+            raster, 
+            updated_slice, 
+            start_indices=(x_start, y_start)
+        )
+
+        return updated_raster
     
     @property
     def nb_steps(self):
@@ -87,8 +111,7 @@ class WindowOperation:
                 window = self.extract_window([x_start, y_start], raster)
                 yield jnp.array([x_start, y_start]), window
 
-    @equinox.filter_jit
-    
+    @eqx.filter_jit
     def eager_iterator(self, matrix):
         """Compute all windows and their coordinates at once.
 
