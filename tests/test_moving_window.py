@@ -2,6 +2,9 @@ import pytest
 import jax.numpy as jnp
 from jaxscape.moving_window import WindowOperation  # Adjust as necessary for your module path
 import jax.random as jr
+import jax
+import timeit
+
 @pytest.fixture
 def sample_raster_data():
     """Provides a sample raster data array for testing."""
@@ -59,6 +62,27 @@ def test_iterate_windows(window_op, sample_raster_data):
     x_start, y_start, _ = windows[0]
     assert x_start == 0
     assert y_start == 0
+    
+# def test_iterate_windows_large():
+#     raster = jnp.ones((500, 500))
+#     window_size = 2
+#     buffer_size = 10
+#     window_op = WindowOperation(shape=raster.shape, 
+#                          window_size=window_size, 
+#                          buffer_size=buffer_size)
+#     it = lambda: jax.block_until_ready(list(window_op.iterate_windows(sample_raster_data)))
+#     it()
+#     time = timeit.repeat(it, number=1, repeat=10)
+    
+    
+#     """Test iterate_windows method yields correct windows."""
+#     windows = list(window_op.iterate_windows(sample_raster_data))
+    
+#     assert len(windows) == 1, "iterate_windows did not yield the expected number of windows"
+    
+#     x_start, y_start, _ = windows[0]
+#     assert x_start == 0
+#     assert y_start == 0
     
 def test_update_raster_from_window():
     """Test update_raster method updates raster correctly."""
