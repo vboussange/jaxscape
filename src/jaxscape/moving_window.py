@@ -30,8 +30,8 @@ class WindowOperation:
         ]
         return window
     
-    def update_raster(self, x_start, y_start, raster, raster_window):
-        """Returns an updated `raster` by replacing its values with that of `raster_window`, positioned at `x_start`, `y_start`."""
+    def update_raster_with_focal_window(self, x_start, y_start, raster, raster_window):
+        """Updates `raster` with the inner core (focal pixels) of `raster_window`."""
         assert isinstance(raster, jax.Array)
 
         # Store results into the core window area of the output array
@@ -47,6 +47,18 @@ class WindowOperation:
         return raster.at[
             x_core_start:x_core_end, y_core_start:y_core_end
         ].set(focal_window)
+        
+    
+    def update_raster_with_window(self, x_start, y_start, raster, raster_window):
+        """Updates `raster` with `raster_window`."""
+        assert isinstance(raster, jax.Array)
+
+        # Update the output array within the specified core region
+        return raster.at[
+            x_start:x_start+self.total_window_size, 
+            y_start:y_start+self.total_window_size
+        ].set(raster_window)
+
 
     
     @property
@@ -54,7 +66,7 @@ class WindowOperation:
         return (self.x_steps) * (self.y_steps)
 
     def iterate_windows(self, raster):
-        """Yield buffered windows for computation, skipping empty areas."""
+        """Yield buffered windows for computations."""
         x_steps = self.x_steps
         y_steps = self.y_steps
         for i in range(x_steps):
