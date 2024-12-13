@@ -84,7 +84,7 @@ def test_iterate_windows(window_op, sample_raster_data):
 #     assert x_start == 0
 #     assert y_start == 0
     
-def test_update_raster_from_window():
+def test_update_raster_with_focal_window():
     """Test update_raster method updates raster correctly. This also tests the lazy_iterator method."""
     def run_calculation(window):
         return window
@@ -177,7 +177,7 @@ def test_eager_iterator():
         assert jnp.allclose(w, windows[1][i])
         assert jnp.allclose(xy, windows[0][i])
         
-def test_add_window_to_raster():
+def test_update_raster_with_window():
     """Test add_window_to_raster method adds window values correctly."""
     def make_raster(N=10):
         key = jr.PRNGKey(0)  # Random seed is explicit in JAX
@@ -194,7 +194,7 @@ def test_add_window_to_raster():
     xy = np.array([0, 0])
     window = jnp.ones((window_op.total_window_size, window_op.total_window_size), dtype="float32")
     
-    updated_raster = window_op.add_window_to_raster(xy, raster, window)
+    updated_raster = window_op.update_raster_with_window(xy, raster, window, fun=jnp.add)
     
     expected_raster = raster.at[
         xy[0]:xy[0] + window_op.total_window_size, 

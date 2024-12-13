@@ -40,25 +40,31 @@ class WindowOperation(eqx.Module):
         ]
         return window
     
-    def update_raster_with_focal_window(self, xy, raster, raster_window):
+    @eqx.filter_jit
+    def update_raster_with_focal_window(self, xy, raster, raster_window, fun=lambda current_raster_focal_window, raster_window_focal_window: raster_window_focal_window):
         """Updates `raster` with the inner core (focal pixels) of `raster_window`."""
         assert isinstance(raster, jax.Array)
         x_start, y_start = xy
         
         x_core_start = x_start + self.buffer_size
-        x_core_end = x_core_start + self.window_size
         y_core_start = y_start + self.buffer_size
-        y_core_end = y_core_start + self.window_size
         
-        focal_window = raster_window[self.buffer_size:self.buffer_size + self.window_size,
-                                self.buffer_size:self.buffer_size + self.window_size]
+        raster_focal_window = lax.dynamic_slice(raster, 
+                                                start_indices=(x_core_start, y_core_start), 
+                                                slice_sizes=(self.window_size, self.window_size))
+        
+        raster_window_focal_window = lax.dynamic_slice(raster_window, 
+                                                        start_indices=(self.buffer_size, self.buffer_size), 
+                                                        slice_sizes=(self.window_size, self.window_size))
+        
+        updated_slice = fun(raster_focal_window, raster_window_focal_window)
+
 
         # Update the output array within the specified core region
-        return raster.at[
-            x_core_start:x_core_end, y_core_start:y_core_end
-        ].set(focal_window)
+        return lax.dynamic_update_slice(raster, 
+                                        updated_slice, 
+                                        start_indices=(x_core_start, y_core_start))
 
-    # TODO: do the same function with focal window
     @eqx.filter_jit
     def update_raster_with_window(self, xy, raster, raster_window, fun=lambda current_raster_slice, raster_window: raster_window):
         """Modify `raster` by adding `raster_window`."""
@@ -77,7 +83,6 @@ class WindowOperation(eqx.Module):
         # use it for update, if needed
         updated_slice = fun(current_slice, raster_window)
 
-        # Dynamically update the original raster with the updated slice
         updated_raster = lax.dynamic_update_slice(
             raster, 
             updated_slice, 

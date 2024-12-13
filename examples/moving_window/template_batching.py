@@ -1,14 +1,13 @@
 """
-Running sensitivity analysis of equivalent connected habitat for euclidean distance.
-This script copies the behavior of omniscape.
+Template for batching moving window operations
 """
 from jax import lax
 import jax.numpy as jnp
 from jaxscape.moving_window import WindowOperation
 import jax.random as jr
-from jaxscape.euclidean_distance import EuclideanDistance
 from tqdm import tqdm
 import equinox as eqx
+import matplotlib.pyplot as plt
 
 def make_raster(N=1010):
     key = jr.PRNGKey(1)
@@ -31,8 +30,7 @@ if __name__ == "__main__":
     batch_size = 20 
     
     permeability = make_raster(N)
-
-    distance = EuclideanDistance()
+    plt.imshow(permeability)
 
     batch_op = WindowOperation(
         shape=permeability.shape, 
@@ -49,9 +47,7 @@ if __name__ == "__main__":
         xy, hab_qual = window_op.eager_iterator(permeability_batch)
         activities = jnp.ones_like(hab_qual, dtype="bool")
         raster_buffer = jnp.zeros_like(permeability_batch)
-        res = batch_run_calculation(window_op, xy, hab_qual, raster_buffer)
+        raster_buffer = batch_run_calculation(window_op, xy, hab_qual, raster_buffer)
         output = batch_op.update_raster_with_window(xy_batch, output, raster_buffer)
     
-    
-    # TODO: fix those tests
     assert jnp.allclose(permeability[1:-1, 1:-1], output[1:-1, 1:-1])
