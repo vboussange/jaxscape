@@ -2,12 +2,8 @@
 Running sensitivity analysis of equivalent connected habitat for euclidean distance.
 This script copies the behavior of omniscape.
 """
-import jax
-import numpy as np
 from jax import lax
 import jax.numpy as jnp
-import matplotlib.pyplot as plt
-from pathlib import Path
 from jaxscape.moving_window import WindowOperation
 import jax.random as jr
 from jaxscape.euclidean_distance import EuclideanDistance
@@ -23,7 +19,7 @@ def batch_run_calculation(window_op, xy, hab_qual, raster_buffer):
     res = hab_qual
     def scan_fn(raster_buffer, x):
         _xy, _rast = x
-        raster_buffer = window_op.add_window_to_raster(_xy, raster_buffer, _rast)
+        raster_buffer = window_op.update_raster_with_window(_xy, raster_buffer, _rast)
         return raster_buffer, None
     raster_buffer, _ = lax.scan(scan_fn, raster_buffer, (xy, res))
     return raster_buffer
@@ -44,7 +40,7 @@ if __name__ == "__main__":
         buffer_size=buffer_size
     )
 
-    raster = jnp.zeros_like(permeability)
+    output = jnp.zeros_like(permeability)
 
     for (xy_batch, permeability_batch) in tqdm(batch_op.lazy_iterator(permeability), desc="Batch progress"):
         window_op = WindowOperation(shape=permeability_batch.shape, 
@@ -54,5 +50,8 @@ if __name__ == "__main__":
         activities = jnp.ones_like(hab_qual, dtype="bool")
         raster_buffer = jnp.zeros_like(permeability_batch)
         res = batch_run_calculation(window_op, xy, hab_qual, raster_buffer)
-        batch_op.add_window_to_raster(xy_batch, raster, res)
+        output = batch_op.update_raster_with_window(xy_batch, output, raster_buffer)
     
+    
+    # TODO: fix those tests
+    assert jnp.allclose(permeability[1:-1, 1:-1], output[1:-1, 1:-1])
