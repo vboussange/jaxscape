@@ -18,9 +18,17 @@ class ResistanceDistance(AbstractDistance):
         if targets is None:
             return resistance_distance(A)
         else:
-            # This is a hack to get the resistance distance to targets, but it is not efficient
-            return resistance_distance(A)[:, targets]
-
+            if targets.ndim == 1:
+                # This is a hack to get the resistance distance to targets, but it is not efficient
+                return resistance_distance(A)[:, targets]
+            elif targets.ndim == 2:
+                landmark_indices = grid.coord_to_active_vertex_index(
+                    targets[:, 0], targets[:, 1]
+                )
+                return resistance_distance(A)[:, landmark_indices]
+            else:
+                raise ValueError("Invalid landmarks dimensions")
+            
 @eqx.filter_jit
 def resistance_distance(A: BCOO):
     # see implementation here: https://networkx.org/documentation/stable/_modules/networkx/algorithms/distance_measures.html#resistance_distance
