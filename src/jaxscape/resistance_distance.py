@@ -12,22 +12,17 @@ class ResistanceDistance(AbstractDistance):
     Compute the resistance distances from all to `targets`, or to all if `targets` is None.
     """     
     @eqx.filter_jit
-    def __call__(self, grid, targets=None):
+    def __call__(self, grid, sources=None, targets=None):
         A = grid.get_adjacency_matrix()
-        # A = mapnz(A, lambda x: 1/x)
-        if targets is None:
-            return resistance_distance(A)
-        else:
-            if targets.ndim == 1:
-                # This is a hack to get the resistance distance to targets, but it is not efficient
-                return resistance_distance(A)[:, targets]
-            elif targets.ndim == 2:
-                landmark_indices = grid.coord_to_active_vertex_index(
-                    targets[:, 0], targets[:, 1]
-                )
-                return resistance_distance(A)[:, landmark_indices]
-            else:
-                raise ValueError("Invalid landmarks dimensions")
+        sources = jnp.arange(grid.nb_active) if sources is None else sources
+        targets = jnp.arange(grid.nb_active) if targets is None else targets
+
+        sources = grid.coord_to_active_vertex_index(sources[:, 0], sources[:, 1]) if sources.ndim == 2 else sources
+        targets = grid.coord_to_active_vertex_index(targets[:, 0], targets[:, 1]) if targets.ndim == 2 else targets
+
+        R = resistance_distance(A)
+        return R[sources, :][:, targets]
+
             
 @eqx.filter_jit
 def resistance_distance(A: BCOO):
