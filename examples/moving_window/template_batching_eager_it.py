@@ -1,5 +1,11 @@
 """
-Template for batching moving window operations
+Template for batching moving window operations. Here the task performed on each
+moving window is small, so that we treat them in batches using `eager_iterator`, 
+where the task performed is vmapped.
+
+We also use `update_raster_with_window` with a full update - we could have instead used a "sum" update.
+
+An alternative would be to use `update_raster_with_focal_window`.
 """
 from jax import lax
 import jax.numpy as jnp
@@ -40,7 +46,7 @@ if __name__ == "__main__":
 
     output = jnp.zeros_like(permeability)
 
-    for (xy_batch, permeability_batch) in tqdm(batch_op.lazy_iterator(permeability), desc="Batch progress"):
+    for (xy_batch, permeability_batch) in tqdm(batch_op.lazy_iterator(permeability), total=batch_op.nb_steps, desc="Batch progress"):
         window_op = WindowOperation(shape=permeability_batch.shape, 
                                     window_size=window_size, 
                                     buffer_size=buffer_size)

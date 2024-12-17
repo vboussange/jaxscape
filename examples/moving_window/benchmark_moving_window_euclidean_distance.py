@@ -69,7 +69,7 @@ if __name__ == "__main__":
     
     output = jnp.zeros_like(permeability) # initialize raster
 
-    for (xy_batch, permeability_batch) in tqdm(batch_op.lazy_iterator(permeability), desc="Batch progress"):
+    for (xy_batch, permeability_batch) in tqdm(batch_op.lazy_iterator(permeability), desc="Batch progress", total=batch_op.nb_steps):
         window_op = WindowOperation(shape=permeability_batch.shape, 
                                     window_size=window_size, 
                                     buffer_size=buffer_size)
