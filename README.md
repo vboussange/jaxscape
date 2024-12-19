@@ -130,6 +130,9 @@ For a more advanced example with windowed sensitivity analysis and dispatch on m
       - `jax.experimental.sparse.linalg.spsolve`
   - [ ] advanced mode with indirect solvers (no laplacian factorization, requires preconditioning)
       - GMRES/CG with preconditioners for Krylov-based solvers
+      - Probably the best approach would be to use a wrapper around `pyamg` and `pyamgx`  (the former does not support batch mode, while the latter does), using `lineax` for adjoint definition and `pure_callback`
+        - The `dlpack` JAX utility could be used to ensure that we have a zero-copy overhead between scipy sparse arrays or cuPy arrays
+        - one could use `.aspreconditioner` together with `lineax.cg`, or use the full amg cycle
       - See [AlgebraicMultigrid.jl](https://github.com/JuliaLinearAlgebra/)  or [PyAMG](https://github.com/pyamg/pyamg)
       - See also [lineax issues](https://github.com/patrick-kidger/lineax/issues/116)
 - **Randomized shortest path distance** ([REF](https://arxiv.org/pdf/1212.1666))

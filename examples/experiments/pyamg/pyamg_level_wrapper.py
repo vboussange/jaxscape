@@ -1,3 +1,8 @@
+"""
+This is an attempt to wrap the pyamg multilevel solver in a JAX-compatible class.
+This is currently failing
+"""
+
 import jax
 import jax.numpy as jnp
 from jax.experimental import sparse as jsparse

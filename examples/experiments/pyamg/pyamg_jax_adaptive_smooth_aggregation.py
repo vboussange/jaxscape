@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 from jax import jit, lax
 from jax.numpy.linalg import pinv
+import lineax as lx
 # This is failing
 # inspired from https://pyamg.readthedocs.io/en/latest/_modules/pyamg/aggregation/adaptive.html#adaptive_sa_solver
 # and https://pyamg.readthedocs.io/en/latest/_modules/pyamg/aggregation/smooth.html#jacobi_prolongation_smoother
@@ -258,6 +259,42 @@ if __name__ == "__main__":
 
     # Apply the preconditioner
     x = mg_preconditioner.apply(b, x0)
+    print("One cycle residual: ", jnp.linalg.norm(b-A*x)) # compute norm of residual vector
+    
+    @jax.jit
+    def lineax_precond_gmres_solve(A, b):
+        in_structure = jax.eval_shape(lambda: b)
+        pc = lambda x: mg_preconditioner.apply(x)
+        preconditioner = lx.FunctionLinearOperator(pc, in_structure, tags=[lx.positive_semidefinite_tag])
+        
+        op = lambda x: A @ x
+        operator = lx.FunctionLinearOperator(op, in_structure)
+        
+        solver = lx.GMRES(atol=1e-5, 
+                        rtol=1e-5,
+                        max_steps=100,
+                        restart=50)
+        x = lx.linear_solve(operator, b, solver=solver, throw=False, options={"preconditioner":preconditioner}).value
+        error = jnp.linalg.norm(b - (A @ x))
 
-    # Print the solution
-    print("Solution x:", x)
+        return x, error
+    
+    x, error = lineax_precond_gmres_solve(A, b)
+    print("error with precond.:", error)
+    
+    @jax.jit
+    def lineax_gmres_solve(A, b):
+        in_structure = jax.eval_shape(lambda: b)
+        op = lambda x: A @ x
+        operator = lx.FunctionLinearOperator(op, in_structure)
+        
+        solver = lx.GMRES(atol=1e-5, 
+                        rtol=1e-5,
+                        max_steps=100,
+                        restart=50)
+        x = lx.linear_solve(operator, b, solver=solver, throw=False).value
+        error = jnp.linalg.norm(b - (A @ x))
+
+        return x, error
+    x, error = lineax_gmres_solve(A, b)
+    print("error without precond.:", error)

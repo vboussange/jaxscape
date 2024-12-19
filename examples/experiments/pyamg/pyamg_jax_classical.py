@@ -2,6 +2,9 @@ import jax
 import jax.numpy as jnp
 from jax import jit, lax
 from jax.numpy.linalg import pinv
+import lineax as lx
+import equinox as eqx
+
 # This runs, but very large error
 # inspired from https://pyamg.readthedocs.io/en/latest/_modules/pyamg/classical/classical.html#ruge_stuben_solver
 @jit
@@ -78,6 +81,7 @@ class MultigridPreconditioner:
 
         return levels
 
+    @eqx.filter_jit
     def apply(self, b, x0=None):
         if x0 is None:
             x = jnp.zeros_like(b)
@@ -136,7 +140,7 @@ class MultigridPreconditioner:
 if __name__ == "__main__":
     
     # Define problem size
-    n = 64
+    n = 10000
 
     # Generate a sample problem (1D Poisson matrix)
     diag = 2.0 * jnp.ones(n)
@@ -151,7 +155,43 @@ if __name__ == "__main__":
     x0 = jnp.zeros_like(b)
 
     # Apply the preconditioner
-    x = mg_preconditioner.apply(b, x0)
-
+    x = mg_preconditioner.apply(b)
     # Print the solution
-    print("residual: ", jnp.linalg.norm(b-A*x)) # compute norm of residual vector
+    print("One cycle residual: ", jnp.linalg.norm(b-A*x)) # compute norm of residual vector
+    
+    @jax.jit
+    def lineax_precond_gmres_solve(A, b):
+        in_structure = jax.eval_shape(lambda: b)
+        pc = lambda x: mg_preconditioner.apply(x)
+        preconditioner = lx.FunctionLinearOperator(pc, in_structure, tags=[lx.positive_semidefinite_tag])
+        
+        op = lambda x: A @ x
+        operator = lx.FunctionLinearOperator(op, in_structure)
+        
+        solver = lx.CG(atol=1e-10, 
+                        rtol=1e-10,
+                        max_steps=30)
+        x = lx.linear_solve(operator, b, solver=solver, throw=False, options={"preconditioner":preconditioner}).value
+        error = jnp.linalg.norm(b - (A @ x))
+
+        return x, error
+    
+    x, error = lineax_precond_gmres_solve(A, b)
+    print("error with precond.:", error)
+    
+    @jax.jit
+    def lineax_gmres_solve(A, b):
+        in_structure = jax.eval_shape(lambda: b)
+        op = lambda x: A @ x
+        operator = lx.FunctionLinearOperator(op, in_structure)
+        
+        solver = lx.GMRES(atol=1e-5, 
+                        rtol=1e-5,
+                        max_steps=100,
+                        restart=50)
+        x = lx.linear_solve(operator, b, solver=solver, throw=False).value
+        error = jnp.linalg.norm(b - (A @ x))
+
+        return x, error
+    x, error = lineax_gmres_solve(A, b)
+    print("error without precond.:", error)
