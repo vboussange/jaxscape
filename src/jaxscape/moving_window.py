@@ -128,8 +128,8 @@ class WindowOperation(eqx.Module):
 
         # Create a grid of (x, y) start points
         ys, xs = jnp.meshgrid(startsy, startsx, indexing='xy')
-        xs_flat = xs.ravel()
-        ys_flat = ys.ravel()
+        xs_flat = xs.ravel() * self.window_size
+        ys_flat = ys.ravel() * self.window_size
         xy = jnp.stack([xs_flat, ys_flat], axis=-1)
 
         # Use vmap to extract each window

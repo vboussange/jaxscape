@@ -162,8 +162,8 @@ def test_eager_iterator():
         key = jr.PRNGKey(0)  # Random seed is explicit in JAX
         return jr.uniform(key, (N, N), dtype="float32")  # Start with a uniform permeability
 
-    window_size = 1
-    buffer_size = 1
+    window_size = 3
+    buffer_size = 2
 
     permeability = make_raster()
     

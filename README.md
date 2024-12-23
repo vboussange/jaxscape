@@ -135,6 +135,7 @@ For a more advanced example with windowed sensitivity analysis and dispatch on m
         - one could use `.aspreconditioner` together with `lineax.cg`, or use the full amg cycle
       - See [AlgebraicMultigrid.jl](https://github.com/JuliaLinearAlgebra/)  or [PyAMG](https://github.com/pyamg/pyamg)
       - See also [lineax issues](https://github.com/patrick-kidger/lineax/issues/116)
+      - See also solvers used in JAX-FEM, [here](https://github.com/deepmodeling/jax-fem/blob/main/jax_fem/solver.py)
 - **Randomized shortest path distance** ([REF](https://arxiv.org/pdf/1212.1666))
   - [x] all-to-all calculation (distance matrix materialization)
   - [-] all-to-few calculation
