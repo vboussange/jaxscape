@@ -1,9 +1,10 @@
 import jax
 import jax.numpy as jnp
 from jax.experimental import sparse
-from scipy.sparse import coo_array
+from scipy.sparse import coo_array, csr_array
 import numpy as np
-from jax.experimental.sparse import BCOO
+from jax.experimental.sparse import BCOO, BCSR
+from equinox import filter_jit
 
 def graph_laplacian(A):
     """
@@ -43,11 +44,20 @@ def dense(sp_mat):
     return sp_mat
 
 
-def BCOO_to_sparse(A):
+def BCOO_to_coo(A):
     assert isinstance(A, sparse.BCOO)
     ij = np.array(A.indices)
     v = np.array(A.data)
     sparse_matrix = coo_array((v, (ij[:,0], ij[:,1])), shape=A.shape)
+    return sparse_matrix
+
+def BCOO_to_csr(A):
+    assert isinstance(A, sparse.BCOO)
+    A_BCSR = BCSR.from_bcoo(A)
+    indices = np.array(A_BCSR.indices)
+    indptr = np.array(A_BCSR.indptr)
+    data = np.array(A_BCSR.data)
+    sparse_matrix = csr_array((data, indices, indptr), shape=A.shape)
     return sparse_matrix
 
 
@@ -76,6 +86,36 @@ def bcoo_diag(diagonal, indices_dtype=jnp.int32):
     indices = jnp.column_stack([jnp.arange(n, dtype=indices_dtype), jnp.arange(n, dtype=indices_dtype)])
     sparse_matrix = BCOO((diagonal, indices), shape=(n, n))
     return sparse_matrix
+
+
+@filter_jit
+def bcoo_tril(mat: BCOO, k: int = 0) -> BCOO:
+    """
+    Return the upper-triangular part of the given 2D BCOO matrix.
+    The result has zeros below the k-th diagonal.
+
+    """
+    rows = mat.indices[:, 0]
+    cols = mat.indices[:, 1]
+    mask = jnp.where(rows >= cols - k, 1.0, 0.0)
+    new_data = mat.data * mask
+    out = BCOO((new_data, mat.indices), shape=mat.shape)
+    return out
+
+@filter_jit
+def bcoo_triu(mat: BCOO, k: int = 0) -> BCOO:
+    """
+    Return the upper-triangular part of the given 2D BCOO matrix.
+    The result has zeros below the k-th diagonal.
+
+    """
+    rows = mat.indices[:, 0]
+    cols = mat.indices[:, 1]
+    mask = jnp.where(rows <= cols - k, 1.0, 0.0)
+    new_data = mat.data * mask
+    out = BCOO((new_data, mat.indices), shape=mat.shape)
+    return out
+
 
 # def prune_matrix(bcoo, vertices):
 #     indices = bcoo.indices

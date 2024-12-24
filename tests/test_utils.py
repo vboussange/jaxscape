@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from jax.experimental.sparse import BCOO
 from jax import random
 import jax.random as jr
-from jaxscape.utils import bcoo_diag
+from jaxscape.utils import bcoo_diag, bcoo_triu, bcoo_tril
 
 def test_bcoo_diag():
         diagonal = jnp.array([1, 2, 3])
@@ -30,6 +30,23 @@ def test_bcoo_diag():
         assert sparse_matrix.nse == 0
         assert jnp.array_equal(sparse_matrix.todense(), jnp.diag(diagonal))
 
+def test_bcoo_tril():
+    # test tril, triu
+    M = jnp.ones((10, 10))
+    Mbcoo = BCOO.fromdense(M)
+    
+    Mbcoo_triu = bcoo_triu(Mbcoo, 1).todense()
+    Mtriu = jnp.triu(M, 1)
+    assert jnp.allclose(Mbcoo_triu, Mtriu)
+    
+def test_bcoo_triu():
+    # test tril, triu
+    M = jnp.ones((10, 10))
+    Mbcoo = BCOO.fromdense(M)
+    
+    Mbcoo_triu = bcoo_triu(Mbcoo, 1).todense()
+    Mtriu = jnp.triu(M, 1)
+    assert jnp.allclose(Mbcoo_triu, Mtriu)
 
 # def test_strongly_connected_components():
 #     # Helper function to build a sparse BCOO graph
