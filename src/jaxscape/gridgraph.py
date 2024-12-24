@@ -41,6 +41,7 @@ class GridGraph(eqx.Module):
         `nb_active` is the number of active vertices in the graph, and should be defined in a jit context.
         """
         assert activities.shape == vertex_weights.shape
+        assert activities.ndim == 2, "`activities`, `vertex_weights` should be 2D arrays"
         assert activities.dtype == "bool"
         # assert activities.sum() == nb_active
         self.activities = activities
