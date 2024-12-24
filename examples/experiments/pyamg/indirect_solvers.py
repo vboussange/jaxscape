@@ -168,6 +168,6 @@ benchmark("lineax_gmres_solve", lambda: jax.block_until_ready(lineax_gmres_solve
 benchmark("lineax_bigcstab_solve", lambda: jax.block_until_ready(lineax_bigcstab_solve(A_jax, b_jax)))
 
 """
-Seems like there is a problem of convergence as long as n, n > 200
+Seems like lineax.gmres achieves good performance up until ...
 
 """

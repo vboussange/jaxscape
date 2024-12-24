@@ -53,7 +53,7 @@ def cg_solve(A, B):
 @jax.jit
 def lineax_gmres_solve(A, B):
     # TODO: this fails
-    in_structure = jax.eval_shape(lambda: B)
+    in_structure = jax.eval_shape(lambda: B[:, 0])
 
     jacobi = get_diagonal(A)
     pc = lambda x: x / jacobi
@@ -82,7 +82,7 @@ def lineax_gmres_solve(A, B):
 
 @jax.jit
 def lineax_cg_solve(A, B):
-    in_structure = jax.eval_shape(lambda: B)
+    in_structure = jax.eval_shape(lambda: B[:, 0])
 
     jacobi = get_diagonal(A)
     pc = lambda x: x / jacobi
@@ -136,8 +136,3 @@ if __name__ == "__main__":
     benchmark("lineax_gmres_solve", lambda: jax.block_until_ready(lineax_gmres_solve(A_jax, B_jax))) #TODO: to fix, fails
     benchmark("lineax_cg_solve", lambda: jax.block_until_ready(lineax_cg_solve(A_jax, B_jax))) 
     benchmark("lineax_auto_solve", lambda: jax.block_until_ready(lineax_auto_solve(A_jax, B_jax)))
-
-    """
-    Seems like there is a problem of convergence as long as n, n > 200
-
-    """
