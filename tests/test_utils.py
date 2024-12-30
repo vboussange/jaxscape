@@ -3,7 +3,8 @@ import jax.numpy as jnp
 from jax.experimental.sparse import BCOO
 from jax import random
 import jax.random as jr
-from jaxscape.utils import bcoo_diag, bcoo_triu, bcoo_tril
+from jaxscape.utils import bcoo_diag, bcoo_triu, bcoo_tril, bcoo_at_set
+from jax.experimental.sparse import random_bcoo
 
 def test_bcoo_diag():
         diagonal = jnp.array([1, 2, 3])
@@ -47,6 +48,19 @@ def test_bcoo_triu():
     Mbcoo_triu = bcoo_triu(Mbcoo, 1).todense()
     Mtriu = jnp.triu(M, 1)
     assert jnp.allclose(Mbcoo_triu, Mtriu)
+
+    
+def test_bcoo_at_set():
+    # testing one index
+    orig_mat_sparse = random_bcoo(jr.PRNGKey(0), (5, 5), nse=0.1)
+    mat_sparse = bcoo_at_set(orig_mat_sparse, jnp.array([1]), jnp.array([1]), jnp.array([1.0]))
+    mat_dense = orig_mat_sparse.todense().at[1, 1].set(1.0)
+    assert jnp.allclose(mat_sparse.todense(), mat_dense)
+    
+    # testing multiple indices
+    mat_sparse = bcoo_at_set(orig_mat_sparse, jnp.array([1, 2]), jnp.array([1, 1]), jnp.array([1.0, 42]))
+    mat_dense = orig_mat_sparse.todense().at[[1, 2], [1,1]].set([1., 42])
+    assert jnp.allclose(mat_sparse.todense(), mat_dense)
 
 # def test_strongly_connected_components():
 #     # Helper function to build a sparse BCOO graph

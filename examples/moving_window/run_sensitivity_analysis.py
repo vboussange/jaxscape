@@ -11,7 +11,7 @@ from pathlib import Path
 from scipy.sparse.csgraph import connected_components
 
 from jaxscape.gridgraph import GridGraph, ExplicitGridGraph
-from jaxscape.utils import BCOO_to_sparse, get_largest_component_label
+from jaxscape.utils import BCOO_to_coo, get_largest_component_label
 from jaxscape.moving_window import WindowOperation
 from jaxscape.euclidean_distance import EuclideanDistance
 from jaxscape.rsp_distance import RSPDistance
@@ -29,7 +29,7 @@ def calculate_resolution(raster):
 def get_valid_activities(hab_qual, activities):
     grid = GridGraph(activities, hab_qual)
     A = grid.get_adjacency_matrix()
-    Anp = BCOO_to_sparse(A)
+    Anp = BCOO_to_coo(A)
     _, labels = connected_components(Anp, directed=True, connection="strong")
     label = get_largest_component_label(labels)
     vertex_belongs_to_largest_component_node = labels == label

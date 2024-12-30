@@ -116,6 +116,16 @@ def bcoo_triu(mat: BCOO, k: int = 0) -> BCOO:
     out = BCOO((new_data, mat.indices), shape=mat.shape)
     return out
 
+def bcoo_at_set(mat, row_idx, col_idx, vals):
+    update_indices = jnp.stack([row_idx, col_idx], axis=-1)
+    updates_coo = BCOO((vals, update_indices), shape=mat.shape)
+    mask_vals = jnp.ones_like(vals, dtype=mat.data.dtype)
+    mask_coo = BCOO((mask_vals, update_indices), shape=mat.shape)
+    new_mat = mat - mat * mask_coo + updates_coo
+    # new_mat = new_mat.sum_duplicates()
+    # no need to sum_duplicates, this is done in later operations
+    return new_mat
+
 
 # def prune_matrix(bcoo, vertices):
 #     indices = bcoo.indices

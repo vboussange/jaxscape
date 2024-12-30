@@ -1,6 +1,6 @@
 """
 Wrapping pyamg aspreconditioner with pure_callback and calling with lineax cg
-TODO: problem with bacth mode and iterative solvers
+This cannot be jitted!
 """
 
 import jax
@@ -28,7 +28,7 @@ class AMGPreconditioner(lx.FunctionLinearOperator):
         super().__init__(lambda x: jax.pure_callback(M, out_spec, x), 
                          out_spec, 
                          tags=[lx.positive_semidefinite_tag])
-        
+   
 if __name__ == "__main__":
     
     # Original setup

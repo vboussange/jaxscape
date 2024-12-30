@@ -9,6 +9,10 @@ from jax.experimental import sparse as jsparse
 from pyamg.multilevel import MultilevelSolver
 import lineax as lx
 
+import jax
+import jax.numpy as jnp
+from jax.experimental.sparse import BCOO
+from jaxscape.utils import bcoo_tril, bcoo_triu
 
 class JAXMultilevelSolver():
     def __init__(self, levels):
@@ -19,6 +23,8 @@ class JAXMultilevelSolver():
                 level.P = jsparse.BCOO.from_scipy_sparse(level.P)
             if hasattr(level, 'R'):
                 level.R = jsparse.BCOO.from_scipy_sparse(level.R)
+            level.presmoother = gauss_seidel
+            level.postsmoother = gauss_seidel
         
         self.levels = levels
         self.coarse_operator = lx.MatrixLinearOperator(levels[-1].A.todense())
@@ -113,33 +119,35 @@ class JAXMultilevelSolver():
 
         return x_list[0]
 
-import pyamg
-import numpy as np
-A = pyamg.gallery.poisson((500,500), format='csr')  # 2D Poisson problem on 500x500 grid
-ml = pyamg.ruge_stuben_solver(A)                    # construct the multigrid hierarchy
-b = np.random.rand(A.shape[0])                      # pick a random right hand side
-
-P = ml.aspreconditioner()
-P(b)
-
-b_jax = jnp.array(b)
-ml_jax = JAXMultilevelSolver(ml.levels)
 def gauss_seidel(A, x, b, iterations=1):
     """Perform Gauss-Seidel smoothing."""
-    # TODO: here we should sparsify jnp.tril, jnp.triu and jax.scipy.linalg.solve_triangular
-    A_dense = A.todense()
-    L = jnp.tril(A_dense)
-    U = jnp.triu(A_dense, 1)
+    L = bcoo_tril(A)
+    U = bcoo_triu(A, 1)
     
     for _ in range(iterations):
+        # TODO: problem, solve_triangular does not work with sparse matrices
+        # we may want to wait for Mr X to implement gauss_seidel
         x = jax.scipy.linalg.solve_triangular(L, b - U @ x, lower=True)
     return x
+    
+if __name__ == "__main__":
+    import pyamg
+    import numpy as np
+    A = pyamg.gallery.poisson((20,20), format='csr')  # 2D Poisson problem on 500x500 grid
+    ml = pyamg.ruge_stuben_solver(A)                    # construct the multigrid hierarchy
+    b = np.random.rand(A.shape[0])                      # pick a random right hand side
 
-# Add the custom Gauss-Seidel presmoother to each level
-for level in ml_jax.levels:
-    level.presmoother = gauss_seidel
-    level.postsmoother = gauss_seidel
+    P = ml.aspreconditioner()
+    P(b)
 
-P_jax = ml_jax.aspreconditioner()
-# Test the preconditioner with the custom Gauss-Seidel smoother
-P_jax(b_jax)
+    A_jax = BCOO.from_scipy_sparse(A)
+    b_jax = jnp.array(b)
+    ml_jax = JAXMultilevelSolver(ml.levels)
+    
+    # test gauss seidel
+    gauss_seidel(A_jax, jnp.zeros_like(b), b)
+
+
+    P_jax = ml_jax.aspreconditioner()
+    # Test the preconditioner with the custom Gauss-Seidel smoother
+    P_jax(b_jax)

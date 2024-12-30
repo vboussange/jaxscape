@@ -2,19 +2,19 @@ import jax
 import jax.numpy as jnp
 from jax.numpy.linalg import pinv
 import jax.experimental.sparse as jsp
-from jax.experimental.sparse import BCOO
+from jax.experimental.sparse import BCOO, sparsify
 from jaxscape.distance import AbstractDistance
 import equinox as eqx
 import lineax as lx
 from jaxscape.utils import graph_laplacian
-from linear_solve import SparseMatrixLinearOperator
-from utils import bcoo_diag
+from jaxscape.linear_solve import SparseMatrixLinearOperator
+from jaxscape.utils import bcoo_diag, bcoo_at_set
 
 class ResistanceDistance(AbstractDistance):
     """
     Compute the resistance distances from all to `targets`, or to all if `targets` is None.
     """ 
-    solver: lx.AbstractSolver
+    solver: lx.AbstractLinearSolver
     def __init__(self, solver=None):
         self.solver = solver
         
@@ -66,13 +66,13 @@ def lineax_solver_resistance_distance(A, target, solver):
     assert len(target) == 1
     # maybe check that A is square
     n = A.shape[0]
-    Pc = jnp.sum(A,axis=1)
+    Pc = A.sum(axis=1).todense()
     Pc = Pc.at[target].set(0)
     I = bcoo_diag(jnp.ones(n))
     L=I-A
 
-    L = L.at[target, :].set(0)
-    L = L.at[target, target].set(1)
+    L = bcoo_at_set(L, jnp.repeat(target, n), jnp.arange(n), jnp.zeros(n))
+    L = bcoo_at_set(L, target, target, jnp.array([1]))
     operator = SparseMatrixLinearOperator(L)
     x = lx.linear_solve(operator, 
                         Pc, 
