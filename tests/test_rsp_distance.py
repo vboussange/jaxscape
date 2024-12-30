@@ -4,7 +4,7 @@ import jax.numpy as jnp
 from jax import grad, jit
 from jaxscape.rsp_distance import RSPDistance, rsp_distance
 from jaxscape.gridgraph import GridGraph, ExplicitGridGraph
-from jaxscape.utils import BCOO_to_sparse, get_largest_component_label
+from jaxscape.utils import BCOO_to_coo, get_largest_component_label
 from pathlib import Path
 from scipy.sparse.csgraph import connected_components
 import numpy as np
@@ -80,7 +80,7 @@ def test_rsp_distance_matrix():
     
     # pruning grid graph to have only connected vertices active
     A = grid.get_adjacency_matrix()
-    Anp = BCOO_to_sparse(A)
+    Anp = BCOO_to_coo(A)
     _, labels = connected_components(Anp, directed=True, connection="strong")
     label = get_largest_component_label(labels)
     vertex_belongs_to_largest_component_node = labels == label
