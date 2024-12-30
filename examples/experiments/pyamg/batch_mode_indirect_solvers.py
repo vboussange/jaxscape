@@ -75,7 +75,7 @@ def lineax_gmres_solve(A, B):
                             options={"preconditioner":preconditioner}).value
         return x
     
-    X = jax.vmap(solve_single, in_axes=1, out_axes=1)(B)
+    X = jax.vmap(solve_single, in_axes=1)(B)
     error = jnp.linalg.norm(B - (A @ X))
 
     return X, error
@@ -86,7 +86,9 @@ def lineax_cg_solve(A, B):
 
     jacobi = get_diagonal(A)
     pc = lambda x: x / jacobi
-    preconditioner = lx.FunctionLinearOperator(pc, in_structure, tags=[lx.positive_semidefinite_tag])
+    # currently not working
+    preconditioner = lx.FunctionLinearOperator(pc, in_structure, tags=[lx.positive_semidefinite_tag, 
+                                                                       lx.nonsingular_tag])
     
     op = lambda x: A @ x
     operator = lx.FunctionLinearOperator(op, in_structure)
@@ -94,12 +96,13 @@ def lineax_cg_solve(A, B):
     solver = lx.CG(atol=1e-5, 
                       rtol=1e-5,
                       max_steps=maxiter)
-    X = lx.linear_solve(operator, 
-                        B, 
-                        solver=solver, 
-                        throw=False, 
-                        options={"preconditioner":preconditioner}).value
-    
+    def solve_single(b):
+        return lx.linear_solve(operator, 
+                            b, 
+                            solver=solver, 
+                            throw=False, 
+                            options={"preconditioner":preconditioner}).value
+    X = jax.vmap(solve_single, in_axes=1)(B)
     error = jnp.linalg.norm(B - (A @ X))
 
     return X, error
@@ -121,8 +124,8 @@ def lineax_auto_solve(A, B):
 
 if __name__ == "__main__":
 
-    A = pyamg.gallery.poisson((100, 100), format='csr')  # 2D Poisson problem on 500x500 grid
-    L = 10 # landmarks
+    A = pyamg.gallery.poisson((20, 20), format='csr')  # 2D Poisson problem on 500x500 grid
+    L = 1 # landmarks
     B = np.random.rand(A.shape[0], L)                   # pick a random right hand side
 
     A_jax = BCOO.from_scipy_sparse(A)
