@@ -156,8 +156,8 @@ def test_adjacency_matrix():
 def test_adjacency_matrix_custom_fun():
     permeability_raster = jnp.ones((2,3))
     activities = jnp.ones(permeability_raster.shape, dtype=bool)
-    grid = GridGraph(activities, permeability_raster)
-    edge_weights = grid.get_adjacency_matrix(fun=lambda x, y: 4 * (x + y))
+    grid = GridGraph(activities, permeability_raster, fun=lambda x, y: 4 * (x + y))
+    edge_weights = grid.get_adjacency_matrix()
     assert jnp.all(edge_weights.data[edge_weights.data >0] == 8)
     
 

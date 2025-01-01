@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "jaxscape"
-version = "0.0.2"
+version = "0.0.3"
 description = ''
 readme = "README.md"
 requires-python = ">=3.8"

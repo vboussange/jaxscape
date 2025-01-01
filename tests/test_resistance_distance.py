@@ -1,6 +1,6 @@
 import jax
 import jax.numpy as jnp
-from jax import grad, jit
+from equinox import filter_jit, filter_grad
 from jaxscape.resistance_distance import ResistanceDistance, p_inv_resistance_distance, lineax_solver_resistance_distance
 from jaxscape.gridgraph import GridGraph, ExplicitGridGraph
 
@@ -29,7 +29,7 @@ def test_resistance_distance():
                      vertex_weights=permeability_raster)
 
     distance = ResistanceDistance()
-    mat = jit(distance)(grid)
+    mat = filter_jit(distance)(grid)
     assert isinstance(mat, jax.Array)
     
 def test_p_inv_resistance_distance():
@@ -108,7 +108,7 @@ def test_differentiability_rsp_distance_matrix():
         func = landscape.equivalent_connected_habitat()
         return func
     
-    grad_objective = grad(objective)
+    grad_objective = filter_grad(objective)
     # %timeit grad_objective(permeability_raster) # 71.2 ms ± 16.4 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
     dobj = grad_objective(permeability_raster)
     assert isinstance(dobj, jax.Array)
@@ -134,7 +134,7 @@ def test_jit_differentiability_rsp_distance():
         func = landscape.equivalent_connected_habitat()
         return func
         
-    grad_objective = jit(grad(objective))
+    grad_objective = filter_jit(filter_grad(objective))
     # %timeit grad_objective(permeability_raster) # 13 μs ± 4.18 μs per loop (mean ± std. dev. of 7 runs, 1 loop each)
     dobj = grad_objective(permeability_raster)
     assert isinstance(dobj, jax.Array)
@@ -154,5 +154,5 @@ def test_lineax_solver_resistance_distance():
     Rnx = build_nx_resistance_distance_matrix(G)
     Rjaxscape = lineax_solver_resistance_distance(Ajax, target, solver)
     
-    assert jnp.allclose(Rjaxscape, Rnx[:, target])
+    assert jnp.allclose(Rjaxscape, Rnx[:, target].flatten())
     

@@ -28,12 +28,16 @@ QUEEN_CONTIGUITY = jnp.array([
 class GridGraph(eqx.Module):
     activities: jnp.ndarray
     vertex_weights: jnp.ndarray
+    neighbors: jnp.ndarray
+    fun: callable = eqx.field(static=True)
     nb_active: int = eqx.field(static=True)
-    
+
     def __init__(self,
                  activities,
                  vertex_weights,
-                 nb_active=None):
+                 nb_active=None,
+                 fun = lambda x, y: y, 
+                 neighbors=ROOK_CONTIGUITY):
         """
         Initializes a GridGraph object.
         `activities` is a boolean array of shape (height, width) indicating which vertices should be included in the graph.
@@ -50,6 +54,8 @@ class GridGraph(eqx.Module):
             self.nb_active = int(activities.sum())
         else:
             self.nb_active = nb_active
+        self.fun = fun
+        self.neighbors = neighbors
             
     def __repr__(self):
         return f"GridGraph of size {self.height}x{self.width}"
@@ -136,8 +142,9 @@ class GridGraph(eqx.Module):
         active_map = active_map.at[source_xy_coord[:,0], source_xy_coord[:,1]].set(jnp.arange(num_nodes))  # -1 if not an active vertex
         return active_map[i, j]
     
+    # TODO: ideally, `fun` should be stored by `gridgraph` and not passed as an argument
     @eqx.filter_jit
-    def get_adjacency_matrix(self, fun = lambda x, y: y, neighbors=ROOK_CONTIGUITY):
+    def get_adjacency_matrix(self):
         """
         Create an adjacency matrix from the vertices weights of the `GridGraph`
         object. `fun` is a function applied to define the edge weigh based the
@@ -157,9 +164,9 @@ class GridGraph(eqx.Module):
         active_map = jnp.full_like(activities, fill_value=-1, dtype=int)
         active_map = active_map.at[source_xy_coord[:,0], source_xy_coord[:,1]].set(jnp.arange(num_nodes))
 
-        num_neighbors = neighbors.shape[0]
+        num_neighbors = self.neighbors.shape[0]
         # Compute candidate target coordinates
-        candidate_target_xy_coord = source_xy_coord[:, None, :] + neighbors[None, :, :]  # Shape (num_nodes, num_neighbors, 2)
+        candidate_target_xy_coord = source_xy_coord[:, None, :] + self.neighbors[None, :, :]  # Shape (num_nodes, num_neighbors, 2)
 
         # Compute edge validity
         in_bounds = (
@@ -185,7 +192,7 @@ class GridGraph(eqx.Module):
         source_node_indices = jnp.where(edge_validity, source_node_indices, 0)
 
         # Get values (edge weights)
-        values = fun(permeability_raster[source_xy_coord[:, None, 0], source_xy_coord[:, None, 1]],
+        values = self.fun(permeability_raster[source_xy_coord[:, None, 0], source_xy_coord[:, None, 1]],
                      permeability_raster[target_xy_coord[..., 0], target_xy_coord[..., 1]])
         values = jnp.where(edge_validity, values, 0.0)
 
