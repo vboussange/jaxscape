@@ -45,7 +45,7 @@ def test_extract_total_window(window_op, sample_raster_data):
         [9.0, 10.0, 11.0, jnp.nan],
         [13.0, 14.0, 15.0, 16.0]
     ])
-    assert jnp.array_equal(result[~jnp.isnan(result)], expected[~jnp.isnan(expected)]), "extract_window did not extract the correct window with buffering"
+    assert jnp.array_equal(result[~jnp.isnan(result)], expected[~jnp.isnan(expected)]), "extract_total_window did not extract the correct window with buffering"
 
 def test_extract_core_window(window_op, sample_raster_data):
     """Test window extraction with buffering and NaN replacement."""
@@ -56,7 +56,7 @@ def test_extract_core_window(window_op, sample_raster_data):
         [ 6., jnp.nan],
        [10., 11.]
     ])
-    assert jnp.array_equal(result[~jnp.isnan(result)], expected[~jnp.isnan(expected)]), "extract_window did not extract the correct window with buffering"
+    assert jnp.array_equal(result[~jnp.isnan(result)], expected[~jnp.isnan(expected)]), "extract_core_window did not extract the correct window with buffering"
 
 
 def test_nb_steps(window_op):

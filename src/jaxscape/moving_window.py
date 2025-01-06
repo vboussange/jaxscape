@@ -111,7 +111,7 @@ class WindowOperation(eqx.Module):
         for i in range(x_steps):
             for j in range(y_steps):
                 x_start, y_start = i * self.window_size, j * self.window_size
-                window = self.extract_window([x_start, y_start], raster)
+                window = self.extract_total_window([x_start, y_start], raster)
                 yield jnp.array([x_start, y_start]), window
 
     @eqx.filter_jit
