@@ -127,6 +127,27 @@ def bcoo_at_set(mat, row_idx, col_idx, vals):
     return new_mat
 
 
+def padding(raster, buffer_size, window_size):
+    """
+    Pads the given raster array to ensure its dimensions are compatible with the
+    specified window size, i.e. assert (raster.shape[i] - 2 * buffer_size) %
+    window_size == 0
+    """
+    inner_height = raster.shape[0] - 2 * buffer_size
+    inner_width = raster.shape[1] - 2 * buffer_size
+
+    pad_height = (window_size - (inner_height % window_size)) % window_size
+    pad_width = (window_size - (inner_width % window_size)) % window_size
+
+
+    padded_raster = jnp.pad(
+        raster,
+        ((0,pad_height),(0,pad_width)),
+        mode='constant'
+    )
+    return padded_raster
+
+
 # def prune_matrix(bcoo, vertices):
 #     indices = bcoo.indices
 #     valid_indices = jnp.where(indices[:,0])
