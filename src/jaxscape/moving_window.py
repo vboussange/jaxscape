@@ -31,13 +31,31 @@ class WindowOperation(eqx.Module):
     #     """Replace missing data in the array with specified value."""
     #     return jnp.where(jnp.isnan(array), value, array)
 
-    def extract_window(self, xy, raster):
+    def extract_total_window(self, xy, raster):
         """Extract a buffered window from the raster data."""
         x_start, y_start = xy
-        window = raster[
-            x_start:x_start + self.total_window_size,
-            y_start:y_start + self.total_window_size
-        ]
+        
+        slice_shape = (self.total_window_size, self.total_window_size)
+
+        window = lax.dynamic_slice(
+            raster, 
+            start_indices=(x_start, y_start), 
+            slice_sizes=slice_shape
+        )
+        
+        return window
+    
+    def extract_core_window(self, xy, raster):
+        """Extract the core window from the raster data based on `xy` of total window."""
+        x_start, y_start = xy
+        
+        x_core_start = x_start + self.buffer_size
+        y_core_start = y_start + self.buffer_size
+        
+        window = lax.dynamic_slice(raster, 
+                                    start_indices=(x_core_start, y_core_start), 
+                                    slice_sizes=(self.window_size, self.window_size))
+        
         return window
     
     @eqx.filter_jit
@@ -49,9 +67,7 @@ class WindowOperation(eqx.Module):
         x_core_start = x_start + self.buffer_size
         y_core_start = y_start + self.buffer_size
         
-        raster_focal_window = lax.dynamic_slice(raster, 
-                                                start_indices=(x_core_start, y_core_start), 
-                                                slice_sizes=(self.window_size, self.window_size))
+        raster_focal_window = self.extract_core_window(xy, raster)
         
         raster_window_focal_window = lax.dynamic_slice(raster_window, 
                                                         start_indices=(self.buffer_size, self.buffer_size), 
@@ -71,14 +87,7 @@ class WindowOperation(eqx.Module):
         assert isinstance(raster, jax.Array)
         x_start, y_start = xy
 
-        slice_shape = (self.total_window_size, self.total_window_size)
-
-        # Dynamically slice out the region we want to update
-        current_slice = lax.dynamic_slice(
-            raster, 
-            start_indices=(x_start, y_start), 
-            slice_sizes=slice_shape
-        )
+        current_slice = self.extract_total_window(xy, raster)
 
         # use it for update, if needed
         updated_slice = fun(current_slice, raster_window)
@@ -102,7 +111,7 @@ class WindowOperation(eqx.Module):
         for i in range(x_steps):
             for j in range(y_steps):
                 x_start, y_start = i * self.window_size, j * self.window_size
-                window = self.extract_window([x_start, y_start], raster)
+                window = self.extract_total_window([x_start, y_start], raster)
                 yield jnp.array([x_start, y_start]), window
 
     @eqx.filter_jit

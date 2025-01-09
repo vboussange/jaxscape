@@ -64,6 +64,8 @@ def p_inv_resistance_distance(A: BCOO):
 # TODO: to test
 def lineax_solver_resistance_distance(A, target, solver):
     assert len(target) == 1
+    target = target.astype(A.indices.dtype)
+    
     # maybe check that A is square
     n = A.shape[0]
     Pc = A.sum(axis=1).todense()
@@ -71,8 +73,8 @@ def lineax_solver_resistance_distance(A, target, solver):
     I = bcoo_diag(jnp.ones(n))
     L=I-A
 
-    L = bcoo_at_set(L, jnp.repeat(target, n), jnp.arange(n), jnp.zeros(n))
-    L = bcoo_at_set(L, target, target, jnp.array([1]))
+    L = bcoo_at_set(L, jnp.repeat(target, n), jnp.arange(n, dtype=A.indices.dtype), jnp.zeros(n, dtype=A.data.dtype))
+    L = bcoo_at_set(L, target, target, jnp.array(jnp.ones(1, dtype=A.data.dtype)))
     operator = SparseMatrixLinearOperator(L)
     x = lx.linear_solve(operator, 
                         Pc, 
