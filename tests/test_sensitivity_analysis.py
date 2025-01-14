@@ -2,6 +2,7 @@ import jax.numpy as jnp
 from jaxscape.sensitivity_analysis import SensitivityAnalysis, d_quality_vmap, d_permeability_vmap
 from jaxscape.gridgraph import GridGraph
 from jaxscape.euclidean_distance import EuclideanDistance
+from jaxscape.resistance_distance import ResistanceDistance
 from jaxscape.lcp_distance import LCPDistance
 import matplotlib.pyplot as plt
 import jax.random as jr
@@ -78,10 +79,10 @@ def test_sensitivity_analysis():
 # landmarks_vmap = eqx.filter_vmap(landmarks, in_axes=(0, 0, 0, None, None, None))
     
 def test_sensitivity_analysis_coarsening_quality():
-    D = 10
+    D = 20
     quality_raster = jr.uniform(jr.PRNGKey(0), (78, 78))
     distance = LCPDistance()
-    proximity = lambda dist: jnp.exp(-dist / D) * (dist < D)
+    proximity = lambda dist: jnp.exp(-dist) / jnp.sum(jnp.exp(-dist))
     dependency_range=D
 
     
@@ -97,10 +98,10 @@ def test_sensitivity_analysis_coarsening_quality():
                             permeability_raster=quality_raster,
                             distance=distance,
                             proximity=proximity,
-                            coarsening_factor=0.3,
+                            coarsening_factor=0.2,
                             dependency_range=dependency_range,
                             batch_size=10).run(d_quality_vmap)
-    
+    plt.imshow(quality_raster)
     plt.imshow(d_quality_tiled_fine)
     plt.imshow(d_quality_tiled_coarse)
 
@@ -121,7 +122,7 @@ def test_sensitivity_analysis_coarsening_permeability():
     D = 10
     quality_raster = jr.uniform(jr.PRNGKey(0), (78, 78))
     distance = LCPDistance()
-    proximity = lambda dist: jnp.exp(-dist / D) * (dist < D)
+    proximity = lambda dist: jnp.exp(-jnp.abs(dist)) / jnp.sum(jnp.exp(-jnp.abs(dist)))
     dependency_range=D
 
     

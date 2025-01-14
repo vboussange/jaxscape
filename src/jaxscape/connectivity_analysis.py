@@ -12,18 +12,35 @@ def connectivity(quality_raster, permeability_raster, activity, window_op, dista
                         nb_active=activity.size,
                         fun= lambda x, y: (x + y)/2)
         window_center = jnp.array([[activity.shape[0]//2, activity.shape[1]//2]])
-        
         window_center_index = grid.coord_to_active_vertex_index(
                     window_center[:, 0], window_center[:, 1]
                 )
-        q = grid.array_to_node_values(quality_raster)
-        dist = distance(grid, sources=window_center_index).reshape(-1)
+        
+        x_core_window, y_core_window = jnp.meshgrid(jnp.arange(window_op.buffer_size, 
+                                                window_op.window_size+window_op.buffer_size), 
+                                    jnp.arange(window_op.buffer_size, 
+                                                window_op.window_size+window_op.buffer_size))
+        window_core_indices = grid.coord_to_active_vertex_index(
+                    x_core_window, y_core_window
+                )
+
+        dist = distance(grid, sources=window_center_index).flatten()
         K = proximity(dist)
-        # TODO: this is a dirty fix
-        # K = K.at[window_center_index].set(0)
+        # TODO: this is a dirty fix, to remove artifacts from the diagonal
+        K = K.at[window_core_indices].set(0)
+        
         core_window_qual = lax.dynamic_slice(quality_raster, 
                                         start_indices=(window_op.buffer_size, window_op.buffer_size), 
                                         slice_sizes=(window_op.window_size, window_op.window_size))
+        
+        # center = jnp.array([core_window_qual.shape[0] // 2, core_window_qual.shape[1] // 2])
+        # indices = jnp.indices(core_window_qual.shape).transpose(1, 2, 0)
+        # distances = jnp.sqrt(jnp.sum((indices - center) ** 2, axis=-1))
+        # correction_factor = 1 + distances # Adding a small value to avoid division by zero
+        # quality_raster = quality_raster.at[x_core_window, y_core_window].set(quality_raster[x_core_window, y_core_window] * correction_factor)
+        # quality_raster = quality_raster.at[x_core_window, y_core_window].set(0)
+        q = grid.array_to_node_values(quality_raster)
+
         qKqT = jnp.sum(core_window_qual) * (K @ q.T)
         # qKqT = jnp.array(0.)
         return  qKqT
@@ -81,7 +98,8 @@ class ConnectivityAnalysis(WindowedAnalysis):
         for (xy_batch, quality_batch) in tqdm(
             self.batch_op.lazy_iterator(self.quality_raster),
             desc="Batch progress",
-            total=self.batch_op.nb_steps
+            total=self.batch_op.nb_steps,
+            miniters=max(1, self.batch_op.nb_steps // 100)
         ):
             permeability_batch = self.batch_op.extract_total_window(xy_batch, self.permeability_raster)
             _, quality_windows = self.window_op.eager_iterator(quality_batch)

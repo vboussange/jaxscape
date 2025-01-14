@@ -30,7 +30,6 @@ class SensitivityAnalysis(WindowedAnalysis):
             raster_buffer = self.window_op.update_raster_with_window(_xy, raster_buffer, _rast, fun=jnp.add)
             return raster_buffer, None
         
-    @eqx.filter_jit
     def run(self, fun):
         """
         Run the specified function over the given rasters with coarsening and batching.
@@ -50,7 +49,8 @@ class SensitivityAnalysis(WindowedAnalysis):
         for (xy_batch, quality_batch) in tqdm(
             self.batch_op.lazy_iterator(self.quality_raster),
             desc="Batch progress",
-            total=self.batch_op.nb_steps
+            total=self.batch_op.nb_steps,
+            miniters=max(1, self.batch_op.nb_steps // 100)
         ):
             permeability_batch = self.batch_op.extract_total_window(xy_batch, self.permeability_raster)
             xy, quality_windows = self.window_op.eager_iterator(quality_batch)
