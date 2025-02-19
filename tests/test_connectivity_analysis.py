@@ -29,9 +29,9 @@ def test_connectivity_analysis():
                                 permeability_raster=quality_raster,
                                 distance=distance,
                                 proximity=proximity,
-                                coarsening_factor=0.4,
+                                coarsening_factor=0.,
                                 dependency_range=dependency_range,
-                                batch_size=8)
+                                batch_size=16)
     print("Coarsening:", prob.window_op.window_size-1)
     print("Total window size", prob.window_op.total_window_size)
     ech_tiled = prob.run()
@@ -42,14 +42,13 @@ def test_connectivity_analysis():
     # - dependency does seem to change ech_tiled, which is expected (modifies perimeter buffer zone)
 
     # estimation via direct connectivity analysis
-    grid = GridGraph(activities=jnp.ones_like(quality_raster, dtype="bool"),
-                    vertex_weights=quality_raster,
-                    nb_active=quality_raster.size,
-                    fun= lambda x, y: (x + y)/2)
+    grid = GridGraph(vertex_weights=quality_raster, fun= lambda x, y: (x + y)/2)
     q = grid.array_to_node_values(quality_raster)
     dist = distance(grid)
     K = proximity(dist)
+    K = K.at[jnp.diag_indices_from(K)].set(0)
     ech = q @ K @ q.T
     print(ech)
 
     assert jnp.allclose(ech, ech_tiled, rtol=1e-2)
+    # TODO: we do not get an exact match, which should be investigated further

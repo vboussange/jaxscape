@@ -27,10 +27,6 @@ class WindowOperation(eqx.Module):
         self.x_steps = int((shape[0] - 2 * buffer_size) // window_size)
         self.y_steps = int((shape[1] - 2 * buffer_size) // window_size)
 
-    # def replace_missing(self, array, value=jnp.nan):
-    #     """Replace missing data in the array with specified value."""
-    #     return jnp.where(jnp.isnan(array), value, array)
-
     def extract_total_window(self, xy, raster):
         """Extract a buffered window from the raster data."""
         x_start, y_start = xy
@@ -146,30 +142,3 @@ class WindowOperation(eqx.Module):
 
         return xy, windows
              
-    # TODO: this may not be needed when combining both lazy and eager iterators   
-    # def iterate_window_batches(self, raster, batch_size):
-    #     """Yield batches of buffered windows with a batch dimension."""
-    #     batch_x_starts = []
-    #     batch_y_starts = []
-    #     batch_windows = []
-
-    #     for i in range(self.x_steps):
-    #         for j in range(self.y_steps):
-    #             x_start = i * self.window_size
-    #             y_start = j * self.window_size
-    #             window = self.extract_window(x_start, y_start, raster)
-
-    #             batch_x_starts.append(x_start)
-    #             batch_y_starts.append(y_start)
-    #             batch_windows.append(window)
-
-    #             if len(batch_windows) == batch_size:
-    #                 window_batch = jnp.stack(batch_windows, axis=0)
-    #                 yield batch_x_starts, batch_y_starts, window_batch
-    #                 batch_x_starts = []
-    #                 batch_y_starts = []
-    #                 batch_windows = []
-
-    #     if batch_windows:
-    #         window_batch = jnp.stack(batch_windows, axis=0)
-    #         yield batch_x_starts, batch_y_starts, window_batch

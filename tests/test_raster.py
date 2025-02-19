@@ -10,9 +10,7 @@ def sample_rastergraph():
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
     # Define a habitat suitability raster
     habitat_suitability = jr.uniform(key, (10, 10))
-    activities = habitat_suitability > 0
-    grid = GridGraph(activities=activities, 
-                    vertex_weights=habitat_suitability)
+    grid = GridGraph(vertex_weights=habitat_suitability)
     x_coords = jnp.linspace(10, 100, 10)  # Example longitudes
     y_coords = jnp.linspace(-100, -10, 10)    # Example latitudes
     rastergraph = RasterGraph(grid, x_coords=x_coords, y_coords=y_coords)

@@ -8,15 +8,11 @@ import equinox
 
 def test_sum_neighborhood():
     # Grid setup
-    activities = jnp.array([[True, True, True],
-                            [True, True, True],
-                            [True, True, True]])
-
     vertex_weights = jnp.array([[1.0, 2.0, 3.0],
                                 [4.0, 5.0, 6.0],
                                 [7.0, 8.0, 9.0]])
 
-    grid = GridGraph(activities, vertex_weights)
+    grid = GridGraph(vertex_weights)
 
     # Test cases
     assert sum_neighborhood(grid, jnp.array([[1, 1]]), 3) ==  vertex_weights.sum() # Full grid sum
@@ -24,7 +20,7 @@ def test_sum_neighborhood():
 
     # Test with NaN
     vertex_weights_nan = vertex_weights.at[2, 2].set(jnp.nan)
-    grid_nan = GridGraph(activities, vertex_weights_nan)
+    grid_nan = GridGraph(vertex_weights_nan)
     assert sum_neighborhood(grid_nan, jnp.array([[1, 1]]), 3) == pytest.approx(36.0)  # Ignore NaN
 
     # jit test
@@ -36,7 +32,7 @@ def test_coarse_graining():
     N = 20
     vertex_weights = jnp.ones((N, N), dtype=jnp.float32)
     activities = jnp.ones_like(vertex_weights, dtype=bool)
-    grid = GridGraph(activities, vertex_weights)
+    grid = GridGraph(vertex_weights)
     buffer_size = 2
     
     # jit test

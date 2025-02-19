@@ -27,9 +27,7 @@ def test_floyd_warshall():
 def test_bellman_ford():
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
     permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
-    activities = jnp.ones(permeability_raster.shape, dtype=bool)
-    grid = GridGraph(activities=activities,
-                vertex_weights = permeability_raster)
+    grid = GridGraph(vertex_weights = permeability_raster)
 
     A = grid.get_adjacency_matrix()
     distances_jax = bellman_ford(A, 1)
@@ -48,12 +46,9 @@ def test_bellman_ford():
 def test_bellman_ford_floyd_warshall_differentiability():
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
     permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
-    activities = jnp.ones(permeability_raster.shape, dtype=bool)
 
     def sum_bellman_ford(permeability_raster):
-        grid = GridGraph(activities=activities,
-                    vertex_weights = permeability_raster,
-                    nb_active = permeability_raster.size)
+        grid = GridGraph(permeability_raster)
         A = grid.get_adjacency_matrix()
         distances_jax = bellman_ford_multi_sources(A, jnp.arange(permeability_raster.size))
         return jnp.sum(distances_jax)
@@ -62,9 +57,7 @@ def test_bellman_ford_floyd_warshall_differentiability():
     sensitivity_bellman_ford = grad_sum_bellman_ford(permeability_raster)
     
     def sum_floyd_warshall(permeability_raster):
-        grid = GridGraph(activities=activities,
-                    vertex_weights = permeability_raster,
-                    nb_active = permeability_raster.size)
+        grid = GridGraph(vertex_weights = permeability_raster)
         A = grid.get_adjacency_matrix()
         distances_jax = floyd_warshall(A)
         return jnp.sum(distances_jax)
@@ -82,9 +75,7 @@ def test_bellman_ford_floyd_warshall_differentiability():
 def test_LCPDistance_sources_sparse():
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
     permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
-    activities = jnp.ones(permeability_raster.shape, dtype=bool)
-    grid = GridGraph(activities=activities,
-                vertex_weights = permeability_raster)
+    grid = GridGraph(vertex_weights = permeability_raster)
     distance = LCPDistance()
     
     sources = jnp.array([1, 3, 5])
@@ -97,20 +88,12 @@ def test_LCPDistance_sources_sparse():
 def test_differentiability_lcp_distance():    
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
     permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
-    activities = jnp.ones(permeability_raster.shape, dtype=bool)
-    D = 1.
     distance = LCPDistance()
 
     def objective(permeability_raster):
-        grid = GridGraph(activities=activities,
-                        vertex_weights = permeability_raster)
+        grid = GridGraph(vertex_weights = permeability_raster)
         dist = distance(grid)
-        proximity = jnp.exp(-dist / D)
-        landscape = ExplicitGridGraph(activities=activities, 
-                                      vertex_weights = permeability_raster,
-                                      adjacency_matrix = proximity)
-        func = landscape.equivalent_connected_habitat()
-        return func
+        return jnp.sum(dist)
         
     grad_objective = grad(objective)
     dobj = grad_objective(permeability_raster) # 1.26 ms ± 13.8 μs per loop (mean ± std. dev. of 7 runs, 1,000 loops each)
@@ -119,8 +102,7 @@ def test_differentiability_lcp_distance():
     # test with sources
     sources = jnp.array([0, 1, 2])
     def objective(permeability_raster):
-        grid = GridGraph(activities=activities,
-                        vertex_weights = permeability_raster)
+        grid = GridGraph(vertex_weights = permeability_raster)
         dist = distance(grid, sources)
 
         return jnp.sum(dist)

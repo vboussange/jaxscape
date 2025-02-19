@@ -23,31 +23,11 @@ def test_rsp_distance_matrix():
                                         [2.01848,  1.01848, 1.01848, 0.0]
                                     ])
     permeability_raster = jnp.ones((2, 2))
-    activities = jnp.ones(permeability_raster.shape, dtype=bool)
-    grid = GridGraph(activities=activities, 
-                     vertex_weights=permeability_raster)
+    grid = GridGraph(vertex_weights=permeability_raster)
     theta = jnp.array(2.)
     distance = RSPDistance(theta, cost= lambda x: x)
     mat = distance(grid)
     assert jnp.allclose(mat, expected_cost_conscape, atol = 1e-4)
-
-# test with more complex setting with not activation of a node
-def test_rsp_distance_matrix():
-    key = jr.PRNGKey(0)  # Random seed is explicit in JAX
-    permeability_raster = jr.uniform(key, (10, 10))
-    activities = jnp.ones(permeability_raster.shape, dtype=bool)
-    activities = activities.at[0, 0].set(False)
-    grid = GridGraph(activities=activities, 
-                     vertex_weights=permeability_raster)
-    theta = jnp.array(0.01)
-    distance = RSPDistance(theta)
-    cost = distance.cost_matrix(grid)
-    assert cost.sum() > 0
-
-    mat = distance(grid)
-    assert jnp.any(~jnp.isnan(mat))
-    assert isinstance(mat, jax.Array)
-    assert grid.nb_active == 99
     
 def test_rsp_distance():
     A = BCOO.fromdense(jnp.array(
@@ -67,56 +47,36 @@ def test_rsp_distance():
     assert isinstance(dist, jax.Array)
     
 # test with true raster
-def test_rsp_distance_matrix():
+# TODO: this test is broken, as we cannot prune a GridGraph with false `activities`.
+# def test_rsp_distance_matrix():
     
-    raster_path = Path(__file__).parent / "data/habitat_suitability.csv"
-    habitat_suitability = jnp.array(np.loadtxt(raster_path, delimiter=","))
+#     raster_path = Path(__file__).parent / "data/habitat_suitability.csv"
+#     habitat_suitability = jnp.array(np.loadtxt(raster_path, delimiter=","))
 
-    conscape_dist_path = Path(__file__).parent /  "data/conscape_rsp_distance_to_i=19_j=6.csv"
-    expected_cost_conscape = jnp.array(np.loadtxt(conscape_dist_path, delimiter=","))
-    activities = habitat_suitability > 0
-    grid = GridGraph(activities=activities, 
-                     vertex_weights=habitat_suitability)
-    
-    # pruning grid graph to have only connected vertices active
-    A = grid.get_adjacency_matrix()
-    Anp = BCOO_to_coo(A)
-    _, labels = connected_components(Anp, directed=True, connection="strong")
-    label = get_largest_component_label(labels)
-    vertex_belongs_to_largest_component_node = labels == label
-    activities_pruned = grid.node_values_to_array(vertex_belongs_to_largest_component_node)
-    activities_pruned = activities_pruned == True
-    graph_pruned = GridGraph(activities=activities_pruned, 
-                             vertex_weights=habitat_suitability)
-    
-    
-    # calculating distance to vertex 19, 6 in julia coordinates (corresponding to vertex 18, 5 in python coordinate)
-    theta = jnp.array(0.01)
-    distance = RSPDistance(theta)
-    mat = distance(graph_pruned)
-    vertex_index = graph_pruned.coord_to_active_vertex_index(18, 5)
-    expected_cost = graph_pruned.node_values_to_array(mat[:, vertex_index])
+#     conscape_dist_path = Path(__file__).parent /  "data/conscape_rsp_distance_to_i=19_j=6.csv"
+#     expected_cost_conscape = jnp.array(np.loadtxt(conscape_dist_path, delimiter=","))
+#     grid = GridGraph(habitat_suitability)
 
-    assert jnp.allclose(expected_cost[~jnp.isnan(expected_cost)], expected_cost_conscape[~jnp.isnan(expected_cost_conscape)], rtol = 1e-6)
-    assert jnp.allclose(jnp.isnan(expected_cost), jnp.isnan(expected_cost_conscape))    
+    
+#     # calculating distance to vertex 19, 6 in julia coordinates (corresponding to vertex 18, 5 in python coordinate)
+#     theta = jnp.array(0.01)
+#     distance = RSPDistance(theta)
+#     mat = distance(grid)
+#     vertex_index = grid.coord_to_index(18, 5)
+#     expected_cost = grid.node_values_to_array(mat[:, vertex_index])
+
+#     assert jnp.allclose(expected_cost[~jnp.isnan(expected_cost)], expected_cost_conscape[~jnp.isnan(expected_cost_conscape)], rtol = 1e-6)
 
 def test_differentiability_rsp_distance_matrix():
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
     permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
-    activities = jnp.ones(permeability_raster.shape, dtype=bool)
-    D = 1.
     theta = jnp.array(0.01)
     distance = RSPDistance(theta)
 
     def objective(permeability_raster):
-        grid = GridGraph(activities=activities, vertex_weights=permeability_raster)
+        grid = GridGraph(permeability_raster)
         dist = distance(grid)
-        proximity = jnp.exp(-dist / D)
-        landscape = ExplicitGridGraph(activities=activities, 
-                                  vertex_weights=permeability_raster, 
-                                  adjacency_matrix=proximity)
-        func = landscape.equivalent_connected_habitat()
-        return func
+        return jnp.sum(dist)
         
     grad_objective = grad(objective)
     # %timeit grad_objective(permeability_raster) # 71.2 ms ± 16.4 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
@@ -128,24 +88,13 @@ def test_differentiability_rsp_distance_matrix():
 def test_jit_differentiability_rsp_distance():
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
     permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
-    activities = jnp.ones(permeability_raster.shape, dtype=bool)
-    nb_active = int(activities.sum())
-    D = 1.
     theta = jnp.array(0.01)
     distance = RSPDistance(theta=theta)
 
     def objective(permeability_raster):
-        grid = GridGraph(activities=activities,
-                        vertex_weights = permeability_raster,
-                        nb_active=nb_active)
+        grid = GridGraph(permeability_raster)
         dist = distance(grid)
-        proximity = jnp.exp(-dist / D)
-        landscape = ExplicitGridGraph(activities=activities, 
-                            vertex_weights=permeability_raster, 
-                            adjacency_matrix=proximity,
-                            nb_active=nb_active)
-        func = landscape.equivalent_connected_habitat()
-        return func
+        return jnp.sum(dist)
         
     grad_objective = jit(grad(objective))
     # %timeit grad_objective(permeability_raster) # 13 μs ± 4.18 μs per loop (mean ± std. dev. of 7 runs, 1 loop each)

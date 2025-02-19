@@ -6,16 +6,16 @@ import equinox as eqx
 class EuclideanDistance(AbstractDistance):        
     def __call__(self, grid, sources=None, targets=None):
         if sources is None:
-            sources = jnp.arange(grid.nb_active)
+            sources = jnp.arange(grid.nv)
             
         if targets is None:
-            targets = jnp.arange(grid.nb_active)
+            targets = jnp.arange(grid.nv)
             
         coordinate_list = []
         for nodes in [sources, targets]:
             if nodes.ndim == 1:
                 # already vertex indices
-                coordinate_list.append(grid.active_vertex_index_to_coord(nodes))
+                coordinate_list.append(grid.index_to_coord(nodes))
             elif nodes.ndim == 2:
                 coordinate_list.append(nodes)
                 

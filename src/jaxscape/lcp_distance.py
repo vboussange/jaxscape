@@ -17,13 +17,13 @@ class LCPDistance(AbstractDistance):
         A = grid.get_adjacency_matrix()
         if sources is None:
             # return floyd_warshall(A) # floyd warshall is not differentiable
-            return bellman_ford_multi_sources(A, jnp.arange(grid.nb_active))
+            return bellman_ford_multi_sources(A, jnp.arange(grid.nv))
         else:
             if sources.ndim == 1:
                 # already vertex indices
                 return bellman_ford_multi_sources(A, sources)
             elif sources.ndim == 2:
-                landmark_indices = grid.coord_to_active_vertex_index(
+                landmark_indices = grid.coord_to_index(
                     sources[:, 0], sources[:, 1]
                 )
                 return bellman_ford_multi_sources(A, landmark_indices)

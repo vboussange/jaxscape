@@ -104,8 +104,32 @@ plt.colorbar(cbar)
 ```
 <div align="center"><img src="examples/sensitivities.png" alt="Sensitivities"  width="400"></div>
 
-For a more advanced example with windowed sensitivity analysis and dispatch on multiple GPUs, see `benchmark/moving_window_*.py`
+<!-- For a more advanced example with windowed sensitivity analysis and dispatch on multiple GPUs, see `benchmark/moving_window_*.py` -->
 
+## Building your own pipeline with `WindowOperation` 
+<!-- TODO: to implement -->
+
+## Ecological connectivity analysis with `ConnectivityAnalysis` and `SensitivityAnalysis`
+
+While you can use the JAXScape primitive `WindowOperation` to build your own sensitivity analysis pipeline, we provide a simple utility to perform moving window sensitivity analysis on a grid graph. 
+
+```python
+# a function that transforms a distance to a proximity value
+def proximity(dist):
+    return jnp.exp(-dist)
+
+sensitivity_analyzer = SensitivityAnalysis(
+    quality_raster=quality,
+    permeability_raster=quality,
+    distance=distance_fn,
+    proximity=proximity,
+    coarsening_factor=0., # 0. means no coarsening
+    dependency_range=20, # in pixels
+    batch_size=32
+)
+
+output = sensitivity_analyzer.run(d_permeability_vmap)
+```
 
 ## Features and roadmap 🚀
 ### Raster to graphs

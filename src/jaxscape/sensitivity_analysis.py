@@ -30,19 +30,16 @@ class SensitivityAnalysis(WindowedAnalysis):
             raster_buffer = self.window_op.update_raster_with_window(_xy, raster_buffer, _rast, fun=jnp.add)
             return raster_buffer, None
         
-    def run(self, fun):
+    def run(self, var="quality", q_weighted=True):
         """
-        Run the specified function over the given rasters with coarsening and batching.
-        
-        Parameters:
-            fun (callable): Function to apply, should be of the form fun(target, *rasters).
-            rasters (list): List of rasters used by the function for calculations.
-            coarsening_factor (float): Factor to determine the coarsening level, must be between 0 and 1.
-            dependency_range (int): Range of dependency for the calculations.
-            batch_size (int): Size of the batch for processing.
-        Returns:
-            jnp.ndarray: The resulting raster after applying the function.
+        Runs a sensitivity analysis by calculating the derivative of the connectivity with respect to `var`. `var` can be either "quality" or "permeability".
         """
+        if var == "quality":
+            sensitivity_fun = d_quality_vmap
+        elif var == "permeability":
+            sensitivity_fun = d_permeability_vmap
+        else:
+            raise ValueError("var must be either 'quality' or 'permeability'")
         
         output = jnp.zeros_like(self.quality_raster)
         
@@ -55,12 +52,9 @@ class SensitivityAnalysis(WindowedAnalysis):
             permeability_batch = self.batch_op.extract_total_window(xy_batch, self.permeability_raster)
             xy, quality_windows = self.window_op.eager_iterator(quality_batch)
             _, permeability_windows = self.window_op.eager_iterator(permeability_batch)
-            activities = jnp.ones_like(quality_windows, dtype="bool")
             
-            # print(xy_batch + xy + self.window_op.total_window_size)
-
             raster_buffer = jnp.zeros((self.batch_op.total_window_size, self.batch_op.total_window_size))
-            res = fun(quality_windows, permeability_windows, activities, self.window_op, self.distance, self.proximity)
+            res = sensitivity_fun(quality_windows, permeability_windows, self.window_op, self.distance, self.proximity, q_weighted)
             
             # handling padding
             padding = jnp.all(xy_batch + xy + self.window_op.total_window_size <= self.original_shape, axis=1)[:, None, None]

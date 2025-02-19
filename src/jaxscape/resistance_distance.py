@@ -23,11 +23,11 @@ class ResistanceDistance(AbstractDistance):
         A = grid.get_adjacency_matrix()
 
         if self.solver is None:
-            sources = jnp.arange(grid.nb_active) if sources is None else sources
-            targets = jnp.arange(grid.nb_active) if targets is None else targets
+            sources = jnp.arange(grid.nv) if sources is None else sources
+            targets = jnp.arange(grid.nv) if targets is None else targets
 
-            sources = grid.coord_to_active_vertex_index(sources[:, 0], sources[:, 1]) if sources.ndim == 2 else sources
-            targets = grid.coord_to_active_vertex_index(targets[:, 0], targets[:, 1]) if targets.ndim == 2 else targets
+            sources = grid.coord_to_index(sources[:, 0], sources[:, 1]) if sources.ndim == 2 else sources
+            targets = grid.coord_to_index(targets[:, 0], targets[:, 1]) if targets.ndim == 2 else targets
 
             R = p_inv_resistance_distance(A)
             return R[sources, :][:, targets]

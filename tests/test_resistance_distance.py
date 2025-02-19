@@ -24,9 +24,7 @@ def build_nx_resistance_distance_matrix(G):
 
 def test_resistance_distance():
     permeability_raster = jnp.ones((2, 2))
-    activities = jnp.ones(permeability_raster.shape, dtype=bool)
-    grid = GridGraph(activities=activities, 
-                     vertex_weights=permeability_raster)
+    grid = GridGraph(vertex_weights=permeability_raster)
 
     distance = ResistanceDistance()
     mat = filter_jit(distance)(grid)
@@ -94,19 +92,12 @@ def test_p_inv_resistance_distance():
 def test_differentiability_rsp_distance_matrix():
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
     permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
-    activities = jnp.ones(permeability_raster.shape, dtype=bool)
-    D = 1.
     distance = ResistanceDistance()
 
     def objective(permeability_raster):
-        grid = GridGraph(activities=activities, vertex_weights=permeability_raster)
+        grid = GridGraph(permeability_raster)
         dist = distance(grid)
-        proximity = jnp.exp(-dist / D)
-        landscape = ExplicitGridGraph(activities=activities, 
-                                  vertex_weights=permeability_raster, 
-                                  adjacency_matrix=proximity)
-        func = landscape.equivalent_connected_habitat()
-        return func
+        return jnp.sum(dist)
     
     grad_objective = filter_grad(objective)
     # %timeit grad_objective(permeability_raster) # 71.2 ms ± 16.4 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
@@ -116,23 +107,12 @@ def test_differentiability_rsp_distance_matrix():
 def test_jit_differentiability_rsp_distance():
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
     permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
-    activities = jnp.ones(permeability_raster.shape, dtype=bool)
-    nb_active = int(activities.sum())
-    D = 1.
     distance = ResistanceDistance()
 
     def objective(permeability_raster):
-        grid = GridGraph(activities=activities,
-                        vertex_weights = permeability_raster,
-                        nb_active=nb_active)
+        grid = GridGraph(vertex_weights = permeability_raster)
         dist = distance(grid)
-        proximity = jnp.exp(-dist / D)
-        landscape = ExplicitGridGraph(activities=activities, 
-                            vertex_weights=permeability_raster, 
-                            adjacency_matrix=proximity,
-                            nb_active=nb_active)
-        func = landscape.equivalent_connected_habitat()
-        return func
+        return jnp.sum(dist)
         
     grad_objective = filter_jit(filter_grad(objective))
     # %timeit grad_objective(permeability_raster) # 13 μs ± 4.18 μs per loop (mean ± std. dev. of 7 runs, 1 loop each)
