@@ -69,7 +69,6 @@ class GridGraph(eqx.Module):
         """Get the number of vertices."""
         return self.width * self.height
 
-    # TODO: `coord_to_index` and `index_to_coord` are not used and could be removed
     # @jit
     def coord_to_index(self, i, j):
         """Convert (i, j) grid coordinates to the associated passive vertex index."""

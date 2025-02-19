@@ -34,13 +34,10 @@ import numpy as np
 
 # loading jax array representing permeability
 permeability = jnp.array(np.loadtxt("permeability.csv", delimiter=","))
-
-# we discard pixels with permeability equal to 0
-activities = permeability > 0
 plt.imshow(permeability, cmap="gray")
 plt.axis("off")
 
-grid = GridGraph(activities=activities, vertex_weights=permeability)
+grid = GridGraph(vertex_weights=permeability)
 ```
 
 
@@ -53,7 +50,7 @@ from jaxscape.lcp_distance import LCPDistance
 from jaxscape.rsp_distance import RSPDistance
 
 # Calculating distances of all pixels to top left pixel
-source = grid.coord_to_active_vertex_index([0], [0])
+source = grid.coord_to_index([0], [0])
 
 distances = {
     "LCP distance": LCPDistance(),
@@ -81,22 +78,18 @@ But what's really cool about jaxscape is that you can autodiff through thoses di
 
 # we need to provide the number of active vertices, for jit compilation
 @eqx.filter_jit
-def average_path_length(permeability, activities, nb_active, distance):
-    grid = GridGraph(activities=activities, 
-                     vertex_weights=permeability,
-                     nb_active=nb_active)
+def average_path_length(permeability, distance):
+    grid = GridGraph(permeability,)
     dist = distance(grid)
     return dist.sum() / nb_active**2
 
 grad_connectivity = jax.grad(average_path_length)
-nb_active = int(activities.sum())
-
 
 distance = LCPDistance()
-average_path_length(permeability, activities, nb_active, distance)
+average_path_length(permeability, distance)
 
 
-sensitivities = grad_connectivity(permeability, activities, nb_active, distance)
+sensitivities = grad_connectivity(permeability, distance)
 plt.figure()
 cbar = plt.imshow(sensitivities, cmap = "magma")
 plt.title("Gradient of APL w.r.t pixel's permeability")
@@ -113,22 +106,24 @@ plt.colorbar(cbar)
 
 While you can use the JAXScape primitive `WindowOperation` to build your own sensitivity analysis pipeline, we provide a simple utility to perform moving window sensitivity analysis on a grid graph. 
 
+In the following, we calculate the sensitivity of the connectivity of the graph, defined as the sum of the ecological proximity of all pixel pair, to the permeability of each pixel. This connectivity metric is similar to the Harari index.
+
 ```python
 # a function that transforms a distance to a proximity value
 def proximity(dist):
     return jnp.exp(-dist)
 
 sensitivity_analyzer = SensitivityAnalysis(
-    quality_raster=quality,
-    permeability_raster=quality,
-    distance=distance_fn,
-    proximity=proximity,
-    coarsening_factor=0., # 0. means no coarsening
+    quality_raster = quality,
+    permeability_raster = quality,
+    distance = distance_fn,
+    proximity = proximity,
+    coarsening_factor=0., # experimental feature to accelerate calculations, 0. means no coarsening
     dependency_range=20, # in pixels
-    batch_size=32
+    batch_size = 32 # number of pixels to process in parallel
 )
 
-output = sensitivity_analyzer.run(d_permeability_vmap)
+output = sensitivity_analyzer.run(var="permeability", q_weihted=False)
 ```
 
 ## Features and roadmap 🚀

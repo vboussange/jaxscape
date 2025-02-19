@@ -16,7 +16,7 @@ def test_sensitivity_analysis():
     dependency_range=D
     
     # we manually pad the quality raster because tiled connectivity analysis
-    # perfpormed by `ConnectivityAnalysis` skips pixels in 
+    # performed by `ConnectivityAnalysis` skips pixels in 
     # buffer zone of the window operation
     quality_raster_padded = jnp.pad(
         quality_raster,
