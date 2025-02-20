@@ -36,7 +36,6 @@ connectivity = connectivity_prob.run(q_weighted=False) # scalar value
 # Array(10223621., dtype=float32)
 
 from jaxscape import SensitivityAnalysis
-# estimation via tiled connectivity analysis
 sensitivity_prob = SensitivityAnalysis(quality_raster=quality_raster,
                             permeability_raster=quality_raster,
                             distance=distance,
@@ -85,18 +84,17 @@ cbar.set_label('Bottlenecks')
 plt.savefig("bottlenecks.png")
 
 # want to prioritize the landscape?
-improved_resistance = 0.4
+improved_permeability = 0.4
 # Add 0.1 to coordinates in quality_raster which have highest values in sensitivity_permeability
-elasticity = jnp.nan_to_num(elasticity, nan=0.0)
 threshold = jnp.percentile(elasticity, 95)  # Get the 99th percentile value excluding NaNs
 high_sensitivity_coords = jnp.where(elasticity >= threshold)  # Get coordinates with high sensitivity
-improved_quality_raster = quality_raster.at[high_sensitivity_coords].add(improved_resistance)
+improved_quality_raster = quality_raster.at[high_sensitivity_coords].add(improved_permeability)
 
 # Add 0.1 to 100 random cells of quality_raster
 key = jr.PRNGKey(0)
 random_indices = jr.choice(key, jnp.arange(elasticity.size), shape=(high_sensitivity_coords[0].size,), replace=False)
 random_coords = jnp.unravel_index(random_indices, quality_raster.shape)
-modified_quality_raster = quality_raster.at[random_coords].add(improved_resistance)
+modified_quality_raster = quality_raster.at[random_coords].add(improved_permeability)
 
 def run_connectivity_analysis(raster):
     connectivity_prob = ConnectivityAnalysis(quality_raster=quality_raster,
