@@ -1,7 +1,7 @@
 [![tests](https://github.com/vboussange/jaxscape/actions/workflows/run_tests.yml/badge.svg)](https://github.com/vboussange/jaxscape/actions/workflows/run_tests.yml)
 
 <div align="center">
-  <img src="examples/logo.png" alt="JAXScape Logo" width="500">
+  <img src="examples/logo/logo.png" alt="JAXScape Logo" width="500">
 </div>
 <!-- [![PyPI - Version](https://img.shields.io/pypi/v/jaxscape.svg)](https://pypi.org/project/jaxscape)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/jaxscape.svg)](https://pypi.org/project/jaxscape) -->
@@ -70,7 +70,7 @@ fig.suptitle("Distance to top left pixel")
 plt.tight_layout()
 plt.show()
 ```
-<div align="center"><img src="examples/distances.png" alt="Distances"  width="600"></div>
+<div align="center"><img src="examples/quick_start/distances.png" alt="Distances"  width="600"></div>
 
 But what's really cool about jaxscape is that you can autodiff through thoses distances! Here we calculate the gradient of the average path length of the graph w.r.t pixel permeability
 
@@ -95,7 +95,7 @@ cbar = plt.imshow(sensitivities, cmap = "magma")
 plt.title("Gradient of APL w.r.t pixel's permeability")
 plt.colorbar(cbar)
 ```
-<div align="center"><img src="examples/sensitivities.png" alt="Sensitivities"  width="400"></div>
+<div align="center"><img src="examples/quick_start/sensitivities.png" alt="Sensitivities"  width="400"></div>
 
 <!-- For a more advanced example with windowed sensitivity analysis and dispatch on multiple GPUs, see `benchmark/moving_window_*.py` -->
 
@@ -104,7 +104,27 @@ plt.colorbar(cbar)
 
 ## Ecological connectivity analysis with `ConnectivityAnalysis` and `SensitivityAnalysis`
 
-While you can use the JAXScape primitive `WindowOperation` to build your own sensitivity analysis pipeline, we provide a simple utility to perform moving window sensitivity analysis on a grid graph. 
+While you can use `WindowOperation` to leverage local window operations and build your own sensitivity analysis pipeline, we provide `ConnectivityAnalysis` and `SensitivityAnalysis` to facilitate analyses of large graphs.
+
+
+### `ConnectivityAnalysis`
+
+Calculates the connectivity of a landscape characterised by a `quality` and a `permeability` raster by returning the (quality-weighted) sum of ecological proximities.
+
+```python
+quality_raster = jr.uniform(jr.PRNGKey(0), (51, 51))
+plt.imshow(quality_raster)
+plt.axis("off")
+plt.savefig("quality_raster_sensitivity.png")
+```
+
+```python
+D = 11 # dispersal range in pixels
+distance = LCPDistance() # fed to the function calculating the ecological proximity
+
+proximity = lambda dist: jnp.exp(-dist) * (dist < D) # ecological proximity function
+
+```
 
 In the following, we calculate the sensitivity of the connectivity of the graph, defined as the sum of the ecological proximity of all pixel pair, to the permeability of each pixel. This connectivity metric is similar to the Harari index.
 
@@ -115,8 +135,8 @@ def proximity(dist):
 
 sensitivity_analyzer = SensitivityAnalysis(
     quality_raster = quality,
-    permeability_raster = quality,
-    distance = distance_fn,
+    permeability_raster = quality, # assuming that quality and permeability are the same
+    distance = LCPDistance(), 
     proximity = proximity,
     coarsening_factor=0., # experimental feature to accelerate calculations, 0. means no coarsening
     dependency_range=20, # in pixels

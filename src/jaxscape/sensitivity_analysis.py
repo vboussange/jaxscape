@@ -1,6 +1,6 @@
 import jax.numpy as jnp
 import equinox as eqx
-from jaxscape.moving_window import WindowOperation
+from jaxscape.window_operation import WindowOperation
 from jax import lax
 from tqdm import tqdm
 from jaxscape.connectivity_analysis import WindowedAnalysis

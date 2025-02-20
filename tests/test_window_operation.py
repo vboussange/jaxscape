@@ -1,6 +1,6 @@
 import pytest
 import jax.numpy as jnp
-from jaxscape.moving_window import WindowOperation  # Adjust as necessary for your module path
+from jaxscape.window_operation import WindowOperation  # Adjust as necessary for your module path
 import jax.random as jr
 import jax
 import timeit
