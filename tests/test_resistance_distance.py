@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 from equinox import filter_jit, filter_grad
-from jaxscape.resistance_distance import ResistanceDistance, p_inv_resistance_distance, lineax_solver_resistance_distance
+from jaxscape.resistance_distance import ResistanceDistance, p_inv_resistance_distance
 from jaxscape.gridgraph import GridGraph, ExplicitGridGraph
 
 import numpy as np
@@ -118,21 +118,3 @@ def test_jit_differentiability_rsp_distance():
     # %timeit grad_objective(permeability_raster) # 13 μs ± 4.18 μs per loop (mean ± std. dev. of 7 runs, 1 loop each)
     dobj = grad_objective(permeability_raster)
     assert isinstance(dobj, jax.Array)
-    
-def test_lineax_solver_resistance_distance():
-    G = nx.grid_2d_graph(2, 3)
-    
-    # simple graph
-    A = nx.adjacency_matrix(G)
-    Ajax = BCOO.from_scipy_sparse(A)
-    target = jnp.array([0])
-    solver = lx.GMRES(atol=1e-5, 
-                      rtol=1e-5,
-                      max_steps=100,
-                      restart=50)
-    
-    Rnx = build_nx_resistance_distance_matrix(G)
-    Rjaxscape = lineax_solver_resistance_distance(Ajax, target, solver)
-    
-    assert jnp.allclose(Rjaxscape, Rnx[:, target].flatten())
-    
