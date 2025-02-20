@@ -121,7 +121,7 @@ plt.imshow(quality)
 plt.axis("off")
 ```
 
-<div align="center"><img src="examples/moving_windows/quality_raster.png" alt="Sensitivities"  width="400"></div>
+<div align="center"><img src="examples/moving_windows/quality_raster.png" alt="Sensitivities"  width="600"></div>
 
 To calculate the landscape connectivity, we need to define a disperal range for the species we consider, in terms of the maximum number of pixels an individual (or offspring) of this species can theoretically cross, should the permeability be 1 (highest).
 
@@ -180,11 +180,14 @@ cbar = plt.colorbar(shrink=0.5)
 cbar.set_label('Elasticity w.r.t permeability')
 ```
 
-<div align="center"><img src="examples/sensitivity_analysis/elasticity_permeability.png" alt="Sensitivities"  width="400"></div>
+<div align="center"><img src="examples/sensitivity_analysis/elasticity_permeability.png" alt="Sensitivities"  width="600"></div>
 
 **❓ How can I use this for prioriation❓**
+
 You want to prioritize pixels with high elasticity! Let's say that we have a certain budget to improve the permeability of the landscape, by incrasing each of the selected site by `improved_permeability = 0.4`. We compare two priorization scenarios: one where we select sites randomly, and one where we select sites based on their elasticity w.r.t permeability.
 
+<details>
+<summary>Click to see the code</summary>
 
 ```python
 threshold = jnp.percentile(elasticity, 95)  # Get the 99th percentile value excluding NaNs
@@ -198,14 +201,14 @@ random_coords = jnp.unravel_index(random_indices, quality_raster.shape)
 modified_quality_raster = quality_raster.at[random_coords].add(improved_permeability)
 
 def run_connectivity_analysis(raster):
-    connectivity_prob = ConnectivityAnalysis(quality_raster=quality_raster,
-                            permeability_raster=raster,
-                            distance=distance,
-                            proximity=proximity,
-                            coarsening_factor=0.,
-                            dependency_range=D,
-                            batch_size=50)
-    return connectivity_prob.run(q_weighted=True)
+  connectivity_prob = ConnectivityAnalysis(quality_raster=quality_raster,
+              permeability_raster=raster,
+              distance=distance,
+              proximity=proximity,
+              coarsening_factor=0.,
+              dependency_range=D,
+              batch_size=50)
+  return connectivity_prob.run(q_weighted=True)
 
 base_connectivity = run_connectivity_analysis(quality_raster)
 connectivity_improved = run_connectivity_analysis(improved_quality_raster)
@@ -215,6 +218,8 @@ print("Landscape connectivity gain")
 print(f"- based on priorization with elasticity: {(connectivity_improved - base_connectivity) / base_connectivity * 100:.2f}%")
 print(f"- based on random priorization: {((connectivity_improved_randomly - base_connectivity) / base_connectivity * 100):.2f}%")
 ```
+
+</details>
 
 ```
 Landscape connectivity gain
@@ -246,7 +251,7 @@ for i, (xy, w) in enumerate(window_op.lazy_iterator(quality_padded)):
     ax.imshow(w)
     ax.axis("off")
 ```
-<div align="center"><img src="examples/moving_windows/windows.png" alt="Sensitivities"  width="400"></div>
+<div align="center"><img src="examples/moving_windows/windows.png" alt="Sensitivities"  width="600"></div>
 
 ```python
 # eager iterator

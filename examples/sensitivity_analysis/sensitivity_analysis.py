@@ -57,7 +57,7 @@ plt.imshow(elasticity + 1e-2,
 plt.axis("off")
 cbar = plt.colorbar(shrink=0.5)
 cbar.set_label('Elasticity w.r.t permeability')
-plt.savefig("elasticity_permeability.png")
+plt.savefig("elasticity_permeability.png", bbox_inches="tight")
 
 # To spot bottleneck, a good idea is to compare the elasticity to a perfect landscape
 # with no resistance to movement
@@ -73,6 +73,7 @@ sensitivity_permeability_ideal = sensitivity_prob.run("permeability", q_weighted
 elasticity_ideal = sensitivity_permeability_ideal * quality_raster
 elasticity_ideal = jnp.nan_to_num(elasticity_ideal, nan=0.0)
 
+plt.figure()
 plt.imshow(elasticity_ideal - elasticity + 1e-2, 
            cmap="plasma", 
         #    vmax=1e2,
@@ -81,7 +82,7 @@ plt.imshow(elasticity_ideal - elasticity + 1e-2,
 plt.axis("off")
 cbar = plt.colorbar(shrink=0.5)
 cbar.set_label('Bottlenecks')
-plt.savefig("bottlenecks.png")
+plt.savefig("bottlenecks.png", bbox_inches="tight")
 
 # want to prioritize the landscape?
 improved_permeability = 0.4

@@ -9,7 +9,7 @@ with rasterio.open("../suitability.tif") as src:
 
 plt.imshow(quality)
 plt.axis("off")
-plt.savefig("quality_raster.png", dpi=300)
+plt.savefig("quality_raster.png", dpi=300, bbox_inches="tight")
 
 buffer_size=10
 window_size=50
@@ -28,7 +28,7 @@ for i, (xy, w) in enumerate(window_op.lazy_iterator(quality_padded)):
     ax.set_title(f"xy = {xy}")
     ax.imshow(w)
     ax.axis("off")
-plt.savefig("windows.png", dpi=300)
+plt.savefig("windows.png", dpi=300, bbox_inches="tight")
 
 # eager iterator
 xy, windows = window_op.eager_iterator(quality)
@@ -40,4 +40,4 @@ new_window = jnp.ones(windows[2, ...].shape, dtype="float32")
 new_raster = window_op.update_raster_with_focal_window(xy[2], quality_padded, new_window)
 plt.imshow(new_raster)
 plt.axis("off")
-plt.savefig("new_raster.png", dpi=300)
+plt.savefig("new_raster.png", dpi=300, bbox_inches="tight")
