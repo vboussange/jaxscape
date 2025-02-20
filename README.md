@@ -106,6 +106,9 @@ While you can use `WindowOperation` to leverage local window operations and buil
 
 We'll play around with the following raster, which we will use to define the permeability and quality of our landscape:
 
+<details>
+<summary>Click to see the code</summary>
+
 ```python
 import rasterio
 import jax.numpy as jnp
@@ -120,6 +123,7 @@ with rasterio.open("../suitability.tif") as src:
 plt.imshow(quality)
 plt.axis("off")
 ```
+</details>
 
 <div align="center"><img src="examples/moving_windows/quality_raster.png" alt="Sensitivities"  width="600"></div>
 

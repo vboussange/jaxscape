@@ -1,7 +1,7 @@
 import jax.numpy as jnp
-from jaxscape.connectivity_analysis import ConnectivityAnalysis
+from jaxscape import ConnectivityAnalysis
 from jaxscape.gridgraph import GridGraph
-from jaxscape.euclidean_distance import EuclideanDistance
+from jaxscape import EuclideanDistance
 import matplotlib.pyplot as plt
 import jax.random as jr
 
