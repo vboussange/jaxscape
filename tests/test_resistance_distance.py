@@ -9,7 +9,6 @@ import jax.random as jr
 from jax.experimental.sparse import BCOO
 import networkx as nx
 import jax.random as jr
-import lineax as lx
 
 def build_nx_resistance_distance_matrix(G):
     Rnx_dict = nx.resistance_distance(G, weight="weight", invert_weight=False)
