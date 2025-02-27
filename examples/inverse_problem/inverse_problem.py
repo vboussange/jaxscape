@@ -36,35 +36,34 @@ cmap = plt.cm.colors.ListedColormap([col for cat, col in category_color_dict.ite
 norm = plt.cm.colors.BoundaryNorm(boundaries=[cat - 0.5 for cat in category_color_dict.keys()] + [list(category_color_dict.keys())[-1] + 0.5], ncolors=cmap.N)
 
 # Plot the raster
-plt.figure()
-plt.imshow(lc_raster, cmap=cmap, norm=norm)
-categories = list(category_color_dict.keys())
-plt.colorbar(ticks=categories, boundaries=[cat - 0.5 for cat in categories] + [categories[-1] + 0.5])
-plt.title("Land Cover Raster")
-plt.show()
+# plt.figure()
+# plt.imshow(lc_raster, cmap=cmap, norm=norm)
+# categories = list(category_color_dict.keys())
+# plt.colorbar(ticks=categories, boundaries=[cat - 0.5 for cat in categories] + [categories[-1] + 0.5])
+# plt.title("Land Cover Raster")
+# plt.show()
 
 
-# ground truth resistances
+# ground truth permeability
 reclass_dict = {
-    11: 1e3,  # Water
-    21: 5e3,  # Developed, open space
-    22: 1e3,  # Developed, low intensity
-    23: 1e5,  # Developed, medium intensity (missing)
-    24: 1e5,  # Developed, high intensity (missing)
-    31: 1e2,  # Barren land
+    11: 2e-1,  # Water
+    21: 2e-1,  # Developed, open space
+    22: 3e-1,  # Developed, low intensity
+    23: 1e-1,  # Developed, medium intensity (missing)
+    24: 1e-1,  # Developed, high intensity (missing)
+    31: 5e-1,  # Barren land
     41: 1.,  # Deciduous forest
     42: 1.,  # Evergreen forest
     43: 1.,  # Mixed forest
-    52: 20.,  # Shrub/scrub
-    71: 30.,  # Grassland/herbaceous
-    81: 2e2,  # Pasture/hay
-    82: 3e2,  # Cultivated crops
-    90: 20.,  # Woody wetlands
-    95: 30.   # Emergent herbaceous wetlands
+    52: 8e-1,  # Shrub/scrub
+    71: 9e-1,  # Grassland/herbaceous
+    81: 4e-1,  # Pasture/hay
+    82: 4e-1,  # Cultivated crops
+    90: 9e-1,  # Woody wetlands
+    95: 8e-1  # Emergent herbaceous wetlands
 }
 # Transform lc_raster into a resistance raster with reclass_dict
-resistance_raster = jnp.array(np.vectorize(reclass_dict.get)(lc_raster))
-permeability_raster = 1 / resistance_raster
+permeability_raster = jnp.array(np.vectorize(reclass_dict.get)(lc_raster))
 plt.figure()
 plt.imshow(permeability_raster, cmap="RdYlGn", norm=plt.cm.colors.LogNorm())
 cbar = plt.colorbar()
@@ -106,12 +105,12 @@ class Model(nnx.Module):
     self.linear = nnx.Linear(num_categories, dmid, rngs=rngs)
 
   def __call__(self, x):
-    x = nnx.relu(self.linear(one_hot(x, num_classes=self.num_categories))) + 1e-5
-    return x
+    x = self.linear(one_hot(x, num_classes=self.num_categories))
+    return nnx.relu(x) + 1e-5
   
   
-model = Model(64, len(category_to_index.keys()), rngs=nnx.Rngs(0))  # eager initialization
-optimizer = nnx.Optimizer(model, optax.adamw(1e-1))  # reference sharing
+model = Model(64, len(category_to_index.keys()), rngs=nnx.Rngs(0)) 
+optimizer = nnx.Optimizer(model, optax.adamw(1e-2)) 
 
 permeability = model(indexed_raster)[..., 1]
 plt.figure()
@@ -126,8 +125,6 @@ ax.axis("off")
 ax.set_title("Distance to source, first guess")
 fig.colorbar(cbar, ax=ax, shrink=0.5,)
 
-
-
 def calculate_dist_to_source(permeability_raster):
   grid = GridGraph(permeability_raster)
   source = grid.coord_to_index(jnp.array([0]), jnp.array([0]))
@@ -136,20 +133,23 @@ def calculate_dist_to_source(permeability_raster):
   return dist_to_node
 
 
-true_dist_to_node = true_dist_to_source.ravel()[1:]
+true_dist_to_node = true_dist_to_source.ravel()[1:2]
 @nnx.jit  # automatic state management for JAX transforms
 def train_step(model, optimizer):
   def loss_fn(model):
     permeability = model(indexed_raster)[..., 1]
     grid = GridGraph(permeability)
     source = grid.coord_to_index(jnp.array([0]), jnp.array([0]))
-    dist_to_node_hat = distance(grid, source)[1,1:]
+    dist_to_node_hat = distance(grid, source)[1,1:2]
     return ((jnp.log(dist_to_node_hat) - jnp.log(true_dist_to_node)) ** 2).mean()
 
   loss, grads = nnx.value_and_grad(loss_fn)(model)
   optimizer.update(grads)  # in-place updates
 
   return loss
+
+
+train_step(model, optimizer)
 
 train_steps = 2000
 for step in range(train_steps):
