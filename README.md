@@ -29,7 +29,7 @@ Let's define our graph.
 
 ```python
 import jax.numpy as jnp
-from jaxscape.gridgraph import GridGraph
+from jaxscape import GridGraph
 import numpy as np
 
 # loading jax array representing permeability
@@ -45,9 +45,9 @@ Let's calculate some distances on the grid graph. We will specifically calculate
 
 
 ```python
-from jaxscape.resistance_distance import ResistanceDistance
-from jaxscape.lcp_distance import LCPDistance
-from jaxscape.rsp_distance import RSPDistance
+from jaxscape import ResistanceDistance
+from jaxscape import LCPDistance
+from jaxscape import RSPDistance
 
 # Calculating distances of all pixels to top left pixel
 source = grid.coord_to_index([0], [0])
@@ -186,7 +186,7 @@ cbar.set_label('Elasticity w.r.t permeability')
 
 <div align="center"><img src="examples/sensitivity_analysis/elasticity_permeability.png" alt="Sensitivities"  width="600"></div>
 
-**❓ How can I use this for prioriation❓**
+**❓ How can I use this for priorization**
 
 You want to prioritize pixels with high elasticity! Let's say that we have a certain budget to improve the permeability of the landscape, by incrasing each of the selected site by `improved_permeability = 0.4`. We compare two priorization scenarios: one where we select sites randomly, and one where we select sites based on their elasticity w.r.t permeability.
 
@@ -247,18 +247,7 @@ We'll assume a certain permeability matrix, and try to recover it based on a sin
 
 ```python
 import rasterio
-import jax.numpy as jnp 
-import matplotlib.pyplot as plt
-import jax
-import numpy as np
-import time
 
-from flax import nnx
-import optax
-from jax.nn import one_hot
-import time
-
-from jaxscape import LCPDistance, GridGraph
 with rasterio.open("landcover.tif") as src:
   # We resample the raster to a smaller size to speed up the computation
   raster = src.read(1, masked=True, out_shape=(150, 150), resampling=rasterio.enums.Resampling.mode)  # Read the first band with masking
@@ -316,6 +305,10 @@ Since our features are categorical (landcover types), we'll use one-hot encoding
 
 
 ```python
+import optax
+from flax import nnx
+from jax.nn import one_hot
+
 category_to_index = {cat: i for i, cat in enumerate(reclass_dict.keys())}  # Map to indices
 
 # Replace categories in lc_raster with indices
