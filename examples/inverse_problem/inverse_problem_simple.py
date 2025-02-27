@@ -37,10 +37,10 @@ reclass_dict = {
 }
 # Transform lc_raster into a resistance raster with reclass_dict
 permeability_raster = jnp.array(np.vectorize(reclass_dict.get)(lc_raster))
-plt.figure()
-plt.imshow(permeability_raster, cmap="RdYlGn", norm=plt.cm.colors.LogNorm())
-cbar = plt.colorbar()
-cbar.set_label('Permeability')
+# plt.figure()
+# plt.imshow(permeability_raster, cmap="RdYlGn", norm=plt.cm.colors.LogNorm())
+# cbar = plt.colorbar()
+# cbar.set_label('Permeability')
 
 category_to_index = {cat: i for i, cat in enumerate(reclass_dict.keys())}  # Map to indices
 
@@ -49,26 +49,27 @@ indexed_raster = jnp.array(np.vectorize(category_to_index.get)(lc_raster))
 
 # flax model
 class Model(nnx.Module):
-  def __init__(self, dmid, num_categories, rngs: nnx.Rngs):
+  def __init__(self, num_categories, rngs: nnx.Rngs):
     self.num_categories = num_categories
-    self.linear = nnx.Linear(num_categories, dmid, rngs=rngs)
+    self.linear = nnx.Linear(num_categories, 1, rngs=rngs)
 
   def __call__(self, x):
     x = self.linear(one_hot(x, num_classes=self.num_categories))
-    return nnx.relu(x) + 1e-5
+    return x
   
   
-model = Model(64, len(category_to_index.keys()), rngs=nnx.Rngs(0)) 
-optimizer = nnx.Optimizer(model, optax.adamw(1e-2)) 
+model = Model(len(category_to_index.keys()), rngs=nnx.Rngs(0)) 
+optimizer = nnx.Optimizer(model, optax.adam(1e-2)) 
 
-x = jnp.array(list(category_to_index.keys()))
+x = jnp.array(list(category_to_index.values()))
 y = jnp.array([reclass_dict[k] for k in category_to_index.keys()])
     
     
 @nnx.jit  # automatic state management for JAX transforms
 def train_step(model, optimizer):
   def loss_fn(model):
-    permeability = model(x)[..., 1]
+    permeability = model(x).ravel()
+    permeability = jnp.clip(permeability, 1e-5, 1e0)
     return ((permeability - y) ** 2).mean()
 
   loss, grads = nnx.value_and_grad(loss_fn)(model)
@@ -84,3 +85,5 @@ for step in range(train_steps):
   l = train_step(model, optimizer)
   print(f"Step {step}, loss: {l}")
   
+model(x).ravel()
+y

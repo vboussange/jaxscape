@@ -231,6 +231,12 @@ Landscape connectivity gain
 - based on random priorization: 3.74%
 ```
 
+## Inverse problem
+You may have measured genetic distances between two populations across a landscape, and want to understand how did the landscape caused the observed genetic differentiation through its effect on gene flow across population. This is sort of a reverse engineering problem, where we want to infer the landscape connectivity that would have caused the observed genetic differentiation.
+
+With JAXScape, we can solve this inverse problem. Let's showcase this with a simple example. We'll generate distances 
+
+
 
 ## Building your own pipeline with `WindowOperation`
 
@@ -290,7 +296,7 @@ plt.axis("off")
 
 - **Resistance distance**
   - [x] all-to-all calculation with dense solver (`pinv`, resulting in full distance matrix materialization)
-  - [-] advanced mode with direct solvers (laplacian factorization, cannot scale to large landscape)
+  - [ ] advanced mode with direct solvers (laplacian factorization, cannot scale to large landscape)
     - Must rely on lineax, with wrapper over specialized solver for sparse systems:
       - UMFPACK and CHOLMOD (see implementation [here](https://github.com/arpastrana/jax_fdm/blob/main/src/jax_fdm/equilibrium/sparse.py) where scipy.spsolve is wrapped in JAX and vjp has been implemented - could also work with CHOLMOD) 🏃‍♀️ 
       - `jax.experimental.sparse.linalg.spsolve`
@@ -304,7 +310,7 @@ plt.axis("off")
       - See also solvers used in JAX-FEM, [here](https://github.com/deepmodeling/jax-fem/blob/main/jax_fem/solver.py)
 - **Randomized shortest path distance** ([REF](https://arxiv.org/pdf/1212.1666))
   - [x] all-to-all calculation (distance matrix materialization)
-  - [-] all-to-few calculation
+  - [ ] all-to-few calculation
     - Should be based on direct or inderict solvers, similarly to ResistanceDistance
   <!-- - see [ConScape](https://conscape.org/notebooks/nbk_landmarks.html) landmarks and
   - CircuitScape focal nodes https://docs.circuitscape.org/Circuitscape.jl/latest/usage/ -->
