@@ -222,7 +222,6 @@ print("Landscape connectivity gain")
 print(f"- based on priorization with elasticity: {(connectivity_improved - base_connectivity) / base_connectivity * 100:.2f}%")
 print(f"- based on random priorization: {((connectivity_improved_randomly - base_connectivity) / base_connectivity * 100):.2f}%")
 ```
-
 </details>
 
 ```
@@ -230,6 +229,145 @@ Landscape connectivity gain
 - based on priorization with elasticity: 11.53%
 - based on random priorization: 3.74%
 ```
+
+## Inverse problem
+You may have measured genetic distances between two populations across a landscape, and want to understand how did the landscape caused the observed genetic differentiation through its effect on gene flow across populations. 
+
+<div align="center"><img src="examples/inverse_problem/land_cover_raster.png" alt="Sensitivities"  width="600"></div>
+
+This is sort of a reverse engineering problem, where we want to infer the landscape connectivity that would have caused the observed genetic differentiation.
+With JAXScape, we can solve this inverse problem. Let's showcase this with a simple example. 
+
+We'll assume a certain permeability matrix, and try to recover it based on a single distance information between two populations:
+
+
+### Loading the land cover raster
+<details>
+<summary>Click to see the code</summary>
+
+```python
+import rasterio
+import jax.numpy as jnp 
+import matplotlib.pyplot as plt
+import jax
+import numpy as np
+import time
+
+from flax import nnx
+import optax
+from jax.nn import one_hot
+import time
+
+from jaxscape import LCPDistance, GridGraph
+with rasterio.open("landcover.tif") as src:
+  # We resample the raster to a smaller size to speed up the computation
+  raster = src.read(1, masked=True, out_shape=(150, 150), resampling=rasterio.enums.Resampling.mode)  # Read the first band with masking
+  lc_raster = jnp.array(raster.filled(0))   # Replace no data values with 0
+```
+</details>
+
+### Generating the synthetic genetic distance
+
+<details>
+<summary>Click to see the code</summary>
+
+```python
+category_to_distance_dict = {
+    11: 2e-1,  # Water
+    21: 2e-1,  # Developed, open space
+    22: 3e-1,  # Developed, low intensity
+    23: 1e-1,  # Developed, medium intensity (missing)
+    24: 1e-1,  # Developed, high intensity (missing)
+    31: 5e-1,  # Barren land
+    41: 1.,  # Deciduous forest
+    42: 1.,  # Evergreen forest
+    43: 1.,  # Mixed forest
+    52: 5e-1,  # Shrub/scrub
+    71: 9e-1,  # Grassland/herbaceous
+    81: 4e-1,  # Pasture/hay
+    82: 4e-1,  # Cultivated crops
+    90: 9e-1,  # Woody wetlands
+    95: 6e-1  # Emergent herbaceous wetlands
+}
+permeability_raster = jnp.array(np.vectorize(reclass_dict.get)(lc_raster))
+ref_grid = GridGraph(lc_raster)
+source = ref_grid.coord_to_index(jnp.array([2]), jnp.array([2]))
+target = ref_grid.coord_to_index(jnp.array([99]), jnp.array([99]))
+
+distance = LCPDistance()
+grid = GridGraph(permeability_raster)
+start_time = time.time()
+source_to_target_dist = distance(grid, source)[1,target]
+print(f"Time taken for distance calculation: {time.time() - start_time:.2f} seconds")
+print(f"Genetic distance between populations: {source_to_target_dist[0]:.2f}")
+```
+</details>
+
+```
+print(f"Time taken for distance calculation: {time.time() - start_time:.2f} seconds")
+print(f"Genetic distance between populations: {source_to_target_dist[0]:.2f}")
+```
+
+### Neural network model
+We now define a neural network model which calculates permeability given the underlying landcover type. Of course, this neural net could be made much more complicated, accounting for many environmental features.
+
+
+Since our features are categorical (landcover types), we'll use one-hot encoding and make the simplest model with a single input layer
+
+
+```python
+category_to_index = {cat: i for i, cat in enumerate(reclass_dict.keys())}  # Map to indices
+
+# Replace categories in lc_raster with indices
+indexed_raster = jnp.array(np.vectorize(category_to_index.get)(lc_raster))
+
+
+class Model(nnx.Module):
+  def __init__(self, num_categories, rngs: nnx.Rngs):
+    self.num_categories = num_categories
+    self.linear = nnx.Linear(num_categories, 1, rngs=rngs)
+
+  def __call__(self, x):
+    x = self.linear(one_hot(x, num_classes=self.num_categories))
+    x = jnp.clip(x, 1e-2, 1e0)
+    return x
+```
+
+### Training our model
+
+Now we are ready to train our model!
+
+```python
+model = Model(len(category_to_index.keys()), rngs=nnx.Rngs(0)) 
+optimizer = nnx.Optimizer(model, optax.adamw(5e-2)) 
+
+x = indexed_raster.ravel()
+@nnx.jit
+def train_step(model, optimizer):
+  def loss_fn(model):
+    permeability = model(indexed_raster).ravel()
+    permeability = ref_grid.node_values_to_array(permeability)
+    grid = GridGraph(permeability)
+    dist_to_node_hat = distance(grid, source).ravel()[target]
+    return ((dist_to_node_hat - source_to_target_dist) ** 2).mean()
+
+  loss, grads = nnx.value_and_grad(loss_fn)(model)
+  optimizer.update(grads)
+  return loss
+
+
+train_steps = 100
+for step in range(train_steps):
+  l = train_step(model, optimizer)
+  if step % 10 == 0:
+    print(f"Step {step}, loss: {l}")
+```
+
+And here is how well our model compares to the ground truth permeability matrix:
+
+<div align="center"><img src="examples/inverse_problem/inverse_problem.png" width="600"></div>
+
+More training steps should improve the results. This is a very simplified scenario, but scaling up to more complex settings with more environmental features or populations is straightforward from here!
 
 
 ## Building your own pipeline with `WindowOperation`
@@ -290,7 +428,7 @@ plt.axis("off")
 
 - **Resistance distance**
   - [x] all-to-all calculation with dense solver (`pinv`, resulting in full distance matrix materialization)
-  - [-] advanced mode with direct solvers (laplacian factorization, cannot scale to large landscape)
+  - [ ] advanced mode with direct solvers (laplacian factorization, cannot scale to large landscape)
     - Must rely on lineax, with wrapper over specialized solver for sparse systems:
       - UMFPACK and CHOLMOD (see implementation [here](https://github.com/arpastrana/jax_fdm/blob/main/src/jax_fdm/equilibrium/sparse.py) where scipy.spsolve is wrapped in JAX and vjp has been implemented - could also work with CHOLMOD) 🏃‍♀️ 
       - `jax.experimental.sparse.linalg.spsolve`
@@ -304,7 +442,7 @@ plt.axis("off")
       - See also solvers used in JAX-FEM, [here](https://github.com/deepmodeling/jax-fem/blob/main/jax_fem/solver.py)
 - **Randomized shortest path distance** ([REF](https://arxiv.org/pdf/1212.1666))
   - [x] all-to-all calculation (distance matrix materialization)
-  - [-] all-to-few calculation
+  - [ ] all-to-few calculation
     - Should be based on direct or inderict solvers, similarly to ResistanceDistance
   <!-- - see [ConScape](https://conscape.org/notebooks/nbk_landmarks.html) landmarks and
   - CircuitScape focal nodes https://docs.circuitscape.org/Circuitscape.jl/latest/usage/ -->
