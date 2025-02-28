@@ -231,17 +231,17 @@ Landscape connectivity gain
 ```
 
 ## Inverse problem
-You may have measured genetic distances between two populations across a landscape, and want to understand how did the landscape caused the observed genetic differentiation through its effect on gene flow across populations. 
+Suppose you have measured genetic distances between populations across a landscape and want to understand how landscape features have shaped genetic differentiation by influencing gene flow. This is an inverse problem—a type of reverse engineering where we infer the landscape permeability for that species, that could have led to the observed genetic patterns.
 
 <div align="center"><img src="examples/inverse_problem/land_cover_raster.png" alt="Sensitivities"  width="600"></div>
 
-This is sort of a reverse engineering problem, where we want to infer the landscape connectivity that would have caused the observed genetic differentiation.
-With JAXScape, we can solve this inverse problem. Let's showcase this with a simple example. 
+JAXScape allows us to solve this problem efficiently. To illustrate, we will walk through a simple example where we assume a known permeability matrix and attempt to recover it using a single genetic distance measurement between two populations.
 
-We'll assume a certain permeability matrix, and try to recover it based on a single distance information between two populations:
 
 
 ### Loading the land cover raster
+We begin by loading a land cover raster.
+
 <details>
 <summary>Click to see the code</summary>
 
@@ -256,6 +256,7 @@ with rasterio.open("landcover.tif") as src:
 </details>
 
 ### Generating the synthetic genetic distance
+Next, we assign permeability values to each land cover category and compute the synthetic genetic distance between two populations. We assimilate the genetic distance between the two populations as the least cost path distance associated to the permeability matrix between the two locations.
 
 <details>
 <summary>Click to see the code</summary>
@@ -298,10 +299,9 @@ print(f"Genetic distance between populations: {source_to_target_dist[0]:.2f}")
 ```
 
 ### Neural network model
-We now define a neural network model which calculates permeability given the underlying landcover type. Of course, this neural net could be made much more complicated, accounting for many environmental features.
+To infer permeability from land cover data, we define a simple neural network model that maps land cover categories to permeability values. While this example uses a basic architecture, it can be extended to incorporate additional environmental features.
 
-
-Since our features are categorical (landcover types), we'll use one-hot encoding and make the simplest model with a single input layer
+Since land cover types are categorical, we use one-hot encoding and a single-layer neural network.
 
 
 ```python
@@ -328,7 +328,7 @@ class Model(nnx.Module):
 
 ### Training our model
 
-Now we are ready to train our model!
+With our model defined, we can now train it to minimize the difference between the predicted and observed genetic distances.
 
 ```python
 model = Model(len(category_to_index.keys()), rngs=nnx.Rngs(0)) 
@@ -356,12 +356,10 @@ for step in range(train_steps):
     print(f"Step {step}, loss: {l}")
 ```
 
-And here is how well our model compares to the ground truth permeability matrix:
+After training, we compare our inferred permeability values with the ground truth. As training progresses, the model should recover the expected permeability matrix.
 
 <div align="center"><img src="examples/inverse_problem/inverse_problem.png" width="600"></div>
-
-More training steps should improve the results. This is a very simplified scenario, but scaling up to more complex settings with more environmental features or populations is straightforward from here!
-
+With more training steps and a more complex model, results can be further improved. This simplified example demonstrates the core methodology, and scaling it up to incorporate additional environmental variables or multiple populations is straightforward!
 
 ## Building your own pipeline with `WindowOperation`
 
