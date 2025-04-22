@@ -26,6 +26,8 @@ class WindowOperation(eqx.Module):
         self.total_window_size = self.window_size + 2 * self.buffer_size
         self.x_steps = int((shape[0] - 2 * buffer_size) // window_size)
         self.y_steps = int((shape[1] - 2 * buffer_size) // window_size)
+        assert self.x_steps > 0, "`window_size` or `buffer_size` are too large for the raster data."
+        assert self.y_steps > 0, "`window_size` or `buffer_size` are too large for the raster data."
 
     def extract_total_window(self, xy, raster):
         """Extract a buffered window from the raster data."""

@@ -39,7 +39,7 @@ class SensitivityAnalysis(WindowedAnalysis):
         elif var == "permeability":
             sensitivity_fun = d_permeability_vmap
         else:
-            raise ValueError("var must be either 'quality' or 'permeability'")
+            raise ValueError("`var` must be either 'quality' or 'permeability'")
         
         output = jnp.zeros_like(self.quality_raster)
         
