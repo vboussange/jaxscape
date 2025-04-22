@@ -50,7 +50,7 @@ from jaxscape import LCPDistance
 from jaxscape import RSPDistance
 
 # Calculating distances of all pixels to top left pixel
-source = grid.coord_to_index([0], [0])
+source = grid.coord_to_index(jnp.array([0]), jnp.array([0]))
 
 distances = {
     "LCP distance": LCPDistance(),
