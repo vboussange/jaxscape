@@ -30,8 +30,3 @@ dependencies = ["equinox", "jax", "tqdm", "sciparse", "numpy"]
 Documentation = "https://github.com/vboussange/jaxscape#readme"
 Issues = "https://github.com/vboussange/jaxscape/issues"
 Source = "https://github.com/vboussange/jaxscape"
-
-[tool.uv.workspace]
-members = [
-    "examples",
-]
