@@ -404,6 +404,15 @@ plt.axis("off")
 ```
 
 ## Features and roadmap 🚀
+### Linear solvers
+- [ ] Support for direct solve sparse solvers
+    - UMFPACK (see implementation [here](https://github.com/arpastrana/jax_fdm/blob/main/src/jax_fdm/equilibrium/sparse.py), `jax-fem`, `jax.experimental.sparse.linalg.spsolve`)
+    - CHOLMOD: see [here](https://github.com/rgl-epfl/cholespy)
+- [x] Support for iterative sparse solvers
+    - [x] support for `pyamg` with accelerators
+    - [ ] support for `(py)amgx`
+
+
 ### Raster to graphs
 - [x] `GridGraph` with differentiable adjacency matrix method
 
@@ -420,19 +429,8 @@ plt.axis("off")
 
 - **Resistance distance**
   - [x] all-to-all calculation with dense solver (`pinv`, resulting in full distance matrix materialization)
-  - [ ] advanced mode with direct solvers (laplacian factorization, cannot scale to large landscape)
-  - [ ] advanced mode with direct solvers (laplacian factorization, cannot scale to large landscape)
-    - Must rely on lineax, with wrapper over specialized solver for sparse systems:
-      - UMFPACK and CHOLMOD (see implementation [here](https://github.com/arpastrana/jax_fdm/blob/main/src/jax_fdm/equilibrium/sparse.py) where scipy.spsolve is wrapped in JAX and vjp has been implemented - could also work with CHOLMOD) 🏃‍♀️ 
-      - `jax.experimental.sparse.linalg.spsolve`
-  - [ ] advanced mode with indirect solvers (no laplacian factorization, requires preconditioning)
-      - GMRES/CG with preconditioners for Krylov-based solvers
-      - Probably the best approach would be to use a wrapper around `pyamg` and `pyamgx`  (the former does not support batch mode, while the latter does), using `lineax` for adjoint definition and `pure_callback`
-        - The `dlpack` JAX utility could be used to ensure that we have a zero-copy overhead between scipy sparse arrays or cuPy arrays
-        - one could use `.aspreconditioner` together with `lineax.cg`, or use the full amg cycle
-      - See [AlgebraicMultigrid.jl](https://github.com/JuliaLinearAlgebra/)  or [PyAMG](https://github.com/pyamg/pyamg)
-      - See also [lineax issues](https://github.com/patrick-kidger/lineax/issues/116)
-      - See also solvers used in JAX-FEM, [here](https://github.com/deepmodeling/jax-fem/blob/main/jax_fem/solver.py)
+  - [ ] all-to-few calculation
+
 - **Randomized shortest path distance** ([REF](https://arxiv.org/pdf/1212.1666))
   - [x] all-to-all calculation (distance matrix materialization)
   - [ ] all-to-few calculation

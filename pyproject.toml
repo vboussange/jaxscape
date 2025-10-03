@@ -7,7 +7,7 @@ name = "jaxscape"
 version = "0.0.5"
 description = ''
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.13"
 license = "MIT"
 keywords = []
 authors = [
@@ -24,9 +24,23 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: CPython",
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
-dependencies = ["equinox", "jax", "tqdm", "sciparse", "numpy"]
+dependencies = [
+    "equinox",
+    "jax",
+    "tqdm",
+    "sciparse",
+    "numpy",
+    "pyamg>=5.1.0",
+    "lineax>=0.0.8",
+]
 
 [project.urls]
 Documentation = "https://github.com/vboussange/jaxscape#readme"
 Issues = "https://github.com/vboussange/jaxscape/issues"
 Source = "https://github.com/vboussange/jaxscape"
+
+[dependency-groups]
+dev = [
+    "ipykernel>=6.29.5",
+    "pytest>=8.3.5",
+]

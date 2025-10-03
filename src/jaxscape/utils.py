@@ -5,6 +5,7 @@ from scipy.sparse import coo_array, csr_array
 import numpy as np
 from jax.experimental.sparse import BCOO, BCSR
 from equinox import filter_jit
+from scipy import sparse as ssp
 
 def graph_laplacian(A):
     """
@@ -38,11 +39,17 @@ def mapnz(mat, f):
     mapped_values = jnp.where(data > 0, f(data), 0.)
     return sparse.BCOO((mapped_values, indices), shape=mat.shape)
 
-def dense(sp_mat):
-    if isinstance(sp_mat, sparse.BCOO):
-        return sp_mat.todense()
-    return sp_mat
+# def dense(sp_mat):
+#     if isinstance(sp_mat, sparse.BCOO):
+#         return sp_mat.todense()
+#     return sp_mat
 
+def zero_copy_jax_csr_to_scipy_csr(A_jax):
+    data, indices, indptr = A_jax.data, A_jax.indices, A_jax.indptr
+    A_scipy = ssp.csr_matrix((np.from_dlpack(data), 
+                              np.from_dlpack(indices), 
+                              np.from_dlpack(indptr)), shape=A_jax.shape)
+    return A_scipy
 
 def BCOO_to_coo(A):
     assert isinstance(A, sparse.BCOO)
