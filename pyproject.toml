@@ -41,5 +41,6 @@ Source = "https://github.com/vboussange/jaxscape"
 [dependency-groups]
 dev = [
     "ipykernel>=6.29.5",
+    "networkx>=3.5",
     "pytest>=8.3.5",
 ]

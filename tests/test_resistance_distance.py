@@ -3,6 +3,7 @@ import jax.numpy as jnp
 from equinox import filter_jit, filter_grad
 from jaxscape.resistance_distance import ResistanceDistance, p_inv_resistance_distance
 from jaxscape.gridgraph import GridGraph, ExplicitGridGraph
+from jaxscape.linear_solve import PyAMGSolver
 
 import numpy as np
 import jax.random as jr
@@ -87,8 +88,10 @@ def test_p_inv_resistance_distance():
 #             j = node_list.index(m)
 #             Rnx = Rnx.at[i, j].set(r)
 #     assert jnp.allclose(Rjaxscape, Rnx)
-    
-def test_differentiability_rsp_distance_matrix():
+
+
+# TODO: make an abstract test for all distance metrics
+def test_differentiability_resistance_distance_matrix():
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
     permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
     distance = ResistanceDistance()
@@ -117,3 +120,21 @@ def test_jit_differentiability_rsp_distance():
     # %timeit grad_objective(permeability_raster) # 13 μs ± 4.18 μs per loop (mean ± std. dev. of 7 runs, 1 loop each)
     dobj = grad_objective(permeability_raster)
     assert isinstance(dobj, jax.Array)
+
+def test_lineax_solver_resistance_distance():
+    """
+    Tests that the lineax solver implementation of resistance distance
+    produces the same result as the pseudo-inverse method.
+    """
+    key = jr.PRNGKey(42)
+    permeability_raster = jr.uniform(key, (5, 5))
+    grid = GridGraph(vertex_weights=permeability_raster)
+    sources = jnp.array([0, 1])
+    targets = jnp.array([2, 3])
+
+    dist_pinv = ResistanceDistance(solver=None)(grid, sources=sources, targets=targets)
+
+    solver = PyAMGSolver(tol=1e-9, accel=None)
+    dist_lineax = ResistanceDistance(solver=solver)(grid, sources=sources, targets=targets)
+
+    assert jnp.allclose(dist_pinv, dist_lineax, atol=1e-5)
