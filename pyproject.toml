@@ -28,7 +28,6 @@ dependencies = [
     "equinox",
     "jax",
     "tqdm",
-    "sciparse",
     "numpy",
     "pyamg>=5.1.0",
     "lineax>=0.0.8",

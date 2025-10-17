@@ -9,4 +9,4 @@ examples/data
 .pymon
 .idea
 .vscode/*
-.env
+.envuv.lock

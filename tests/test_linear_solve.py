@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import equinox as eqx
 from pyamg.gallery import poisson
 from jax.experimental.sparse import BCOO
-from jaxscape.linear_solve import BCOOLinearOperator, PyAMGSolver, linear_solve
+from jaxscape.linear_solve import BCOOLinearOperator, PyAMGSolver, linear_solve, batched_linear_solve
 
 def test_bcoo_linear_operator_mv():
     """Test BCOOLinearOperator.mv method by comparing to dense matrix multiplication."""
@@ -39,20 +39,15 @@ def test_bcoo_linear_operator_mv():
     ),
 )
 
-solver = PyAMGSolver(tol=1e-10, accel=None) # For quick testing without pytest
 def test_custom_solver(solver):
-    """Test custom solvers using pyamg.gallery.poisson example."""
-    # Create a 2D Poisson problem as suggested in the TODO
     A_scipy = poisson((10, 10), format="csr", dtype="float32")
-
-    # Convert to JAX BCOO format
     A_jax = BCOO.from_scipy_sparse(A_scipy)
-
-    # Create a right-hand side vector (e.g., all ones)
     b = jnp.ones(A_jax.shape[0])
-
     x = linear_solve(A_jax, b, solver)
-
-    # Verify the solution by checking Ax ≈ b
     residual = A_jax @ x - b
     assert jnp.linalg.norm(residual) < 1e-4, f"Residual too large: {jnp.linalg.norm(residual)}"
+    
+    B = jnp.stack([b, 2 * b, 3 * b], axis=-1)
+    X = batched_linear_solve(A_jax, B, solver)
+    residuals = A_jax @ X - B
+    assert jnp.linalg.norm(residuals) < 3 * 1e-4, f"Residual too large: {jnp.linalg.norm(residuals)}"
