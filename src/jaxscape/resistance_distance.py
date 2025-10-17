@@ -60,9 +60,20 @@ def lineax_solver_resistance_distance(A: BCOO, sources, targets, solver):
     L = graph_laplacian(A)
     n = L.shape[0]
 
-    # Ground the last node to make the Laplacian invertible
-    # This is a standard technique for solving systems with the graph Laplacian
-    L_grounded = bcoo_at_set(L, jnp.array([n - 1]), jnp.array([n - 1]), L[-1, -1].todense().reshape(1,) + 1)
+    # Ground the last node by zeroing its row/column and enforcing V_ground = 0
+    # This produces a block matrix with the reduced Laplacian and a 1 on the ground node
+    ground = n - 1
+    rows = L.indices[:, 0]
+    cols = L.indices[:, 1]
+    mask = jnp.logical_and(rows != ground, cols != ground)
+    grounded_data = jnp.where(mask, L.data, jnp.zeros_like(L.data))
+    L_grounded = BCOO((grounded_data, L.indices), shape=L.shape)
+    L_grounded = bcoo_at_set(
+        L_grounded,
+        jnp.array([ground]),
+        jnp.array([ground]),
+        jnp.array([1], dtype=L.data.dtype),
+    )
 
     # We need to solve L'x = b for b being the standard basis vectors
     # for the target nodes.
@@ -84,14 +95,20 @@ def lineax_solver_resistance_distance(A: BCOO, sources, targets, solver):
     B_diag_sources = jnp.eye(n, dtype=L.dtype)[:, sources]
     V_diag_cols_sources = batched_linear_solve(L_grounded, B_diag_sources, solver)
     Vuu = jax.vmap(lambda x, i: x[i], in_axes=(1, 0))(V_diag_cols_sources, sources)
+    Vuu = jnp.where(sources == ground, 0, Vuu)
 
     # Solve for diagonal elements corresponding to targets
     B_diag_targets = jnp.eye(n, dtype=L.dtype)[:, targets]
     V_diag_cols_targets = batched_linear_solve(L_grounded, B_diag_targets, solver)
     Vvv = jax.vmap(lambda x, i: x[i], in_axes=(1, 0))(V_diag_cols_targets, targets)
+    Vvv = jnp.where(targets == ground, 0, Vvv)
 
     # Vuv can be extracted from the columns we solved for earlier.
-    Vuv = V_cols[sources, :]
+    column_mask = 1 - jnp.equal(targets, ground).astype(L.dtype)
+    V_cols = V_cols.at[ground, :].set(0)
+    V_cols = V_cols * column_mask
+    row_mask = 1 - jnp.equal(sources, ground).astype(L.dtype)
+    Vuv = (V_cols[sources, :].T * row_mask).T
 
     # Final resistance distance matrix calculation
     R = Vuu[:, None] + Vvv[None, :] - 2 * Vuv
