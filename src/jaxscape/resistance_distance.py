@@ -79,7 +79,8 @@ def lineax_solver_resistance_distance(A: BCOO, sources, targets, solver):
     def solve_for_target(target):
         e_target = jax.nn.one_hot(target, n, dtype=L_reg.dtype)
         rhs = e_target[:, None] - source_basis
-        potentials = batched_linear_solve(L_reg, rhs, solver)
+        potentials = batched_linear_solve(L_reg, rhs, solver) # Throws error NaNs when constructing the multigrid hierarchy
+        # potentials = jnp.linalg.solve(L_reg.todense(), rhs) # Temporary: use dense solver until batched_linear_solve is fixed for sparse L_reg
         source_potentials = potentials[sources, source_range]
         potentials = potentials - source_potentials[None, :]
         return potentials[target, :]
