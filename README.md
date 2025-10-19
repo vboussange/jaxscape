@@ -442,9 +442,10 @@ plt.axis("off")
 
 ### Utilities
 - [x] Moving window generator    
-- [ ] Differentiable connected component algorithm (see [here](https://github.com/jax-ml/jax/issues/24737))
+- [x] Differentiable connected component algorithm (see [here](https://github.com/jax-ml/jax/issues/24737))
   - An external call to scipy/cusparse connected component libraries could do for our purposes (but not support of differentiation)
   - see [jax doc](https://github.com/dfm/extending-jax), [doc on pure callbacks](https://jax.readthedocs.io/en/latest/external-callbacks.html) a cool concrete example [here](https://github.com/arpastrana/jax_fdm/blob/main/src/jax_fdm/equilibrium/sparse.py)
+  - Note: cf `connected_component_labels`; it is jittable, but differentiability is unclear
 
 ### Benchmark
 - [x] scaling with number of nodes, CPU/GPU

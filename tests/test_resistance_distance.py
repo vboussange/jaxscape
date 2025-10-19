@@ -1,9 +1,13 @@
 import jax
 import jax.numpy as jnp
 from equinox import filter_jit, filter_grad
-from jaxscape.resistance_distance import ResistanceDistance, p_inv_resistance_distance
+from jaxscape.resistance_distance import (
+    ResistanceDistance,
+    p_inv_resistance_distance,
+)
 from jaxscape.gridgraph import GridGraph, ExplicitGridGraph
-from jaxscape.linear_solve import PyAMGSolver
+from jaxscape.solvers import PyAMGSolver
+from jaxscape.utils import connected_component_labels
 
 import numpy as np
 import jax.random as jr
@@ -134,7 +138,58 @@ def test_lineax_solver_resistance_distance():
 
     dist_pinv = ResistanceDistance(solver=None)(grid, sources=sources, targets=targets)
 
-    solver = PyAMGSolver(tol=1e-9, accel=None)
+    solver = PyAMGSolver()
     dist_lineax = ResistanceDistance(solver=solver)(grid, sources=sources, targets=targets)
 
     assert jnp.allclose(dist_pinv, dist_lineax, atol=1e-5)
+
+
+def test_cholmod_solver_resistance_distance():
+    """
+    Tests that the CHOLMOD solver implementation of resistance distance
+    produces the same result as the pseudo-inverse method.
+    """
+    try:
+        from jaxscape.solvers import CholmodSolver
+    except ImportError:
+        import pytest
+        pytest.skip("cholespy not installed")
+    
+    key = jr.PRNGKey(42)
+    permeability_raster = jr.uniform(key, (5, 5))
+    grid = GridGraph(vertex_weights=permeability_raster)
+    sources = jnp.array([0, 1])
+    targets = jnp.array([2, 3])
+
+    dist_pinv = ResistanceDistance(solver=None)(grid, sources=sources, targets=targets)
+
+    solver = CholmodSolver()
+    dist_cholmod = ResistanceDistance(solver=solver)(grid, sources=sources, targets=targets)
+
+    assert jnp.allclose(dist_pinv, dist_cholmod, atol=1e-5)
+
+
+def test_connected_component_labels():
+    """
+    Tests that connected_component_labels correctly identifies disconnected components.
+    """
+    # Graph with two components: {0,1} and {2,3}
+    adjacency = jnp.array(
+        [
+            [0.0, 1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 2.0],
+            [0.0, 0.0, 2.0, 0.0],
+        ],
+        dtype=jnp.float32,
+    )
+    A = BCOO.fromdense(adjacency)
+
+    labels = connected_component_labels(A)
+
+    # Vertices 0 and 1 should have the same label (component 1)
+    assert bool(labels[0] == labels[1])
+    # Vertices 2 and 3 should have the same label (component 2)
+    assert bool(labels[2] == labels[3])
+    # Component 1 and component 2 should have different labels
+    assert bool(labels[0] != labels[2])

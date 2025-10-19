@@ -5,7 +5,7 @@ from jaxscape.distance import AbstractDistance
 import equinox as eqx
 import lineax as lx
 from jaxscape.utils import graph_laplacian, bcoo_diag, connected_component_labels
-from jaxscape.linear_solve import batched_linear_solve
+from jaxscape.solvers import batched_linear_solve
 
 from jax.experimental.sparse import BCOO
 

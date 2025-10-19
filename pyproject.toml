@@ -31,6 +31,7 @@ dependencies = [
     "numpy",
     "pyamg>=5.1.0",
     "lineax>=0.0.8",
+    "cholespy>=2.1.0",
 ]
 
 [project.urls]

@@ -34,7 +34,7 @@ def test_bcoo_linear_operator_mv():
 @pytest.mark.parametrize(
     "solver",
     (
-        PyAMGSolver(tol=1e-9),
+        PyAMGSolver(),
         # TODO: add PyAMGXSolver, do later
     ),
 )
