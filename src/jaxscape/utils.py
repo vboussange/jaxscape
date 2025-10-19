@@ -4,6 +4,7 @@ from jax.experimental import sparse
 from scipy.sparse import coo_array, csr_array
 import numpy as np
 from jax.experimental.sparse import BCOO, BCSR
+import equinox as eqx
 from equinox import filter_jit
 from scipy import sparse as ssp
 
@@ -154,6 +155,37 @@ def padding(raster, buffer_size, window_size):
     )
     return padded_raster
 
+
+@eqx.filter_jit
+def connected_component_labels(A: BCOO):
+    rows = A.indices[:, 0]
+    cols = A.indices[:, 1]
+    weights = A.data
+    n = A.shape[0]
+    edge_count = rows.shape[0]
+    initial_labels = jnp.arange(n, dtype=rows.dtype)
+
+    def relax_edge(e_idx, labels):
+        u = rows[e_idx]
+        v = cols[e_idx]
+        w = weights[e_idx]
+
+        def _update(current):
+            lu = current[u]
+            lv = current[v]
+            new_label = jnp.minimum(lu, lv)
+            updated = current.at[u].set(new_label)
+            updated = updated.at[v].set(jnp.minimum(updated[v], new_label))
+            return updated
+
+        valid = jnp.logical_and(w != 0, u != v)
+        return jax.lax.cond(valid, _update, lambda x: x, labels)
+
+    def sweep(_, labels):
+        return jax.lax.fori_loop(0, edge_count, relax_edge, labels)
+
+    num_iters = max(n - 1, 1)
+    return jax.lax.fori_loop(0, num_iters, sweep, initial_labels)
 
 # def prune_matrix(bcoo, vertices):
 #     indices = bcoo.indices

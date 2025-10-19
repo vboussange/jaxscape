@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from jax.experimental.sparse import BCOO
 from jax import random
 import jax.random as jr
-from jaxscape.utils import bcoo_diag, bcoo_triu, bcoo_tril, bcoo_at_set, padding
+from jaxscape.utils import bcoo_diag, bcoo_triu, bcoo_tril, bcoo_at_set, padding, connected_component_labels
 from jax.experimental.sparse import random_bcoo
 
 def test_bcoo_diag():
@@ -79,6 +79,25 @@ def test_padding():
 
     for i in range(2):
         assert (padded_raster.shape[i] - 2 * buffer_size) % window_size == 0
+        
+def test_connected_component_labels():
+    # Graph with two components: {0,1} and {2,3}
+    adjacency = jnp.array(
+        [
+            [0.0, 1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 2.0],
+            [0.0, 0.0, 2.0, 0.0],
+        ],
+        dtype=jnp.float32,
+    )
+    A = BCOO.fromdense(adjacency)
+
+    labels = connected_component_labels(A)
+
+    assert bool(labels[0] == labels[1])
+    assert bool(labels[2] == labels[3])
+    assert bool(labels[0] != labels[2])
     
 # def test_strongly_connected_components():
 #     # Helper function to build a sparse BCOO graph
