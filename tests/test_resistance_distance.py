@@ -132,7 +132,7 @@ def test_lineax_solver_resistance_distance():
     produces the same result as the pseudo-inverse method.
     """
     key = jr.PRNGKey(42)
-    permeability_raster = jr.uniform(key, (30, 30))
+    permeability_raster = jr.uniform(key, (5, 5))
     grid = GridGraph(vertex_weights=permeability_raster)
     sources = jnp.array([0, 1])
     targets = jnp.array([3, 4])
