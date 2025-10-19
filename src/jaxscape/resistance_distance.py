@@ -4,7 +4,7 @@ from jax.numpy.linalg import pinv
 from jaxscape.distance import AbstractDistance
 import equinox as eqx
 import lineax as lx
-from jaxscape.utils import graph_laplacian, bcoo_at_set
+from jaxscape.utils import graph_laplacian, bcoo_diag, connected_component_labels
 from jaxscape.linear_solve import batched_linear_solve
 
 from jax.experimental.sparse import BCOO
@@ -60,56 +60,35 @@ def lineax_solver_resistance_distance(A: BCOO, sources, targets, solver):
     L = graph_laplacian(A)
     n = L.shape[0]
 
-    # Ground the last node by zeroing its row/column and enforcing V_ground = 0
-    # This produces a block matrix with the reduced Laplacian and a 1 on the ground node
-    ground = n - 1
-    rows = L.indices[:, 0]
-    cols = L.indices[:, 1]
-    mask = jnp.logical_and(rows != ground, cols != ground)
-    grounded_data = jnp.where(mask, L.data, jnp.zeros_like(L.data))
-    L_grounded = BCOO((grounded_data, L.indices), shape=L.shape)
-    L_grounded = bcoo_at_set(
-        L_grounded,
-        jnp.array([ground]),
-        jnp.array([ground]),
-        jnp.array([1], dtype=L.data.dtype),
-    )
+    # positive-definite regularisation
+    fro_norm = jnp.linalg.norm(L.data)
+    eps = jnp.finfo(L.dtype).eps * fro_norm
+    L_reg = L + bcoo_diag(jnp.full((n,), eps, dtype=L.dtype), indices_dtype=A.indices.dtype)
 
-    # We need to solve L'x = b for b being the standard basis vectors
-    # for the target nodes.
-    B = jnp.eye(n, dtype=L.dtype)[:, targets]
+    # connected component labels (label propagation)
+    component_labels = connected_component_labels(A)
 
-    # Solve the batched linear system
-    V_cols = batched_linear_solve(L_grounded, B, solver)
+    # resistance computation via linear solves
+    sources = sources.astype(A.indices.dtype)
+    targets = targets.astype(A.indices.dtype)
+    num_sources = sources.shape[0]
 
-    # The resistance distance R_ij = V_ii + V_jj - 2V_ij
-    # where V is the pseudo-inverse. The columns we solved for are columns
-    # of a modified inverse, but they can be used to compute the resistance.
-    # V_ii can be computed from the diagonal of the inverse.
-    # We only need the diagonal elements corresponding to sources and targets.
-    
-    # To comply with JIT, we solve for diagonal elements for sources and targets separately.
-    # This avoids data-dependent shapes from jnp.union1d.
-    
-    # Solve for diagonal elements corresponding to sources
-    B_diag_sources = jnp.eye(n, dtype=L.dtype)[:, sources]
-    V_diag_cols_sources = batched_linear_solve(L_grounded, B_diag_sources, solver)
-    Vuu = jax.vmap(lambda x, i: x[i], in_axes=(1, 0))(V_diag_cols_sources, sources)
-    Vuu = jnp.where(sources == ground, 0, Vuu)
+    source_basis = jax.nn.one_hot(sources, n, dtype=L_reg.dtype).T
+    source_range = jnp.arange(num_sources, dtype=A.indices.dtype)
 
-    # Solve for diagonal elements corresponding to targets
-    B_diag_targets = jnp.eye(n, dtype=L.dtype)[:, targets]
-    V_diag_cols_targets = batched_linear_solve(L_grounded, B_diag_targets, solver)
-    Vvv = jax.vmap(lambda x, i: x[i], in_axes=(1, 0))(V_diag_cols_targets, targets)
-    Vvv = jnp.where(targets == ground, 0, Vvv)
+    def solve_for_target(target):
+        e_target = jax.nn.one_hot(target, n, dtype=L_reg.dtype)
+        rhs = e_target[:, None] - source_basis
+        potentials = batched_linear_solve(L_reg, rhs, solver)
+        source_potentials = potentials[sources, source_range]
+        potentials = potentials - source_potentials[None, :]
+        return potentials[target, :]
 
-    # Vuv can be extracted from the columns we solved for earlier.
-    column_mask = 1 - jnp.equal(targets, ground).astype(L.dtype)
-    V_cols = V_cols.at[ground, :].set(0)
-    V_cols = V_cols * column_mask
-    row_mask = 1 - jnp.equal(sources, ground).astype(L.dtype)
-    Vuv = (V_cols[sources, :].T * row_mask).T
+    resistances = jax.vmap(solve_for_target)(targets)  # shape (|targets|, |sources|)
+    R = resistances.T
 
-    # Final resistance distance matrix calculation
-    R = Vuu[:, None] + Vvv[None, :] - 2 * Vuv
+    source_components = component_labels[sources]
+    target_components = component_labels[targets]
+    component_mask = source_components[:, None] == target_components[None, :]
+    R = jnp.where(component_mask, R, jnp.inf)
     return R
