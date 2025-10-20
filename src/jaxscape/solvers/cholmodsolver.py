@@ -1,5 +1,3 @@
-"""Cholesky solver using cholespy."""
-
 import jax
 import equinox as eqx
 import lineax as lx

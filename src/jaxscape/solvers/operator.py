@@ -1,5 +1,3 @@
-"""Utilities for linear solves."""
-
 import jax
 import lineax as lx
 from jax.experimental.sparse import BCOO

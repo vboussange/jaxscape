@@ -63,10 +63,9 @@ def lineax_solver_resistance_distance(A: BCOO, sources, targets, solver):
     # positive-definite regularisation
     fro_norm = jnp.linalg.norm(L.data)
     eps = jnp.finfo(L.dtype).eps * fro_norm
-    L_reg = L + bcoo_diag(jnp.full((n,), eps, dtype=L.dtype), indices_dtype=A.indices.dtype)
-
-    # connected component labels (label propagation)
-    component_labels = connected_component_labels(A)
+    # eps = 1e0 * fro_norm
+    nzval_reg = L.data + eps
+    L_reg = BCOO((nzval_reg, L.indices), shape=L.shape)
 
     # resistance computation via linear solves
     sources = sources.astype(A.indices.dtype)
@@ -79,8 +78,8 @@ def lineax_solver_resistance_distance(A: BCOO, sources, targets, solver):
     def solve_for_target(target):
         e_target = jax.nn.one_hot(target, n, dtype=L_reg.dtype)
         rhs = e_target[:, None] - source_basis
-        potentials = batched_linear_solve(L_reg, rhs, solver) # Throws error NaNs when constructing the multigrid hierarchy
-        # potentials = jnp.linalg.solve(L_reg.todense(), rhs) # Temporary: use dense solver until batched_linear_solve is fixed for sparse L_reg
+        # potentials = batched_linear_solve(L_reg, rhs, solver) # Throws error NaNs when constructing the multigrid hierarchy
+        potentials = jnp.linalg.solve(L_reg.todense(), rhs) # Temporary: use dense solver until batched_linear_solve is fixed for sparse L_reg
         source_potentials = potentials[sources, source_range]
         potentials = potentials - source_potentials[None, :]
         return potentials[target, :]
@@ -88,8 +87,12 @@ def lineax_solver_resistance_distance(A: BCOO, sources, targets, solver):
     resistances = jax.vmap(solve_for_target)(targets)  # shape (|targets|, |sources|)
     R = resistances.T
 
-    source_components = component_labels[sources]
-    target_components = component_labels[targets]
-    component_mask = source_components[:, None] == target_components[None, :]
-    R = jnp.where(component_mask, R, jnp.inf)
+    # Masking out impossible distances
+    # Ideally, this should be done before the linear solves to avoid unnecessary computations.
+    # connected component labels (label propagation)
+    # component_labels = connected_component_labels(A)
+    # source_components = component_labels[sources]
+    # target_components = component_labels[targets]
+    # component_mask = source_components[:, None] == target_components[None, :]
+    # R = jnp.where(component_mask, R, jnp.inf)
     return R

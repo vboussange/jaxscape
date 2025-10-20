@@ -1,5 +1,3 @@
-"""Utilities for linear solves."""
-
 import jax
 import equinox as eqx
 import lineax as lx
