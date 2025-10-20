@@ -61,6 +61,8 @@ class PyAMGSolver(AbstractLinearSolver):
                 _b = b_scipy[:, i]                                       # extract the i-th right-hand side
                 x_np[:, i], info = scipy_cg(A_scipy, _b, rtol=rtol, maxiter=maxiter, M=M)  # solve Ax=b
             x_jax = jnp.asarray(x_np, copy=False)
+        elif b_jax.ndim > 2:
+            raise NotImplementedError("We do not support more than 2D right-hand sides.")
         return x_jax.transpose()
 
     def compute(
