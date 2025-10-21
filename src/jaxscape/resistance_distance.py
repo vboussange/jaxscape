@@ -66,19 +66,15 @@ def lineax_solver_resistance_distance(A: BCOO, sources, targets, solver):
     # resistance computation via linear solves
     sources = sources.astype(A.indices.dtype)
     targets = targets.astype(A.indices.dtype)
-    num_sources = sources.shape[0]
 
-    source_basis = jax.nn.one_hot(sources, n, dtype=L_reduced.dtype).T
-    source_range = jnp.arange(num_sources, dtype=A.indices.dtype)
+    source_basis = jax.nn.one_hot(sources, n, dtype=L_reduced.dtype).T # if node n+1 is a source, its one-hot vector is all zeros
 
     def solve_for_target(target):
-        e_target = jax.nn.one_hot(target, n, dtype=L_reduced.dtype)
+        e_target = jax.nn.one_hot(target, n, dtype=L_reduced.dtype) # if node n+1 is a target, its one-hot vector is all zeros
         rhs = e_target[:, None] - source_basis
-        potentials = batched_linear_solve(L_reduced, rhs, solver) # Throws error NaNs when constructing the multigrid hierarchy
-        # potentials = jnp.linalg.solve(L_reduced.todense(), rhs) # Temporary: use dense solver until batched_linear_solve is fixed for sparse L_reg
-        source_potentials = potentials[sources, source_range]
-        potentials = potentials - source_potentials[None, :]
-        return potentials[target, :]
+        potentials = batched_linear_solve(L_reduced, rhs, solver) # for now, does not work
+        # compute dot product per RHS column (energy = (e_target - e_source)^T * potentials)
+        return jnp.sum(rhs * potentials, axis=0)
 
     resistances = jax.vmap(solve_for_target)(targets)  # shape (|targets|, |sources|)
     R = resistances.T
