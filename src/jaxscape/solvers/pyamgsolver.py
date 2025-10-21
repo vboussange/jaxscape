@@ -42,28 +42,34 @@ class PyAMGSolver(AbstractLinearSolver):
         return A_bcoo, packed_structures
 
     def _compute_host(self, A_bcoo, b_jax, rtol, maxiter):
-        if b_jax.ndim == 1:
-            A_bcsr = BCSR.from_bcoo(A_bcoo)
-            A_scipy = zero_copy_jax_csr_to_scipy_csr(A_bcsr)
-            ml = self.pyamg_method(A_scipy)  # construct the multigrid hierarchy
-            M = ml.aspreconditioner()  # create preconditioner
-            b_scipy = np.from_dlpack(b_jax)
-            x_np, info = scipy_cg(A_scipy, b_scipy, rtol=rtol, maxiter=maxiter, M=M)  # solve Ax=b
-            x_jax = jnp.asarray(x_np, copy=False)
-        elif b_jax.ndim == 2:
-            A_bcsr = BCSR.from_bcoo(BCOO((A_bcoo.data[0, :], A_bcoo.indices[0, :, :]), shape=A_bcoo.shape)) # need to unbatch the BCOO matrix
-            A_scipy = zero_copy_jax_csr_to_scipy_csr(A_bcsr)
-            ml = self.pyamg_method(A_scipy)  # construct the multigrid hierarchy
-            M = ml.aspreconditioner()  # create preconditioner
-            b_scipy = np.from_dlpack(b_jax).transpose()
-            x_np = np.zeros(b_scipy.shape, dtype=b_scipy.dtype)
-            for i in range(b_scipy.shape[1]):
-                _b = b_scipy[:, i]                                       # extract the i-th right-hand side
-                x_np[:, i], info = scipy_cg(A_scipy, _b, rtol=rtol, maxiter=maxiter, M=M)  # solve Ax=b
-            x_jax = jnp.asarray(x_np, copy=False)
-        elif b_jax.ndim > 2:
-            raise NotImplementedError("We do not support more than 2D right-hand sides.")
-        return x_jax.transpose()
+        if A_bcoo.n_batch > 0:
+            # ugly trick to remove batch dimension
+            # specific to BCOO behavior
+            A_bcoo = BCOO((A_bcoo.data.squeeze(), A_bcoo.indices.squeeze()), shape=A_bcoo.shape)
+
+        A_bcsr = BCSR.from_bcoo(A_bcoo)
+        A_scipy = zero_copy_jax_csr_to_scipy_csr(A_bcsr)
+        ml = self.pyamg_method(A_scipy)
+        M = ml.aspreconditioner()
+
+        if b_jax.ndim == 0:
+            raise ValueError("Right-hand side must have at least one dimension.")
+        b_scipy = np.from_dlpack(b_jax.T)
+
+        rhs_size = b_scipy.shape[0]
+        if rhs_size != A_scipy.shape[0]:
+            raise ValueError("The first dimension of b must match the operator dimension.")
+
+        flat_batch = b_scipy.reshape((rhs_size, -1))
+        x_np = np.zeros_like(flat_batch)
+        for i in range(flat_batch.shape[1]):
+            column = flat_batch[:, i]
+            x_np[:, i], info = scipy_cg(A_scipy, column, rtol=rtol, maxiter=maxiter, M=M)
+            if info != 0:
+                raise RuntimeError(f"CG did not converge, info={info}")
+
+        x_np = x_np.reshape(b_scipy.shape)
+        return jnp.asarray(x_np, copy=False).T
 
     def compute(
         self,
@@ -72,7 +78,7 @@ class PyAMGSolver(AbstractLinearSolver):
         options: dict[str, Any],
     ) -> tuple[PyTree[Array], RESULTS, dict[str, Any]]:
 
-        A_bcoo, packed_structures = state # TODO: change
+        A_bcoo, packed_structures = state
         result_shape = jax.ShapeDtypeStruct(b_jax.shape, b_jax.dtype)
         solution = eqx.filter_pure_callback(
             self._compute_host,
@@ -81,7 +87,7 @@ class PyAMGSolver(AbstractLinearSolver):
             self.rtol,
             self.maxiter,
             result_shape_dtypes=result_shape,
-            vmap_method="broadcast_all",
+            vmap_method="expand_dims",
         )
         solution = unravel_solution(solution, packed_structures)
         return solution, RESULTS.successful, {}

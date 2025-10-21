@@ -58,28 +58,24 @@ def lineax_solver_resistance_distance(A: BCOO, sources, targets, solver):
     This is more memory-efficient for large graphs than p-inv, which densifies the Laplacian.
     """
     L = graph_laplacian(A)
-    n = L.shape[0]
-
-    # positive-definite regularisation
-    fro_norm = jnp.linalg.norm(L.data)
-    eps = jnp.finfo(L.dtype).eps * fro_norm
-    # eps = 1e0 * fro_norm
-    nzval_reg = L.data + eps
-    L_reg = BCOO((nzval_reg, L.indices), shape=L.shape)
-
+    
+    # grounding last node; see sec 2.4 in http://epubs.siam.org/doi/10.1137/050645452
+    L_reduced = L[:-1, :-1]
+    n = L_reduced.shape[0]
+    
     # resistance computation via linear solves
     sources = sources.astype(A.indices.dtype)
     targets = targets.astype(A.indices.dtype)
     num_sources = sources.shape[0]
 
-    source_basis = jax.nn.one_hot(sources, n, dtype=L_reg.dtype).T
+    source_basis = jax.nn.one_hot(sources, n, dtype=L_reduced.dtype).T
     source_range = jnp.arange(num_sources, dtype=A.indices.dtype)
 
     def solve_for_target(target):
-        e_target = jax.nn.one_hot(target, n, dtype=L_reg.dtype)
+        e_target = jax.nn.one_hot(target, n, dtype=L_reduced.dtype)
         rhs = e_target[:, None] - source_basis
-        # potentials = batched_linear_solve(L_reg, rhs, solver) # Throws error NaNs when constructing the multigrid hierarchy
-        potentials = jnp.linalg.solve(L_reg.todense(), rhs) # Temporary: use dense solver until batched_linear_solve is fixed for sparse L_reg
+        potentials = batched_linear_solve(L_reduced, rhs, solver) # Throws error NaNs when constructing the multigrid hierarchy
+        # potentials = jnp.linalg.solve(L_reduced.todense(), rhs) # Temporary: use dense solver until batched_linear_solve is fixed for sparse L_reg
         source_potentials = potentials[sources, source_range]
         potentials = potentials - source_potentials[None, :]
         return potentials[target, :]
