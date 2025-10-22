@@ -30,7 +30,6 @@ class CholmodSolver(AbstractLinearSolver):
     A linear solver that uses CHOLMOD (via cholespy) to solve a sparse linear system.
     Uses direct Cholesky factorization for symmetric positive definite matrices.
     """
-    use_float32: bool = False
 
     def __check_init__(self):
         if not CHOLESPY_AVAILABLE:
@@ -59,53 +58,33 @@ class CholmodSolver(AbstractLinearSolver):
         Returns:
             Solution vector(s)
         """
-        # Convert BCOO to CSR format for cholespy
-        if b_jax.ndim == 1:
-            A_bcsr = BCSR.from_bcoo(A_bcoo)
-        elif b_jax.ndim == 2:
-            # Unbatch the BCOO matrix for 2D case
-            A_bcsr = BCSR.from_bcoo(
-                BCOO((A_bcoo.data[0, :], A_bcoo.indices[0, :, :]), shape=A_bcoo.shape)
-            )
-        
-        # Get CSR arrays
-        data_np = np.from_dlpack(A_bcsr.data)
-        indices_np = np.from_dlpack(A_bcsr.indices)
-        indptr_np = np.from_dlpack(A_bcsr.indptr)
-        
-        # Convert to appropriate dtype
-        dtype = np.float32 if self.use_float32 else np.float64
-        CholeskySolver = CholeskySolverF if self.use_float32 else CholeskySolverD
-        
-        data_np = data_np.astype(dtype)
-        b_np = np.from_dlpack(b_jax).astype(dtype)
-        
-        n = A_bcoo.shape[0]
-        
+        if A_bcoo.n_batch > 0:
+            # ugly trick to remove batch dimension
+            # specific to BCOO behavior
+            A_bcoo = BCOO((A_bcoo.data.squeeze(), A_bcoo.indices.squeeze()), shape=A_bcoo.shape)
+
+        if b_jax.ndim == 0:
+            raise ValueError("Right-hand side must have at least one dimension.")
+
+        rhs_size = b_jax.T.shape[0]
+        if rhs_size != A_bcoo.shape[0]:
+            raise ValueError("The first dimension of b must match the operator dimension.")
+
+        b_flat_batch = b_jax.T.reshape((rhs_size, -1))
+        x_flat_batch = jnp.zeros_like(b_flat_batch)
+
         # Initialize the Cholesky solver with CSR format
-        solver = CholeskySolver(
-            n,
-            indptr_np,
-            indices_np,
-            data_np,
-            MatrixType.CSR
-        )
-        
-        if b_jax.ndim == 1:
-            # Single RHS vector
-            b_np = b_np.reshape(-1, 1)
-            x_np = np.zeros_like(b_np)
-            solver.solve(b_np, x_np)
-            x_np = x_np.reshape(-1)
-        elif b_jax.ndim == 2:
-            # Multiple RHS vectors
-            b_np = b_np.T  # cholespy expects (n, n_rhs)
-            x_np = np.zeros_like(b_np)
-            solver.solve(b_np, x_np)
-            x_np = x_np.T
-        
-        x_jax = jnp.asarray(x_np, copy=False)
-        return x_jax
+        with jax.experimental.enable_x64():
+            solver = CholeskySolverF(
+                rhs_size,
+                A_bcoo.indices[:, 0],
+                A_bcoo.indices[:, 1],
+                A_bcoo.data.astype("float64"), # required by cholespy, see https://github.com/rgl-epfl/cholespy/blob/main/tests/test_cholesky.py
+            MatrixType.COO)
+            solver.solve(b_flat_batch, x_flat_batch)
+
+        x = x_flat_batch.reshape(b_jax.T.shape).T
+        return x
 
     def compute(
         self,
@@ -124,17 +103,13 @@ class CholmodSolver(AbstractLinearSolver):
             A_bcoo,
             b_jax,
             result_shape_dtypes=result_shape,
-            vmap_method="broadcast_all",
+            vmap_method="expand_dims",
         )
         
         solution = unravel_solution(solution, packed_structures)
         return solution, RESULTS.successful, {}
 
     def transpose(self, state: _CholmodSolverState, options: dict[str, Any]):
-        """
-        Handle transpose of the operator.
-        For symmetric matrices (like those from Cholesky), transpose is the same.
-        """
         A_bcoo, packed_structures = state
         transposed_packed_structures = transpose_packed_structures(packed_structures)
         A_bcoo_T = A_bcoo.T
@@ -142,19 +117,13 @@ class CholmodSolver(AbstractLinearSolver):
         return transpose_state, {}
 
     def conj(self, state: _CholmodSolverState, options: dict[str, Any]):
-        """Handle conjugate of the operator."""
-        A_bcoo, packed_structures = state
-        A_conj = BCOO(
-            (jnp.conj(A_bcoo.data), A_bcoo.indices), 
-            shape=A_bcoo.shape
-        )
+        A_bcoo, _, packed_structures = state
+        A_conj = BCOO((jnp.conj(A_bcoo.data), A_bcoo.indices, A_bcoo.indptr), shape=A_bcoo.shape)
         conj_state = (A_conj, packed_structures)
         return conj_state, {}
 
     def allow_dependent_columns(self, operator):
-        """Cholesky requires independent columns."""
         return False
 
     def allow_dependent_rows(self, operator):
-        """Cholesky requires independent rows."""
         return False

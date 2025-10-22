@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import equinox as eqx
 from pyamg.gallery import poisson
 from jax.experimental.sparse import BCOO
-from jaxscape.solvers import BCOOLinearOperator, PyAMGSolver, linear_solve, batched_linear_solve
+from jaxscape.solvers import BCOOLinearOperator, PyAMGSolver, CholmodSolver, linear_solve, batched_linear_solve
 
 def test_bcoo_linear_operator_mv():
     """Test BCOOLinearOperator.mv method by comparing to dense matrix multiplication."""
@@ -35,12 +35,13 @@ def test_bcoo_linear_operator_mv():
     "solver",
     (
         PyAMGSolver(),
+        CholmodSolver(),
         # TODO: add PyAMGXSolver, do later
     ),
 )
 
 def test_custom_solver(solver):
-    A_scipy = poisson((10, 10), format="csr", dtype="float32")
+    A_scipy = poisson((10, 10), format="coo", dtype="float32")
     A_jax = BCOO.from_scipy_sparse(A_scipy)
     b = jnp.ones(A_jax.shape[0])
     x = linear_solve(A_jax, b, solver)

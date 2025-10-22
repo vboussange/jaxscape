@@ -7,7 +7,7 @@ name = "jaxscape"
 version = "0.0.5"
 description = ''
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 license = "MIT"
 keywords = []
 authors = [
@@ -31,6 +31,7 @@ dependencies = [
     "numpy",
     "pyamg>=5.1.0",
     "lineax>=0.0.8",
+    "cholespy>=2.1.0",
 ]
 
 [project.urls]

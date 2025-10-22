@@ -18,6 +18,8 @@ from lineax._solver.misc import (
 )
 from jaxscape.utils import zero_copy_jax_csr_to_scipy_csr
 
+# TODO: check if pyamg is available, otherwise raise an error when trying to use PyAMGSolver
+
 _PyAMGSolverState: TypeAlias = tuple[BCOO, PackedStructures]
 
 class PyAMGSolver(AbstractLinearSolver):

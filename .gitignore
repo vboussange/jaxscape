@@ -11,3 +11,4 @@ examples/data
 .vscode/*
 .env
 uv.lock
+.python-version
