@@ -118,12 +118,12 @@ def lineax_solver_nodes_to_nodes_resistance_distance(A: BCOO, nodes, solver):
 
     nodes = nodes.astype(A.indices.dtype)
 
-    rhs = jax.nn.one_hot(nodes, L_reduced.shape[0], dtype=L_reduced.dtype).T
+    node_basis = jax.nn.one_hot(nodes, L_reduced.shape[0], dtype=L_reduced.dtype).T
 
-    potentials = batched_linear_solve(L_reduced, rhs, solver)
+    potentials = batched_linear_solve(L_reduced, node_basis, solver)
 
-    diagonal = potentials[nodes, jnp.arange(nodes.shape[0])]
-    row_potentials = potentials[nodes, :]
+    potentials_ii = jnp.sum(node_basis * potentials, axis=0)
+    potentials_ij = jnp.sum(node_basis[:, :, None] * potentials[:, None, :], axis=0)
 
-    R = diagonal[:, None] + diagonal[None, :] - (row_potentials + row_potentials.T)
+    R = potentials_ii[:, None] + potentials_ii[None, :] - (potentials_ij + potentials_ij.T)
     return R

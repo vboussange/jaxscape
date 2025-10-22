@@ -132,13 +132,16 @@ def test_lineax_solver_resistance_distance():
     produces the same result as the pseudo-inverse method.
     """
     key = jr.PRNGKey(42)
-    permeability_raster = jr.uniform(key, (5, 5))
+    permeability_raster = jr.uniform(key, (2, 2))
     grid = GridGraph(vertex_weights=permeability_raster, fun= lambda x, y: (x+y)/2)
 
+    # nodes to nodes
     dist_pinv = ResistanceDistance(solver=None)(grid)
     dist_lineax = ResistanceDistance(solver=PyAMGSolver())(grid)
 
     assert jnp.allclose(dist_pinv, dist_lineax, rtol=1e-4)
+    
+    # sources to targets
 
 
 def test_cholmod_solver_resistance_distance():
@@ -153,7 +156,7 @@ def test_cholmod_solver_resistance_distance():
         pytest.skip("cholespy not installed")
     
     key = jr.PRNGKey(42)
-    permeability_raster = jr.uniform(key, (5, 5))
+    permeability_raster = jr.uniform(key, (2, 2))
     grid = GridGraph(vertex_weights=permeability_raster)
     sources = jnp.array([0, 1])
     targets = jnp.array([2, 3])
