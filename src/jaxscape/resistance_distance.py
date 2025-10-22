@@ -17,7 +17,7 @@ class ResistanceDistance(AbstractDistance):
     
     @eqx.filter_jit
     def nodes_to_nodes_distance(self, grid, nodes):
-        A = grid.adjacency_matrix()
+        A = grid.get_adjacency_matrix()
         if self.solver is None:
             return p_inv_resistance_distance(A)[nodes[:, None], nodes[None, :]]
         else:
@@ -25,7 +25,7 @@ class ResistanceDistance(AbstractDistance):
         
     @eqx.filter_jit
     def sources_to_targets_distance(self, grid, sources, targets):
-        A = grid.adjacency_matrix()
+        A = grid.get_adjacency_matrix()
         if self.solver is None:
             return p_inv_resistance_distance(A)[sources[:, None], targets[None, :]]
         else:
@@ -33,7 +33,7 @@ class ResistanceDistance(AbstractDistance):
              
     @eqx.filter_jit
     def all_pairs_distance(self, grid):
-        A = grid.adjacency_matrix()
+        A = grid.get_adjacency_matrix()
         if self.solver is None:
             return p_inv_resistance_distance(A)
         else:
@@ -105,10 +105,25 @@ def lineax_solver_sources_to_targets_resistance_distance(A: BCOO, sources, targe
 @eqx.filter_jit
 def lineax_solver_nodes_to_nodes_resistance_distance(A: BCOO, nodes, solver):
     """
-    Computes resistance distance using a lineax solver.
-    This is more memory-efficient for large graphs than p-inv, which densifies the Laplacian.
+    Computes pairwise resistance distance from `nodes` to `nodes`, returning a |`nodes`| x |`nodes`| matrix,
+    using a lineax `solver`.
+    Requires |`nodes`| linear solves.
     !!! Warning
         The graph must be undirected.
     """
-    # TODO: to implement
-    pass
+    L = graph_laplacian(A)
+
+    # Ground the last node to obtain a full-rank system (see: http://epubs.siam.org/doi/10.1137/050645452)
+    L_reduced = L[:-1, :-1]
+
+    nodes = nodes.astype(A.indices.dtype)
+
+    rhs = jax.nn.one_hot(nodes, L_reduced.shape[0], dtype=L_reduced.dtype).T
+
+    potentials = batched_linear_solve(L_reduced, rhs, solver)
+
+    diagonal = potentials[nodes, jnp.arange(nodes.shape[0])]
+    row_potentials = potentials[nodes, :]
+
+    R = diagonal[:, None] + diagonal[None, :] - (row_potentials + row_potentials.T)
+    return R

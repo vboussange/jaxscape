@@ -1,25 +1,25 @@
 import jax.numpy as jnp
-from jax import jit
-from jaxscape.distance import AbstractDistance
 import equinox as eqx
 
-class EuclideanDistance(AbstractDistance):        
-    def __call__(self, grid, sources=None, targets=None):
-        if sources is None:
-            sources = jnp.arange(grid.nv)
-            
-        if targets is None:
-            targets = jnp.arange(grid.nv)
-            
-        coordinate_list = []
-        for nodes in [sources, targets]:
-            if nodes.ndim == 1:
-                # already vertex indices
-                coordinate_list.append(grid.index_to_coord(nodes))
-            elif nodes.ndim == 2:
-                coordinate_list.append(nodes)
-                
-        return euclidean_distance(coordinate_list[0], coordinate_list[1])
+from jaxscape.distance import AbstractDistance
+
+
+class EuclideanDistance(AbstractDistance):
+    @eqx.filter_jit
+    def nodes_to_nodes_distance(self, grid, nodes):
+        coords = grid.index_to_coord(nodes)
+        return euclidean_distance(coords, coords)
+
+    @eqx.filter_jit
+    def sources_to_targets_distance(self, grid, sources, targets):
+        source_coords = grid.index_to_coord(sources)
+        target_coords = grid.index_to_coord(targets)
+        return euclidean_distance(source_coords, target_coords)
+
+    @eqx.filter_jit
+    def all_pairs_distance(self, grid):
+        coords = grid.index_to_coord(jnp.arange(grid.nv))
+        return euclidean_distance(coords, coords)
                 
             
 @eqx.filter_jit

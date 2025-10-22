@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import equinox as eqx
+import jax.numpy as jnp
 
 class AbstractDistance(eqx.Module):
     def __call__(self, grid, sources=None, targets=None, nodes=None):

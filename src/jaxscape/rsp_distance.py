@@ -13,7 +13,7 @@ from jax.experimental.sparse import BCOO
 
 class RSPDistance(AbstractDistance):
     theta: jnp.ndarray
-    _cost: Union[Callable[jnp.ndarray, jnp.ndarray], jnp.ndarray]
+    _cost: Union[Callable[[jnp.ndarray], jnp.ndarray], jnp.ndarray]
     
     def __init__(self, theta, cost=lambda x: -jnp.log(x)):
         """
@@ -32,19 +32,21 @@ class RSPDistance(AbstractDistance):
         else:
             return self._cost
         
-    """
-    Compute the randomized shortest path from all vertices to `targets`, or from all to all vertices if
-    targets is `None`. 
-    """
     @eqx.filter_jit
-    def __call__(self, grid, targets=None):
+    def nodes_to_nodes_distance(self, grid, nodes):
+        distances = self.all_pairs_distance(grid)
+        return distances[nodes[:, None], nodes[None, :]]
+
+    @eqx.filter_jit
+    def sources_to_targets_distance(self, grid, sources, targets):
+        distances = self.all_pairs_distance(grid)
+        return distances[sources[:, None], targets[None, :]]
+
+    @eqx.filter_jit
+    def all_pairs_distance(self, grid):
         A = grid.get_adjacency_matrix()
         C = self.cost_matrix(grid)
-        if targets is None:
-            return rsp_distance(self.theta, A, C)
-        else:
-            # This is a hack to get the resistance distance to targets, but it is not efficient
-            return rsp_distance(self.theta, A, C)[:, targets]
+        return rsp_distance(self.theta, A, C)
     
 def fundamental_matrix(W):
     # normalised graph laplacian
