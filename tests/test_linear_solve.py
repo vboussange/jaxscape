@@ -52,3 +52,5 @@ def test_custom_solver(solver):
     X = batched_linear_solve(A_jax, B, solver)
     residuals = A_jax @ X - B
     assert jnp.linalg.norm(residuals) < 3 * 1e-4, f"Residual too large: {jnp.linalg.norm(residuals)}"
+
+# TODO: add differentiability tests

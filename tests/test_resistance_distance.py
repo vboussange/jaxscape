@@ -102,7 +102,7 @@ def test_differentiability_resistance_distance_matrix():
     distance = ResistanceDistance()
 
     def objective(permeability_raster):
-        grid = GridGraph(permeability_raster)
+        grid = GridGraph(permeability_raster, fun=lambda x, y: (x+y)/2)
         dist = distance(grid)
         return jnp.sum(dist)
     
