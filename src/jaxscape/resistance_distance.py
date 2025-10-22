@@ -11,26 +11,36 @@ from jax.experimental.sparse import BCOO
 
 class ResistanceDistance(AbstractDistance):
     """
-    Compute the resistance distances from all to `targets`, or to all if `targets` is None.
+    Compute the resistance distances. 
     """
     solver: tuple[None, lx.AbstractLinearSolver] = None
+    
+    @eqx.filter_jit
+    def nodes_to_nodes_distance(self, grid, nodes):
+        A = grid.adjacency_matrix()
+        if self.solver is None:
+            return p_inv_resistance_distance(A)[nodes[:, None], nodes[None, :]]
+        else:
+            return lineax_solver_nodes_to_nodes_resistance_distance(A, nodes, self.solver)
+        
+    @eqx.filter_jit
+    def sources_to_targets_distance(self, grid, sources, targets):
+        A = grid.adjacency_matrix()
+        if self.solver is None:
+            return p_inv_resistance_distance(A)[sources[:, None], targets[None, :]]
+        else:
+            return lineax_solver_sources_to_targets_resistance_distance(A, sources, targets, self.solver)
              
     @eqx.filter_jit
-    def __call__(self, grid, sources=None, targets=None):
-        A = grid.get_adjacency_matrix()
-
-        sources = jnp.arange(grid.nv) if sources is None else sources
-        targets = jnp.arange(grid.nv) if targets is None else targets
-
-        sources = grid.coord_to_index(sources[:, 0], sources[:, 1]) if sources.ndim == 2 else sources
-        targets = grid.coord_to_index(targets[:, 0], targets[:, 1]) if targets.ndim == 2 else targets
-
+    def all_pairs_distance(self, grid):
+        A = grid.adjacency_matrix()
         if self.solver is None:
-            R = p_inv_resistance_distance(A)
-            return R[sources, :][:, targets]
+            return p_inv_resistance_distance(A)
         else:
-            return lineax_solver_resistance_distance(A, sources, targets, self.solver)
-
+            nodes = jnp.arange(grid.nv)
+            return lineax_solver_nodes_to_nodes_resistance_distance(A, nodes, self.solver)
+    
+    
 @eqx.filter_jit
 def p_inv_resistance_distance(A: BCOO):
     # see implementation here: https://networkx.org/documentation/stable/_modules/networkx/algorithms/distance_measures.html#resistance_distance
@@ -52,10 +62,13 @@ def p_inv_resistance_distance(A: BCOO):
     return R
 
 @eqx.filter_jit
-def lineax_solver_resistance_distance(A: BCOO, sources, targets, solver):
+def lineax_solver_sources_to_targets_resistance_distance(A: BCOO, sources, targets, solver):
     """
-    Computes resistance distance using a lineax solver.
-    This is more memory-efficient for large graphs than p-inv, which densifies the Laplacian.
+    Computes resistance distance from `sources` to `targets` using a lineax `solver`.
+    Requires |`sources`| x |`targets`| linear solves. This is more
+    memory-efficient for large graphs than p-inv, which densifies the Laplacian.
+    !!! Warning
+        The graph must be undirected.
     """
     L = graph_laplacian(A)
     
@@ -88,3 +101,14 @@ def lineax_solver_resistance_distance(A: BCOO, sources, targets, solver):
     # component_mask = source_components[:, None] == target_components[None, :]
     # R = jnp.where(component_mask, R, jnp.inf)
     return R
+
+@eqx.filter_jit
+def lineax_solver_nodes_to_nodes_resistance_distance(A: BCOO, nodes, solver):
+    """
+    Computes resistance distance using a lineax solver.
+    This is more memory-efficient for large graphs than p-inv, which densifies the Laplacian.
+    !!! Warning
+        The graph must be undirected.
+    """
+    # TODO: to implement
+    pass

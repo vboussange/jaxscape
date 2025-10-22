@@ -407,7 +407,7 @@ plt.axis("off")
 ### Linear solvers
 - [ ] Support for direct solve sparse solvers
     - UMFPACK (see implementation [here](https://github.com/arpastrana/jax_fdm/blob/main/src/jax_fdm/equilibrium/sparse.py), `jax-fem`, `jax.experimental.sparse.linalg.spsolve`)
-    - CHOLMOD: see [here](https://github.com/rgl-epfl/cholespy)
+    - [-] CHOLMOD: see [here](https://github.com/rgl-epfl/cholespy)
 - [x] Support for iterative sparse solvers
     - [x] support for `pyamg` with accelerators
     - [ ] support for `(py)amgx`
@@ -429,16 +429,14 @@ plt.axis("off")
 
 - **Resistance distance**
   - [x] all-to-all calculation with dense solver (`pinv`, resulting in full distance matrix materialization)
-  - [ ] all-to-few calculation
+  - [x] few-to-few calculation
 
 - **Randomized shortest path distance** ([REF](https://arxiv.org/pdf/1212.1666))
   - [x] all-to-all calculation (distance matrix materialization)
   - [ ] all-to-few calculation
-  - [ ] all-to-few calculation
     - Should be based on direct or inderict solvers, similarly to ResistanceDistance
   <!-- - see [ConScape](https://conscape.org/notebooks/nbk_landmarks.html) landmarks and
   - CircuitScape focal nodes https://docs.circuitscape.org/Circuitscape.jl/latest/usage/ -->
-  - [ ] one-to-one calculation
 
 ### Utilities
 - [x] Moving window generator    
