@@ -404,11 +404,10 @@ plt.axis("off")
 ```
 
 ## Features and roadmap 🚀
-### Sparse linear solvers
 - [ ] Support for direct sparse solvers on GPU (currently only CPU supported)
 - [ ] Support for iterative sparse solvers on GPU, possibly with `(py)amgx`
 - [ ] Benchmark against `CircuitScape` and `ConScape`
-- [ ] 
+
 ## License
 
 `jaxscape` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.
