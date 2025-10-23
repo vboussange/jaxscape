@@ -8,28 +8,14 @@ from jaxscape.solvers import BCOOLinearOperator, PyAMGSolver, CholmodSolver, lin
 
 def test_bcoo_linear_operator_mv():
     """Test BCOOLinearOperator.mv method by comparing to dense matrix multiplication."""
-    # Create a small dense matrix
     key = jax.random.PRNGKey(42)
     dense_matrix = jax.random.normal(key, (5, 5))
-
-    # Convert to BCOO sparse format
     bcoo_matrix = BCOO.fromdense(dense_matrix)
-
-    # Create the linear operator
     operator = BCOOLinearOperator(bcoo_matrix)
-
-    # Create a test vector
     vector = jax.random.normal(jax.random.split(key)[0], (5,))
-
-    # Test mv method
     result_sparse = operator.mv(vector)
-
-    # Compare to dense multiplication
     result_dense = dense_matrix @ vector
-
-    # They should be approximately equal
     assert jnp.allclose(result_sparse, result_dense, rtol=1e-6)
-
 
 @pytest.mark.parametrize(
     "solver",
@@ -39,8 +25,7 @@ def test_bcoo_linear_operator_mv():
         # TODO: add PyAMGXSolver, do later
     ),
 )
-
-def test_custom_solver(solver):
+def test_solver(solver):
     A_scipy = poisson((10, 10), format="coo", dtype="float32")
     A_jax = BCOO.from_scipy_sparse(A_scipy)
     b = jnp.ones(A_jax.shape[0])
@@ -53,4 +38,27 @@ def test_custom_solver(solver):
     residuals = A_jax @ X - B
     assert jnp.linalg.norm(residuals) < 3 * 1e-4, f"Residual too large: {jnp.linalg.norm(residuals)}"
 
-# TODO: add differentiability tests
+@pytest.mark.parametrize(
+    "solver",
+    (
+        PyAMGSolver(),
+        CholmodSolver(),
+        # TODO: add PyAMGXSolver, do later
+    ),
+)
+def test_solver_differentiability(solver):
+    """Test that the solver is differentiable."""
+    A_scipy = poisson((5, 5), format="coo", dtype="float32")
+    A_jax = BCOO.from_scipy_sparse(A_scipy)
+    
+    def objective(A_data):
+        # Modify the matrix data slightly
+        A_modified = BCOO((A_data, A_jax.indices), shape=A_jax.shape)
+        b = jnp.ones(A_modified.shape[0])
+        x = linear_solve(A_modified, b, solver)
+        return jnp.sum(x**2)
+
+    grad_objective = jax.jit(jax.grad(objective))
+    grad_result = grad_objective(A_jax.data)
+    assert isinstance(grad_result, jax.Array)
+    assert grad_result.shape == A_jax.data.shape

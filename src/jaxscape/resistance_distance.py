@@ -12,6 +12,12 @@ from jax.experimental.sparse import BCOO
 class ResistanceDistance(AbstractDistance):
     """
     Compute the resistance distances. 
+    
+    Attributes:
+        solver: Optional lineax.AbstractLinearSolver. Must be compatible with BCOO matrices. We currently support jaxscape.solvers.CholmodSolver and jaxscape.solvers.PyAMGSolver. If None, uses pseudo-inverse method, which is very memory intensive for large graphs (densifies the Laplacian matrix).
+    
+    !!! Warning
+        The graph must be undirected for resistance distance to be well-defined.
     """
     solver: tuple[None, lx.AbstractLinearSolver] = None
     

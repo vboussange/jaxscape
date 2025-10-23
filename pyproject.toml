@@ -26,12 +26,23 @@ classifiers = [
 ]
 dependencies = [
     "equinox>=0.13.2",
-    "jax[cuda]",
     "tqdm",
     "numpy",
     "pyamg>=5.1.0",
     "lineax>=0.0.8",
     "cholespy>=2.1.0",
+]
+
+[project.optional-dependencies]
+cpu = ["jax"]
+gpu = ["jax[cuda]"]
+
+[tool.uv]
+conflicts = [
+  [
+    { extra = "cpu" },
+    { extra = "cu128" },
+  ],
 ]
 
 [project.urls]

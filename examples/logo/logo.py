@@ -1,10 +1,7 @@
 import jax
 import jax.numpy as jnp
-from jaxscape.rsp_distance import RSPDistance
-from jaxscape.resistance_distance import ResistanceDistance
-from jaxscape.lcp_distance import LCPDistance
+from jaxscape import ResistanceDistance
 from jaxscape.gridgraph import GridGraph
-import numpy as np
 import matplotlib.pyplot as plt
 import equinox as eqx
 import jax.random as jr
@@ -23,7 +20,7 @@ plt.axis("off")
 
 
 
-distance=LCPDistance()
+distance=ResistanceDistance(solver = CholmodSolver())
 @eqx.filter_jit
 def average_path_length(permeability, activities, nb_active, distance):
     grid = GridGraph(activities=activities, 

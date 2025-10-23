@@ -12,8 +12,6 @@ import jax.random as jr
 from jax.experimental.sparse import BCOO
 from jaxscape.utils import mapnz
 
-jax.config.update("jax_enable_x64", True)
-
 def test_rsp_distance_matrix():
     # This is the base example taken from ConScape
     expected_cost_conscape = jnp.array([

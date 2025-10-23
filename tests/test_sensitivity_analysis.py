@@ -4,7 +4,6 @@ from jaxscape.gridgraph import GridGraph
 from jaxscape.euclidean_distance import EuclideanDistance
 from jaxscape.resistance_distance import ResistanceDistance
 from jaxscape.lcp_distance import LCPDistance
-import matplotlib.pyplot as plt
 import jax.random as jr
 import equinox as eqx
 
@@ -140,8 +139,8 @@ def test_sensitivity_analysis_coarsening_permeability():
                             dependency_range=dependency_range,
                             batch_size=10).run(var="permeability")
     
-    plt.imshow(d_permeability_tiled_fine)
-    plt.imshow(d_permeability_tiled_coarse)
+    # plt.imshow(d_permeability_tiled_fine)
+    # plt.imshow(d_permeability_tiled_coarse)
 
     # this assertion is failing
     # assert jnp.allclose(d_quality_tiled_fine, d_quality_tiled_coarse, rtol=1e-1)
