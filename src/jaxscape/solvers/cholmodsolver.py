@@ -62,6 +62,7 @@ class CholmodSolver(AbstractLinearSolver):
             # ugly trick to remove batch dimension
             # specific to BCOO behavior
             A_bcoo = BCOO((A_bcoo.data.squeeze(), A_bcoo.indices.squeeze()), shape=A_bcoo.shape)
+        A_bcoo = A_bcoo.sum_duplicates() # required, otherwise cholespy fails
 
         if b_jax.ndim == 0:
             raise ValueError("Right-hand side must have at least one dimension.")
