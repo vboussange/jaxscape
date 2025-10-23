@@ -405,55 +405,10 @@ plt.axis("off")
 
 ## Features and roadmap 🚀
 ### Sparse linear solvers
-- [X] Support for direct sparse solvers
-    - [X] support for CHOLMOD with [`cholespy`](https://github.com/rgl-epfl/cholespy)
-- [x] Support for iterative sparse solvers
-    - [x] support for `pyamg` with accelerators
-    - [ ] support for `(py)amgx`
-
-
-### Raster to graphs
-- [x] `GridGraph` with differentiable adjacency matrix method
-
-### Distances
-<!-- - Euclidean distance
-  - [x] all-to-all calculation
-  - [ ] all-to-few calculation
-  - [ ] one-to-one calculation -->
-
-- **Least-cost path**
-  - [x] Bellman-Ford (one-to-all)
-  - [x] Floyd-Warshall (all-to-all)
-  - [ ] Differentiable Djikstra or A* (see implementation [here](https://github.com/srush/torch-queue/))
-
-- **Resistance distance**
-  - [x] all-to-all calculation with dense solver (`pinv`, resulting in full distance matrix materialization)
-  - [x] few-to-few calculation
-
-- **Randomized shortest path distance** ([REF](https://arxiv.org/pdf/1212.1666))
-  - [x] all-to-all calculation (distance matrix materialization)
-  - [ ] all-to-few calculation
-    - Should be based on direct or inderict solvers, similarly to ResistanceDistance
-  <!-- - see [ConScape](https://conscape.org/notebooks/nbk_landmarks.html) landmarks and
-  - CircuitScape focal nodes https://docs.circuitscape.org/Circuitscape.jl/latest/usage/ -->
-
-### Utilities
-- [x] Moving window generator    
-- [x] Differentiable connected component algorithm (see [here](https://github.com/jax-ml/jax/issues/24737))
-
-### Benchmark
-- [x] scaling with number of nodes, CPU/GPU
-- [x] Moving window tests
-- [ ] benchmark against `CircuitScape` and `ConScape`
-
-<!-- ## Documentation
-
-To build.
-- Show utilization of different distance metrics
-- Show influence of \theta for RSP metrics, similar to https://conscape.org/notebooks/nbk_getting_started.html
-- Show optimization of \theta, see REF
-- Show landscape priorization -->
-
+- [ ] Support for direct sparse solvers on GPU (currently only CPU supported)
+- [ ] Support for iterative sparse solvers on GPU, possibly with `(py)amgx`
+- [ ] Benchmark against `CircuitScape` and `ConScape`
+- [ ] 
 ## License
 
 `jaxscape` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.
