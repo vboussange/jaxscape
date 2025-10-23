@@ -7,23 +7,27 @@ name = "jaxscape"
 version = "0.0.6"
 description = ''
 readme = "README.md"
-requires-python = ">=3.12"
-license = "MIT"
+requires-python = ">=3.10,<3.13"
+license = {file = "LICENSE"}
 keywords = []
 authors = [
   { name = "Victor Boussange", email = "vic.boussange@gmail.com" },
 ]
 classifiers = [
-  "Development Status :: 4 - Beta",
-  "Programming Language :: Python",
-  "Programming Language :: Python :: 3.8",
-  "Programming Language :: Python :: 3.9",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3.12",
-  "Programming Language :: Python :: Implementation :: CPython",
-  "Programming Language :: Python :: Implementation :: PyPy",
-]
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Financial and Insurance Industry",
+  "Intended Audience :: Information Technology",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Natural Language :: English",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+  "Topic :: Scientific/Engineering :: Mathematics",
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+  "Topic :: Scientific/Engineering :: GIS",
+  ]
 dependencies = [
     "equinox>=0.13.2",
     "tqdm",
@@ -41,7 +45,7 @@ gpu = ["jax[cuda]"]
 conflicts = [
   [
     { extra = "cpu" },
-    { extra = "cu128" },
+    { extra = "gpu" },
   ],
 ]
 
@@ -53,10 +57,12 @@ Source = "https://github.com/vboussange/jaxscape"
 [dependency-groups]
 dev = [
     "ipykernel>=6.29.5",
-    "networkx>=3.5",
+    "networkx>=3.4",
     "pytest>=8.3.5",
 ]
 
 examples = [
     "matplotlib",
+    "rasterio",
+    "flax"
 ]

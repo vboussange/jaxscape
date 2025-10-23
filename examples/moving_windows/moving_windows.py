@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 from jaxscape import WindowOperation, padding
 
-with rasterio.open("../suitability.tif") as src:
+with rasterio.open("suitability.tif") as src:
     raster = src.read(1, masked=True)  # Read the first band with masking
     quality = jnp.array(raster.filled(0), dtype="float32")  # Replace no data values with 0
 

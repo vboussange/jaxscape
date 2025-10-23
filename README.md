@@ -21,7 +21,7 @@ JAXScape leverages JAX's capabilities to accelerate distance computations on CPU
 ## Installation
 
 ```console
-pip install git+https://github.com/vboussange/jaxscape.git
+uv add git+https://github.com/vboussange/jaxscape.git
 ```
 
 ## Quick start
@@ -132,7 +132,7 @@ To calculate the landscape connectivity, we need to define a disperal range for 
 
 ```python
 D = 20 # dispersal range in pixels
-distance = LCPDistance() # fed to the function calculating the ecological proximity
+distance = ResistanceDistance(solver=CholmodSolver()) # fed to the function calculating the ecological proximity
 
 def proximity(dist):
     return jnp.exp(-dist/D) # ecological proximity function
@@ -404,10 +404,9 @@ plt.axis("off")
 ```
 
 ## Features and roadmap 🚀
-### Linear solvers
-- [ ] Support for direct solve sparse solvers
-    - UMFPACK (see implementation [here](https://github.com/arpastrana/jax_fdm/blob/main/src/jax_fdm/equilibrium/sparse.py), `jax-fem`, `jax.experimental.sparse.linalg.spsolve`)
-    - [-] CHOLMOD: see [here](https://github.com/rgl-epfl/cholespy)
+### Sparse linear solvers
+- [X] Support for direct sparse solvers
+    - [X] support for CHOLMOD with [`cholespy`](https://github.com/rgl-epfl/cholespy)
 - [x] Support for iterative sparse solvers
     - [x] support for `pyamg` with accelerators
     - [ ] support for `(py)amgx`
@@ -441,14 +440,11 @@ plt.axis("off")
 ### Utilities
 - [x] Moving window generator    
 - [x] Differentiable connected component algorithm (see [here](https://github.com/jax-ml/jax/issues/24737))
-  - An external call to scipy/cusparse connected component libraries could do for our purposes (but not support of differentiation)
-  - see [jax doc](https://github.com/dfm/extending-jax), [doc on pure callbacks](https://jax.readthedocs.io/en/latest/external-callbacks.html) a cool concrete example [here](https://github.com/arpastrana/jax_fdm/blob/main/src/jax_fdm/equilibrium/sparse.py)
-  - Note: cf `connected_component_labels`; it is jittable, but differentiability is unclear
 
 ### Benchmark
 - [x] scaling with number of nodes, CPU/GPU
 - [x] Moving window tests
-- [ ] benchmark against CircuitScape and ConScape (Julia based)
+- [ ] benchmark against `CircuitScape` and `ConScape`
 
 <!-- ## Documentation
 
