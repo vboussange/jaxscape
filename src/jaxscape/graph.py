@@ -4,6 +4,39 @@ from jax.experimental.sparse import BCOO
 import equinox as eqx
 import abc
 
+class AbstractGraph(eqx.Module):
+    """
+    Abstract base class for graphs.
+    """
+    @property
+    @abc.abstractmethod
+    def nv(self):
+        """Get the number of vertices."""
+        pass
+
+    @abc.abstractmethod
+    def get_adjacency_matrix(self):
+        """Get the adjacency matrix of the graph."""
+        pass
+
+
+class Graph(AbstractGraph):
+    """
+    A simple graph defined by an adjacency matrix.
+    """
+    adjacency_matrix: BCOO
+
+    def __init__(self, adjacency_matrix):
+        self.adjacency_matrix = adjacency_matrix
+
+    @property
+    def nv(self):
+        return self.adjacency_matrix.shape[0]
+
+    def get_adjacency_matrix(self):
+        return self.adjacency_matrix
+
+
 # Neighboring indices in the grid
 ROOK_CONTIGUITY = jnp.array([
                 (1, 0),  # down
@@ -23,31 +56,30 @@ QUEEN_CONTIGUITY = jnp.array([
                 (-1, 1),   # up-right
                 (-1, -1)   # up-left
                 ])
-    
 
-class GridGraph(eqx.Module):
-    vertex_weights: jnp.ndarray
+class GridGraph(AbstractGraph):
+    grid: jnp.ndarray
     neighbors: jnp.ndarray
     fun: callable = eqx.field(static=True)
 
     def __init__(self,
-                 vertex_weights,
+                 grid,
                  fun = lambda x, y: y, 
                  neighbors=ROOK_CONTIGUITY):
         """
-        Initializes a `GridGraph` object.
+        Graph defined by a rectangular grid of vertices.
         
         **Arguments:**
         
-        - `vertex_weights` is a 2D array of shape `(height, width)` containing the weights of each vertex.
+        - `grid` is a 2D array of shape `(height, width)` used to define edge weights.
         
-        - `fun` is a function applied to the source and target node weight to define the edge weight. It takes two arrays and returns an
+        - `fun` is a function applied to the source and target node values to define the edge weight. It takes two arrays and returns an
         array of the same size. Defaults to assigning the target vertex weight (`fun = lambda x, y: y`).
         
         - `neighbors` defines the contiguity pattern, and can be either `ROOK_CONTIGUITY` or `QUEEN_CONTIGUITY`.
         """
-        assert vertex_weights.ndim == 2, "`vertex_weights` should be 2D array"
-        self.vertex_weights = vertex_weights
+        assert grid.ndim == 2, "`grid` should be 2D array"
+        self.grid = grid
         self.fun = fun
         self.neighbors = neighbors
             
@@ -57,12 +89,12 @@ class GridGraph(eqx.Module):
     @property
     def height(self):
         """Get the height of the grid (number of rows)."""
-        return self.vertex_weights.shape[0]
+        return self.grid.shape[0]
 
     @property
     def width(self):
         """Get the width of the grid (number of columns)."""
-        return self.vertex_weights.shape[1]
+        return self.grid.shape[1]
     
     @property
     def nv(self):
@@ -72,13 +104,13 @@ class GridGraph(eqx.Module):
     # @jit
     def coord_to_index(self, i, j):
         """Convert (i, j) grid coordinates to the associated passive vertex index."""
-        num_columns = self.vertex_weights.shape[1]  # Get the number of columns in the grid
+        num_columns = self.grid.shape[1]  # Get the number of columns in the grid
         return i * num_columns + j
     
     # @jit
     def index_to_coord(self, v):
         """Convert passive vertex index `v` to (i, j) grid coordinates."""
-        num_columns = self.vertex_weights.shape[1]  # Get the number of columns in the grid
+        num_columns = self.grid.shape[1]  # Get the number of columns in the grid
         i = v // num_columns  # Row index
         j = v % num_columns   # Column index
         return jnp.column_stack((i, j))
@@ -86,7 +118,7 @@ class GridGraph(eqx.Module):
     # @jit
     def node_values_to_array(self, values):
         """Reshapes the 1D array values of vertices to the underlying 2D grid."""
-        canvas = values.reshape(*self.vertex_weights.shape)
+        canvas = values.reshape(*self.grid.shape)
         return canvas
     
     def array_to_node_values(self, array):
@@ -101,9 +133,9 @@ class GridGraph(eqx.Module):
         object. 
         """
         # Get shape of raster
-        nrows, ncols = self.vertex_weights.shape
+        nrows, ncols = self.grid.shape
         num_nodes = self.nv
-        permeability_raster = self.vertex_weights
+        permeability_raster = self.grid
         # Get coordinates of active nodes
         source_xy_coord = self.index_to_coord(jnp.arange(num_nodes))
 
@@ -146,17 +178,3 @@ class GridGraph(eqx.Module):
         A = BCOO((values, row_col_indices), shape=(num_nodes, num_nodes)) # not compatible with jit .sum_duplicates()
 
         return A
-
-class ExplicitGridGraph(GridGraph):
-    adjacency_matrix: jnp.ndarray
-    """
-    A `GridGraph` with adjacency matrix explicitly defined.
-    """
-
-    def __init__(self, *args, adjacency_matrix, **kwargs):
-        # assert int(activities.sum()) == proximity.shape[0], "The number of nodes in the graph defined by `proximity` should correspond to the number of active vertices defined in `activities`"
-        super().__init__(*args, **kwargs)
-        self.adjacency_matrix = adjacency_matrix
-        
-    def get_adjacency_matrix(self):
-        return self.adjacency_matrix
