@@ -5,11 +5,11 @@ build-backend = "hatchling.build"
 [project]
 name = "jaxscape"
 version = "0.0.6"
-description = ''
+description = 'A minimal JAX library for connectivity modelling at scale'
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
 license = {file = "LICENSE"}
-keywords = []
+keywords = ["jax", "graph", "machine-learning", "network"]
 authors = [
   { name = "Victor Boussange", email = "vic.boussange@gmail.com" },
 ]
@@ -29,6 +29,7 @@ classifiers = [
   "Topic :: Scientific/Engineering :: GIS",
   ]
 dependencies = [
+    "jax>=0.4.38,!=0.7.0,!=0.7.1",
     "equinox>=0.13.2",
     "tqdm",
     "numpy",
@@ -37,32 +38,23 @@ dependencies = [
     "cholespy>=2.1.0",
 ]
 
-[project.optional-dependencies]
-cpu = ["jax"]
-gpu = ["jax[cuda]"]
-
-[tool.uv]
-conflicts = [
-  [
-    { extra = "cpu" },
-    { extra = "gpu" },
-  ],
-]
-
 [project.urls]
 Documentation = "https://github.com/vboussange/jaxscape#readme"
 Issues = "https://github.com/vboussange/jaxscape/issues"
 Source = "https://github.com/vboussange/jaxscape"
 
-[dependency-groups]
+[project.optional-dependencies]
 dev = [
     "ipykernel>=6.29.5",
-    "networkx>=3.4",
-    "pytest>=8.3.5",
 ]
 
 examples = [
     "matplotlib",
     "rasterio",
     "flax"
+]
+
+tests = [
+    "networkx>=3.4",
+    "pytest>=8.3.5",
 ]

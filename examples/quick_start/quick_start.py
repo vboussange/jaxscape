@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from jaxscape.rsp_distance import RSPDistance
 from jaxscape.resistance_distance import ResistanceDistance
 from jaxscape.lcp_distance import LCPDistance
-from jaxscape.gridgraph import GridGraph
+from jaxscape import GridGraph
 import numpy as np
 import matplotlib.pyplot as plt
 import equinox as eqx
@@ -19,7 +19,7 @@ permeability = jnp.array(np.loadtxt("permeability.csv", delimiter=",")) + 0.001
 plt.imshow(permeability, cmap="gray")
 plt.axis("off")
 
-grid = GridGraph(vertex_weights=permeability)
+grid = GridGraph(grid=permeability)
 
 # Calculating distances of all pixels to top left pixel
 source = grid.coord_to_index(jnp.array([0]), jnp.array([0]))

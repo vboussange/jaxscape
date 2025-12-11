@@ -3,10 +3,10 @@
 # SPDX-License-Identifier: MIT
 
 
-from .graph import (GridGraph as GridGraph, 
-                        ROOK_CONTIGUITY as ROOK_CONTIGUITY, 
-                        QUEEN_CONTIGUITY as QUEEN_CONTIGUITY,
-                        ExplicitGridGraph as ExplicitGridGraph)
+from .graph import (Graph as Graph,
+                    GridGraph as GridGraph, 
+                    ROOK_CONTIGUITY as ROOK_CONTIGUITY, 
+                    QUEEN_CONTIGUITY as QUEEN_CONTIGUITY)
 
 from .euclidean_distance import EuclideanDistance as EuclideanDistance
 from .resistance_distance import ResistanceDistance as ResistanceDistance
