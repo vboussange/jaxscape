@@ -4,7 +4,7 @@ from jaxscape.window_operation import WindowOperation
 from jax import lax
 from tqdm import tqdm
 from jaxscape.connectivity_analysis import WindowedAnalysis
-from jaxscape.gridgraph import GridGraph
+from src.jaxscape.graph import GridGraph
 from jaxscape.connectivity_analysis import connectivity
 import numpy as np
 

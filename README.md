@@ -418,3 +418,5 @@ plt.axis("off")
 - Circuitscape
 - graphhab
 - conefor
+- resistanceGA
+- landscapemetrics

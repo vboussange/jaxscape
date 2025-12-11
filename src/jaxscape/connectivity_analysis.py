@@ -4,7 +4,7 @@ from jaxscape.window_operation import WindowOperation
 from jaxscape.utils import padding
 from jax import lax
 from tqdm import tqdm
-from jaxscape.gridgraph import GridGraph
+from src.jaxscape.graph import GridGraph
 
 def connectivity(quality_raster, permeability_raster, window_op, distance, proximity, q_weighted):
     """

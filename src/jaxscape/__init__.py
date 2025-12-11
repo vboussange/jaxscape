@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 
 
-from .gridgraph import (GridGraph as GridGraph, 
+from .graph import (GridGraph as GridGraph, 
                         ROOK_CONTIGUITY as ROOK_CONTIGUITY, 
                         QUEEN_CONTIGUITY as QUEEN_CONTIGUITY,
                         ExplicitGridGraph as ExplicitGridGraph)
