@@ -14,6 +14,7 @@ CMAP_BR = LinearSegmentedColormap.from_list("species_richness", COLORS_BR, N=256
 
 # loading jax array representing permeability
 mask = jnp.array(plt.imread("mask.png"))
+mask = jnp.pad(mask, ((10, 10), (10, 10), (0, 0)), mode='constant', constant_values=0)
 permeability = 1 - (mask[:,:,3] > 0)
 permeability += 1e-2  # avoid zero permeability
 
@@ -21,15 +22,15 @@ fig, ax = plt.subplots()
 ax.imshow(permeability, cmap="gray")
 # plt.axis("off")
 node_coords = jnp.array([[10, permeability.shape[0]-100], 
-                         [permeability.shape[1]-50, permeability.shape[0]-55],
+                        [130, permeability.shape[0]-90],
                         [200, permeability.shape[0]-100],
-                        [240, permeability.shape[0]-140],
-                        [240, permeability.shape[0]-40],
-                        [300, permeability.shape[0]-60],
-                        [420, permeability.shape[0]-60],
-                        [480, permeability.shape[0]-50],
+                        [250, permeability.shape[0]-150],
+                        [250, permeability.shape[0]-30],
+                        [320, permeability.shape[0]-70],
+                        [430, permeability.shape[0]-80],
+                        # [490, permeability.shape[0]-65],
                         [570, permeability.shape[0]-110],
-                        [120, permeability.shape[0]-90]
+                        [permeability.shape[1]-50, permeability.shape[0]-65],
                          ])
 ax.scatter(x=node_coords[:,0], y=node_coords[:,1], color='red', s=10)
 plt.colorbar(ax.imshow(permeability, cmap="gray"), ax=ax)
