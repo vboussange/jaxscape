@@ -4,7 +4,7 @@ We represent euclidean distance and ECH sensitivity in a simple setting
 import jax
 import jax.numpy as jnp
 from jaxscape.rsp_distance import RSPDistance
-from jaxscape.gridgraph import GridGraph, ExplicitGridGraph
+from jaxscape import GridGraph, ExplicitGridGraph
 from jaxscape.utils import mapnz
 import matplotlib.pyplot as plt
 from pathlib import Path
@@ -29,7 +29,7 @@ activities = habitat_permability > 0
 focal_pixel_coord = (N-2, N-2)
 ax.scatter([focal_pixel_coord[0]], [focal_pixel_coord[1]])
 
-grid = GridGraph(activities=activities, vertex_weights=habitat_permability)
+grid = GridGraph(activities=activities, grid=habitat_permability)
 cost_mat = mapnz(grid.get_adjacency_matrix(), lambda x: 1/x )
 thetas = jnp.array([1e-3, 1e-2, 1e-1])
 fig, axs = plt.subplots(1,len(thetas), figsize= (8,3))
@@ -57,12 +57,12 @@ fig.savefig(path_results / "habitat_suitability.png", dpi=300)
 # Here the rationale is that when habitat permeability is affected, both likelihood and cost increase
 distance = RSPDistance(theta=jnp.array(1e-1), cost=cost_mat)
 def calculate_ech(habitat_permability, habitat_quality, activities, D):
-    grid = GridGraph(activities=activities, vertex_weights=habitat_permability)
+    grid = GridGraph(activities=activities, grid=habitat_permability)
     dist = distance(grid)
 
     proximity = jnp.exp(- dist / D)
     landscape = ExplicitGridGraph(activities=activities, 
-                                  vertex_weights=habitat_quality, 
+                                  grid=habitat_quality, 
                                   adjacency_matrix=proximity)
     ech = landscape.equivalent_connected_habitat()
     return ech

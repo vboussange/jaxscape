@@ -2,7 +2,7 @@
 
 import jax
 import jax.numpy as jnp
-from jaxscape.gridgraph import GridGraph
+from jaxscape import GridGraph
 from jaxscape.resistance_distance import resistance_distance
 import jax.random as jr
 import matplotlib.pyplot as plt
@@ -12,7 +12,7 @@ key = jr.PRNGKey(0)
 N = 10
 permeability = jr.uniform(key, (N, N))
 activities = jnp.ones((N, N), dtype="bool")
-grid = GridGraph(activities=activities, vertex_weights=permeability)
+grid = GridGraph(activities=activities, grid=permeability)
 A = grid.get_adjacency_matrix(fun=lambda x, y: (x + y)/2).sum_duplicates()
 
 conductances, indices = A.data, A.indices

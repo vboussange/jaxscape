@@ -24,6 +24,23 @@ JAXScape leverages JAX's capabilities to accelerate distance computations on CPU
 uv add git+https://github.com/vboussange/jaxscape.git
 ```
 
+### Optional Solvers
+
+JAXScape supports optional linear solvers for efficient resistance distance computations:
+
+```console
+# Install PyAMG solver (Python 3.10-3.12)
+uv add git+https://github.com/vboussange/jaxscape.git --extra pyamg
+
+# Install Cholesky solver (Python 3.10-3.12 only, no wheels for Python 3.13+)
+uv add git+https://github.com/vboussange/jaxscape.git --extra cholespy
+
+# Install both solvers
+uv add git+https://github.com/vboussange/jaxscape.git --extra solvers
+```
+
+> **Note:** These optional solvers are currently not tested in the CI/CD pipeline. Additionally, `cholespy` does not provide wheels for Python 3.13 and above.
+
 ## Quick start
 
 Let's define our graph. 
@@ -38,7 +55,7 @@ permeability = jnp.array(np.loadtxt("permeability.csv", delimiter=","))
 plt.imshow(permeability, cmap="gray")
 plt.axis("off")
 
-grid = GridGraph(vertex_weights=permeability)
+grid = GridGraph(grid=permeability)
 ```
 
 

@@ -7,7 +7,6 @@ from scipy.sparse.linalg import cg as scipy_cg
 import jax.numpy as jnp
 from typing import Any, Callable, Optional
 from typing_extensions import TypeAlias
-import pyamg
 from jaxtyping import Array, PyTree
 from jax.experimental.sparse import BCSR, BCOO
 from lineax._solver.misc import (
@@ -18,8 +17,12 @@ from lineax._solver.misc import (
 )
 from jaxscape.utils import zero_copy_jax_csr_to_scipy_csr
 
-# TODO: check if pyamg is available, otherwise raise an error when trying to use PyAMGSolver
-
+try:
+    import pyamg
+    PYAMG_AVAILABLE = True
+except ImportError:
+    PYAMG_AVAILABLE = False
+    
 _PyAMGSolverState: TypeAlias = tuple[BCOO, PackedStructures]
 
 class PyAMGSolver(AbstractLinearSolver):
@@ -28,11 +31,20 @@ class PyAMGSolver(AbstractLinearSolver):
     """
     rtol: float = 1e-6
     maxiter : float = 100_000
-    pyamg_method: Callable = pyamg.smoothed_aggregation_solver
+    pyamg_method: Optional[Callable] = None
 
     def __check_init__(self):
+        if not PYAMG_AVAILABLE:
+            raise ImportError(
+                "pyamg is required for PyAMGSolver. "
+                "Install it with: pip install pyamg"
+            )
+
         if isinstance(self.rtol, (int, float)) and self.rtol < 0:
             raise ValueError("Tolerances must be non-negative.")
+        
+        if self.pyamg_method is None:
+            object.__setattr__(self, 'pyamg_method', pyamg.smoothed_aggregation_solver)
 
     def init(
         self, operator: AbstractLinearOperator, options: dict[str, Any]

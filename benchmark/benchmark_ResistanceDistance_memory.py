@@ -7,7 +7,7 @@ os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "1"
 from jax import lax
 import jax.numpy as jnp
 from jaxscape.resistance_distance import resistance_distance
-from jaxscape.gridgraph import GridGraph
+from jaxscape import GridGraph
 import matplotlib.pyplot as plt
 from pathlib import Path
 import equinox
@@ -28,7 +28,7 @@ def create_landscape(size):
 @equinox.filter_jit
 def calculate_ech_scan(habitat_permability, activities, nb_active):
     grid = GridGraph(activities=activities, 
-                     vertex_weights=habitat_permability,
+                     grid=habitat_permability,
                      nb_active=nb_active)
     
     A = grid.get_adjacency_matrix()

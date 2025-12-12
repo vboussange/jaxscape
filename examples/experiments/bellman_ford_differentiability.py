@@ -11,7 +11,7 @@ from jax import lax, ops
 import equinox
 import jax.random as jr
 from jax import jit, grad
-from jaxscape.gridgraph import GridGraph
+from jaxscape import GridGraph
 
 def bellman_ford(W_data, W_indices, N, source: int):
     D = jnp.full(N, jnp.inf)
@@ -31,7 +31,7 @@ def test_bellman_ford_differentiability():
     permeability_raster = jnp.ones((2, 2))
     activities = jnp.ones(permeability_raster.shape, dtype=bool)
     grid = GridGraph(activities=activities,
-                    vertex_weights = permeability_raster,
+                    grid = permeability_raster,
                     nb_active = permeability_raster.size)
     A = grid.get_adjacency_matrix()
     W_indices, W_data = A.indices, A.data

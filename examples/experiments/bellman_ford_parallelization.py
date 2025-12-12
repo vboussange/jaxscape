@@ -11,7 +11,7 @@ from jax.experimental.sparse import BCOO
 from equinox import filter_jit, filter_grad, filter_checkpoint, filter_vmap
 from jax import jacfwd
 import matplotlib.pyplot as plt
-from jaxscape.gridgraph import GridGraph
+from jaxscape import GridGraph
 import timeit
 
 def benchmark(method, func):
@@ -33,7 +33,7 @@ jit_bellman_ford = filter_jit(bellman_ford)
 
 def loss_fn(permeability, source):
     grid = GridGraph(activities=jnp.ones(permeability.shape, dtype=bool),
-                    vertex_weights=permeability,
+                    grid=permeability,
                     nb_active=permeability.size)
     A = grid.get_adjacency_matrix()
     W_indices, W_data = A.indices, A.data
@@ -45,7 +45,7 @@ vmap_grad_loss_fn = filter_vmap(grad_loss_fn, in_axes=(None, 0))
 
 def loss_fn_scan(permeability, sources):
     grid = GridGraph(activities=jnp.ones(permeability.shape, dtype=bool),
-                    vertex_weights=permeability,
+                    grid=permeability,
                     nb_active=permeability.size)
     A = grid.get_adjacency_matrix()
     W_indices, W_data = A.indices, A.data

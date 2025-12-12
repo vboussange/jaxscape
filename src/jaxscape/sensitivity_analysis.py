@@ -23,7 +23,7 @@ class SensitivityAnalysis(WindowedAnalysis):
         if len(args) > 0:
             self.original_shape = args[0].shape
         else:
-            self.original_shape = np.array(kwargs.get('quality_raster', None).shape)
+            self.original_shape = np.array(kwargs.get('quality_raster', None).shape) #todo: do we need np.array here?
         
     def _scan_fn(self, raster_buffer, x):
             _xy, _rast = x

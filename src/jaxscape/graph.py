@@ -37,7 +37,7 @@ class Graph(AbstractGraph):
         return self.adjacency_matrix
 
 
-# Neighboring indices in the grid
+# Neighboring indices for GridGraph
 ROOK_CONTIGUITY = jnp.array([
                 (1, 0),  # down
                 (-1, 0),  # up
@@ -45,7 +45,7 @@ ROOK_CONTIGUITY = jnp.array([
                 (0, -1),  # left
                 ])
 
-# Neighboring indices in the grid
+# Neighboring indices for GridGraph
 QUEEN_CONTIGUITY = jnp.array([
                 (1, 0),    # down
                 (-1, 0),   # up
@@ -67,7 +67,7 @@ class GridGraph(AbstractGraph):
                  fun = lambda x, y: y, 
                  neighbors=ROOK_CONTIGUITY):
         """
-        Graph defined by a rectangular grid of vertices.
+        Geometric graph where vertices are defined by a rectangular `grid`.
         
         **Arguments:**
         

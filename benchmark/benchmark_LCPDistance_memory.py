@@ -6,7 +6,7 @@ import jax
 from jax import lax
 import jax.numpy as jnp
 from jaxscape.lcp_distance import bellman_ford
-from jaxscape.gridgraph import GridGraph
+from jaxscape import GridGraph
 import matplotlib.pyplot as plt
 from pathlib import Path
 import equinox
@@ -26,7 +26,7 @@ def create_landscape(size):
 @equinox.filter_jit
 def calculate_ech_scan(habitat_permability, activities, nb_active):
     grid = GridGraph(activities=activities, 
-                     vertex_weights=habitat_permability,
+                     grid=habitat_permability,
                      nb_active=nb_active)
     
     ech = jnp.array(0, dtype=habitat_permability.dtype)
@@ -57,7 +57,7 @@ plt.imshow(sensitivity)
 # @equinox.filter_jit
 # def calculate_ech_inner_vmap(habitat_permability, activities, nb_active):
 #     grid = GridGraph(activities=activities, 
-#                      vertex_weights=habitat_permability,
+#                      grid=habitat_permability,
 #                      nb_active=nb_active)
     
 #     A = grid.get_adjacency_matrix()
@@ -90,7 +90,7 @@ plt.imshow(sensitivity)
 # @equinox.filter_jit
 # def calculate_ech_source(habitat_permability, activities, nb_active, source):
 #     grid = GridGraph(activities=activities, 
-#                      vertex_weights=habitat_permability,
+#                      grid=habitat_permability,
 #                      nb_active=nb_active)
     
 #     A = grid.get_adjacency_matrix()
@@ -116,7 +116,7 @@ plt.imshow(sensitivity)
 @equinox.filter_jit
 def calculate_sum_A(habitat_permability, activities, nb_active):
     grid = GridGraph(activities=activities, 
-                     vertex_weights=habitat_permability,
+                     grid=habitat_permability,
                      nb_active=nb_active)
     
     A = grid.get_adjacency_matrix()

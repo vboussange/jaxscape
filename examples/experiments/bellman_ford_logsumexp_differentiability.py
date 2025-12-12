@@ -4,7 +4,7 @@ from jax.experimental.sparse import BCOO
 from jax import lax, ops
 import equinox
 from jax import jit, grad
-from jaxscape.gridgraph import GridGraph
+from jaxscape import GridGraph
 
 def segment_logsumexp(data, segment_ids, num_segments, epsilon=1e-10):
     # Compute per-segment maximums for numerical stability
@@ -51,7 +51,7 @@ def test_bellman_ford_differentiability():
     permeability_raster = jnp.ones((2, 2))
     activities = jnp.ones(permeability_raster.shape, dtype=bool)
     grid = GridGraph(activities=activities,
-                     vertex_weights=permeability_raster,
+                     grid=permeability_raster,
                      nb_active=permeability_raster.size)
     A = grid.get_adjacency_matrix()
     W_indices, W_data = A.indices, A.data
@@ -91,7 +91,7 @@ habitat_quality = habitat_quality.at[N-2, N-2].set(1.)
 
 
 def calculate_ech(habitat_permability, habitat_quality, activities, D):
-    grid = GridGraph(activities=activities, vertex_weights=habitat_permability)
+    grid = GridGraph(activities=activities, grid=habitat_permability)
     A = grid.get_adjacency_matrix()
     W_indices, W_data = A.indices, A.data
     nb_active = A.shape[0]

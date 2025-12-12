@@ -8,7 +8,7 @@ from jaxscape.resistance_distance import ResistanceDistance
 from jaxscape.lcp_distance import LCPDistance
 from jaxscape.smooth_lcp_distance import SmoothLCPDistance
 from jaxscape.rsp_distance import RSPDistance
-from jaxscape.gridgraph import GridGraph
+from jaxscape import GridGraph
 import matplotlib.pyplot as plt
 from pathlib import Path
 import equinox
@@ -27,7 +27,7 @@ def create_landscape(size):
 
 def calculate_ech(habitat_permability, activities, nb_active, distance):
     grid = GridGraph(activities=activities, 
-                     vertex_weights=habitat_permability,
+                     grid=habitat_permability,
                      nb_active=nb_active)
     return jnp.sum(distance(grid))
 

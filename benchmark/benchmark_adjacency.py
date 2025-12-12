@@ -1,4 +1,4 @@
-from jaxscape.gridgraph import GridGraph
+from jaxscape import GridGraph
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -13,7 +13,7 @@ permeability = jr.normal(key, (N, N))
 def objective(permeability):
     activities = jnp.ones_like(permeability, dtype="bool")
     grid = GridGraph(activities=activities, 
-                     vertex_weights=permeability, 
+                     grid=permeability, 
                      nb_active=activities.size)
     A = grid.get_adjacency_matrix()
     return A.sum()

@@ -1,6 +1,6 @@
 import jax.numpy as jnp
 from jaxscape.sensitivity_analysis import SensitivityAnalysis, d_quality_vmap, d_permeability_vmap
-from jaxscape.gridgraph import GridGraph
+from jaxscape import GridGraph
 from jaxscape.euclidean_distance import EuclideanDistance
 from jaxscape.resistance_distance import ResistanceDistance
 from jaxscape.lcp_distance import LCPDistance
@@ -57,7 +57,7 @@ def test_sensitivity_analysis():
 # @eqx.filter_grad
 # def landmarks(quality_raster, *args):
 #         # grid = GridGraph(activities=activity, 
-#         #                 vertex_weights=permeability_raster,
+#         #                 grid=permeability_raster,
 #         #                 nb_active=activity.size,
 #         #                 fun= lambda x, y: (x + y)/2)
 #         window_center = jnp.array([[quality_raster.shape[0]//2, quality_raster.shape[1]//2]])

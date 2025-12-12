@@ -22,7 +22,7 @@ def connectivity(quality_raster, permeability_raster, window_op, distance, proxi
 
     If `q_weighted=False`, returns the sum of the proximities, `jnp.sum(K)`. Otherwise, returns the sum of the proximities weighted by the qualities,  `q @ K @ q.T`.
     """
-    grid = GridGraph(vertex_weights=permeability_raster,
+    grid = GridGraph(grid=permeability_raster,
                     fun= lambda x, y: (x + y)/2)
     window_center = jnp.array([[permeability_raster.shape[0]//2, permeability_raster.shape[1]//2]])
     window_center_index = grid.coord_to_index(

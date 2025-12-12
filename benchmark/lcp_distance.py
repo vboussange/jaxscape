@@ -5,7 +5,7 @@ We represent euclidean distance and ECH sensitivity in a simple setting
 import jax
 import jax.numpy as jnp
 from jaxscape.lcp_distance import LCPDistance
-from jaxscape.gridgraph import GridGraph, ExplicitGridGraph
+from jaxscape import GridGraph
 import matplotlib.pyplot as plt
 from pathlib import Path
 
@@ -29,7 +29,7 @@ activities = habitat_permability > 0
 focal_pixel_coord = (N-2, N-2)
 ax.scatter([focal_pixel_coord[0]], [focal_pixel_coord[1]])
 
-grid = GridGraph(activities=activities, vertex_weights=habitat_permability)
+grid = GridGraph(activities=activities, grid=habitat_permability)
 distance = LCPDistance()
 mat = distance(grid)
 vertex_index = grid.coord_to_active_vertex_index(*focal_pixel_coord)
@@ -52,12 +52,12 @@ fig.savefig(path_results / "habitat_suitability.png", dpi=300)
 # We first need to calculate a distance, 
 # that we transform into an ecological proximity
 def calculate_ech(habitat_permability, habitat_quality, activities, D):
-    grid = GridGraph(activities=activities, vertex_weights=habitat_permability)
+    grid = GridGraph(activities=activities, grid=habitat_permability)
     dist = distance(grid, landmarks = jnp.arange(grid.nb_active))
 
     proximity = jnp.exp(- dist / D)
     landscape = ExplicitGridGraph(activities=activities, 
-                                  vertex_weights=habitat_quality, 
+                                  grid=habitat_quality, 
                                   adjacency_matrix=proximity)
     ech = landscape.equivalent_connected_habitat()
     return ech

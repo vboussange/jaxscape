@@ -2,7 +2,7 @@ import pytest
 import jax
 import jax.numpy as jnp
 from jaxscape.euclidean_distance import EuclideanDistance
-from jaxscape.gridgraph import GridGraph, ExplicitGridGraph
+from jaxscape import GridGraph
 import networkx as nx
 from networkx import grid_2d_graph
 from jax import grad, jit
@@ -12,7 +12,7 @@ def test_euclidean_distance():
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
     permeability_raster = jr.uniform(key, (10, 10))
 
-    grid = GridGraph(vertex_weights = permeability_raster)
+    grid = GridGraph(grid = permeability_raster)
     distance = EuclideanDistance()
     dist = distance(grid)
     assert dist[0,0] == 0

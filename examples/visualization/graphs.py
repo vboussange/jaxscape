@@ -2,7 +2,7 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import networkx as nx
 from scipy.ndimage import gaussian_filter
-from jaxscape.gridgraph import GridGraph
+from jaxscape import GridGraph
 from jaxscape.rsp_distance import RSPDistance
 import jax
 from matplotlib.colors import LinearSegmentedColormap
@@ -64,7 +64,7 @@ activities = habitat_suitability > 0
 # We first need to calculate a distance, 
 # that we transform into an ecological proximity
 def calculate_ech(habitat_quality):
-    grid = GridGraph(activities=activities, vertex_weights=habitat_quality)
+    grid = GridGraph(activities=activities, grid=habitat_quality)
     dist = distance(grid)
     K = jnp.exp(-dist / D)
     q = grid.get_active_vertices_weights()

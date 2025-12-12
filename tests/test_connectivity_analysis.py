@@ -1,6 +1,6 @@
 import jax.numpy as jnp
 from jaxscape import ConnectivityAnalysis
-from jaxscape.gridgraph import GridGraph
+from jaxscape import GridGraph
 from jaxscape import EuclideanDistance
 import jax.random as jr
 
@@ -41,7 +41,7 @@ def test_connectivity_analysis():
     # - dependency does seem to change ech_tiled, which is expected (modifies perimeter buffer zone)
 
     # estimation via direct connectivity analysis
-    grid = GridGraph(vertex_weights=quality_raster, fun= lambda x, y: (x + y)/2)
+    grid = GridGraph(grid=quality_raster, fun= lambda x, y: (x + y)/2)
     q = grid.array_to_node_values(quality_raster)
     dist = distance(grid)
     K = proximity(dist)

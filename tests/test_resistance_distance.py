@@ -4,13 +4,34 @@ from jaxscape.resistance_distance import (
     ResistanceDistance,
     p_inv_resistance_distance,
 )
-from jaxscape.gridgraph import GridGraph
+from jaxscape import GridGraph
 from jaxscape.solvers import PyAMGSolver, CholmodSolver
 
 import numpy as np
 import jax.random as jr
 from jax.experimental.sparse import BCOO
 import networkx as nx
+import pytest
+
+# Check availability of optional solvers
+try:
+    import pyamg
+    PYAMG_AVAILABLE = True
+except ImportError:
+    PYAMG_AVAILABLE = False
+
+try:
+    import cholespy
+    CHOLMOD_AVAILABLE = True
+except ImportError:
+    CHOLMOD_AVAILABLE = False
+
+# Build list of available solvers
+available_solvers = []
+if PYAMG_AVAILABLE:
+    available_solvers.append(PyAMGSolver())
+if CHOLMOD_AVAILABLE:
+    available_solvers.append(CholmodSolver())
 
 def build_nx_resistance_distance_matrix(G):
     Rnx_dict = nx.resistance_distance(G, weight="weight", invert_weight=False)
@@ -51,7 +72,7 @@ def test_p_inv_resistance_distance():
 #     permeability_raster = jr.uniform(key, (11, 11))  # Start with a uniform permeability
 #     activities = jnp.ones(permeability_raster.shape, dtype=bool)
 #     grid = GridGraph(activities=activities, 
-#                      vertex_weights=permeability_raster)
+#                      grid=permeability_raster)
 #     coarse_matrix = coarse_graining(grid, 2) 
 #     landmarks = coarse_matrix.indices
 #     Rjaxscape = _landmark_resistance_distance(Ajx, landmarks)
@@ -82,18 +103,18 @@ def test_p_inv_resistance_distance():
 #             Rnx = Rnx.at[i, j].set(r)
 #     assert jnp.allclose(Rjaxscape, Rnx)
 
-def test_lineax_solver_resistance_distance():
+@pytest.mark.skipif(len(available_solvers) == 0, reason="No solvers available")
+@pytest.mark.parametrize("solver", available_solvers)
+def test_lineax_solver_resistance_distance(solver):
     """
     Tests that the lineax solver implementation of resistance distance
     produces the same result as the pseudo-inverse method.
     """
     key = jr.PRNGKey(42)
     permeability_raster = jr.uniform(key, (2, 2))
-    grid = GridGraph(vertex_weights=permeability_raster, fun= lambda x, y: (x+y)/2)
+    grid = GridGraph(grid=permeability_raster, fun= lambda x, y: (x+y)/2)
 
     # nodes to nodes
     dist_pinv = ResistanceDistance(solver=None)(grid)
-    
-    for solver in [PyAMGSolver(), CholmodSolver()]:
-        dist_lineax = ResistanceDistance(solver=solver)(grid)
-        assert jnp.allclose(dist_pinv, dist_lineax, rtol=1e-4)
+    dist_lineax = ResistanceDistance(solver=solver)(grid)
+    assert jnp.allclose(dist_pinv, dist_lineax, rtol=1e-4)
