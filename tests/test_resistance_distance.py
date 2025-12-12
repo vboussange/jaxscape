@@ -66,43 +66,6 @@ def test_p_inv_resistance_distance():
     Rnx = build_nx_resistance_distance_matrix(G)
     assert jnp.allclose(Rjaxscape, Rnx)
     
-# def test__landmark_resistance_distance():
-
-#     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
-#     permeability_raster = jr.uniform(key, (11, 11))  # Start with a uniform permeability
-#     activities = jnp.ones(permeability_raster.shape, dtype=bool)
-#     grid = GridGraph(activities=activities, 
-#                      grid=permeability_raster)
-#     coarse_matrix = coarse_graining(grid, 2) 
-#     landmarks = coarse_matrix.indices
-#     Rjaxscape = _landmark_resistance_distance(Ajx, landmarks)
-#     Rnx_dict = nx.resistance_distance(G)
-#     Rnx = jnp.zeros(Rjaxscape.shape)
-#     node_list = list(G)
-#     for n, rd in Rnx_dict.items():
-#         i = node_list.index(n)
-#         for m, r in rd.items():
-#             j = node_list.index(m)
-#             Rnx = Rnx.at[i, j].set(r)
-#     assert jnp.allclose(Rjaxscape, Rnx)
-    
-#     # Add random weights to edges
-#     for u, v in G.edges():
-#         G[u][v]['weight'] = np.random.uniform(1, 10)  # Random weight between 1 and 10
-
-#     A = nx.adjacency_matrix(G)
-#     Ajx = BCOO.from_scipy_sparse(A)
-#     Rjaxscape = resistance_distance(Ajx)
-#     Rnx_dict = nx.resistance_distance(G, weight="weight", invert_weight=False)
-#     Rnx = jnp.zeros(Rjaxscape.shape)
-#     node_list = list(G)
-#     for n, rd in Rnx_dict.items():
-#         i = node_list.index(n)
-#         for m, r in rd.items():
-#             j = node_list.index(m)
-#             Rnx = Rnx.at[i, j].set(r)
-#     assert jnp.allclose(Rjaxscape, Rnx)
-
 @pytest.mark.skipif(len(available_solvers) == 0, reason="No solvers available")
 @pytest.mark.parametrize("solver", available_solvers)
 def test_lineax_solver_resistance_distance(solver):
@@ -111,7 +74,7 @@ def test_lineax_solver_resistance_distance(solver):
     produces the same result as the pseudo-inverse method.
     """
     key = jr.PRNGKey(42)
-    permeability_raster = jr.uniform(key, (2, 2))
+    permeability_raster = jr.uniform(key, (2, 2)) + 0.1  # avoid zero permeability
     grid = GridGraph(grid=permeability_raster, fun= lambda x, y: (x+y)/2)
 
     # nodes to nodes

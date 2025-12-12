@@ -7,7 +7,7 @@ import jax
 import matplotlib
 
 
-with rasterio.open("../suitability.tif") as src:
+with rasterio.open("../data/suitability.tif") as src:
     raster = src.read(1, masked=True)  # Read the first band with masking
     quality_raster = jnp.array(raster.filled(0), dtype="float32") / 100  # Replace no data values with 0
 

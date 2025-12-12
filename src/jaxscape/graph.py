@@ -71,7 +71,7 @@ class GridGraph(AbstractGraph):
         
         **Arguments:**
         
-        - `grid` is a 2D array of shape `(height, width)` used to define edge weights.
+        - `grid` is a 2D array of shape `(height, width)` used to define edge weights. When calculating distances, edge weights are assume to represent permeability (i.e., 1/resistance, higher values indicate easier movement).
         
         - `fun` is a function applied to the source and target node values to define the edge weight. It takes two arrays and returns an
         array of the same size. Defaults to assigning the target vertex weight (`fun = lambda x, y: y`).

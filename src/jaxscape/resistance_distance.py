@@ -14,7 +14,11 @@ class ResistanceDistance(AbstractDistance):
     Compute the resistance distances. 
     
     Attributes:
-        solver: Optional lineax.AbstractLinearSolver. Must be compatible with BCOO matrices. We currently support jaxscape.solvers.CholmodSolver and jaxscape.solvers.PyAMGSolver. If None, uses pseudo-inverse method, which is very memory intensive for large graphs (densifies the Laplacian matrix).
+        solver: Optional lineax.AbstractLinearSolver. Must be compatible with
+        BCOO matrices. We currently support jaxscape.solvers.CholmodSolver and
+        jaxscape.solvers.PyAMGSolver. If None, uses pseudo-inverse method, which
+        is very memory intensive for large graphs (densifies the Laplacian
+        matrix).
     
     !!! Warning
         The graph must be undirected for resistance distance to be well-defined.
@@ -24,6 +28,8 @@ class ResistanceDistance(AbstractDistance):
     @eqx.filter_jit
     def all_pairs_distance(self, grid):
         A = grid.get_adjacency_matrix()
+        # convert permeability to resistance
+        A.data = jnp.where(A.data != 0, 1 / A.data, 0)
         if self.solver is None:
             return p_inv_resistance_distance(A)
         else:
@@ -33,6 +39,8 @@ class ResistanceDistance(AbstractDistance):
     @eqx.filter_jit
     def nodes_to_nodes_distance(self, grid, nodes):
         A = grid.get_adjacency_matrix()
+        # convert permeability to resistance
+        A.data = jnp.where(A.data != 0, 1 / A.data, 0)
         if self.solver is None:
             return p_inv_resistance_distance(A)[nodes[:, None], nodes[None, :]]
         else:

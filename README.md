@@ -419,6 +419,7 @@ plt.figure()
 plt.imshow(new_raster)
 plt.axis("off")
 ```
+<div align="center"><img src="examples/moving_windows/new_raster.png" alt="Sensitivities"  width="600"></div>
 
 ## Features and roadmap 🚀
 - [ ] Support for direct sparse solvers on GPU (currently only CPU supported)
