@@ -1,174 +1,343 @@
-import rasterio
-import jax.numpy as jnp 
-import matplotlib.pyplot as plt
+"""Inverse landscape modelling with ESA WorldCover.
+
+This script fits a simple categorical resistance model to genetic
+differentiation (Fst-like) data for the CESAR sites, using JAXScape
+resistance distances and Optimistix for gradient-based optimization.
+
+High-level steps
+----------------
+1. Load and cache ESA WorldCover land-cover around the CESAR sites.
+2. Downsample and convert land-cover classes to compact integer ids.
+3. Build a GridGraph and associate each CESAR site with a grid node.
+4. Define a one-layer categorical model mapping land-cover to
+  positive resistance.
+5. Train the model to align resistance distances with observed
+  genetic distances.
+6. Evaluate the fit by comparing predicted vs target distances.
+
+NOTE: when loss is above 0.0018, the network fails to learn meaningful representations.
+"""
+
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+
+import time
+
 import jax
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
 import numpy as np
-import time
+import rioxarray
+from equinox import nn
+import equinox as eqx
+import optimistix as optx
+from jaxscape import GridGraph, ResistanceDistance, LCPDistance
+from jaxscape.solvers import CholmodSolver
+from preprocess import load_cesar_data
+from sklearn.metrics import r2_score, root_mean_squared_error
+from sklearn.model_selection import train_test_split
 
-from flax import nnx
-import optax
-from jax.nn import one_hot
-import time
+LANDCOVER_PATH = 'landcover_7855.tif'
+SITE_METADATA_PATH = 'cesar_site_metadata.gpkg'
+GENETIC_DISTANCES_PATH = 'cesar_genetic_distances.npy'
 
-from jaxscape import LCPDistance, GridGraph
-with rasterio.open("landcover.tif") as src:
-  # We resample the raster to a smaller size to speed up the computation
-  raster = src.read(1, masked=True, out_shape=(150, 150), resampling=rasterio.enums.Resampling.mode)  # Read the first band with masking
-  lc_raster = jnp.array(raster.filled(0))   # Replace no data values with 0
+# Coarsening factor applied to the *continuous* embeddings/one-hot features.
+COARSENING_FACTOR = 10
+SOLVER = CholmodSolver()
+DISTANCE_FUN = ResistanceDistance(solver=SOLVER)
+MAX_STEPS = 500
+# Alternative distance for experiments:
+# DISTANCE_FUN = LCPDistance()
 
-category_color_dict = {
-    11: "#476BA0",
-    21: "#DDC9C9",
-    22: "#D89382",
-    23: "#ED0000",
-    24: "#AA0000",
-    31: "#b2b2b2",
-    41: "#68AA63",
-    42: "#1C6330",
-    43: "#B5C98E",
-    52: "#CCBA7C",
-    71: "#E2E2C1",
-    81: "#DBD83D",
-    82: "#AA7028",
-    90: "#BAD8EA",
-    95: "#70A3BA"
-}
-category_labels = {
-    11: "Water",
-    21: "Developed, open space",
-    22: "Developed, low intensity",
-    23: "Developed, medium intensity",
-    24: "Developed, high intensity",
-    31: "Barren land",
-    41: "Deciduous forest",
-    42: "Evergreen forest",
-    43: "Mixed forest",
-    52: "Shrub/scrub",
-    71: "Grassland/herbaceous",
-    81: "Pasture/hay",
-    82: "Cultivated crops",
-    90: "Woody wetlands",
-    95: "Emergent herbaceous wetlands"
-}
-cmap = plt.cm.colors.ListedColormap([col for cat, col in category_color_dict.items()])
-norm = plt.cm.colors.BoundaryNorm(boundaries=[cat - 0.5 for cat in category_color_dict.keys()] + [list(category_color_dict.keys())[-1] + 0.5], ncolors=cmap.N)
+def load_data():
+    predictor_raster = rioxarray.open_rasterio(
+        CACHED_PREDICTORS, mask_and_scale=True, band_as_variable=True
+    )
+    site_metadata = gpd.read_file(SITE_METADATA_PATH)
+    target_distances = np.load(GENETIC_DISTANCES_PATH)
+    site_gdf = site_metadata.to_crs(epsg=7855)
+    return predictor_raster, target_distances, site_gdf
 
-# coordinates of the two populations
-pop1 = (20, 10)
-pop2 = (110, 110)
-fig, ax = plt.subplots(figsize=(6, 6))
-cax = ax.imshow(lc_raster, cmap=cmap, norm=norm)
-categories = list(category_color_dict.keys())
-cbar = fig.colorbar(cax, 
-          ticks=categories, 
-          boundaries=[cat - 0.5 for cat in categories] + [categories[-1] + 0.5],
-          shrink=0.7)
-cbar.ax.set_yticklabels([category_labels[cat] for cat in categories])
+
+
+def prepare_feature_targets(predictor_raster, site_gdf):
+  """Create model inputs and graph structures from land-cover and sites.
+
+  Returns
+  -------
+  features : jax.numpy.ndarray
+      Integer class ids for each grid cell.
+  unique_classes : jax.numpy.ndarray
+      Mapping back to original WorldCover class values.
+  target_nodes : jax.numpy.ndarray
+      Node indices corresponding to CESAR sampling locations.
+  grid : GridGraph
+      Graph built on a constant-resistance grid, used only for indexing.
+  """
+  # Downstream model will operate on *continuous* (one-hot) features.
+  # First compress sparse WorldCover classes to contiguous ids 0..K-1.
+  raw_band = np.asarray(predictor_raster["band_1"])
+  unique_vals, inverse = np.unique(raw_band.ravel(), return_inverse=True)
+  class_ids = inverse.reshape(raw_band.shape).astype(np.int32)
+  features_categorical = jnp.array(class_ids).squeeze()
+  unique_classes = jnp.array(unique_vals)
+
+  # One-hot encode and *then* coarsen using mean pooling so that a
+  # coarse cell represents the average class-composition of underlying
+  # fine cells.
+  features_onehot = jax.nn.one_hot(
+    features_categorical, num_classes=len(unique_vals)
+  )  # (H, W, K)
+  # Reorder axes to (K, H, W) for xarray-like coarsening
+  features_onehot = jnp.moveaxis(features_onehot, -1, 0)
+  # Wrap in DataArray-like structure via rioxarray/xarray for coarsen
+  # using the landcover grid for coordinates.
+  coarsen_x = COARSENING_FACTOR
+  coarsen_y = COARSENING_FACTOR
+  # Broadcast coordinates from predictor_raster to feature grid
+  coords = {
+    "band": np.arange(features_onehot.shape[0]),
+    "y": predictor_raster.y.values,
+    "x": predictor_raster.x.values,
+  }
+  feature_da = rioxarray.open_rasterio(
+    predictor_raster.rio.to_raster,  # dummy to satisfy interface; we only need coords
+  ) if False else None  # placeholder to avoid misuse; we will build xarray manually
+
+  import xarray as xr
+
+  feature_da = xr.DataArray(
+    features_onehot,
+    coords=coords,
+    dims=("band", "y", "x"),
+  )
+  feature_da = feature_da.coarsen(x=coarsen_x, y=coarsen_y, boundary="trim").mean()
+  # Move back to (H, W, K)
+  features_onehot_coarse = jnp.moveaxis(feature_da.data, 0, -1)
+
+  site_gdf = site_gdf.to_crs(epsg=7855)
+
+  # Map site coordinates to nearest *coarsened* raster indices
+  x_idx = jnp.array(
+    [int(np.argmin(np.abs(feature_da.x.values - x))) for x in site_gdf.geometry.x.values]
+  )
+  y_idx = jnp.array(
+    [int(np.argmin(np.abs(feature_da.y.values - y))) for y in site_gdf.geometry.y.values]
+  )
+
+  grid = GridGraph(jnp.ones((feature_da.x.size, feature_da.y.size)), fun=lambda x, y: (x + y) / 2)
+  target_nodes = grid.coord_to_index(x_idx, y_idx)
+  return features_onehot_coarse, unique_classes, target_nodes, grid, feature_da
+
+
+def build_model(num_classes: int, seed: int = 1) -> tuple[eqx.Module, tuple, tuple]:
+  key = jax.random.PRNGKey(seed)
+
+  class ResistanceModel(eqx.Module):
+    layers: list
+    num_classes: int
+
+    def __init__(self, num_classes: int, key):
+      self.num_classes = num_classes
+      k1, k2, k3 = jax.random.split(key, 3)
+      hidden_dim = 16  # can tune, but increasing to 32 degrades performance
+
+      self.layers = [
+        nn.Linear(num_classes, hidden_dim, key=k1),
+        jax.nn.relu,
+        nn.Linear(hidden_dim, hidden_dim, key=k2),
+        jax.nn.relu,
+        nn.Linear(hidden_dim, 1, key=k3),
+      ]
+
+    def __call__(self, x):
+      # x: one-hot feature vector
+      for layer in self.layers:
+        x = layer(x)
+      return jnp.exp(x) + 1e-3 # ensure positive resistance
+
+  model = ResistanceModel(num_classes, key)
+  params, static = eqx.partition(model, eqx.is_inexact_array)
+  return model, params, static
+
+
+def visualise_initial_prediction(resistance_field):
+  fig, ax = plt.subplots()
+  im = ax.imshow(resistance_field, cmap="RdYlGn")
+  ax.set_title("Initial model resistance prediction")
+  ax.axis("off")
+  plt.colorbar(im, ax=ax, label="resistance")
+  plt.show()
+
+
+# -----------------------------------------------------------------------------
+
+# Data loading and preprocessing
+# -----------------------------------------------------------------------------
+predictor_raster, genetic_distances, site_gdf = load_reproject_crop_raw_feature_labels()
+
+fig, ax = plt.subplots()
+predictor_raster["band_1"].plot(ax=ax, cmap="tab20", add_colorbar=True)
+ax.scatter(site_gdf.geometry.x, site_gdf.geometry.y, c="red", s=50, label="Sites")
+plt.show()
+
+features_onehot, unique_classes, target_nodes, ref_grid, coarse_feature_da = prepare_feature_targets(
+  predictor_raster, site_gdf
+)
+
+node_coords = ref_grid.index_to_coord(target_nodes)
+x_indices, y_indices = node_coords[:, 0], node_coords[:, 1]
+
+fig, ax = plt.subplots()
+ax.imshow(features_onehot.argmax(axis=-1), cmap="tab20")
+ax.scatter(x_indices, y_indices, c="blue", s=50, label="Sites")
+for xi, yi, name in zip(x_indices, y_indices, site_gdf["site_name"].values):
+  ax.text(
+    int(xi),
+    int(yi) - 5,
+    str(name),
+    color="black",
+    fontsize=8,
+    ha="center",
+    va="bottom",
+    bbox=dict(facecolor="white", alpha=0.7, edgecolor="none", pad=1),
+  )
+plt.show()
+
+
+# -----------------------------------------------------------------------------
+# Model definition and training
+# -----------------------------------------------------------------------------
+model, params, static = build_model(len(unique_classes))
+model_vmapped = jax.vmap(jax.vmap(model, in_axes=0), in_axes=0)
+
+initial_resistance = model_vmapped(features_onehot).squeeze()
+visualise_initial_prediction(initial_resistance)
+
+
+@eqx.filter_jit
+def loss_fn(params, args):
+  """Squared error between target and predicted pairwise distances.
+
+  The signature is constrained by Equinox/Optimistix; we therefore pass
+  the full static context via ``args``.
+  """
+  static, features, target_flat_train, tri_i_train, tri_j_train = args
+  model = eqx.combine(params, static)
+  model_vmapped = jax.vmap(jax.vmap(model, in_axes=0), in_axes=0)
+  resistance = model_vmapped(features).squeeze()
+  grid = GridGraph(resistance, fun=lambda x, y: (x + y) / 2)
+  predicted_distances = DISTANCE_FUN(grid, nodes=target_nodes)
+  pred_flat_train = predicted_distances[tri_i_train, tri_j_train]
+  return ((target_flat_train - pred_flat_train) ** 2).mean()
+
+
+# Precompute all pair indices once (upper triangle) and build flat targets
+n_sites = genetic_distances.shape[0]
+tri_i_all, tri_j_all = np.triu_indices(n_sites, k=1)
+target_flat_all = np.asarray(genetic_distances)[tri_i_all, tri_j_all]
+
+# Train/test split on flattened pairs
+(target_flat_train,
+ target_flat_test,
+ tri_i_train,
+ tri_i_test,
+ tri_j_train,
+ tri_j_test) = train_test_split(
+  target_flat_all,
+  tri_i_all,
+  tri_j_all,
+  test_size=0.2,
+  random_state=42,
+)
+
+tri_i_train = jnp.array(tri_i_train)
+tri_j_train = jnp.array(tri_j_train)
+tri_i_test = np.array(tri_i_test)
+tri_j_test = np.array(tri_j_test)
+
+# Sanity-check forward + loss on training pairs
+_ = loss_fn(params, (static, features_onehot, target_flat_train, tri_i_train, tri_j_train))
+
+solver = optx.LBFGS(rtol=1e-5, atol=1e-5, verbose=frozenset({"loss"}))
+start_train_time = time.time()
+opt_solution = optx.minimise(
+  loss_fn,
+  solver,
+  params,
+  args=(static, features_onehot, target_flat_train, tri_i_train, tri_j_train),
+  max_steps=MAX_STEPS,
+)
+print(f"Training time: {time.time() - start_train_time:.2f} seconds")
+print(opt_solution.stats)
+
+
+fitted_model = eqx.combine(opt_solution.value, static)
+fitted_vmapped = jax.vmap(jax.vmap(fitted_model, in_axes=0), in_axes=0)
+fitted_resistance = fitted_vmapped(features_onehot).squeeze()
+
+fig, ax = plt.subplots(figsize=(4, 5))
+im = ax.imshow(fitted_resistance, cmap="RdYlGn")
+ax.set_title("Fitted resistance")
 ax.axis("off")
-
-# Draw circles around cell (2, 2) and cell (99, 99)
-circle1 = plt.Circle(pop1, 5, color='black', fill=False, linewidth=2)
-circle2 = plt.Circle(pop2, 5, color='blue', fill=False, linewidth=2)
-ax.add_patch(circle1)
-ax.add_patch(circle2)
-
-# Add text annotations
-ax.text(pop1[0], pop1[1]+10, 'pop 1', color='black', fontsize=12, ha='center')
-ax.text(pop2[0], pop2[1]+10, 'pop 2', color='blue', fontsize=12, ha='center')
-
+plt.colorbar(im, ax=ax, shrink=0.5, label="resistance")
 plt.show()
-fig.savefig("land_cover_raster.png", dpi=300, bbox_inches="tight", transparent=True)
-
-# ground truth permeability
-reclass_dict = {
-    11: 2e-1,  # Water
-    21: 2e-1,  # Developed, open space
-    22: 3e-1,  # Developed, low intensity
-    23: 1e-1,  # Developed, medium intensity (missing)
-    24: 1e-1,  # Developed, high intensity (missing)
-    31: 5e-1,  # Barren land
-    41: 1.,  # Deciduous forest
-    42: 1.,  # Evergreen forest
-    43: 1.,  # Mixed forest
-    52: 5e-1,  # Shrub/scrub
-    71: 9e-1,  # Grassland/herbaceous
-    81: 4e-1,  # Pasture/hay
-    82: 4e-1,  # Cultivated crops
-    90: 9e-1,  # Woody wetlands
-    95: 6e-1  # Emergent herbaceous wetlands
-}
-permeability_raster = jnp.array(np.vectorize(reclass_dict.get)(lc_raster))
-ref_grid = GridGraph(lc_raster)
-source = ref_grid.coord_to_index(jnp.array([2]), jnp.array([2]))
-target = ref_grid.coord_to_index(jnp.array([99]), jnp.array([99]))
-
-distance = LCPDistance()
-grid = GridGraph(permeability_raster)
-start_time = time.time()
-source_to_target_dist = distance(grid, source)[1,target]
-print(f"Time taken for distance calculation: {time.time() - start_time:.2f} seconds")
-print(f"Genetic distance between populations: {source_to_target_dist[0]:.2f}")
-
-# fig, ax = plt.subplots()
-# cbar = ax.imshow(true_dist_to_source, cmap="RdYlGn_r",  norm=plt.cm.colors.LogNorm())
-# ax.axis("off")
-# ax.set_title("Distance to source")
-# fig.colorbar(cbar, ax=ax, shrink=0.5,)
-
-category_to_index = {cat: i for i, cat in enumerate(reclass_dict.keys())}  # Map to indices
-
-# Replace categories in lc_raster with indices
-indexed_raster = jnp.array(np.vectorize(category_to_index.get)(lc_raster))
 
 
-class Model(nnx.Module):
-  def __init__(self, num_categories, rngs: nnx.Rngs):
-    self.num_categories = num_categories
-    self.linear = nnx.Linear(num_categories, 1, rngs=rngs)
+# -----------------------------------------------------------------------------
+# Evaluation: predicted vs target distances
+# -----------------------------------------------------------------------------
+pred_grid = GridGraph(fitted_resistance, fun=lambda x, y: (x + y) / 2)
+pred_distances = DISTANCE_FUN(pred_grid, nodes=target_nodes)
 
-  def __call__(self, x):
-    x = self.linear(one_hot(x, num_classes=self.num_categories))
-    x = jnp.clip(x, 1e-2, 1e0)
-    return x
-  
-  
-model = Model(len(category_to_index.keys()), rngs=nnx.Rngs(0)) 
-optimizer = nnx.Optimizer(model, optax.adamw(5e-2)) 
+genetic_np = np.asarray(genetic_distances)
+pred_np = np.asarray(pred_distances)
 
-x = indexed_raster.ravel()
-@nnx.jit  # automatic state management for JAX transforms
-def train_step(model, optimizer):
-  def loss_fn(model):
-    permeability = model(indexed_raster).ravel()
-    permeability = ref_grid.node_values_to_array(permeability)
-    grid = GridGraph(permeability)
-    dist_to_node_hat = distance(grid, source).ravel()[target]
-    return ((dist_to_node_hat - source_to_target_dist) ** 2).mean()
+# Flatten predictions for train and test pairs separately
+train_pred = pred_np[tri_i_train, tri_j_train]
+test_pred = pred_np[tri_i_test, tri_j_test]
+train_target = target_flat_train
+test_target = target_flat_test
 
-  loss, grads = nnx.value_and_grad(loss_fn)(model)
-  optimizer.update(grads)  # in-place updates
+# Metrics: R^2 and RMSE
+r2_train = r2_score(train_target, train_pred)
+r2_test = r2_score(test_target, test_pred)
+rmse_train = root_mean_squared_error(train_target, train_pred)
+rmse_test = root_mean_squared_error(test_target, test_pred)
 
-  return loss
+print("Resistance-distance model fit (train/test)")
+print(f"Train R^2 = {r2_train:.3f}, RMSE = {rmse_train:.4f}")
+print(f"Test  R^2 = {r2_test:.3f}, RMSE = {rmse_test:.4f}")
 
+fig, ax = plt.subplots(figsize=(6, 5))
+ax.scatter(train_pred, train_target, s=15, alpha=0.5, edgecolor="none", label="Train")
+ax.scatter(test_pred, test_target, s=30, alpha=0.8, edgecolor="none", label="Test")
 
-train_steps = 100
-for step in range(train_steps):
-  l = train_step(model, optimizer)
-  if step % 10 == 0:
-    print(f"Step {step}, loss: {l:.2f}")
-  
-# Plot final prediction of resistance against ground truth resistance
-final_permeability = model(indexed_raster)[..., 1]
-fig, ax = plt.subplots(1, 2, figsize=(8, 5))
+min_val = min(pred_np.min(), genetic_np.min())
+max_val = max(pred_np.max(), genetic_np.max())
+ax.plot([min_val, max_val], [min_val, max_val], "k--", linewidth=1, label="1:1 line")
 
-ax[0].imshow(permeability_raster, cmap="RdYlGn")
-ax[0].set_title("Ground truth permeability")
-ax[0].axis("off")
+ax.set_xlabel("Predicted resistance distance")
+ax.set_ylabel("Target genetic distance (Fst)")
+ax.set_title("Resistance model: Fst vs effective resistance distance")
 
-cbar = ax[1].imshow(final_permeability, cmap="RdYlGn")
-ax[1].set_title("Predicted permeability")
-ax[1].axis("off")
+textstr = (
+  f"Train R^2 = {r2_train:.3f}, RMSE = {rmse_train:.4f}\n"
+  f"Test  R^2 = {r2_test:.3f}, RMSE = {rmse_test:.4f}"
+)
+ax.text(
+  0.05,
+  0.95,
+  textstr,
+  transform=ax.transAxes,
+  fontsize=9,
+  verticalalignment="top",
+  bbox=dict(boxstyle="round", facecolor="white", alpha=0.8, edgecolor="gray"),
+)
 
-fig.colorbar(cbar, ax=ax, shrink=0.5, location='right')
+ax.legend(loc="lower right")
+ax.grid(True, alpha=0.3)
+plt.tight_layout()
 plt.show()
-fig.savefig("inverse_problem.png", dpi=300, bbox_inches="tight", transparent=True)
+
+

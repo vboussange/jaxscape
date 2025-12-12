@@ -46,6 +46,13 @@ dev = [
     "ipykernel>=6.29.5",
 ]
 
+docs = [
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.5.0",
+    "mkdocstrings[python]>=0.24.0",
+    "pymdown-extensions>=10.7.0",
+]
+
 examples = [
     "matplotlib",
     "rasterio",
