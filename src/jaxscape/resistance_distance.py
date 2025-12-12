@@ -28,8 +28,6 @@ class ResistanceDistance(AbstractDistance):
     @eqx.filter_jit
     def all_pairs_distance(self, grid):
         A = grid.get_adjacency_matrix()
-        # convert permeability to resistance
-        A.data = jnp.where(A.data != 0, 1 / A.data, 0)
         if self.solver is None:
             return p_inv_resistance_distance(A)
         else:
@@ -39,8 +37,6 @@ class ResistanceDistance(AbstractDistance):
     @eqx.filter_jit
     def nodes_to_nodes_distance(self, grid, nodes):
         A = grid.get_adjacency_matrix()
-        # convert permeability to resistance
-        A.data = jnp.where(A.data != 0, 1 / A.data, 0)
         if self.solver is None:
             return p_inv_resistance_distance(A)[nodes[:, None], nodes[None, :]]
         else:

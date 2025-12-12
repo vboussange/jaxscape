@@ -2,7 +2,7 @@
 [![DOI](https://zenodo.org/badge/883274673.svg)](https://doi.org/10.5281/zenodo.15267703)
 
 <div align="center">
-  <img src="examples/logo/logo.png" alt="JAXScape Logo" width="500">
+  <img src="examples/logo/logo.png" alt="JAXScape Logo" width="400">
 </div>
 <!-- [![PyPI - Version](https://img.shields.io/pypi/v/jaxscape.svg)](https://pypi.org/project/jaxscape)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/jaxscape.svg)](https://pypi.org/project/jaxscape) -->
