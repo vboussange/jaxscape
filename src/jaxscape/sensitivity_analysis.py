@@ -18,6 +18,31 @@ def d_permeability(permeability_raster, quality_raster, *args, **kwargs):
 d_permeability_vmap = eqx.filter_vmap(d_permeability, in_axes=(0, 0, 0, None, None, None))
 
 class SensitivityAnalysis(WindowedAnalysis):
+    """
+    Compute gradients of connectivity with respect to landscape parameters:
+
+    !!! example
+    
+        ```python
+        from jaxscape import SensitivityAnalysis
+
+        sens = SensitivityAnalysis(
+            quality_raster=quality,
+            permeability_raster=permeability,
+            distance=distance,
+            proximity=proximity,
+            dependency_range=D,
+            batch_size=20
+        )
+
+        # Sensitivity to permeability changes
+        sensitivity_perm = sens.run("permeability", q_weighted=True)
+
+        # Sensitivity to quality changes  
+        sensitivity_qual = sens.run("quality", q_weighted=True)
+        ```
+
+    """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if len(args) > 0:

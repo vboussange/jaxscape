@@ -29,6 +29,20 @@ class CholmodSolver(AbstractLinearSolver):
     """
     A linear solver that uses CHOLMOD (via cholespy) to solve a sparse linear system.
     Uses direct Cholesky factorization for symmetric positive definite matrices.
+    
+    
+    !!! example
+    
+        ```python
+        from jaxscape.solvers import CholmodSolver
+
+        solver = CholmodSolver()
+        distance = ResistanceDistance(solver=solver)
+        dist = distance(grid)
+        ```
+        
+    !!! warning
+        `cholespy` must be installed to use this solver.
     """
 
     def __check_init__(self):

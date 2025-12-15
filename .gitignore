@@ -4,7 +4,7 @@
 build/
 dist/
 site/
-examples/data
+docs/examples/data
 .all_objects.cache
 .pymon
 .idea

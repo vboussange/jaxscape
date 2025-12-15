@@ -5,6 +5,18 @@ from jaxscape.distance import AbstractDistance
 
 
 class EuclideanDistance(AbstractDistance):
+    """
+    Straight-line distance in grid coordinates.
+
+    !!! example
+    
+        ```python
+        from jaxscape import EuclideanDistance
+
+        distance = EuclideanDistance()
+        dist = distance(grid, sources=source_coords, targets=target_coords)
+        ```
+    """
     @eqx.filter_jit
     def nodes_to_nodes_distance(self, grid, nodes):
         coords = grid.index_to_coord(nodes)

@@ -19,8 +19,24 @@ class ResistanceDistance(AbstractDistance):
         jaxscape.solvers.PyAMGSolver. If None, uses pseudo-inverse method, which
         is very memory intensive for large graphs (densifies the Laplacian
         matrix).
+        
+    !!! example
+    
+        ```python
+        from jaxscape import ResistanceDistance
+        from jaxscape.solvers import PyAMGSolver
+
+        # Default: pseudo-inverse (small graphs)
+        distance = ResistanceDistance()
+
+        # With solver (large graphs)
+        distance = ResistanceDistance(solver=PyAMGSolver())
+
+        dist = distance(grid)
+        ```
     
     !!! Warning
+    
         The graph must be undirected for resistance distance to be well-defined.
     """
     solver: tuple[None, lx.AbstractLinearSolver] = None

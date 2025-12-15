@@ -22,6 +22,18 @@ class RSPDistance(AbstractDistance):
         matrix or a function that will be used to map all non zero element of
         the adjacency matrix to create the cost matrix. `cost` defaults to the
         well adapted movement cost function `lambda x: -jnp.log(x))`.
+        
+        !!! warning
+            This distance metric is experimental and may change in future releases.
+        
+        !!! example
+        
+            ```python
+            from jaxscape import RSPDistance
+
+            distance = RSPDistance(theta=0.01, cost=lambda x: -jnp.log(x))
+            dist = distance(grid)
+            ```
         """
         self._cost = cost
         self.theta = theta

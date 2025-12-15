@@ -22,6 +22,19 @@ class AbstractDistance(eqx.Module):
     
     Returns:
         Distance matrix or array depending on the method called.
+        
+    !!! example
+
+        ```python
+        # All-pairs distance
+        dist_matrix = distance(grid)  # Shape: (n_nodes, n_nodes)
+
+        # Source-target distance
+        dist_matrix = distance(grid, sources=[0, 1], targets=[10, 20])  # Shape: (2, 2)
+
+        # Pairwise among subset
+        dist_matrix = distance(grid, nodes=[0, 5, 10])  # Shape: (3, 3)
+        ```
     """
     def __call__(self, grid, sources=None, targets=None, nodes=None):
         if nodes is not None:

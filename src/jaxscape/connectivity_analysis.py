@@ -124,6 +124,32 @@ class WindowedAnalysis:
         # self.shape = quality_raster.shape
     
 class ConnectivityAnalysis(WindowedAnalysis):
+    """
+    Runs [`connectivity`] on large rasters using windowed operations.
+    
+    
+    !!! example
+        ```python
+        from jaxscape import ConnectivityAnalysis, ResistanceDistance
+
+        # Define parameters
+        D = 20  # Dispersal range
+        distance = ResistanceDistance()
+        proximity = lambda dist: jnp.exp(-dist / D)
+
+        # Analyze connectivity
+        conn = ConnectivityAnalysis(
+            quality_raster=quality,
+            permeability_raster=permeability,
+            distance=distance,
+            proximity=proximity,
+            dependency_range=D,
+            batch_size=50
+        )
+
+        connectivity_index = conn.run(q_weighted=True)
+        ```
+    """
     def run(self, q_weighted=True):
         output = jnp.array(0.)
         for (xy_batch, quality_batch) in tqdm(

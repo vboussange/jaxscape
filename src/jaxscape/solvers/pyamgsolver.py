@@ -28,6 +28,22 @@ _PyAMGSolverState: TypeAlias = tuple[BCOO, PackedStructures]
 class PyAMGSolver(AbstractLinearSolver):
     """
     A linear solver that uses PyAMG to solve a sparse linear system.
+    
+    !!! example
+        ```python
+        from jaxscape.solvers import PyAMGSolver
+
+        solver = PyAMGSolver(rtol=1e-6, maxiter=100_000)
+        distance = ResistanceDistance(solver=solver)
+        dist = distance(grid)
+
+        # Custom AMG method
+        import pyamg
+        solver = PyAMGSolver(pyamg_method=pyamg.ruge_stuben_solver)
+        ```
+        
+    !!! warning
+        PyAMG must be installed to use this solver.
     """
     rtol: float = 1e-6
     maxiter : float = 100_000

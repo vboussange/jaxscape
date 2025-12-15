@@ -51,6 +51,8 @@ docs = [
     "mkdocs-material>=9.5.0",
     "mkdocstrings[python]>=0.24.0",
     "pymdown-extensions>=10.7.0",
+    "mkdocs-include-exclude-files==0.1.0",
+    "mkdocs-ipynb==0.1.1",
 ]
 
 examples = [

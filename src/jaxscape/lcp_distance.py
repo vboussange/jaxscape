@@ -11,6 +11,14 @@ class LCPDistance(AbstractDistance):
     Compute the shortest path distances from `sources` to all vertices, or
     from all to all if sources not provided. Currently relies on Bellman-Ford
     algorithm, with complexity O(V * E * S) where L is the number of sources.
+    
+    !!! example
+        ```python
+        from jaxscape import LCPDistance
+
+        distance = LCPDistance()
+        dist = distance(grid, sources=source_indices, targets=target_indices)
+        ```
     """
     @eqx.filter_jit
     def nodes_to_nodes_distance(self, grid, nodes):
