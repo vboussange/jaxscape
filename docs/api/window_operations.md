@@ -1,5 +1,7 @@
 # Advanced: custom window operations
 
+:::jaxscape.utils.padding
+
 ::: jaxscape.window_operation.WindowOperation
     options:
       members: 
