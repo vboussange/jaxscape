@@ -11,31 +11,44 @@ from scipy import sparse as ssp
 from typing import Callable
 
 def graph_laplacian(A: BCOO) -> BCOO:
-    """
-    Computes the graph Laplacian given an adjacency matrix A.
+    """Compute graph Laplacian L = D - A where D is the degree matrix.
+    
+    !!! example
+    
+        ```python
+        from jax.experimental.sparse import BCOO
+        from jaxscape.utils import graph_laplacian
+        
+        A = BCOO.fromdense(jnp.array([[0, 1], [1, 0]]))
+        L = graph_laplacian(A)
+        ```
     """
     D = bcoo_diag(A.sum(axis=1).todense(), indices_dtype=A.indices.dtype)  # Degree matrix
     L = D - A  # Laplacian matrix
     return L
 
 def mapnz(mat: BCOO, f: Callable[[Array], Array]) -> BCOO:
-    """
-    Apply a function to the non-zero elements of a sparse matrix.
-    Parameters:
-    mat (sparse.BCOO): A sparse matrix in BCOO format.
-    f (callable): A function to apply to the non-zero elements of the matrix.
-    Returns:
-    sparse.BCOO: A new sparse matrix with the function applied to its non-zero elements.
-    Example:
-    >>> import jax.numpy as jnp
-    >>> from jax.experimental import sparse
-    >>> mat = sparse.BCOO.fromdense(jnp.array([[1, 0], [0, 2]]))
-    >>> def square(x):
-    ...     return x ** 2
-    >>> new_mat = mapnz(mat, square)
-    >>> new_mat.todense()
-    DeviceArray([[1, 0],
-                 [0, 4]], dtype=int32)
+    """Apply function to non-zero elements of sparse matrix.
+    
+    **Arguments:**
+    
+    - `mat`: Sparse matrix in BCOO format.
+    - `f`: Function to apply to non-zero elements.
+    
+    **Returns:**
+    
+    Sparse matrix with function applied.
+    
+    !!! example
+    
+        ```python
+        from jax.experimental.sparse import BCOO
+        from jaxscape.utils import mapnz
+        
+        mat = BCOO.fromdense(jnp.array([[1, 0], [0, 2]]))
+        squared = mapnz(mat, lambda x: x ** 2)
+        # squared.todense() = [[1, 0], [0, 4]]
+        ```
     """
     
     indices, data = mat.indices, mat.data
@@ -77,20 +90,16 @@ def get_largest_component_label(labels: np.ndarray) -> int:
     return largest_component_label
 
 def bcoo_diag(diagonal: Array, indices_dtype = jnp.int32) -> BCOO:
-    """
-    Create a sparse diagonal matrix in BCOO format from the given diagonal elements.
-
-    Args:
-        diagonal (array-like): A 1D array of elements to be placed on the diagonal of the matrix.
-
-    Returns:
-        BCOO: A sparse matrix in BCOO format with the given diagonal elements.
-
-    Example:
-        >>> diagonal = jnp.array([1, 2, 3])
-        >>> sparse_matrix = bcoo_diag(diagonal)
-        >>> print(sparse_matrix)
-        BCOO(float32[3,3], nse=3)
+    """Create sparse diagonal matrix from 1D array.
+    
+    !!! example
+    
+        ```python
+        from jaxscape.utils import bcoo_diag
+        
+        D = bcoo_diag(jnp.array([1.0, 2.0, 3.0]))
+        # D.todense() = [[1, 0, 0], [0, 2, 0], [0, 0, 3]]
+        ```
     """
     n = len(diagonal)
     indices = jnp.column_stack([jnp.arange(n, dtype=indices_dtype), jnp.arange(n, dtype=indices_dtype)])
@@ -100,11 +109,7 @@ def bcoo_diag(diagonal: Array, indices_dtype = jnp.int32) -> BCOO:
 
 @filter_jit
 def bcoo_tril(mat: BCOO, k: int = 0) -> BCOO:
-    """
-    Return the upper-triangular part of the given 2D BCOO matrix.
-    The result has zeros below the k-th diagonal.
-
-    """
+    """Extract lower-triangular part of sparse matrix (zeros above k-th diagonal)."""
     rows = mat.indices[:, 0]
     cols = mat.indices[:, 1]
     mask = jnp.where(rows >= cols - k, 1.0, 0.0)
@@ -114,11 +119,7 @@ def bcoo_tril(mat: BCOO, k: int = 0) -> BCOO:
 
 @filter_jit
 def bcoo_triu(mat: BCOO, k: int = 0) -> BCOO:
-    """
-    Return the upper-triangular part of the given 2D BCOO matrix.
-    The result has zeros below the k-th diagonal.
-
-    """
+    """Extract upper-triangular part of sparse matrix (zeros below k-th diagonal)."""
     rows = mat.indices[:, 0]
     cols = mat.indices[:, 1]
     mask = jnp.where(rows <= cols - k, 1.0, 0.0)
@@ -138,10 +139,18 @@ def bcoo_at_set(mat: BCOO, row_idx: Array, col_idx: Array, vals: Array) -> BCOO:
 
 
 def padding(raster: Array, buffer_size: int, window_size: int) -> Array:
-    """
-    Pads the given raster array to ensure its dimensions are compatible with the
-    specified window size, i.e. assert (raster.shape[i] - 2 * buffer_size) %
-    window_size == 0
+    """Pad raster to ensure dimensions are compatible with [`WindowOperation`][jaxscape.window_operation.WindowOperation].
+    
+    Ensures `(raster.shape[i] - 2 * buffer_size) % window_size == 0`.
+    
+    !!! example
+    
+        ```python
+        from jaxscape.utils import padding
+        
+        raster = jnp.ones((100, 100))
+        padded = padding(raster, buffer_size=10, window_size=25)
+        ```
     """
     inner_height = raster.shape[0] - 2 * buffer_size
     inner_width = raster.shape[1] - 2 * buffer_size

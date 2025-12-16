@@ -31,12 +31,12 @@ class WindowOperation(eqx.Module):
             window_size=20,
             buffer_size=10
         )
-        
-        # Process windows with buffering
-        for xy, window in window_op.lazy_iterator(raster):
-            # window shape: (40, 40) = 20 + 2*10
-            result = process(window)
         ```
+        
+    !!! warning
+        You must ensure that `(shape[i] - 2 * buffer_size)` is divisible by
+        `window_size` for both dimensions `i = 0, 1`. Consider using [`jaxscape.utils.padding`][jaxscape.utils.padding]
+        to pad your raster data automatically.
     """
     shape: Tuple[int, int] = eqx.field(static=True)
     window_size: int = eqx.field(static=True)

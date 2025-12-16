@@ -2,7 +2,7 @@
 [![DOI](https://zenodo.org/badge/883274673.svg)](https://doi.org/10.5281/zenodo.15267703)
 
 <div align="center">
-  <img src="examples/logo/logo.png" alt="JAXScape Logo" width="400">
+  <img src="docs/examples/logo/logo.png" alt="JAXScape Logo" width="400">
 </div>
 <!-- [![PyPI - Version](https://img.shields.io/pypi/v/jaxscape.svg)](https://pypi.org/project/jaxscape)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/jaxscape.svg)](https://pypi.org/project/jaxscape) -->
@@ -72,7 +72,7 @@ fig.suptitle("Distance to top left pixel")
 plt.tight_layout()
 plt.show()
 ```
-<div align="center"><img src="examples/quick_start/distances.png" alt="Distances"  width="600"></div>
+<div align="center"><img src="docs/examples/distance_calculation/distances.png" alt="Distances"  width="600"></div>
 
 But what's really cool about jaxscape is that you can autodiff through thoses distances! Check out the [documentation](#documentation) to learn about applications and more!
 
