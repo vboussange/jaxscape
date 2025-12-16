@@ -25,6 +25,10 @@ class AbstractGraph(eqx.Module):
 class Graph(AbstractGraph):
     """
     A simple graph defined by an adjacency matrix.
+    
+    **Arguments:**
+    
+    - `adjacency_matrix`: A `jax.experimental.sparse.BCOO` adjacency matrix.
     """
     adjacency_matrix: BCOO
 
@@ -60,6 +64,17 @@ QUEEN_CONTIGUITY = jnp.array([
                 ])
 
 class GridGraph(AbstractGraph):
+    """
+    Grid graph where vertices are defined by a rectangular `grid`.
+    
+    **Arguments:**
+    
+    - `grid` is a 2D array of shape `(height, width)` used to define edge weights. When calculating distances, edge weights are assume to represent permeability (i.e., 1/resistance, higher values indicate easier movement).
+    - `fun` is a function applied to the source and target node values to define the edge weight. It takes two arrays and returns an
+    array of the same size. Defaults to assigning the target vertex weight (`fun = lambda x, y: y`).
+    - `neighbors` defines the contiguity pattern, and can be either `ROOK_CONTIGUITY` or `QUEEN_CONTIGUITY`.
+    """
+
     grid: Array
     neighbors: Array
     fun: Callable[[Array, Array], Array] = eqx.field(static=True)
@@ -68,18 +83,6 @@ class GridGraph(AbstractGraph):
                  grid: Array,
                  fun: Callable[[Array, Array], Array] = lambda x, y: y, 
                  neighbors: Array = ROOK_CONTIGUITY):
-        """
-        Geometric graph where vertices are defined by a rectangular `grid`.
-        
-        **Arguments:**
-        
-        - `grid` is a 2D array of shape `(height, width)` used to define edge weights. When calculating distances, edge weights are assume to represent permeability (i.e., 1/resistance, higher values indicate easier movement).
-        
-        - `fun` is a function applied to the source and target node values to define the edge weight. It takes two arrays and returns an
-        array of the same size. Defaults to assigning the target vertex weight (`fun = lambda x, y: y`).
-        
-        - `neighbors` defines the contiguity pattern, and can be either `ROOK_CONTIGUITY` or `QUEEN_CONTIGUITY`.
-        """
         assert grid.ndim == 2, "`grid` should be 2D array"
         self.grid = grid
         self.fun = fun

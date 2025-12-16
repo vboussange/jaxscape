@@ -4,40 +4,47 @@ import equinox as eqx
 import jax.numpy as jnp
 from jax import Array
 
-from .gridgraph import AbstractGraph
+from .graph import AbstractGraph
 
 class AbstractDistance(eqx.Module):
-    """
-    Abstract base class for distance computations on graphs.
+    """Abstract base class for distance computations on graphs.
     
-    This class defines the interface for computing various types of distances on any graph type. Subclasses must implement the abstract methods to provide specific distance calculations.
+    Provides a unified interface for computing distances with automatic handling of 
+    coordinate-based (for `GridGraph`) or index-based node specification.
     
-    The __call__ method provides a unified interface with the following usage patterns:
+    **Arguments:**
     
-    - Use `nodes` for pairwise distances among a specified set of nodes.
+    - `graph`: Graph on which to compute distances.
+    - `sources`: Source nodes as vertex indices (1D array) or coordinates (Nx2 array for `GridGraph`).
+    - `targets`: Target nodes as vertex indices (1D array) or coordinates (Nx2 array for `GridGraph`).
+    - `nodes`: Nodes for pairwise distances as vertex indices (1D) or coordinates (Nx2).
     
-    - Use `sources` and `targets` for distances from sources to targets, which is efficient for scenarios like computing distances from all nodes to a single target (e.g., using specialized algorithms such as Bellman-Ford).
+    Specify either: `nodes` alone, `sources` and/or `targets`, or neither (for all-pairs).
     
-    Parameters:
-        graph: The graph on which to compute distances.
-        sources: Optional array of source node indices. If provided with targets, computes distances from sources to targets.
-        targets: Optional array of target node indices. If provided with sources, computes distances from sources to targets.
-        nodes: Optional array of node indices. If provided, computes pairwise distances among these nodes.
+    **Returns:**
     
-    Returns:
-        Distance matrix or array depending on the method called.
+    Distance array with shape depending on the inputs.
         
     !!! example
 
         ```python
+        from jaxscape import LCPDistance, GridGraph
+        import jax.numpy as jnp
+        
+        distance = LCPDistance()
+        grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
+        
         # All-pairs distance
-        dist_matrix = distance(graph)  # Shape: (n_nodes, n_nodes)
-
-        # Source-target distance
-        dist_matrix = distance(graph, sources=[0, 1], targets=[10, 20])  # Shape: (2, 2)
-
+        D = distance(grid)  # Shape: (n_nodes, n_nodes)
+        
+        # Using vertex indices
+        D = distance(grid, sources=jnp.array([0, 1]), targets=jnp.array([10, 20]))  # Shape: (2, 2)
+        
+        # Using coordinates (for GridGraph)
+        D = distance(grid, sources=jnp.array([[0, 0], [1, 1]]), targets=jnp.array([[10, 10]]))  # Shape: (2, 1)
+        
         # Pairwise among subset
-        dist_matrix = distance(graph, nodes=[0, 5, 10])  # Shape: (3, 3)
+        D = distance(grid, nodes=jnp.array([0, 5, 10]))  # Shape: (3, 3)
         ```
     """
     def __call__(

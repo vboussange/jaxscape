@@ -29,6 +29,7 @@ theme:
     - toc.integrate  # Table of contents is integrated on the left; does not appear separately on the right.
     - header.autohide  # header disappears as you scroll
     - content.code.copy
+  logo: false
 
 plugins:
   - search
@@ -75,10 +76,11 @@ nav:
   - Examples:
     - Distance calculation: examples/distance_calculation/distance_calculation.ipynb
     - Connectivity analysis: examples/connectivity_analysis/connectivity_analysis.ipynb
-    - Inverse modelling: examples/inverse_problem/inverse_problem.ipynb
+    - Inverse landscape genetics: examples/inverse_landscape_genetics/inverse_landscape_genetics.ipynb
     - Advanced topics: examples/advanced/moving_windows.ipynb
   - API Reference:
     - Graphs: api/graphs.md
     - Distance metrics: api/distances.md
     - Linear solvers: api/solvers.md
-    - Window operations: api/windows.md
+    - Connectivity analysis: api/connectivity_analysis.md
+    - Window operations: api/window_operations.md

@@ -9,35 +9,69 @@ import equinox as eqx
 
 
 class LCPDistance(AbstractDistance):
-    """
-    Compute the shortest path distances from `sources` to all vertices, or
-    from all to all if sources not provided. Currently relies on Bellman-Ford
-    algorithm, with complexity O(V * E * S) where L is the number of sources.
+    """Compute least-cost path distances using shortest path algorithms.
+    
+    Currently supports two algorithms:
+    
+    - **Bellman-Ford** (default): Efficient for sparse graphs and few sources. 
+      Complexity O(V × E × S) where S is the number of sources.
+    - **Floyd-Warshall**: Efficient for all-pairs on small dense graphs. 
+      Complexity O(V³), converts to dense matrix.
+    
+    **Parameters:**
+    
+    - `algorithm`: Algorithm choice: `"bellman-ford"` (default) or `"floyd-warshall"`.
     
     !!! example
+    
         ```python
-        from jaxscape import LCPDistance
-
+        from jaxscape import LCPDistance, GridGraph
+        import jax.numpy as jnp
+        
+        grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
+        
+        # Default: Bellman-Ford (efficient for sparse graphs)
         distance = LCPDistance()
-        dist = distance(grid, sources=source_indices, targets=target_indices)
+        D = distance(grid, sources=jnp.array([0, 1]), targets=jnp.array([10, 20]))
+        
+        # Floyd-Warshall (efficient for small all-pairs)
+        distance_fw = LCPDistance(algorithm="floyd-warshall")
+        D_all = distance_fw(grid)  # All-pairs distance
         ```
     """
+    algorithm: str = "bellman-ford"
+    
+    def __check_init__(self):
+        if self.algorithm not in ["bellman-ford", "floyd-warshall"]:
+            raise ValueError("`algorithm` must be 'bellman-ford' or 'floyd-warshall'")
+    
     @eqx.filter_jit
     def nodes_to_nodes_distance(self, graph: AbstractGraph, nodes: Array) -> Array:
         A = graph.get_adjacency_matrix()
-        distances = bellman_ford_multi_sources(A, nodes)
-        return distances[:, nodes]
+        if self.algorithm == "floyd-warshall":
+            distances = floyd_warshall(A)
+            return distances[nodes[:, None], nodes[None, :]]
+        else:
+            distances = bellman_ford_multi_sources(A, nodes)
+            return distances[:, nodes]
 
     @eqx.filter_jit
     def sources_to_targets_distance(self, graph: AbstractGraph, sources: Array, targets: Array) -> Array:
         A = graph.get_adjacency_matrix()
-        distances = bellman_ford_multi_sources(A, sources)
-        return distances[:, targets]
+        if self.algorithm == "floyd-warshall":
+            distances = floyd_warshall(A)
+            return distances[sources[:, None], targets[None, :]]
+        else:
+            distances = bellman_ford_multi_sources(A, sources)
+            return distances[:, targets]
 
     @eqx.filter_jit
     def all_pairs_distance(self, graph: AbstractGraph) -> Array:
         A = graph.get_adjacency_matrix()
-        return bellman_ford_multi_sources(A, jnp.arange(graph.nv))
+        if self.algorithm == "floyd-warshall":
+            return floyd_warshall(A)
+        else:
+            return bellman_ford_multi_sources(A, jnp.arange(graph.nv))
 
 @eqx.filter_jit
 def floyd_warshall(A: BCOO) -> Array:

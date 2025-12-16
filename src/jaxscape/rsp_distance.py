@@ -14,29 +14,28 @@ from jax.experimental.sparse import BCOO
 # another option would be to NOT subclass GridGraph as eqx.Module
 
 class RSPDistance(AbstractDistance):
+    """
+    Randomized shortest path distance. Requires the temperature parameter
+    `theta` and `cost`, which can be either a `jax.experimental.sparse.BCOO`
+    matrix or a function that will be used to map all non zero element of
+    the adjacency matrix to create the cost matrix. `cost` defaults to the
+    well adapted movement cost function `lambda x: -jnp.log(x))`.
+    
+    !!! warning
+        This distance metric is experimental and may change in future releases.
+    
+    !!! example
+        ```python
+        from jaxscape import RSPDistance
+
+        distance = RSPDistance(theta=0.01, cost=lambda x: -jnp.log(x))
+        dist = distance(grid)
+        ```
+    """
     theta: Array
     _cost: Union[Callable[[Array], Array], BCOO]
     
     def __init__(self, theta: Union[float, Array], cost: Union[Callable[[Array], Array], BCOO] = lambda x: -jnp.log(x)):
-        """
-        Randomized shortest path distance. Requires the temperature parameter
-        `theta` and `cost`, which can be either a `jax.experimental.sparse.BCOO`
-        matrix or a function that will be used to map all non zero element of
-        the adjacency matrix to create the cost matrix. `cost` defaults to the
-        well adapted movement cost function `lambda x: -jnp.log(x))`.
-        
-        !!! warning
-            This distance metric is experimental and may change in future releases.
-        
-        !!! example
-        
-            ```python
-            from jaxscape import RSPDistance
-
-            distance = RSPDistance(theta=0.01, cost=lambda x: -jnp.log(x))
-            dist = distance(grid)
-            ```
-        """
         self._cost = cost
         self.theta = theta
         

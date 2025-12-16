@@ -1,12 +1,15 @@
 ::: jaxscape.graph.AbstractGraph
     options:
-      members: false
+      members: get_adjacency_matrix
 
 ::: jaxscape.graph.Graph
     options:
-      members: false
-
+      members:
+        - get_adjacency_matrix
 ::: jaxscape.graph.GridGraph
     options:
-      members: false
-
+      members: 
+        - coord_to_index
+        - index_to_coord
+        - node_values_to_array
+        - array_to_node_values

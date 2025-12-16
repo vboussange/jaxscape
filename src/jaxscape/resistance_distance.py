@@ -16,12 +16,13 @@ class ResistanceDistance(AbstractDistance):
     """
     Compute the resistance distances. 
     
-    Attributes:
-        solver: Optional lineax.AbstractLinearSolver. Must be compatible with
-        BCOO matrices. We currently support jaxscape.solvers.CholmodSolver and
-        jaxscape.solvers.PyAMGSolver. If None, uses pseudo-inverse method, which
-        is very memory intensive for large graphs (densifies the Laplacian
-        matrix).
+    **Attributes**:
+    
+    - `solver`: Optional `lineax.AbstractLinearSolver`. Must be compatible with
+    BCOO matrices. We currently support `jaxscape.solvers.CholmodSolver` and
+    `jaxscape.solvers.PyAMGSolver`. If None, uses pseudo-inverse method, which
+    is very memory intensive for large graphs (densifies the Laplacian
+    matrix).
         
     !!! example
     

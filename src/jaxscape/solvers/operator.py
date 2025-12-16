@@ -4,6 +4,8 @@ import lineax as lx
 from jax.experimental.sparse import BCOO
 
 class BCOOLinearOperator(lx.MatrixLinearOperator):
+    """`lineax.MatrixLinearOperator` wrapper for `jax.experimental.sparse.BCOO`
+    matrices."""
     def __check_init__(self) -> None:
         if not isinstance(self.matrix, BCOO):
             raise ValueError("The operator must be a BCOO matrix.")
