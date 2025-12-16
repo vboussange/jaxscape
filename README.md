@@ -74,7 +74,12 @@ plt.show()
 ```
 <div align="center"><img src="examples/quick_start/distances.png" alt="Distances"  width="600"></div>
 
-But what's really cool about jaxscape is that you can autodiff through thoses distances! Check out the documentation to learn about applications and more!
+But what's really cool about jaxscape is that you can autodiff through thoses distances! Check out the [documentation](#documentation) to learn about applications and more!
+
+
+## Documentation
+
+Comprehensive documentation is available at [vboussange.github.io/jaxscape](vboussange.github.io/jaxscape)
 
 ## Features and roadmap 🚀
 - [ ] Support for direct and iterative sparse solvers on GPU (cf [spineax](https://github.com/johnviljoen/spineax))
