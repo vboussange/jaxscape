@@ -9,7 +9,7 @@ on:
     tags: '*'
 
 jobs:
-  build:
+  run-tests:
     strategy:
       matrix:
         python-version: 

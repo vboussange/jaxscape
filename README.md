@@ -71,6 +71,8 @@ But what's really cool about `JAXscape` is that you can autodiff through thoses 
 Comprehensive documentation is available at [vboussange.github.io/jaxscape](vboussange.github.io/jaxscape)
 
 ## Features and roadmap 🚀
+See issues; most notably:
+
 - [ ] Support for direct and iterative sparse solvers on GPU (cf [spineax](https://github.com/johnviljoen/spineax))
 - [ ] Benchmark against `CircuitScape`, `ConScape.jl` and [`radish`](https://github.com/nspope/radish).
 
