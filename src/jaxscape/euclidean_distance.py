@@ -1,7 +1,9 @@
 import jax.numpy as jnp
+from jax import Array
 import equinox as eqx
 
 from jaxscape.distance import AbstractDistance
+from jaxscape.graph import AbstractGraph
 
 
 class EuclideanDistance(AbstractDistance):
@@ -18,24 +20,24 @@ class EuclideanDistance(AbstractDistance):
         ```
     """
     @eqx.filter_jit
-    def nodes_to_nodes_distance(self, grid, nodes):
-        coords = grid.index_to_coord(nodes)
+    def nodes_to_nodes_distance(self, graph: AbstractGraph, nodes: Array) -> Array:
+        coords = graph.index_to_coord(nodes)
         return euclidean_distance(coords, coords)
 
     @eqx.filter_jit
-    def sources_to_targets_distance(self, grid, sources, targets):
-        source_coords = grid.index_to_coord(sources)
-        target_coords = grid.index_to_coord(targets)
+    def sources_to_targets_distance(self, graph: AbstractGraph, sources: Array, targets: Array) -> Array:
+        source_coords = graph.index_to_coord(sources)
+        target_coords = graph.index_to_coord(targets)
         return euclidean_distance(source_coords, target_coords)
 
     @eqx.filter_jit
-    def all_pairs_distance(self, grid):
-        coords = grid.index_to_coord(jnp.arange(grid.nv))
+    def all_pairs_distance(self, graph: AbstractGraph) -> Array:
+        coords = graph.index_to_coord(jnp.arange(graph.nv))
         return euclidean_distance(coords, coords)
                 
             
 @eqx.filter_jit
-def euclidean_distance(coordinate_list_sources, coordinate_list_target):
+def euclidean_distance(coordinate_list_sources: Array, coordinate_list_target: Array) -> Array:
     """Computes the euclidean distance between two sets of coordinates. 
     `coordinate_list_sources` must be of size (N, 2) and 
     `coordinate_list_target` must be of size (M, 2)."""

@@ -1,12 +1,16 @@
 import jax.numpy as jnp
+from jax import Array
 import equinox as eqx
 from jaxscape.window_operation import WindowOperation
 from jaxscape.utils import padding
 from jax import lax
 from tqdm import tqdm
 from jaxscape.graph import GridGraph
+from jaxscape.distance import AbstractDistance
+from typing import Callable, Union
+import numpy as np
 
-def connectivity(quality_raster, permeability_raster, window_op, distance, proximity, q_weighted):
+def connectivity(quality_raster: Array, permeability_raster: Array, window_op: WindowOperation, distance: AbstractDistance, proximity: Callable[[Array], Array], q_weighted: bool) -> Union[Array, float]:
     """
     Calculate connectivity of landscape characterised by `quality` and `permeability`.
 
@@ -60,7 +64,7 @@ connectivity_vmap = eqx.filter_vmap(connectivity, in_axes=(0, 0, 0, None, None, 
 
 
 class WindowedAnalysis:
-    def __init__(self, quality_raster, permeability_raster, distance, proximity, coarsening_factor, dependency_range, batch_size):
+    def __init__(self, quality_raster: Union[Array, np.ndarray], permeability_raster: Union[Array, np.ndarray, Callable[[Array], Array]], distance: AbstractDistance, proximity: Callable[[Array], Array], coarsening_factor: float, dependency_range: int, batch_size: int):
         """
         Base class for connectivity windowed analyses. By default, the underlying GridGraph has a `ROOK_CONTIGUITY`, and edges are defined by `fun = lambda x, y: (x + y)/2`.
         
@@ -150,7 +154,7 @@ class ConnectivityAnalysis(WindowedAnalysis):
         connectivity_index = conn.run(q_weighted=True)
         ```
     """
-    def run(self, q_weighted=True):
+    def run(self, q_weighted: bool = True) -> Array:
         output = jnp.array(0.)
         for (xy_batch, quality_batch) in tqdm(
             self.batch_op.lazy_iterator(self.quality_raster),

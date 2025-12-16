@@ -1,10 +1,11 @@
 import jax
-from jax import lax, vmap
+from jax import Array, lax, vmap
 import jax.numpy as jnp
 import equinox as eqx
+from typing import Callable, Tuple, Generator
 
 class WindowOperation(eqx.Module):
-    shape: int = eqx.field(static=True)
+    shape: Tuple[int, int] = eqx.field(static=True)
     window_size: int = eqx.field(static=True)
     buffer_size: int = eqx.field(static=True)
     total_window_size: int = eqx.field(static=True)
@@ -12,7 +13,7 @@ class WindowOperation(eqx.Module):
     y_steps: int = eqx.field(static=True)
 
     """Handles window-based operations on raster data."""
-    def __init__(self, shape, window_size, buffer_size):
+    def __init__(self, shape: Tuple[int, int], window_size: int, buffer_size: int):
         assert isinstance(shape, tuple)
         assert isinstance(window_size, int)
         assert isinstance(buffer_size, int)
@@ -29,7 +30,7 @@ class WindowOperation(eqx.Module):
         assert self.x_steps > 0, "`window_size` or `buffer_size` are too large for the raster data."
         assert self.y_steps > 0, "`window_size` or `buffer_size` are too large for the raster data."
 
-    def extract_total_window(self, xy, raster):
+    def extract_total_window(self, xy: Array, raster: Array) -> Array:
         """Extract a buffered window from the raster data."""
         x_start, y_start = xy
         
@@ -43,7 +44,7 @@ class WindowOperation(eqx.Module):
         
         return window
     
-    def extract_core_window(self, xy, raster):
+    def extract_core_window(self, xy: Array, raster: Array) -> Array:
         """Extract the core window from the raster data based on `xy` of total window."""
         x_start, y_start = xy
         
@@ -57,7 +58,7 @@ class WindowOperation(eqx.Module):
         return window
     
     @eqx.filter_jit
-    def update_raster_with_focal_window(self, xy, raster, raster_window, fun=lambda current_raster_focal_window, raster_window_focal_window: raster_window_focal_window):
+    def update_raster_with_focal_window(self, xy: Array, raster: Array, raster_window: Array, fun: Callable[[Array, Array], Array] = lambda current_raster_focal_window, raster_window_focal_window: raster_window_focal_window) -> Array:
         """Updates `raster` with the inner core (focal pixels) of `raster_window`."""
         assert isinstance(raster, jax.Array)
         x_start, y_start = xy
@@ -80,7 +81,7 @@ class WindowOperation(eqx.Module):
                                         start_indices=(x_core_start, y_core_start))
 
     @eqx.filter_jit
-    def update_raster_with_window(self, xy, raster, raster_window, fun=lambda current_raster_slice, raster_window: raster_window):
+    def update_raster_with_window(self, xy: Array, raster: Array, raster_window: Array, fun: Callable[[Array, Array], Array] = lambda current_raster_slice, raster_window: raster_window) -> Array:
         """Modify `raster` by adding `raster_window`."""
         assert isinstance(raster, jax.Array)
         x_start, y_start = xy
@@ -99,10 +100,10 @@ class WindowOperation(eqx.Module):
         return updated_raster
     
     @property
-    def nb_steps(self):
+    def nb_steps(self) -> int:
         return (self.x_steps) * (self.y_steps)
 
-    def lazy_iterator(self, raster):
+    def lazy_iterator(self, raster: Array) -> Generator[Tuple[Array, Array], None, None]:
         """Yield buffered windows for computations."""
         x_steps = self.x_steps
         y_steps = self.y_steps
@@ -113,7 +114,7 @@ class WindowOperation(eqx.Module):
                 yield jnp.array([x_start, y_start]), window
 
     @eqx.filter_jit
-    def eager_iterator(self, matrix):
+    def eager_iterator(self, matrix: Array) -> Tuple[Array, Array]:
         """Compute all windows and their coordinates at once.
 
         Args:

@@ -1,8 +1,10 @@
 import jax.numpy as jnp
+from jax import Array
 from jax import jit
 from jax.experimental.sparse import BCOO
 import equinox as eqx
 import abc
+from typing import Callable
 
 class AbstractGraph(eqx.Module):
     """
@@ -10,12 +12,12 @@ class AbstractGraph(eqx.Module):
     """
     @property
     @abc.abstractmethod
-    def nv(self):
+    def nv(self) -> int:
         """Get the number of vertices."""
         pass
 
     @abc.abstractmethod
-    def get_adjacency_matrix(self):
+    def get_adjacency_matrix(self) -> BCOO:
         """Get the adjacency matrix of the graph."""
         pass
 
@@ -26,14 +28,14 @@ class Graph(AbstractGraph):
     """
     adjacency_matrix: BCOO
 
-    def __init__(self, adjacency_matrix):
+    def __init__(self, adjacency_matrix: BCOO):
         self.adjacency_matrix = adjacency_matrix
 
     @property
-    def nv(self):
+    def nv(self) -> int:
         return self.adjacency_matrix.shape[0]
 
-    def get_adjacency_matrix(self):
+    def get_adjacency_matrix(self) -> BCOO:
         return self.adjacency_matrix
 
 
@@ -58,14 +60,14 @@ QUEEN_CONTIGUITY = jnp.array([
                 ])
 
 class GridGraph(AbstractGraph):
-    grid: jnp.ndarray
-    neighbors: jnp.ndarray
-    fun: callable = eqx.field(static=True)
+    grid: Array
+    neighbors: Array
+    fun: Callable[[Array, Array], Array] = eqx.field(static=True)
 
     def __init__(self,
-                 grid,
-                 fun = lambda x, y: y, 
-                 neighbors=ROOK_CONTIGUITY):
+                 grid: Array,
+                 fun: Callable[[Array, Array], Array] = lambda x, y: y, 
+                 neighbors: Array = ROOK_CONTIGUITY):
         """
         Geometric graph where vertices are defined by a rectangular `grid`.
         
@@ -83,32 +85,32 @@ class GridGraph(AbstractGraph):
         self.fun = fun
         self.neighbors = neighbors
             
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"GridGraph of size {self.height}x{self.width}"
     
     @property
-    def height(self):
+    def height(self) -> int:
         """Get the height of the grid (number of rows)."""
         return self.grid.shape[0]
 
     @property
-    def width(self):
+    def width(self) -> int:
         """Get the width of the grid (number of columns)."""
         return self.grid.shape[1]
     
     @property
-    def nv(self):
+    def nv(self) -> int:
         """Get the number of vertices."""
         return self.width * self.height
 
     # @jit
-    def coord_to_index(self, i, j):
+    def coord_to_index(self, i: Array, j: Array) -> Array:
         """Convert (i, j) grid coordinates to the associated passive vertex index."""
         num_columns = self.grid.shape[1]  # Get the number of columns in the grid
         return i * num_columns + j
     
     # @jit
-    def index_to_coord(self, v):
+    def index_to_coord(self, v: Array) -> Array:
         """Convert passive vertex index `v` to (i, j) grid coordinates."""
         num_columns = self.grid.shape[1]  # Get the number of columns in the grid
         i = v // num_columns  # Row index
@@ -116,18 +118,18 @@ class GridGraph(AbstractGraph):
         return jnp.column_stack((i, j))
     
     # @jit
-    def node_values_to_array(self, values):
+    def node_values_to_array(self, values: Array) -> Array:
         """Reshapes the 1D array values of vertices to the underlying 2D grid."""
         canvas = values.reshape(*self.grid.shape)
         return canvas
     
-    def array_to_node_values(self, array):
+    def array_to_node_values(self, array: Array) -> Array:
         """Reshapes the 1D array values of vertices to the underlying 2D grid."""
         q = array.ravel()
         return q
     
     @eqx.filter_jit
-    def get_adjacency_matrix(self):
+    def get_adjacency_matrix(self) -> BCOO:
         """
         Create an adjacency matrix from the vertices weights of the `GridGraph`
         object. 

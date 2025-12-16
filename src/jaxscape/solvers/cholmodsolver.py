@@ -1,4 +1,5 @@
 import jax
+from jax import Array as JaxArray
 import equinox as eqx
 import lineax as lx
 from lineax import AbstractLinearSolver, AbstractLinearOperator, RESULTS
@@ -61,7 +62,7 @@ class CholmodSolver(AbstractLinearSolver):
         packed_structures = pack_structures(operator)
         return A_bcoo, packed_structures
 
-    def _compute_host(self, A_bcoo, b_jax):
+    def _compute_host(self, A_bcoo: BCOO, b_jax: JaxArray) -> JaxArray:
         """
         Solve the linear system using CHOLMOD via cholespy.
         

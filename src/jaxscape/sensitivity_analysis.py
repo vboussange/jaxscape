@@ -1,4 +1,5 @@
 import jax.numpy as jnp
+from jax import Array
 import equinox as eqx
 from jaxscape.window_operation import WindowOperation
 from jax import lax
@@ -13,7 +14,7 @@ d_quality_vmap = eqx.filter_vmap(d_quality, in_axes=(0, 0, 0, None, None, None))
 
 @eqx.filter_jit
 @eqx.filter_grad
-def d_permeability(permeability_raster, quality_raster, *args, **kwargs):
+def d_permeability(permeability_raster: Array, quality_raster: Array, *args, **kwargs) -> float:
     return  connectivity(quality_raster, permeability_raster, *args, **kwargs)
 d_permeability_vmap = eqx.filter_vmap(d_permeability, in_axes=(0, 0, 0, None, None, None))
 
@@ -50,12 +51,12 @@ class SensitivityAnalysis(WindowedAnalysis):
         else:
             self.original_shape = np.array(kwargs.get('quality_raster', None).shape) #todo: do we need np.array here?
         
-    def _scan_fn(self, raster_buffer, x):
+    def _scan_fn(self, raster_buffer: Array, x: tuple) -> tuple:
             _xy, _rast = x
             raster_buffer = self.window_op.update_raster_with_window(_xy, raster_buffer, _rast, fun=jnp.add)
             return raster_buffer, None
         
-    def run(self, var="quality", q_weighted=True):
+    def run(self, var: str = "quality", q_weighted: bool = True) -> Array:
         """
         Runs a sensitivity analysis by calculating the derivative of the connectivity with respect to `var`. `var` can be either "quality" or "permeability".
         """

@@ -71,7 +71,7 @@ class PyAMGSolver(AbstractLinearSolver):
         packed_structures = pack_structures(operator)
         return A_bcoo, packed_structures
 
-    def _compute_host(self, A_bcoo, b_jax, rtol, maxiter):
+    def _compute_host(self, A_bcoo: BCOO, b_jax: Array, rtol: float, maxiter: int) -> Array:
         if A_bcoo.n_batch > 0:
             # ugly trick to remove batch dimension
             # specific to BCOO behavior

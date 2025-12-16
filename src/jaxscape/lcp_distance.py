@@ -1,6 +1,8 @@
 import jax
 import jax.numpy as jnp
+from jax import Array
 from jaxscape.distance import AbstractDistance
+from jaxscape.graph import AbstractGraph
 from jax.experimental.sparse import BCOO
 from jax import lax, ops
 import equinox as eqx
@@ -21,24 +23,24 @@ class LCPDistance(AbstractDistance):
         ```
     """
     @eqx.filter_jit
-    def nodes_to_nodes_distance(self, grid, nodes):
-        A = grid.get_adjacency_matrix()
+    def nodes_to_nodes_distance(self, graph: AbstractGraph, nodes: Array) -> Array:
+        A = graph.get_adjacency_matrix()
         distances = bellman_ford_multi_sources(A, nodes)
         return distances[:, nodes]
 
     @eqx.filter_jit
-    def sources_to_targets_distance(self, grid, sources, targets):
-        A = grid.get_adjacency_matrix()
+    def sources_to_targets_distance(self, graph: AbstractGraph, sources: Array, targets: Array) -> Array:
+        A = graph.get_adjacency_matrix()
         distances = bellman_ford_multi_sources(A, sources)
         return distances[:, targets]
 
     @eqx.filter_jit
-    def all_pairs_distance(self, grid):
-        A = grid.get_adjacency_matrix()
-        return bellman_ford_multi_sources(A, jnp.arange(grid.nv))
+    def all_pairs_distance(self, graph: AbstractGraph) -> Array:
+        A = graph.get_adjacency_matrix()
+        return bellman_ford_multi_sources(A, jnp.arange(graph.nv))
 
 @eqx.filter_jit
-def floyd_warshall(A: BCOO):
+def floyd_warshall(A: BCOO) -> Array:
     """
     Computes the shortest paths between all pairs of nodes in a graph using the Floyd-Warshall algorithm. Complexity O(V^3).
     Converts A to a dense matrix, which may lead to out of memory problems.
@@ -49,7 +51,7 @@ def floyd_warshall(A: BCOO):
     ks = jnp.arange(n)
 
     @eqx.filter_checkpoint
-    def per_k_update(D, k):
+    def per_k_update(D: Array, k: int) -> tuple[Array, None]:
         D_ik = D[:, k][:, None]  # Shape: (n, 1)
         D_kj = D[k, :][None, :]  # Shape: (1, n)
         D_ik_kj = D_ik + D_kj  # Shape: (n, n)
@@ -61,7 +63,7 @@ def floyd_warshall(A: BCOO):
     return D_final
 
 @eqx.filter_jit
-def bellman_ford(A: BCOO, source: int):
+def bellman_ford(A: BCOO, source: int) -> Array:
     """
     Computes the shortest paths from a source node to all other nodes in a graph using the Bellman-Ford algorithm.
     Should you need to compute the shortest paths from multiple source nodes, consider using `jax.vmap` to vectorize this function.
@@ -75,7 +77,7 @@ def bellman_ford(A: BCOO, source: int):
     W_data = 1 / A.data  # Shape: (nnz,), we convert proximity to cost
 
     @eqx.filter_checkpoint
-    def body_fun(D, _):
+    def body_fun(D: Array, _) -> tuple[Array, None]:
         D_u_plus_w = D[W_indices[:, 0]] + W_data
         D_v_min = ops.segment_min(D_u_plus_w, W_indices[:, 1], num_segments=N)
         return jnp.minimum(D, D_v_min), None

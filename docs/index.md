@@ -1,10 +1,10 @@
-# JAXScape
+# Getting started
 
 JAXScape is a minimal JAX library for connectivity analysis at scales. It provide key utilities to build your own connectivity analysis workflow, including
 
 - differentiable and GPU-accelerated graph distance metrics
 - differentiable raster to graph and graph to raster mappings
-- moving window utilities for the implementations for large-scale connectivity analysis pipelines
+- moving window utilities for implementing large-scale connectivity analysis pipelines
 
 JAXScape leverages JAX's capabilities to accelerate distance computations on CPUs/GPUs/TPUs, while ensuring differentiability of all implemented classes and methods for awesome sensitivity analysis and optimization.
 
@@ -27,11 +27,13 @@ import jax.numpy as jnp
 from jaxscape import GridGraph
 import numpy as np
 
-# loading jax array representing permeability
+# Loading jax array representing permeability
 permeability = jnp.array(np.loadtxt("permeability.csv", delimiter=","))
+
+# The `GridGraph` class automatically constructs a graph where each pixel is connected to its neighbors. The edge weights are determined by the values in the `permeability` raster.
 grid = GridGraph(grid=permeability)
 ```
-The `GridGraph` class automatically constructs a graph where each pixel is connected to its neighbors. The edge weights are determined by the permeability values.
+
 
 Let's now calculate some distances on the grid graph. We will specifically calculate and project the distance of all pixels to the top left pixel
 
@@ -63,12 +65,14 @@ fig.suptitle("Distance to top left pixel")
 plt.tight_layout()
 plt.show()
 ```
-<div align="center"><img src="examples/quick_start/distances.png" alt="Distances"  width="600"></div>
+<div align="center"><img src="examples/distance_calculation/distances.png" alt="Distances"  width="600"></div>
 
 But what's really cool about jaxscape is that you can autodiff through thoses distances! Check out the documentation to learn about applications and more!
 
 ## Features and roadmap 🚀
-- [ ] Support for direct and iterative sparse solvers on GPU (cf [spineax](https://github.com/johnviljoen/spineax))
+See issues; most notably:
+
+- [ ] Support for direct and iterative linear sparse solvers on GPU (cf [spineax](https://github.com/johnviljoen/spineax))
 - [ ] Benchmark against `CircuitScape`, `ConScape.jl` and [`radish`](https://github.com/nspope/radish).
 
 ## License

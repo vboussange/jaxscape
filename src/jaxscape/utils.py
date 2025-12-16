@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as jnp
+from jax import Array
 from jax.experimental import sparse
 from scipy.sparse import coo_array, csr_array
 import numpy as np
@@ -7,8 +8,9 @@ from jax.experimental.sparse import BCOO, BCSR
 import equinox as eqx
 from equinox import filter_jit
 from scipy import sparse as ssp
+from typing import Callable
 
-def graph_laplacian(A):
+def graph_laplacian(A: BCOO) -> BCOO:
     """
     Computes the graph Laplacian given an adjacency matrix A.
     """
@@ -16,7 +18,7 @@ def graph_laplacian(A):
     L = D - A  # Laplacian matrix
     return L
 
-def mapnz(mat, f):
+def mapnz(mat: BCOO, f: Callable[[Array], Array]) -> BCOO:
     """
     Apply a function to the non-zero elements of a sparse matrix.
     Parameters:
@@ -45,21 +47,21 @@ def mapnz(mat, f):
 #         return sp_mat.todense()
 #     return sp_mat
 
-def zero_copy_jax_csr_to_scipy_csr(A_jax):
+def zero_copy_jax_csr_to_scipy_csr(A_jax: BCSR) -> ssp.csr_matrix:
     data, indices, indptr = A_jax.data, A_jax.indices, A_jax.indptr
     A_scipy = ssp.csr_matrix((np.from_dlpack(data), 
                               np.from_dlpack(indices), 
                               np.from_dlpack(indptr)), shape=A_jax.shape)
     return A_scipy
 
-def BCOO_to_coo(A):
+def BCOO_to_coo(A: BCOO) -> coo_array:
     assert isinstance(A, sparse.BCOO)
     ij = np.array(A.indices)
     v = np.array(A.data)
     sparse_matrix = coo_array((v, (ij[:,0], ij[:,1])), shape=A.shape)
     return sparse_matrix
 
-def BCOO_to_csr(A):
+def BCOO_to_csr(A: BCOO) -> csr_array:
     assert isinstance(A, sparse.BCOO)
     A_BCSR = BCSR.from_bcoo(A)
     indices = np.array(A_BCSR.indices)
@@ -69,12 +71,12 @@ def BCOO_to_csr(A):
     return sparse_matrix
 
 
-def get_largest_component_label(labels):
+def get_largest_component_label(labels: np.ndarray) -> int:
     largest_component_label = np.bincount(labels).argmax()
     # largest_component_nodes = np.where(labels == largest_component_label)[0]
     return largest_component_label
 
-def bcoo_diag(diagonal, indices_dtype=jnp.int32):
+def bcoo_diag(diagonal: Array, indices_dtype = jnp.int32) -> BCOO:
     """
     Create a sparse diagonal matrix in BCOO format from the given diagonal elements.
 
@@ -124,7 +126,7 @@ def bcoo_triu(mat: BCOO, k: int = 0) -> BCOO:
     out = BCOO((new_data, mat.indices), shape=mat.shape)
     return out
 
-def bcoo_at_set(mat, row_idx, col_idx, vals):
+def bcoo_at_set(mat: BCOO, row_idx: Array, col_idx: Array, vals: Array) -> BCOO:
     update_indices = jnp.stack([row_idx, col_idx], axis=-1)
     updates_coo = BCOO((vals, update_indices), shape=mat.shape)
     mask_vals = jnp.ones_like(vals, dtype=mat.data.dtype)
@@ -135,7 +137,7 @@ def bcoo_at_set(mat, row_idx, col_idx, vals):
     return new_mat
 
 
-def padding(raster, buffer_size, window_size):
+def padding(raster: Array, buffer_size: int, window_size: int) -> Array:
     """
     Pads the given raster array to ensure its dimensions are compatible with the
     specified window size, i.e. assert (raster.shape[i] - 2 * buffer_size) %
