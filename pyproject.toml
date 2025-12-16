@@ -4,29 +4,80 @@ build-backend = "hatchling.build"
 
 [project]
 name = "jaxscape"
-version = "0.0.5"
-description = ''
+version = "0.0.6"
+description = 'A minimal JAX library for connectivity modelling at scale'
 readme = "README.md"
-requires-python = ">=3.8"
-license = "MIT"
-keywords = []
+requires-python = ">=3.10,<3.13"
+license = {file = "LICENSE"}
+keywords = ["jax", "graph", "machine-learning", "network"]
 authors = [
   { name = "Victor Boussange", email = "vic.boussange@gmail.com" },
 ]
 classifiers = [
-  "Development Status :: 4 - Beta",
-  "Programming Language :: Python",
-  "Programming Language :: Python :: 3.8",
-  "Programming Language :: Python :: 3.9",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3.12",
-  "Programming Language :: Python :: Implementation :: CPython",
-  "Programming Language :: Python :: Implementation :: PyPy",
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Financial and Insurance Industry",
+  "Intended Audience :: Information Technology",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Natural Language :: English",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+  "Topic :: Scientific/Engineering :: Mathematics",
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+  "Topic :: Scientific/Engineering :: GIS",
+  ]
+dependencies = [
+    "jax>=0.4.38,!=0.7.0,!=0.7.1",
+    "equinox>=0.13.2",
+    "tqdm>=4.66.1",
+    "numpy",
+    "lineax>=0.0.8",
 ]
-dependencies = ["equinox", "jax", "tqdm", "sciparse", "numpy"]
 
 [project.urls]
 Documentation = "https://github.com/vboussange/jaxscape#readme"
 Issues = "https://github.com/vboussange/jaxscape/issues"
 Source = "https://github.com/vboussange/jaxscape"
+
+[project.optional-dependencies]
+dev = [
+    "ipykernel>=6.29.5",
+]
+
+docs = [
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.5.0",
+    "mkdocstrings[python]>=0.24.0",
+    "pymdown-extensions>=10.7.0",
+    "mkdocs-include-exclude-files==0.1.0",
+    "mkdocs-ipynb==0.1.1",
+]
+
+examples = [
+    "matplotlib",
+    "rioxarray",
+    "flax",
+    "optimistix",
+    "geopandas",
+    "scikit-learn",
+]
+
+tests = [
+    "networkx>=3.4",
+    "pytest>=8.3.5",
+]
+
+pyamg = [
+    "pyamg>=5.1.0",
+]
+
+cholespy = [
+    "cholespy>=2.1.0",
+]
+
+solvers = [
+    "pyamg>=5.1.0,<5.3.0",
+    "cholespy>=2.1.0",
+]

@@ -2,7 +2,7 @@
 [![DOI](https://zenodo.org/badge/883274673.svg)](https://doi.org/10.5281/zenodo.15267703)
 
 <div align="center">
-  <img src="examples/logo/logo.png" alt="JAXScape Logo" width="500">
+  <img src="docs/examples/logo/logo.png" alt="JAXScape Logo" width="400">
 </div>
 <!-- [![PyPI - Version](https://img.shields.io/pypi/v/jaxscape.svg)](https://pypi.org/project/jaxscape)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/jaxscape.svg)](https://pypi.org/project/jaxscape) -->
@@ -11,9 +11,9 @@
 
 JAXScape is a minimal JAX library for connectivity analysis at scales. It provide key utilities to build your own connectivity analysis workflow, including
 
+- differentiable and GPU-accelerated graph distance metrics
 - differentiable raster to graph and graph to raster mappings
-- differentiable graph distance metrics
-- moving window utilities
+- moving window utilities for the implementations for large-scale connectivity analysis pipelines
 
 JAXScape leverages JAX's capabilities to accelerate distance computations on CPUs/GPUs/TPUs, while ensuring differentiability of all implemented classes and methods for awesome sensitivity analysis and optimization.
 
@@ -21,13 +21,16 @@ JAXScape leverages JAX's capabilities to accelerate distance computations on CPU
 ## Installation
 
 ```console
-uv add git+https://github.com/vboussange/jaxscape.git
+uv add jaxscape
 ```
+
+For GPU compatibility, install JAX following the [official JAX installation guide](https://jax.readthedocs.io/en/latest/installation.html). JAXScape will automatically use the JAX backend you have configured.
+
+You may be required to install optional linear solvers for large-scale resistance distance computations (see the documentation page).
 
 ## Quick start
 
-Let's define our graph. 
-
+We define a grid graph from a permeability raster:
 ```python
 import jax.numpy as jnp
 from jaxscape import GridGraph
@@ -35,27 +38,25 @@ import numpy as np
 
 # loading jax array representing permeability
 permeability = jnp.array(np.loadtxt("permeability.csv", delimiter=","))
-plt.imshow(permeability, cmap="gray")
-plt.axis("off")
-
-grid = GridGraph(vertex_weights=permeability)
+grid = GridGraph(grid=permeability)
 ```
+The `GridGraph` class automatically constructs a graph where each pixel is connected to its neighbors. The edge weights are determined by the permeability values.
 
-
-Let's calculate some distances on the grid graph. We will specifically calculate and project the distance of all pixels to the top left pixel
+Let's now calculate some distances on the grid graph. We will specifically calculate and project the distance of all pixels to the top left pixel
 
 
 ```python
 from jaxscape import ResistanceDistance
 from jaxscape import LCPDistance
 from jaxscape import RSPDistance
+from jaxscape.solvers import CholmodSolver
 
 # Calculating distances of all pixels to top left pixel
 source = grid.coord_to_index(jnp.array([0]), jnp.array([0]))
 
 distances = {
     "LCP distance": LCPDistance(),
-    "Resistance distance": ResistanceDistance(),
+    "Resistance distance": ResistanceDistance(solver = CholmodSolver()),
     "RSP distance": RSPDistance(theta=0.01, cost=lambda x: 1 / x)
 }
 
@@ -71,19 +72,14 @@ fig.suptitle("Distance to top left pixel")
 plt.tight_layout()
 plt.show()
 ```
-<div align="center"><img src="examples/quick_start/distances.png" alt="Distances"  width="600"></div>
+<div align="center"><img src="docs/examples/distance_calculation/distances.png" alt="Distances"  width="600"></div>
 
-But what's really cool about jaxscape is that you can autodiff through thoses distances! Here we calculate the gradient of the average path length of the graph w.r.t pixel permeability
+But what's really cool about jaxscape is that you can autodiff through thoses distances! Check out the [documentation](#documentation) to learn about applications and more!
 
-```python
 
-# we need to provide the number of active vertices, for jit compilation
-@eqx.filter_jit
-def average_path_length(permeability, distance):
-    grid = GridGraph(permeability,)
-    dist = distance(grid)
-    return dist.sum() / nb_active**2
+## Documentation
 
+<<<<<<< HEAD
 grad_connectivity = jax.grad(average_path_length)
 
 distance = LCPDistance()
@@ -407,6 +403,13 @@ plt.axis("off")
 - [ ] Support for direct sparse solvers on GPU (currently only CPU supported)
 - [ ] Support for iterative sparse solvers on GPU, possibly with `(py)amgx`
 - [ ] Benchmark against `CircuitScape` and `ConScape`
+=======
+Comprehensive documentation is available at [vboussange.github.io/jaxscape](vboussange.github.io/jaxscape)
+
+## Features and roadmap 🚀
+- [ ] Support for direct and iterative sparse solvers on GPU (cf [spineax](https://github.com/johnviljoen/spineax))
+- [ ] Benchmark against `CircuitScape`, `ConScape.jl` and [`radish`](https://github.com/nspope/radish).
+>>>>>>> dev
 
 ## License
 
@@ -418,3 +421,20 @@ plt.axis("off")
 - Circuitscape
 - graphhab
 - conefor
+- resistanceGA
+- landscapemetrics
+- radish
+
+## Citation
+
+If you use JAXScape in your research, please cite:
+
+```bibtex
+@software{jaxscape2024,
+  author = {Boussange, Victor},
+  title = {JAXScape: A minimal JAX library for connectivity modelling at scale},
+  year = {2024},
+  doi = {10.5281/zenodo.15267703},
+  url = {https://github.com/vboussange/jaxscape}
+}
+```

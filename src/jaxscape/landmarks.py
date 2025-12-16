@@ -1,10 +1,11 @@
 from jax import numpy as jnp
-from jax import jit
+from jax import jit, Array
 from jax.experimental.sparse import BCOO
 import equinox as eqx
+from jaxscape.graph import GridGraph
 
 @eqx.filter_jit
-def sum_neighborhood(grid, xy, npix):
+def sum_neighborhood(grid: GridGraph, xy: Array, npix: int) -> Array:
     """
     Computes the sum of pixels within an npix x npix neighborhood around each target in xy.
     Pixels outside the grid boundaries are treated as NaN and ignored.
@@ -33,7 +34,7 @@ def sum_neighborhood(grid, xy, npix):
         jnp.clip(positions[:, :, 1], 0, grid.width - 1)
     ], axis=-1).astype(int)
 
-    values = grid.vertex_weights[positions_clipped[:, :, 0], positions_clipped[:, :, 1]]  # Shape: (n, npix*npix)
+    values = grid.grid[positions_clipped[:, :, 0], positions_clipped[:, :, 1]]  # Shape: (n, npix*npix)
     values = jnp.where(mask, values, jnp.nan)
     sums = jnp.nansum(values, axis=1)
     return sums
@@ -41,7 +42,7 @@ def sum_neighborhood(grid, xy, npix):
 
 
 @eqx.filter_jit
-def coarse_graining(grid, buffer_size):
+def coarse_graining(grid: GridGraph, buffer_size: int) -> BCOO:
     """
     Creates a coarse-grained matrix of target qualities by aggregating npix pixels
     into a single central pixel.

@@ -1,7 +1,7 @@
 import pytest
 import jax.numpy as jnp
 from jax.experimental.sparse import BCOO
-from jaxscape.gridgraph import GridGraph, ExplicitGridGraph, ROOK_CONTIGUITY  # Replace 'your_module' with the actual module name
+from jaxscape import GridGraph
 import networkx as nx
 from networkx import grid_2d_graph
 from jax import grad, jit
@@ -12,8 +12,8 @@ import numpy as np
 
 @pytest.fixture
 def sample_gridgraph():
-    vertex_weights = jnp.ones((2, 3))  # Uniform weights for simplicity
-    grid = GridGraph(vertex_weights)
+    grid = jnp.ones((2, 3))  # Uniform weights for simplicity
+    grid = GridGraph(grid)
     sample_gridgraph = grid # to comment
     return grid
 
@@ -40,8 +40,8 @@ def test_active_vertices_coordinates(sample_gridgraph):
     assert jnp.array_equal(active_coords, expected_coords)
     
 def test_node_values_to_raster():
-    vertex_weights = jnp.ones((2,3))
-    grid = GridGraph(vertex_weights)
+    grid = jnp.ones((2,3))
+    grid = GridGraph(grid)
 
 
     values = jnp.array([10, 20, 30, 40, 50, 60])
@@ -58,8 +58,8 @@ def test_node_values_to_raster():
     assert jnp.allclose(output_raster, expected_raster)
 
 def test_array_to_node_values():
-    vertex_weights = jnp.ones((2,3))
-    grid = GridGraph(vertex_weights)
+    grid = jnp.ones((2,3))
+    grid = GridGraph(grid)
 
 
     # Define values for the active nodes
@@ -121,14 +121,3 @@ def test_differentiability_adjacency_matrix():
     assert permeability_gradient[0, 0] == 2
     assert permeability_gradient[0, 1] == 3
     assert permeability_gradient[1, 1] == 4
-    
-def test_ExplicitGridGraph():
-    permeability_raster = jnp.ones((10, 10)) 
-
-    grid = GridGraph(vertex_weights=permeability_raster)
-    A = grid.get_adjacency_matrix()
-    permeability_raster = permeability_raster.at[1,1].set(0.)
-    landscape = ExplicitGridGraph(vertex_weights = permeability_raster,
-                                adjacency_matrix = A)
-
-    assert jnp.array_equal(landscape.get_adjacency_matrix().todense(), A.todense())

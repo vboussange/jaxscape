@@ -95,7 +95,7 @@ def test_iterate_windows(window_op, sample_raster_data):
 #     assert x_start == 0
 #     assert y_start == 0
     
-def test_update_raster_with_focal_window():
+def test_update_raster_with_core_window():
     """Test update_raster method updates raster correctly. This also tests the lazy_iterator method."""
     def run_calculation(window):
         return window
@@ -117,7 +117,7 @@ def test_update_raster_with_focal_window():
     raster = jnp.full_like(permeability, jnp.nan)
     for window in window_op.lazy_iterator(permeability):
         xy, res = run_calculation(window)
-        raster = window_op.update_raster_with_focal_window(xy, raster, res)
+        raster = window_op.update_raster_with_core_window(xy, raster, res)
         
     assert jnp.allclose(raster[1:-1,1:-1], permeability[1:-1,1:-1])
     assert jnp.isnan(raster[0,0]) # buffer region

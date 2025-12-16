@@ -3,16 +3,10 @@ import jax
 import jax.numpy as jnp
 from jax import grad, jit
 from jaxscape.rsp_distance import RSPDistance, rsp_distance
-from jaxscape.gridgraph import GridGraph, ExplicitGridGraph
-from jaxscape.utils import BCOO_to_coo, get_largest_component_label
-from pathlib import Path
-from scipy.sparse.csgraph import connected_components
-import numpy as np
+from jaxscape import GridGraph
 import jax.random as jr
 from jax.experimental.sparse import BCOO
 from jaxscape.utils import mapnz
-
-jax.config.update("jax_enable_x64", True)
 
 def test_rsp_distance_matrix():
     # This is the base example taken from ConScape
@@ -23,7 +17,7 @@ def test_rsp_distance_matrix():
                                         [2.01848,  1.01848, 1.01848, 0.0]
                                     ])
     permeability_raster = jnp.ones((2, 2))
-    grid = GridGraph(vertex_weights=permeability_raster)
+    grid = GridGraph(grid=permeability_raster)
     theta = jnp.array(2.)
     distance = RSPDistance(theta, cost= lambda x: x)
     mat = distance(grid)
