@@ -68,7 +68,7 @@ But what's really cool about `JAXscape` is that you can autodiff through thoses 
 
 ## Documentation
 
-Comprehensive documentation is available at [vboussange.github.io/jaxscape](vboussange.github.io/jaxscape)
+Comprehensive documentation is available at [https://vboussange.github.io/jaxscape](https://vboussange.github.io/jaxscape/)
 
 ## Features and roadmap 🚀
 See issues; most notably:
