@@ -1,11 +1,13 @@
+from abc import ABC, abstractmethod
+from collections.abc import Callable
+from typing import Union
+
 import jax.numpy as jnp
 from jax import Array
-from jaxscape.window_operation import WindowOperation
-from jaxscape.utils import padding
+
 from jaxscape.distance import AbstractDistance
-from typing import Callable, Union
-from abc import ABC, abstractmethod
-import numpy as np
+from jaxscape.utils import padding
+from jaxscape.window_operation import WindowOperation
 
 
 class WindowedAnalysis(ABC):
@@ -40,15 +42,14 @@ class WindowedAnalysis(ABC):
 
     def __init__(
         self,
-        quality_raster: Union[Array, np.ndarray],
-        permeability_raster: Union[Array, np.ndarray, Callable[[Array], Array]],
+        quality_raster: Array,
+        permeability_raster: Union[Array, Callable[[Array], Array]],
         distance: AbstractDistance,
         proximity: Callable[[Array], Array],
         dependency_range: int,
         batch_size: int,
         coarsening_factor: float = 0.0,
     ):
-
         assert 0 <= coarsening_factor <= 1
         assert isinstance(dependency_range, int)
         assert isinstance(batch_size, int)

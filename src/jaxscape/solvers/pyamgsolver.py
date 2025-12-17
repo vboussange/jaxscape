@@ -1,34 +1,38 @@
-import jax
+from collections.abc import Callable
+from typing import Any, Optional, TypeAlias
+
 import equinox as eqx
-import lineax as lx
-from lineax import AbstractLinearSolver, AbstractLinearOperator, RESULTS
-import numpy as np
-from scipy.sparse.linalg import cg as scipy_cg
+import jax
 import jax.numpy as jnp
-from typing import Any, Callable, Optional
-from typing_extensions import TypeAlias
+import numpy as np
+from jax.experimental.sparse import BCOO, BCSR
 from jaxtyping import Array, PyTree
-from jax.experimental.sparse import BCSR, BCOO
+from lineax import AbstractLinearOperator, AbstractLinearSolver, RESULTS
 from lineax._solver.misc import (
     pack_structures,
     PackedStructures,
     transpose_packed_structures,
     unravel_solution,
 )
+from scipy.sparse.linalg import cg as scipy_cg
+
 from jaxscape.utils import zero_copy_jax_csr_to_scipy_csr
+
 
 try:
     import pyamg
+
     PYAMG_AVAILABLE = True
 except ImportError:
     PYAMG_AVAILABLE = False
-    
+
 _PyAMGSolverState: TypeAlias = tuple[BCOO, PackedStructures]
+
 
 class PyAMGSolver(AbstractLinearSolver):
     """
     A linear solver that uses PyAMG to solve a sparse linear system.
-    
+
     !!! example
         ```python
         from jaxscape.solvers import PyAMGSolver
@@ -41,12 +45,13 @@ class PyAMGSolver(AbstractLinearSolver):
         import pyamg
         solver = PyAMGSolver(pyamg_method=pyamg.ruge_stuben_solver)
         ```
-        
+
     !!! warning
         PyAMG must be installed to use this solver.
     """
+
     rtol: float = 1e-6
-    maxiter : float = 100_000
+    maxiter: float = 100_000
     pyamg_method: Optional[Callable] = None
 
     def __check_init__(self):
@@ -58,24 +63,28 @@ class PyAMGSolver(AbstractLinearSolver):
 
         if isinstance(self.rtol, (int, float)) and self.rtol < 0:
             raise ValueError("Tolerances must be non-negative.")
-        
+
         if self.pyamg_method is None:
-            object.__setattr__(self, 'pyamg_method', pyamg.smoothed_aggregation_solver)
+            object.__setattr__(self, "pyamg_method", pyamg.smoothed_aggregation_solver)
 
     def init(
         self, operator: AbstractLinearOperator, options: dict[str, Any]
     ) -> _PyAMGSolverState:
         del options
-        
+
         A_bcoo = operator.as_matrix()
         packed_structures = pack_structures(operator)
         return A_bcoo, packed_structures
 
-    def _compute_host(self, A_bcoo: BCOO, b_jax: Array, rtol: float, maxiter: int) -> Array:
+    def _compute_host(
+        self, A_bcoo: BCOO, b_jax: Array, rtol: float, maxiter: int
+    ) -> Array:
         if A_bcoo.n_batch > 0:
             # ugly trick to remove batch dimension
             # specific to BCOO behavior
-            A_bcoo = BCOO((A_bcoo.data.squeeze(), A_bcoo.indices.squeeze()), shape=A_bcoo.shape)
+            A_bcoo = BCOO(
+                (A_bcoo.data.squeeze(), A_bcoo.indices.squeeze()), shape=A_bcoo.shape
+            )
 
         A_bcsr = BCSR.from_bcoo(A_bcoo)
         A_scipy = zero_copy_jax_csr_to_scipy_csr(A_bcsr)
@@ -88,13 +97,17 @@ class PyAMGSolver(AbstractLinearSolver):
 
         rhs_size = b_scipy.shape[0]
         if rhs_size != A_scipy.shape[0]:
-            raise ValueError("The first dimension of b must match the operator dimension.")
+            raise ValueError(
+                "The first dimension of b must match the operator dimension."
+            )
 
         flat_batch = b_scipy.reshape((rhs_size, -1))
         x_np = np.zeros_like(flat_batch)
         for i in range(flat_batch.shape[1]):
             column = flat_batch[:, i]
-            x_np[:, i], info = scipy_cg(A_scipy, column, rtol=rtol, maxiter=maxiter, M=M)
+            x_np[:, i], info = scipy_cg(
+                A_scipy, column, rtol=rtol, maxiter=maxiter, M=M
+            )
             if info != 0:
                 raise RuntimeError(f"CG did not converge, info={info}")
 
@@ -107,7 +120,6 @@ class PyAMGSolver(AbstractLinearSolver):
         b_jax: PyTree[Array],
         options: dict[str, Any],
     ) -> tuple[PyTree[Array], RESULTS, dict[str, Any]]:
-
         A_bcoo, packed_structures = state
         result_shape = jax.ShapeDtypeStruct(b_jax.shape, b_jax.dtype)
         solution = eqx.filter_pure_callback(
@@ -131,7 +143,9 @@ class PyAMGSolver(AbstractLinearSolver):
 
     def conj(self, state: _PyAMGSolverState, options: dict[str, Any]):
         A_bcoo, _, packed_structures = state
-        A_conj = BCOO((jnp.conj(A_bcoo.data), A_bcoo.indices, A_bcoo.indptr), shape=A_bcoo.shape)
+        A_conj = BCOO(
+            (jnp.conj(A_bcoo.data), A_bcoo.indices, A_bcoo.indptr), shape=A_bcoo.shape
+        )
         conj_state = (A_conj, packed_structures)
         return conj_state, {}
 

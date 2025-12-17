@@ -1,31 +1,33 @@
+from typing import Optional
+
+import equinox as eqx
 import jax
 import jax.numpy as jnp
+import lineax as lx
 from jax import Array
+from jax.experimental.sparse import BCOO
 from jax.numpy.linalg import pinv
-from typing import Optional
+
 from jaxscape.distance import AbstractDistance
 from jaxscape.graph import AbstractGraph
-import equinox as eqx
-import lineax as lx
-from jaxscape.utils import graph_laplacian, bcoo_diag, connected_component_labels
 from jaxscape.solvers import batched_linear_solve
+from jaxscape.utils import graph_laplacian
 
-from jax.experimental.sparse import BCOO
 
 class ResistanceDistance(AbstractDistance):
     """
-    Compute the resistance distances. 
-    
+    Compute the resistance distances.
+
     **Attributes**:
-    
+
     - `solver`: Optional `lineax.AbstractLinearSolver`. Must be compatible with
     BCOO matrices. We currently support `jaxscape.solvers.CholmodSolver` and
     `jaxscape.solvers.PyAMGSolver`. If None, uses pseudo-inverse method, which
     is very memory intensive for large graphs (densifies the Laplacian
     matrix).
-        
+
     !!! example
-    
+
         ```python
         from jaxscape import ResistanceDistance
         from jaxscape.solvers import PyAMGSolver
@@ -38,13 +40,14 @@ class ResistanceDistance(AbstractDistance):
 
         dist = distance(grid)
         ```
-    
+
     !!! Warning
-    
+
         The graph must be undirected for resistance distance to be well-defined.
     """
+
     solver: Optional[lx.AbstractLinearSolver] = None
-    
+
     @eqx.filter_jit
     def all_pairs_distance(self, graph: AbstractGraph) -> Array:
         A = graph.get_adjacency_matrix()
@@ -52,20 +55,27 @@ class ResistanceDistance(AbstractDistance):
             return p_inv_resistance_distance(A)
         else:
             nodes = jnp.arange(graph.nv)
-            return lineax_solver_nodes_to_nodes_resistance_distance(A, nodes, self.solver)
-    
+            return lineax_solver_nodes_to_nodes_resistance_distance(
+                A, nodes, self.solver
+            )
+
     @eqx.filter_jit
     def nodes_to_nodes_distance(self, graph: AbstractGraph, nodes: Array) -> Array:
         A = graph.get_adjacency_matrix()
         if self.solver is None:
             return p_inv_resistance_distance(A)[nodes[:, None], nodes[None, :]]
         else:
-            return lineax_solver_nodes_to_nodes_resistance_distance(A, nodes, self.solver)
-        
+            return lineax_solver_nodes_to_nodes_resistance_distance(
+                A, nodes, self.solver
+            )
+
     @eqx.filter_jit
-    def sources_to_targets_distance(self, graph: AbstractGraph, sources: Array, targets: Array) -> Array:
+    def sources_to_targets_distance(
+        self, graph: AbstractGraph, sources: Array, targets: Array
+    ) -> Array:
         R = self.all_pairs_distance(graph)
         return R[sources[:, None], targets[None, :]]
+
 
 @eqx.filter_jit
 def p_inv_resistance_distance(A: BCOO) -> Array:
@@ -89,7 +99,9 @@ def p_inv_resistance_distance(A: BCOO) -> Array:
 
 
 @eqx.filter_jit
-def lineax_solver_nodes_to_nodes_resistance_distance(A: BCOO, nodes: Array, solver: lx.AbstractLinearSolver) -> Array:
+def lineax_solver_nodes_to_nodes_resistance_distance(
+    A: BCOO, nodes: Array, solver: lx.AbstractLinearSolver
+) -> Array:
     """
     Computes pairwise resistance distance from `nodes` to `nodes`, returning a |`nodes`| x |`nodes`| matrix,
     using a lineax `solver`.
@@ -104,12 +116,18 @@ def lineax_solver_nodes_to_nodes_resistance_distance(A: BCOO, nodes: Array, solv
 
     nodes = nodes.astype(A.indices.dtype)
 
-    node_basis = jax.nn.one_hot(nodes, L_reduced.shape[0], dtype=L_reduced.dtype).T # if node `L_reduced.shape[0]+1` is included in `nodes`, its one-hot will consists of the zero vector
+    node_basis = jax.nn.one_hot(
+        nodes, L_reduced.shape[0], dtype=L_reduced.dtype
+    ).T  # if node `L_reduced.shape[0]+1` is included in `nodes`, its one-hot will consists of the zero vector
 
     potentials = batched_linear_solve(L_reduced, node_basis, solver)
 
     potentials_ii = jnp.sum(node_basis * potentials, axis=0)
     potentials_ij = jnp.sum(node_basis[:, :, None] * potentials[:, None, :], axis=0)
 
-    R = potentials_ii[:, None] + potentials_ii[None, :] - (potentials_ij + potentials_ij.T)
+    R = (
+        potentials_ii[:, None]
+        + potentials_ii[None, :]
+        - (potentials_ij + potentials_ij.T)
+    )
     return R

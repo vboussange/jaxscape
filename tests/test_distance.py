@@ -1,11 +1,23 @@
-
-from jaxscape import GridGraph, EuclideanDistance, LCPDistance, ResistanceDistance, RSPDistance
-from equinox import filter_grad, filter_jit
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+from equinox import filter_grad, filter_jit
+from jaxscape import (
+    EuclideanDistance,
+    GridGraph,
+    LCPDistance,
+    ResistanceDistance,
+    RSPDistance,
+)
 
-DISTANCES = [EuclideanDistance(), LCPDistance(), ResistanceDistance(), RSPDistance(theta=0.1)]
+
+DISTANCES = [
+    EuclideanDistance(),
+    LCPDistance(),
+    ResistanceDistance(),
+    RSPDistance(theta=0.1),
+]
+
 
 def test_distance():
     key = jr.PRNGKey(0)  # Random seed is explicit in JAX
@@ -13,7 +25,7 @@ def test_distance():
 
     for distance in DISTANCES:
         distance_jitted = filter_jit(distance)
-        grid = GridGraph(permeability_raster, fun=lambda x, y: (x+y)/2)
+        grid = GridGraph(permeability_raster, fun=lambda x, y: (x + y) / 2)
         dist = distance_jitted(grid)
         assert dist.shape == (grid.nv, grid.nv)
 
@@ -29,8 +41,9 @@ def test_differentiability():
     permeability_raster = jr.uniform(key, (2, 2))  # Start with a uniform permeability
 
     for distance in DISTANCES:
+
         def objective(permeability_raster):
-            grid = GridGraph(permeability_raster, fun=lambda x, y: (x+y)/2)
+            grid = GridGraph(permeability_raster, fun=lambda x, y: (x + y) / 2)
             dist = distance(grid)
             return jnp.sum(dist)
 

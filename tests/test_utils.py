@@ -1,76 +1,88 @@
 # from jaxscape.connectivity import strongly_connected_components
 import jax.numpy as jnp
-from jax.experimental.sparse import BCOO
-from jax import random
 import jax.random as jr
-from jaxscape.utils import bcoo_diag, bcoo_triu, bcoo_tril, bcoo_at_set, padding, connected_component_labels
-from jax.experimental.sparse import random_bcoo
+from jax.experimental.sparse import BCOO, random_bcoo
+from jaxscape.utils import (
+    bcoo_at_set,
+    bcoo_diag,
+    bcoo_triu,
+    connected_component_labels,
+    padding,
+)
+
 
 def test_bcoo_diag():
-        diagonal = jnp.array([1, 2, 3])
-        sparse_matrix = bcoo_diag(diagonal)
-        
-        assert isinstance(sparse_matrix, BCOO)
-        assert sparse_matrix.shape == (3, 3)
-        assert sparse_matrix.nse == 3
-        assert jnp.array_equal(sparse_matrix.todense(), jnp.diag(diagonal))
+    diagonal = jnp.array([1, 2, 3])
+    sparse_matrix = bcoo_diag(diagonal)
 
-        diagonal = jnp.array([4, 5])
-        sparse_matrix = bcoo_diag(diagonal)
-        
-        assert isinstance(sparse_matrix, BCOO)
-        assert sparse_matrix.shape == (2, 2)
-        assert sparse_matrix.nse == 2
-        assert jnp.array_equal(sparse_matrix.todense(), jnp.diag(diagonal))
+    assert isinstance(sparse_matrix, BCOO)
+    assert sparse_matrix.shape == (3, 3)
+    assert sparse_matrix.nse == 3
+    assert jnp.array_equal(sparse_matrix.todense(), jnp.diag(diagonal))
 
-        diagonal = jnp.array([])
-        sparse_matrix = bcoo_diag(diagonal)
-        
-        assert isinstance(sparse_matrix, BCOO)
-        assert sparse_matrix.shape == (0, 0)
-        assert sparse_matrix.nse == 0
-        assert jnp.array_equal(sparse_matrix.todense(), jnp.diag(diagonal))
+    diagonal = jnp.array([4, 5])
+    sparse_matrix = bcoo_diag(diagonal)
+
+    assert isinstance(sparse_matrix, BCOO)
+    assert sparse_matrix.shape == (2, 2)
+    assert sparse_matrix.nse == 2
+    assert jnp.array_equal(sparse_matrix.todense(), jnp.diag(diagonal))
+
+    diagonal = jnp.array([])
+    sparse_matrix = bcoo_diag(diagonal)
+
+    assert isinstance(sparse_matrix, BCOO)
+    assert sparse_matrix.shape == (0, 0)
+    assert sparse_matrix.nse == 0
+    assert jnp.array_equal(sparse_matrix.todense(), jnp.diag(diagonal))
+
 
 def test_bcoo_tril():
     # test tril, triu
     M = jnp.ones((10, 10))
     Mbcoo = BCOO.fromdense(M)
-    
-    Mbcoo_triu = bcoo_triu(Mbcoo, 1).todense()
-    Mtriu = jnp.triu(M, 1)
-    assert jnp.allclose(Mbcoo_triu, Mtriu)
-    
-def test_bcoo_triu():
-    # test tril, triu
-    M = jnp.ones((10, 10))
-    Mbcoo = BCOO.fromdense(M)
-    
+
     Mbcoo_triu = bcoo_triu(Mbcoo, 1).todense()
     Mtriu = jnp.triu(M, 1)
     assert jnp.allclose(Mbcoo_triu, Mtriu)
 
-    
+
+def test_bcoo_triu():
+    # test tril, triu
+    M = jnp.ones((10, 10))
+    Mbcoo = BCOO.fromdense(M)
+
+    Mbcoo_triu = bcoo_triu(Mbcoo, 1).todense()
+    Mtriu = jnp.triu(M, 1)
+    assert jnp.allclose(Mbcoo_triu, Mtriu)
+
+
 def test_bcoo_at_set():
     # testing one index
     orig_mat_sparse = random_bcoo(jr.PRNGKey(0), (5, 5), nse=0.1)
-    mat_sparse = bcoo_at_set(orig_mat_sparse, jnp.array([1]), jnp.array([1]), jnp.array([1.0]))
+    mat_sparse = bcoo_at_set(
+        orig_mat_sparse, jnp.array([1]), jnp.array([1]), jnp.array([1.0])
+    )
     mat_dense = orig_mat_sparse.todense().at[1, 1].set(1.0)
     assert jnp.allclose(mat_sparse.todense(), mat_dense)
-    
+
     # testing multiple indices
-    mat_sparse = bcoo_at_set(orig_mat_sparse, jnp.array([1, 2]), jnp.array([1, 1]), jnp.array([1.0, 42]))
-    mat_dense = orig_mat_sparse.todense().at[[1, 2], [1,1]].set([1., 42])
+    mat_sparse = bcoo_at_set(
+        orig_mat_sparse, jnp.array([1, 2]), jnp.array([1, 1]), jnp.array([1.0, 42])
+    )
+    mat_dense = orig_mat_sparse.todense().at[[1, 2], [1, 1]].set([1.0, 42])
     assert jnp.allclose(mat_sparse.todense(), mat_dense)
+
 
 def test_padding():
     raster = jnp.ones((2300, 3600))
     buffer_size = 50
     window_size = 3
     padded_raster = padding(raster, buffer_size, window_size)
-    
+
     for i in range(2):
         assert (padded_raster.shape[i] - 2 * buffer_size) % window_size == 0
-    
+
     # other test
     raster = jnp.ones((230, 360))
     buffer_size = 3
@@ -79,7 +91,8 @@ def test_padding():
 
     for i in range(2):
         assert (padded_raster.shape[i] - 2 * buffer_size) % window_size == 0
-        
+
+
 def test_connected_component_labels():
     # Graph with two components: {0,1} and {2,3}
     adjacency = jnp.array(
@@ -98,7 +111,8 @@ def test_connected_component_labels():
     assert bool(labels[0] == labels[1])
     assert bool(labels[2] == labels[3])
     assert bool(labels[0] != labels[2])
-    
+
+
 # def test_strongly_connected_components():
 #     # Helper function to build a sparse BCOO graph
 #     def build_bcoo_graph(n, edges):
@@ -143,7 +157,7 @@ def test_connected_component_labels():
 #     # Run each test case
 #     for i, (graph, expected_sccs) in enumerate(test_cases, 1):
 #         computed_sccs = strongly_connected_components(graph)
-        
+
 #         # Sort and compare the computed and expected SCCs
 #         computed_sccs_sorted = [sorted(scc.tolist()) for scc in computed_sccs]
 #         expected_sccs_sorted = [sorted(scc) for scc in expected_sccs]

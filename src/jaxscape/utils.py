@@ -1,78 +1,88 @@
+from collections.abc import Callable
+
+import equinox as eqx
 import jax
 import jax.numpy as jnp
+import numpy as np
+from equinox import filter_jit
 from jax import Array
 from jax.experimental import sparse
-from scipy.sparse import coo_array, csr_array
-import numpy as np
 from jax.experimental.sparse import BCOO, BCSR
-import equinox as eqx
-from equinox import filter_jit
 from scipy import sparse as ssp
-from typing import Callable
+from scipy.sparse import coo_array, csr_array
+
 
 def graph_laplacian(A: BCOO) -> BCOO:
     """Compute graph Laplacian L = D - A where D is the degree matrix.
-    
+
     !!! example
-    
+
         ```python
         from jax.experimental.sparse import BCOO
         from jaxscape.utils import graph_laplacian
-        
+
         A = BCOO.fromdense(jnp.array([[0, 1], [1, 0]]))
         L = graph_laplacian(A)
         ```
     """
-    D = bcoo_diag(A.sum(axis=1).todense(), indices_dtype=A.indices.dtype)  # Degree matrix
+    D = bcoo_diag(
+        A.sum(axis=1).todense(), indices_dtype=A.indices.dtype
+    )  # Degree matrix
     L = D - A  # Laplacian matrix
     return L
 
+
 def mapnz(mat: BCOO, f: Callable[[Array], Array]) -> BCOO:
     """Apply function to non-zero elements of sparse matrix.
-    
+
     **Arguments:**
-    
+
     - `mat`: Sparse matrix in BCOO format.
     - `f`: Function to apply to non-zero elements.
-    
+
     **Returns:**
-    
+
     Sparse matrix with function applied.
-    
+
     !!! example
-    
+
         ```python
         from jax.experimental.sparse import BCOO
         from jaxscape.utils import mapnz
-        
+
         mat = BCOO.fromdense(jnp.array([[1, 0], [0, 2]]))
         squared = mapnz(mat, lambda x: x ** 2)
         # squared.todense() = [[1, 0], [0, 4]]
         ```
     """
-    
+
     indices, data = mat.indices, mat.data
-    mapped_values = jnp.where(data > 0, f(data), 0.)
+    mapped_values = jnp.where(data > 0, f(data), 0.0)
     return sparse.BCOO((mapped_values, indices), shape=mat.shape)
+
 
 # def dense(sp_mat):
 #     if isinstance(sp_mat, sparse.BCOO):
 #         return sp_mat.todense()
 #     return sp_mat
 
+
 def zero_copy_jax_csr_to_scipy_csr(A_jax: BCSR) -> ssp.csr_matrix:
     data, indices, indptr = A_jax.data, A_jax.indices, A_jax.indptr
-    A_scipy = ssp.csr_matrix((np.from_dlpack(data), 
-                              np.from_dlpack(indices), 
-                              np.from_dlpack(indptr)), shape=A_jax.shape)
+    A_scipy = ssp.csr_matrix(
+        (np.from_dlpack(data), np.from_dlpack(indices), np.from_dlpack(indptr)),
+        shape=A_jax.shape,
+    )
     return A_scipy
+
 
 def BCOO_to_coo(A: BCOO) -> coo_array:
     assert isinstance(A, sparse.BCOO)
     ij = np.array(A.indices)
     v = np.array(A.data)
-    sparse_matrix = coo_array((v, (ij[:,0], ij[:,1])), shape=A.shape)
+    sparse_matrix = coo_array((v, (ij[:, 0], ij[:, 1])), shape=A.shape)
     return sparse_matrix
+
 
 def BCOO_to_csr(A: BCOO) -> csr_array:
     assert isinstance(A, sparse.BCOO)
@@ -89,20 +99,23 @@ def get_largest_component_label(labels: np.ndarray) -> int:
     # largest_component_nodes = np.where(labels == largest_component_label)[0]
     return largest_component_label
 
-def bcoo_diag(diagonal: Array, indices_dtype = jnp.int32) -> BCOO:
+
+def bcoo_diag(diagonal: Array, indices_dtype=jnp.int32) -> BCOO:
     """Create sparse diagonal matrix from 1D array.
-    
+
     !!! example
-    
+
         ```python
         from jaxscape.utils import bcoo_diag
-        
+
         D = bcoo_diag(jnp.array([1.0, 2.0, 3.0]))
         # D.todense() = [[1, 0, 0], [0, 2, 0], [0, 0, 3]]
         ```
     """
     n = len(diagonal)
-    indices = jnp.column_stack([jnp.arange(n, dtype=indices_dtype), jnp.arange(n, dtype=indices_dtype)])
+    indices = jnp.column_stack(
+        [jnp.arange(n, dtype=indices_dtype), jnp.arange(n, dtype=indices_dtype)]
+    )
     sparse_matrix = BCOO((diagonal, indices), shape=(n, n))
     return sparse_matrix
 
@@ -117,6 +130,7 @@ def bcoo_tril(mat: BCOO, k: int = 0) -> BCOO:
     out = BCOO((new_data, mat.indices), shape=mat.shape)
     return out
 
+
 @filter_jit
 def bcoo_triu(mat: BCOO, k: int = 0) -> BCOO:
     """Extract upper-triangular part of sparse matrix (zeros below k-th diagonal)."""
@@ -126,6 +140,7 @@ def bcoo_triu(mat: BCOO, k: int = 0) -> BCOO:
     new_data = mat.data * mask
     out = BCOO((new_data, mat.indices), shape=mat.shape)
     return out
+
 
 def bcoo_at_set(mat: BCOO, row_idx: Array, col_idx: Array, vals: Array) -> BCOO:
     update_indices = jnp.stack([row_idx, col_idx], axis=-1)
@@ -140,14 +155,14 @@ def bcoo_at_set(mat: BCOO, row_idx: Array, col_idx: Array, vals: Array) -> BCOO:
 
 def padding(raster: Array, buffer_size: int, window_size: int) -> Array:
     """Pad raster to ensure dimensions are compatible with [`WindowOperation`][jaxscape.window_operation.WindowOperation].
-    
+
     Ensures `(raster.shape[i] - 2 * buffer_size) % window_size == 0`.
-    
+
     !!! example
-    
+
         ```python
         from jaxscape.utils import padding
-        
+
         raster = jnp.ones((100, 100))
         padded = padding(raster, buffer_size=10, window_size=25)
         ```
@@ -158,12 +173,7 @@ def padding(raster: Array, buffer_size: int, window_size: int) -> Array:
     pad_height = (window_size - (inner_height % window_size)) % window_size
     pad_width = (window_size - (inner_width % window_size)) % window_size
 
-
-    padded_raster = jnp.pad(
-        raster,
-        ((0,pad_height),(0,pad_width)),
-        mode='constant'
-    )
+    padded_raster = jnp.pad(raster, ((0, pad_height), (0, pad_width)), mode="constant")
     return padded_raster
 
 
@@ -198,17 +208,18 @@ def connected_component_labels(A: BCOO):
     num_iters = max(n - 1, 1)
     return jax.lax.fori_loop(0, num_iters, sweep, initial_labels)
 
+
 # def prune_matrix(bcoo, vertices):
 #     indices = bcoo.indices
 #     valid_indices = jnp.where(indices[:,0])
 #     return BCOO()
-    
+
 # # not working
 # def strongly_connected_components_tarjan(adj_matrix: BCOO):
 #     n = adj_matrix.shape[0]
 #     zero = jnp.int32(0)
 #     one = jnp.int32(1)
-    
+
 #     # Initialization of arrays
 #     index = -jnp.ones(n, dtype=jnp.int32)  # -1 indicates unvisited
 #     lowlink = jnp.zeros(n, dtype=jnp.int32)
@@ -249,7 +260,7 @@ def connected_component_labels(A: BCOO):
 #             component = jnp.array([], dtype=jnp.int32)
 #             (stack, onstack, component), _ = jax.lax.scan(pop_scc, (stack, onstack, component), jnp.arange(len(stack)))
 #             components.append(component)
-        
+
 #         return (index, lowlink, onstack, stack, components, count)
 
 #     # Initial state for `fori_loop`
@@ -258,9 +269,9 @@ def connected_component_labels(A: BCOO):
 #     def initialize_state(i, carry):
 #         index, lowlink, onstack, stack, components, count = carry
 #         carry = jax.lax.cond(
-#             index[i] == -1, 
-#             lambda _: dfs_fn(carry, i), 
-#             lambda _: carry, 
+#             index[i] == -1,
+#             lambda _: dfs_fn(carry, i),
+#             lambda _: carry,
 #             None
 #         )
 #         return carry

@@ -1,0 +1,38 @@
+# Copyright 2023 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# TODO: currently, pre-commit is not run in CI
+
+repos:
+  - repo: local
+    hooks:
+      - id: sort_pyproject
+        name: sort_pyproject
+        entry: toml-sort -i --sort-table-keys --sort-inline-tables
+        language: python
+        files: ^pyproject\.toml$
+        additional_dependencies: ["toml-sort==0.23.1"]
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.7
+    hooks:
+      - id: ruff-format
+        types_or: [ python, pyi, jupyter ]
+      - id: ruff
+        types_or: [ python, pyi, jupyter ]
+        args: [ --fix ]
+  - repo: https://github.com/RobertCraigie/pyright-python
+    rev: v1.1.330
+    hooks:
+    - id: pyright
+      additional_dependencies: ["jax", "equinox", "pytest"]
