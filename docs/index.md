@@ -21,50 +21,48 @@ You may be required to install optional linear solvers for large-scale resistanc
 
 ## Quick start
 
-We define a grid graph from a permeability raster:
 ```python
+import numpy as np
+import matplotlib.pyplot as plt
 import jax.numpy as jnp
 from jaxscape import GridGraph
-import numpy as np
+from jaxscape import LCPDistance, ResistanceDistance, RSPDistance
 
-# Loading jax array representing permeability
-permeability = jnp.array(np.loadtxt("permeability.csv", delimiter=","))
+# loading jax array representing permeability
+permeability = jnp.array(np.loadtxt("permeability.csv", delimiter=",")) + 0.001
 
-# The `GridGraph` class automatically constructs a graph where each pixel is connected to its neighbors. The edge weights are determined by the values in the `permeability` raster.
-grid = GridGraph(grid=permeability)
-```
+# Create a grid graph where edge weights are the average permeability of the two nodes
+grid = GridGraph(grid=permeability, fun=lambda x, y: (x + y) / 2)
 
-
-Let's now calculate some distances on the grid graph. We will specifically calculate and project the distance of all pixels to the top left pixel
-
-
-```python
-from jaxscape import ResistanceDistance
-from jaxscape import LCPDistance
-from jaxscape import RSPDistance
-from jaxscape.solvers import CholmodSolver
-
-# Calculating distances of all pixels to top left pixel
+# We set the source to the top left pixel, and compute distances to all other pixels with three different distance metrics
 source = grid.coord_to_index(jnp.array([0]), jnp.array([0]))
 
 distances = {
     "LCP distance": LCPDistance(),
-    "Resistance distance": ResistanceDistance(solver = CholmodSolver()),
-    "RSP distance": RSPDistance(theta=0.01, cost=lambda x: 1 / x)
+    "Resistance distance": ResistanceDistance(),
+    "RSP distance": RSPDistance(theta=0.01, cost=lambda x: -jnp.log(x)),
 }
 
 fig, axs = plt.subplots(1, 3, figsize=(10, 4))
 for ax, (title, distance) in zip(axs, distances.items()):
+    # Compute distances from all nodes to the source
     dist_to_node = distance(grid, source)
-    cbar = ax.imshow(grid.node_values_to_array(dist_to_node.ravel()), cmap="magma")
+
+    # Convert from node values to 2D array and mask low-permeability areas
+    dist_array = grid.node_values_to_array(dist_to_node.ravel())
+    dist_array = dist_array * (permeability > 0.1)  # Mask barriers
+    
+    # Plotting
+    im = ax.imshow(dist_array, cmap="magma")
     ax.axis("off")
     ax.set_title(title)
-    fig.colorbar(cbar, ax=ax, shrink=0.2)
+    fig.colorbar(im, ax=ax, shrink=0.2)
 
 fig.suptitle("Distance to top left pixel")
 plt.tight_layout()
 plt.show()
 ```
+
 <div align="center"><img src="examples/distance_calculation/distances.png" alt="Distances"  width="600"></div>
 
 But what's really cool about jaxscape is that you can autodiff through thoses distances! Check out the documentation to learn about applications and more!
