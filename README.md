@@ -1,4 +1,5 @@
 [![tests](https://github.com/vboussange/jaxscape/actions/workflows/run_tests.yml/badge.svg)](https://github.com/vboussange/jaxscape/actions/workflows/run_tests.yml)
+[![Build documentation](https://github.com/vboussange/jaxscape/actions/workflows/build_docs.yml/badge.svg)](https://github.com/vboussange/jaxscape/actions/workflows/build_docs.yml)
 [![DOI](https://zenodo.org/badge/883274673.svg)](https://doi.org/10.5281/zenodo.15267703)
 
 <div align="center">
