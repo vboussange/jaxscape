@@ -1,0 +1,1456 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A minimal JAX library for connectivity modelling at scale">
+      
+      
+        <meta name="author" content="Victor Boussange">
+      
+      
+        <link rel="canonical" href="https://vboussange.github.io/jaxscape/examples/inverse_landscape_genetics/inverse_landscape_genetics/">
+      
+      
+        <link rel="prev" href="../../connectivity_analysis/connectivity_analysis/">
+      
+      
+        <link rel="next" href="../../advanced/moving_windows/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+    
+    
+      
+        <title>Inverse landscape genetics - JAXScape</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../../_static/custom_css.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#inverse-landscape-genetics" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="JAXScape" class="md-header__button md-logo" aria-label="JAXScape" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            JAXScape
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Inverse landscape genetics
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/vboussange/jaxscape" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    vboussange/jaxscape
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="JAXScape" class="md-nav__button md-logo" aria-label="JAXScape" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    JAXScape
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/vboussange/jaxscape" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    vboussange/jaxscape
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../distance_calculation/distance_calculation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Distance calculation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../connectivity_analysis/connectivity_analysis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connectivity analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inverse landscape genetics
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inverse landscape genetics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration parameters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#load-the-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Load the data
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prepare-features-and-targets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prepare features and targets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#define-the-permeability-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Define the permeability model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#define-loss-function-and-training-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Define loss function and training setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#training" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Training
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Training">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#visualize-the-learned-permeability-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Visualize the learned permeability surface
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#key-takeaways" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key takeaways
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../advanced/moving_windows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Advanced topics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/graphs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Graphs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/distances/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Distance metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/solvers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linear solvers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/connectivity_analysis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connectivity analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/window_operations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Window operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="inverse-landscape-genetics">Inverse landscape genetics<a class="headerlink" href="#inverse-landscape-genetics" title="Permanent link">¤</a></h1>
+<p>Traditional landscape genetics assumes <em>a priori</em> which habitat features facilitate or impede movement. Inverse landscape genetics reverses this approach, inferring permeability patterns directly from genetic data. This notebook demonstrates fitting a neural network to predict landscape resistance from land-cover features, optimizing the model to match observed genetic differentiation (Fst) between sampling sites.</p>
+<p>We use genetic data from the <a href="https://en.wikipedia.org/wiki/Mountain_pygmy_possum">Mountain Pygmy-possum</a> (<em>Burramys parvus</em>), an endangered marsupial endemic to alpine regions of southeastern Australia, kindly provided by <a href="https://cesaraustralia.com">Cesar Australia</a>. We'll use land-cover data to model landscape permeability and fit the model to observed genetic distances, obtained from ESA WorldCover.</p>
+<!-- TODO: update link -->
+
+<div align="center">
+  <img src="https://www.australiangeographic.com.au/wp-content/uploads/2018/06/Pygmy-Possum_Amanda-McLean-Copy-1.jpg" width="450">
+</div>
+
+<h3 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">¤</a></h3>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>jaxscape<span class="w"> </span>equinox<span class="w"> </span>optimistix<span class="w"> </span>rioxarray<span class="w"> </span>geopandas<span class="w"> </span>scikit-learn
+</code></pre></div>
+<p>We've prepared the data for you to focus on the modeling aspects; you can download the dataset <a href="https://vboussange.github.io/jaxscape/data/inverse_landscape_genetics/">here</a>. </p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">equinox</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eqx</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">geopandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">gpd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">optimistix</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">optx</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">rioxarray</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">equinox</span><span class="w"> </span><span class="kn">import</span> <span class="n">nn</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxscape</span><span class="w"> </span><span class="kn">import</span> <span class="n">GridGraph</span><span class="p">,</span> <span class="n">ResistanceDistance</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxscape.solvers</span><span class="w"> </span><span class="kn">import</span> <span class="n">CholmodSolver</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.metrics</span><span class="w"> </span><span class="kn">import</span> <span class="n">mean_squared_error</span><span class="p">,</span> <span class="n">r2_score</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.model_selection</span><span class="w"> </span><span class="kn">import</span> <span class="n">train_test_split</span>
+
+
+<span class="c1"># Set random seed for reproducibility</span>
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="configuration-parameters">Configuration parameters<a class="headerlink" href="#configuration-parameters" title="Permanent link">¤</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># File paths (adjust to your data location)</span>
+<span class="n">LANDCOVER_PATH</span> <span class="o">=</span> <span class="s2">&quot;../data/cesar/landcover_7855.tif&quot;</span>
+<span class="n">SITE_METADATA_PATH</span> <span class="o">=</span> <span class="s2">&quot;../data/cesar/site_metadata.gpkg&quot;</span>
+<span class="n">GENETIC_DISTANCES_PATH</span> <span class="o">=</span> <span class="s2">&quot;../data/cesar/genetic_dissimilarity.npy&quot;</span>
+
+<span class="c1"># Model configuration</span>
+<span class="n">COARSENING_FACTOR</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="mi">10</span>  <span class="c1"># Spatial downsampling of feature raster to accelerate computation</span>
+<span class="p">)</span>
+<span class="n">SOLVER</span> <span class="o">=</span> <span class="n">CholmodSolver</span><span class="p">()</span>  <span class="c1"># Fast linear solver for large graphs</span>
+<span class="n">DISTANCE_FUN</span> <span class="o">=</span> <span class="n">ResistanceDistance</span><span class="p">(</span><span class="n">solver</span><span class="o">=</span><span class="n">SOLVER</span><span class="p">)</span>  <span class="c1"># Effective resistance distance</span>
+<span class="n">MAX_STEPS</span> <span class="o">=</span> <span class="mi">500</span>  <span class="c1"># Maximum optimization iterations</span>
+
+<span class="c1"># Alternative distance metric for experimentation:</span>
+<span class="c1"># DISTANCE_FUN = LCPDistance()  # Least-cost path distance</span>
+</code></pre></div>
+<h2 id="load-the-data">Load the data<a class="headerlink" href="#load-the-data" title="Permanent link">¤</a></h2>
+<div class="highlight"><pre><span></span><code><span class="c1"># Load land-cover raster</span>
+<span class="n">predictor_raster</span> <span class="o">=</span> <span class="n">rioxarray</span><span class="o">.</span><span class="n">open_rasterio</span><span class="p">(</span>
+    <span class="n">LANDCOVER_PATH</span><span class="p">,</span>
+    <span class="n">mask_and_scale</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="c1"># Load site metadata (geographic locations)</span>
+<span class="n">site_metadata</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">read_file</span><span class="p">(</span><span class="n">SITE_METADATA_PATH</span><span class="p">)</span>
+<span class="n">site_gdf</span> <span class="o">=</span> <span class="n">site_metadata</span><span class="o">.</span><span class="n">to_crs</span><span class="p">(</span><span class="n">epsg</span><span class="o">=</span><span class="mi">7855</span><span class="p">)</span>  <span class="c1"># Reproject to Australian GDA2020</span>
+
+<span class="c1"># Load genetic distance matrix</span>
+<span class="n">genetic_distances</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">GENETIC_DISTANCES_PATH</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Predictor raster shape: </span><span class="si">{</span><span class="n">predictor_raster</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Number of sites: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">site_gdf</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Genetic distance matrix shape: </span><span class="si">{</span><span class="n">genetic_distances</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>Predictor raster shape: (1, 4596, 3052)
+Number of sites: 12
+Genetic distance matrix shape: (12, 12)
+</code></pre></div>
+<h2 id="prepare-features-and-targets">Prepare features and targets<a class="headerlink" href="#prepare-features-and-targets" title="Permanent link">¤</a></h2>
+<p>The land-cover raster requires preprocessing before feeding it to the neural network. We first compress the sparse WorldCover class IDs into a contiguous range (0..K-1), then one-hot encode them into binary feature vectors. Spatial coarsening via mean pooling downsamples the raster while preserving land-cover composition within each aggregated cell, capturing habitat heterogeneity without forcing discrete classifications. Finally, we map each sampling site to its nearest grid cell in the coarsened raster. </p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">prepare_feature_targets</span><span class="p">(</span><span class="n">predictor_raster</span><span class="p">,</span> <span class="n">site_gdf</span><span class="p">,</span> <span class="n">coarsening_factor</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Process land-cover and create model inputs.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    features_onehot_coarse : array</span>
+<span class="sd">        One-hot encoded land-cover features after coarsening (H, W, K)</span>
+<span class="sd">    unique_classes : array</span>
+<span class="sd">        Original WorldCover class values</span>
+<span class="sd">    target_nodes : array</span>
+<span class="sd">        Node indices for sampling sites</span>
+<span class="sd">    grid : GridGraph</span>
+<span class="sd">        Reference grid for node indexing</span>
+<span class="sd">    feature_da : xarray.DataArray</span>
+<span class="sd">        Coarsened feature raster with coordinates</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Compress WorldCover classes to contiguous IDs</span>
+    <span class="n">raw_band</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">predictor_raster</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">band</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+    <span class="n">unique_vals</span><span class="p">,</span> <span class="n">inverse</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">raw_band</span><span class="o">.</span><span class="n">ravel</span><span class="p">(),</span> <span class="n">return_inverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">class_ids</span> <span class="o">=</span> <span class="n">inverse</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">raw_band</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+    <span class="n">features_categorical</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">class_ids</span><span class="p">)</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span>
+    <span class="n">unique_classes</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">unique_vals</span><span class="p">)</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Found </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">unique_vals</span><span class="p">)</span><span class="si">}</span><span class="s2"> unique land-cover classes&quot;</span><span class="p">)</span>
+
+    <span class="c1"># One-hot encode: (H, W) -&gt; (H, W, K)</span>
+    <span class="n">features_onehot</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">one_hot</span><span class="p">(</span><span class="n">features_categorical</span><span class="p">,</span> <span class="n">num_classes</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">unique_vals</span><span class="p">))</span>
+
+    <span class="c1"># Reorder for coarsening: (H, W, K) -&gt; (K, H, W)</span>
+    <span class="n">features_onehot</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">moveaxis</span><span class="p">(</span><span class="n">features_onehot</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+
+    <span class="c1"># Coarsen using mean pooling (preserves class composition)</span>
+    <span class="n">coords</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;band&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">features_onehot</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span>
+        <span class="s2">&quot;y&quot;</span><span class="p">:</span> <span class="n">predictor_raster</span><span class="o">.</span><span class="n">y</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+        <span class="s2">&quot;x&quot;</span><span class="p">:</span> <span class="n">predictor_raster</span><span class="o">.</span><span class="n">x</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="n">feature_da</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span>
+        <span class="n">features_onehot</span><span class="p">,</span>
+        <span class="n">coords</span><span class="o">=</span><span class="n">coords</span><span class="p">,</span>
+        <span class="n">dims</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;band&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">,</span> <span class="s2">&quot;x&quot;</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">feature_da</span> <span class="o">=</span> <span class="n">feature_da</span><span class="o">.</span><span class="n">coarsen</span><span class="p">(</span>
+        <span class="n">x</span><span class="o">=</span><span class="n">coarsening_factor</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="n">coarsening_factor</span><span class="p">,</span> <span class="n">boundary</span><span class="o">=</span><span class="s2">&quot;trim&quot;</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+
+    <span class="c1"># Back to (H, W, K)</span>
+    <span class="n">features_onehot_coarse</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">moveaxis</span><span class="p">(</span><span class="n">feature_da</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Coarsened feature shape: </span><span class="si">{</span><span class="n">features_onehot_coarse</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Map site coordinates to coarsened grid indices</span>
+    <span class="n">x_idx</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+        <span class="p">[</span>
+            <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">feature_da</span><span class="o">.</span><span class="n">x</span><span class="o">.</span><span class="n">values</span> <span class="o">-</span> <span class="n">x</span><span class="p">)))</span>
+            <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">site_gdf</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">x</span><span class="o">.</span><span class="n">values</span>
+        <span class="p">]</span>
+    <span class="p">)</span>
+    <span class="n">y_idx</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+        <span class="p">[</span>
+            <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">feature_da</span><span class="o">.</span><span class="n">y</span><span class="o">.</span><span class="n">values</span> <span class="o">-</span> <span class="n">y</span><span class="p">)))</span>
+            <span class="k">for</span> <span class="n">y</span> <span class="ow">in</span> <span class="n">site_gdf</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">y</span><span class="o">.</span><span class="n">values</span>
+        <span class="p">]</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Create reference grid for node indexing</span>
+    <span class="n">grid</span> <span class="o">=</span> <span class="n">GridGraph</span><span class="p">(</span>
+        <span class="n">jnp</span><span class="o">.</span><span class="n">ones</span><span class="p">((</span><span class="n">feature_da</span><span class="o">.</span><span class="n">x</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="n">feature_da</span><span class="o">.</span><span class="n">y</span><span class="o">.</span><span class="n">size</span><span class="p">)),</span> <span class="n">fun</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="p">(</span><span class="n">x</span> <span class="o">+</span> <span class="n">y</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span>
+    <span class="p">)</span>
+    <span class="n">target_nodes</span> <span class="o">=</span> <span class="n">grid</span><span class="o">.</span><span class="n">coord_to_index</span><span class="p">(</span><span class="n">x_idx</span><span class="p">,</span> <span class="n">y_idx</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">features_onehot_coarse</span><span class="p">,</span> <span class="n">unique_classes</span><span class="p">,</span> <span class="n">target_nodes</span><span class="p">,</span> <span class="n">grid</span><span class="p">,</span> <span class="n">feature_da</span>
+
+
+<span class="c1"># Process features</span>
+<span class="p">(</span>
+    <span class="n">features_onehot</span><span class="p">,</span>
+    <span class="n">unique_classes</span><span class="p">,</span>
+    <span class="n">target_nodes</span><span class="p">,</span>
+    <span class="n">ref_grid</span><span class="p">,</span>
+    <span class="n">coarse_feature_da</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">=</span> <span class="n">prepare_feature_targets</span><span class="p">(</span><span class="n">predictor_raster</span><span class="p">,</span> <span class="n">site_gdf</span><span class="p">,</span> <span class="n">COARSENING_FACTOR</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Target nodes (site indices): </span><span class="si">{</span><span class="n">target_nodes</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>Found 8 unique land-cover classes
+Coarsened feature shape: (459, 305, 8)
+Target nodes (site indices): [112719  65962  29307  27474  35742 109760  36622  37079  76894  63615
+  35723  91477]
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib.patches</span><span class="w"> </span><span class="kn">import</span> <span class="n">Circle</span>
+
+
+<span class="c1"># Visualize coarsened land-cover with sites</span>
+<span class="n">node_coords</span> <span class="o">=</span> <span class="n">ref_grid</span><span class="o">.</span><span class="n">index_to_coord</span><span class="p">(</span><span class="n">target_nodes</span><span class="p">)</span>
+<span class="n">x_indices</span><span class="p">,</span> <span class="n">y_indices</span> <span class="o">=</span> <span class="n">node_coords</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">node_coords</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span>
+
+<span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">12</span><span class="p">,</span> <span class="mi">10</span><span class="p">))</span>
+<span class="n">im</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">features_onehot</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">),</span> <span class="n">cmap</span><span class="o">=</span><span class="s2">&quot;Accent&quot;</span><span class="p">)</span>
+
+<span class="c1"># Add colorbar for land-cover types</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">colorbar</span><span class="p">(</span><span class="n">im</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">&quot;Land-cover type&quot;</span><span class="p">,</span> <span class="n">shrink</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>
+
+<span class="c1"># Annotate sites</span>
+<span class="k">for</span> <span class="n">xi</span><span class="p">,</span> <span class="n">yi</span><span class="p">,</span> <span class="n">name</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">x_indices</span><span class="p">,</span> <span class="n">y_indices</span><span class="p">,</span> <span class="n">site_gdf</span><span class="p">[</span><span class="s2">&quot;site_name&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">):</span>
+    <span class="n">circle</span> <span class="o">=</span> <span class="n">Circle</span><span class="p">(</span>
+        <span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">xi</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">yi</span><span class="p">)),</span>
+        <span class="n">radius</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+        <span class="n">fill</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">edgecolor</span><span class="o">=</span><span class="s2">&quot;#f72585&quot;</span><span class="p">,</span>
+        <span class="n">linewidth</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">add_patch</span><span class="p">(</span><span class="n">circle</span><span class="p">)</span>
+
+    <span class="n">ax</span><span class="o">.</span><span class="n">text</span><span class="p">(</span>
+        <span class="nb">int</span><span class="p">(</span><span class="n">xi</span><span class="p">),</span>
+        <span class="nb">int</span><span class="p">(</span><span class="n">yi</span><span class="p">)</span> <span class="o">-</span> <span class="mi">5</span><span class="p">,</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">name</span><span class="p">),</span>
+        <span class="n">color</span><span class="o">=</span><span class="s2">&quot;black&quot;</span><span class="p">,</span>
+        <span class="n">fontsize</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+        <span class="n">fontweight</span><span class="o">=</span><span class="s2">&quot;bold&quot;</span><span class="p">,</span>
+        <span class="n">ha</span><span class="o">=</span><span class="s2">&quot;center&quot;</span><span class="p">,</span>
+        <span class="n">va</span><span class="o">=</span><span class="s2">&quot;bottom&quot;</span><span class="p">,</span>
+        <span class="n">bbox</span><span class="o">=</span><span class="nb">dict</span><span class="p">(</span><span class="n">facecolor</span><span class="o">=</span><span class="s2">&quot;white&quot;</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span> <span class="n">edgecolor</span><span class="o">=</span><span class="s2">&quot;black&quot;</span><span class="p">,</span> <span class="n">pad</span><span class="o">=</span><span class="mi">2</span><span class="p">),</span>
+    <span class="p">)</span>
+
+<span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s2">&quot;Land-cover types with sampling sites&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">14</span><span class="p">,</span> <span class="n">pad</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">axis</span><span class="p">(</span><span class="s2">&quot;off&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</code></pre></div>
+<p><img alt="img" src="../_data/69df6594aa82413aa3616ae832172367.png" /></p>
+<h2 id="define-the-permeability-model">Define the permeability model<a class="headerlink" href="#define-the-permeability-model" title="Permanent link">¤</a></h2>
+<p>We build a neural network mapping one-hot land-cover features to positive permeability values: <span class="arithmatex">\(\text{permeability} = \exp(\text{NN}(\text{features})) + \epsilon\)</span>. The architecture takes a K-dimensional one-hot vector (land-cover classes), passes it through two hidden layers with ReLU activation (16 units each), and outputs a single value that is exponentiated to ensure positivity. We apply this model pixel-wise via <code>vmap</code> to generate the full permeability surface.</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">build_model</span><span class="p">(</span><span class="n">num_classes</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build neural permeability model.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    num_classes : int</span>
+<span class="sd">        Number of land-cover classes</span>
+<span class="sd">    seed : int</span>
+<span class="sd">        Random seed for initialization</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    model : eqx.Module</span>
+<span class="sd">        Complete model</span>
+<span class="sd">    params : pytree</span>
+<span class="sd">        Trainable parameters</span>
+<span class="sd">    static : pytree</span>
+<span class="sd">        Static (non-trainable) components</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">key</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">PRNGKey</span><span class="p">(</span><span class="n">seed</span><span class="p">)</span>
+
+    <span class="k">class</span><span class="w"> </span><span class="nc">PermeabilityModel</span><span class="p">(</span><span class="n">eqx</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+        <span class="n">layers</span><span class="p">:</span> <span class="nb">list</span>
+        <span class="n">num_classes</span><span class="p">:</span> <span class="nb">int</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">num_classes</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">num_classes</span> <span class="o">=</span> <span class="n">num_classes</span>
+            <span class="n">k1</span><span class="p">,</span> <span class="n">k2</span><span class="p">,</span> <span class="n">k3</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+            <span class="n">hidden_dim</span> <span class="o">=</span> <span class="mi">16</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">layers</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">num_classes</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">k1</span><span class="p">),</span>
+                <span class="n">jax</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">relu</span><span class="p">,</span>
+                <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">k2</span><span class="p">),</span>
+                <span class="n">jax</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">relu</span><span class="p">,</span>
+                <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">k3</span><span class="p">),</span>
+            <span class="p">]</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;Map one-hot feature to positive permeability.&quot;&quot;&quot;</span>
+            <span class="k">for</span> <span class="n">layer</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">layers</span><span class="p">:</span>
+                <span class="n">x</span> <span class="o">=</span> <span class="n">layer</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span>
+                <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">+</span> <span class="mf">1e-1</span><span class="p">,</span> <span class="mf">1e3</span>
+            <span class="p">)</span>  <span class="c1"># Ensure positive permeability, keep within reasonable bounds</span>
+
+    <span class="n">model</span> <span class="o">=</span> <span class="n">PermeabilityModel</span><span class="p">(</span><span class="n">num_classes</span><span class="p">,</span> <span class="n">key</span><span class="p">)</span>
+    <span class="n">params</span><span class="p">,</span> <span class="n">static</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">partition</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">eqx</span><span class="o">.</span><span class="n">is_inexact_array</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">static</span>
+
+
+<span class="c1"># Initialize model</span>
+<span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">static</span> <span class="o">=</span> <span class="n">build_model</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">unique_classes</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Model initialized with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">unique_classes</span><span class="p">)</span><span class="si">}</span><span class="s2"> land-cover classes&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Trainable parameters: </span><span class="si">{</span><span class="nb">sum</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">size</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">p</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">jax</span><span class="o">.</span><span class="n">tree_util</span><span class="o">.</span><span class="n">tree_leaves</span><span class="p">(</span><span class="n">params</span><span class="p">))</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>Model initialized with 8 land-cover classes
+Trainable parameters: 433
+</code></pre></div>
+<p>Before training, the model produces random permeability values based on the initialization.</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Apply model to all pixels via vmap</span>
+<span class="n">model_vmapped</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">vmap</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">vmap</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">in_axes</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span> <span class="n">in_axes</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">initial_permeability</span> <span class="o">=</span> <span class="n">model_vmapped</span><span class="p">(</span><span class="n">features_onehot</span><span class="p">)</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span>
+
+<span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">12</span><span class="p">,</span> <span class="mi">10</span><span class="p">))</span>
+<span class="n">im</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">initial_permeability</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="s2">&quot;RdYlGn&quot;</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s2">&quot;Initial permeability prediction&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">14</span><span class="p">,</span> <span class="n">pad</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">axis</span><span class="p">(</span><span class="s2">&quot;off&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">colorbar</span><span class="p">(</span><span class="n">im</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">&quot;Permeability&quot;</span><span class="p">,</span> <span class="n">shrink</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</code></pre></div>
+<p><img alt="img" src="../_data/d92aee12645540428cd0c99d15ce9169.png" /></p>
+<h2 id="define-loss-function-and-training-setup">Define loss function and training setup<a class="headerlink" href="#define-loss-function-and-training-setup" title="Permanent link">¤</a></h2>
+<p>We minimize mean squared error (MSE) between predicted resistance distances and observed genetic distances. The training loop predicts pixel-wise permeability, constructs a GridGraph, computes pairwise resistance distances between sampling sites, and backpropagates gradients through the entire pipeline using L-BFGS optimization.</p>
+<p>We split pairwise distances (upper triangle of the matrix) into 80% training and 20% test sets to evaluate generalization. This train/test split reveals whether the model learns meaningful permeability patterns or simply memorizes training data.</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@eqx</span><span class="o">.</span><span class="n">filter_jit</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">loss_fn</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">args</span><span class="p">):</span>
+    <span class="n">static</span><span class="p">,</span> <span class="n">features</span><span class="p">,</span> <span class="n">target_flat_train</span><span class="p">,</span> <span class="n">tri_i_train</span><span class="p">,</span> <span class="n">tri_j_train</span> <span class="o">=</span> <span class="n">args</span>
+
+    <span class="c1"># Reconstruct model and predict permeability surface</span>
+    <span class="n">model</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">combine</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">static</span><span class="p">)</span>
+    <span class="n">model_vmapped</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">vmap</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">vmap</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">in_axes</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span> <span class="n">in_axes</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">permeability</span> <span class="o">=</span> <span class="n">model_vmapped</span><span class="p">(</span><span class="n">features</span><span class="p">)</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span>
+
+    <span class="c1"># Build graph and compute permeability distances</span>
+    <span class="n">grid</span> <span class="o">=</span> <span class="n">GridGraph</span><span class="p">(</span><span class="n">permeability</span><span class="p">,</span> <span class="n">fun</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="p">(</span><span class="n">x</span> <span class="o">+</span> <span class="n">y</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span>
+    <span class="n">predicted_distances</span> <span class="o">=</span> <span class="n">DISTANCE_FUN</span><span class="p">(</span><span class="n">grid</span><span class="p">,</span> <span class="n">nodes</span><span class="o">=</span><span class="n">target_nodes</span><span class="p">)</span>
+
+    <span class="c1"># Extract training pairs and compute loss</span>
+    <span class="n">pred_flat_train</span> <span class="o">=</span> <span class="n">predicted_distances</span><span class="p">[</span><span class="n">tri_i_train</span><span class="p">,</span> <span class="n">tri_j_train</span><span class="p">]</span>
+    <span class="k">return</span> <span class="p">((</span><span class="n">target_flat_train</span> <span class="o">-</span> <span class="n">pred_flat_train</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="c1"># Extract upper triangle indices (all unique pairs)</span>
+<span class="n">n_sites</span> <span class="o">=</span> <span class="n">genetic_distances</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">tri_i_all</span><span class="p">,</span> <span class="n">tri_j_all</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">triu_indices</span><span class="p">(</span><span class="n">n_sites</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">target_flat_all</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">genetic_distances</span><span class="p">)[</span><span class="n">tri_i_all</span><span class="p">,</span> <span class="n">tri_j_all</span><span class="p">]</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Total pairwise distances: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">target_flat_all</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="c1"># Train/test split (80/20)</span>
+<span class="p">(</span>
+    <span class="n">target_flat_train</span><span class="p">,</span>
+    <span class="n">target_flat_test</span><span class="p">,</span>
+    <span class="n">tri_i_train</span><span class="p">,</span>
+    <span class="n">tri_i_test</span><span class="p">,</span>
+    <span class="n">tri_j_train</span><span class="p">,</span>
+    <span class="n">tri_j_test</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">=</span> <span class="n">train_test_split</span><span class="p">(</span>
+    <span class="n">target_flat_all</span><span class="p">,</span>
+    <span class="n">tri_i_all</span><span class="p">,</span>
+    <span class="n">tri_j_all</span><span class="p">,</span>
+    <span class="n">test_size</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span>
+    <span class="n">random_state</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="c1"># Convert to JAX arrays for training</span>
+<span class="n">tri_i_train</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">tri_i_train</span><span class="p">)</span>
+<span class="n">tri_j_train</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">tri_j_train</span><span class="p">)</span>
+<span class="n">tri_i_test</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">tri_i_test</span><span class="p">)</span>
+<span class="n">tri_j_test</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">tri_j_test</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Training pairs: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">target_flat_train</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Test pairs: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">target_flat_test</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="c1"># Sanity check: compute initial loss</span>
+<span class="n">initial_loss</span> <span class="o">=</span> <span class="n">loss_fn</span><span class="p">(</span>
+    <span class="n">params</span><span class="p">,</span> <span class="p">(</span><span class="n">static</span><span class="p">,</span> <span class="n">features_onehot</span><span class="p">,</span> <span class="n">target_flat_train</span><span class="p">,</span> <span class="n">tri_i_train</span><span class="p">,</span> <span class="n">tri_j_train</span><span class="p">)</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Initial training loss: </span><span class="si">{</span><span class="n">initial_loss</span><span class="si">:</span><span class="s2">.6f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>Total pairwise distances: 66
+Training pairs: 52
+Test pairs: 14
+
+Initial training loss: 3.885685
+</code></pre></div>
+<h2 id="training">Training<a class="headerlink" href="#training" title="Permanent link">¤</a></h2>
+<p>The optimization typically takes several minutes depending on graph size and the number of iterations required for convergence.</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Configure L-BFGS optimizer</span>
+<span class="n">solver</span> <span class="o">=</span> <span class="n">optx</span><span class="o">.</span><span class="n">LBFGS</span><span class="p">(</span>
+    <span class="n">rtol</span><span class="o">=</span><span class="mf">1e-5</span><span class="p">,</span>  <span class="c1"># Relative tolerance for convergence</span>
+    <span class="n">atol</span><span class="o">=</span><span class="mf">1e-5</span><span class="p">,</span>  <span class="c1"># Absolute tolerance</span>
+    <span class="n">verbose</span><span class="o">=</span><span class="nb">frozenset</span><span class="p">({</span><span class="s2">&quot;loss&quot;</span><span class="p">}),</span>  <span class="c1"># Print loss during optimization</span>
+<span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Starting optimization...</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;=&quot;</span> <span class="o">*</span> <span class="mi">60</span><span class="p">)</span>
+
+<span class="n">start_train_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+
+<span class="c1"># Run optimization</span>
+<span class="n">opt_solution</span> <span class="o">=</span> <span class="n">optx</span><span class="o">.</span><span class="n">minimise</span><span class="p">(</span>
+    <span class="n">loss_fn</span><span class="p">,</span>
+    <span class="n">solver</span><span class="p">,</span>
+    <span class="n">params</span><span class="p">,</span>
+    <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="n">static</span><span class="p">,</span> <span class="n">features_onehot</span><span class="p">,</span> <span class="n">target_flat_train</span><span class="p">,</span> <span class="n">tri_i_train</span><span class="p">,</span> <span class="n">tri_j_train</span><span class="p">),</span>
+    <span class="n">max_steps</span><span class="o">=</span><span class="n">MAX_STEPS</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">training_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_train_time</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;=&quot;</span> <span class="o">*</span> <span class="mi">60</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">✓ Training completed in </span><span class="si">{</span><span class="n">training_time</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> seconds&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Optimization statistics:&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">opt_solution</span><span class="o">.</span><span class="n">stats</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>Starting optimization...
+
+============================================================
+Loss on this step: 3.8856894969940186, Loss on the last accepted step: 0.0
+Loss on this step: 0.009540650993585587, Loss on the last accepted step: 3.8856894969940186
+Loss on this step: 0.009540597908198833, Loss on the last accepted step: 3.8856894969940186
+Loss on this step: 0.0021442112047225237, Loss on the last accepted step: 3.8856894969940186
+Loss on this step: 0.0021369722671806812, Loss on the last accepted step: 0.0021442112047225237
+Loss on this step: 0.0019680014811456203, Loss on the last accepted step: 0.0021369722671806812
+Loss on this step: 0.0019522022921591997, Loss on the last accepted step: 0.0019680014811456203
+Loss on this step: 0.0019508968107402325, Loss on the last accepted step: 0.0019522022921591997
+Loss on this step: 0.0019490730483084917, Loss on the last accepted step: 0.0019508968107402325
+Loss on this step: 0.001943937037140131, Loss on the last accepted step: 0.0019490730483084917
+Loss on this step: 0.0019331614021211863, Loss on the last accepted step: 0.001943937037140131
+Loss on this step: 0.0019099907949566841, Loss on the last accepted step: 0.0019331614021211863
+Loss on this step: 0.0018720333464443684, Loss on the last accepted step: 0.0019099907949566841
+Loss on this step: 0.0017763919895514846, Loss on the last accepted step: 0.0018720333464443684
+Loss on this step: 0.0016488881083205342, Loss on the last accepted step: 0.0017763919895514846
+Loss on this step: 0.0016327609773725271, Loss on the last accepted step: 0.0016488881083205342
+Loss on this step: 0.0016295629320666194, Loss on the last accepted step: 0.0016327609773725271
+Loss on this step: 0.0016266308957710862, Loss on the last accepted step: 0.0016295629320666194
+Loss on this step: 0.0016214561183005571, Loss on the last accepted step: 0.0016266308957710862
+Loss on this step: 0.0016075350577011704, Loss on the last accepted step: 0.0016214561183005571
+Loss on this step: 0.0015825879527255893, Loss on the last accepted step: 0.0016075350577011704
+Loss on this step: 0.001501547172665596, Loss on the last accepted step: 0.0015825879527255893
+Loss on this step: 0.06288988888263702, Loss on the last accepted step: 0.001501547172665596
+Loss on this step: 0.002140212105587125, Loss on the last accepted step: 0.001501547172665596
+Loss on this step: 0.0016243921127170324, Loss on the last accepted step: 0.001501547172665596
+Loss on this step: 0.0014579362468793988, Loss on the last accepted step: 0.001501547172665596
+Loss on this step: 0.001322284690104425, Loss on the last accepted step: 0.0014579362468793988
+Loss on this step: 0.0014171540969982743, Loss on the last accepted step: 0.001322284690104425
+Loss on this step: 0.0013643365819007158, Loss on the last accepted step: 0.001322284690104425
+Loss on this step: 0.0013415651628747582, Loss on the last accepted step: 0.001322284690104425
+Loss on this step: 0.0013335972325876355, Loss on the last accepted step: 0.001322284690104425
+Loss on this step: 0.001321864314377308, Loss on the last accepted step: 0.001322284690104425
+Loss on this step: 0.0013171337777748704, Loss on the last accepted step: 0.001322284690104425
+Loss on this step: 0.001312931883148849, Loss on the last accepted step: 0.0013171337777748704
+Loss on this step: 0.0013678910909220576, Loss on the last accepted step: 0.001312931883148849
+Loss on this step: 0.0012855114182457328, Loss on the last accepted step: 0.001312931883148849
+Loss on this step: 0.0021188759710639715, Loss on the last accepted step: 0.0012855114182457328
+Loss on this step: 0.0012452633818611503, Loss on the last accepted step: 0.0012855114182457328
+Loss on this step: 0.0012341703986749053, Loss on the last accepted step: 0.0012452633818611503
+Loss on this step: 0.00123458297457546, Loss on the last accepted step: 0.0012341703986749053
+Loss on this step: 0.0012321530375629663, Loss on the last accepted step: 0.0012341703986749053
+Loss on this step: 0.0012285209959372878, Loss on the last accepted step: 0.0012321530375629663
+Loss on this step: 0.00122746080160141, Loss on the last accepted step: 0.0012285209959372878
+Loss on this step: 0.0012268684804439545, Loss on the last accepted step: 0.00122746080160141
+Loss on this step: 0.0012262093368917704, Loss on the last accepted step: 0.0012268684804439545
+Loss on this step: 0.0012240996584296227, Loss on the last accepted step: 0.0012262093368917704
+Loss on this step: 0.0012296241475269198, Loss on the last accepted step: 0.0012240996584296227
+Loss on this step: 0.0012167698005214334, Loss on the last accepted step: 0.0012240996584296227
+Loss on this step: 0.001307217637076974, Loss on the last accepted step: 0.0012167698005214334
+Loss on this step: 0.0012273594038560987, Loss on the last accepted step: 0.0012167698005214334
+Loss on this step: 0.0012153689749538898, Loss on the last accepted step: 0.0012167698005214334
+Loss on this step: 0.0012151197297498584, Loss on the last accepted step: 0.0012153689749538898
+Loss on this step: 0.0012136436998844147, Loss on the last accepted step: 0.0012153689749538898
+Loss on this step: 0.001213698647916317, Loss on the last accepted step: 0.0012136436998844147
+Loss on this step: 0.0012138065649196506, Loss on the last accepted step: 0.0012136436998844147
+Loss on this step: 0.0012139827013015747, Loss on the last accepted step: 0.0012136436998844147
+Loss on this step: 0.0012137620942667127, Loss on the last accepted step: 0.0012136436998844147
+Loss on this step: 0.001213753828778863, Loss on the last accepted step: 0.0012136436998844147
+Loss on this step: 0.0012136644218116999, Loss on the last accepted step: 0.0012136436998844147
+Loss on this step: 0.0012136156437918544, Loss on the last accepted step: 0.0012136436998844147
+Loss on this step: 0.0012142040068283677, Loss on the last accepted step: 0.0012136156437918544
+Loss on this step: 0.001213707379065454, Loss on the last accepted step: 0.0012136156437918544
+Loss on this step: 0.0012137291487306356, Loss on the last accepted step: 0.0012136156437918544
+Loss on this step: 0.001213960931636393, Loss on the last accepted step: 0.0012136156437918544
+Loss on this step: 0.0012137801386415958, Loss on the last accepted step: 0.0012136156437918544
+Loss on this step: 0.0012137687299400568, Loss on the last accepted step: 0.0012136156437918544
+Loss on this step: 0.00121373834554106, Loss on the last accepted step: 0.0012136156437918544
+Loss on this step: 0.001213651499710977, Loss on the last accepted step: 0.0012136156437918544
+Loss on this step: 0.0012136161094531417, Loss on the last accepted step: 0.0012136156437918544
+Loss on this step: 0.001213617972098291, Loss on the last accepted step: 0.0012136156437918544
+Loss on this step: 0.0012136263540014625, Loss on the last accepted step: 0.0012136156437918544
+Loss on this step: 0.001213613897562027, Loss on the last accepted step: 0.0012136156437918544
+============================================================
+
+✓ Training completed in 154.03 seconds
+
+Optimization statistics:
+{&#39;max_steps&#39;: 500, &#39;num_steps&#39;: Array(72, dtype=int32, weak_type=True)}
+</code></pre></div>
+<h3 id="visualize-the-learned-permeability-surface">Visualize the learned permeability surface<a class="headerlink" href="#visualize-the-learned-permeability-surface" title="Permanent link">¤</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Apply fitted model to landscape</span>
+<span class="n">fitted_model</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">combine</span><span class="p">(</span><span class="n">opt_solution</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="n">static</span><span class="p">)</span>
+<span class="n">fitted_vmapped</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">vmap</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">vmap</span><span class="p">(</span><span class="n">fitted_model</span><span class="p">,</span> <span class="n">in_axes</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span> <span class="n">in_axes</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">fitted_permeability</span> <span class="o">=</span> <span class="n">fitted_vmapped</span><span class="p">(</span><span class="n">features_onehot</span><span class="p">)</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="c1"># Compute predicted distances using fitted permeability</span>
+<span class="n">pred_grid</span> <span class="o">=</span> <span class="n">GridGraph</span><span class="p">(</span><span class="n">fitted_permeability</span><span class="p">,</span> <span class="n">fun</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="p">(</span><span class="n">x</span> <span class="o">+</span> <span class="n">y</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span>
+<span class="n">pred_distances</span> <span class="o">=</span> <span class="n">DISTANCE_FUN</span><span class="p">(</span><span class="n">pred_grid</span><span class="p">,</span> <span class="n">nodes</span><span class="o">=</span><span class="n">target_nodes</span><span class="p">)</span>
+
+<span class="n">genetic_np</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">genetic_distances</span><span class="p">)</span>
+<span class="n">pred_np</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">pred_distances</span><span class="p">)</span>
+
+<span class="c1"># Extract predictions for train and test pairs</span>
+<span class="n">train_pred</span> <span class="o">=</span> <span class="n">pred_np</span><span class="p">[</span><span class="n">tri_i_train</span><span class="p">,</span> <span class="n">tri_j_train</span><span class="p">]</span>
+<span class="n">test_pred</span> <span class="o">=</span> <span class="n">pred_np</span><span class="p">[</span><span class="n">tri_i_test</span><span class="p">,</span> <span class="n">tri_j_test</span><span class="p">]</span>
+<span class="n">train_target</span> <span class="o">=</span> <span class="n">target_flat_train</span>
+<span class="n">test_target</span> <span class="o">=</span> <span class="n">target_flat_test</span>
+
+<span class="c1"># Compute metrics</span>
+<span class="n">r2_train</span> <span class="o">=</span> <span class="n">r2_score</span><span class="p">(</span><span class="n">train_target</span><span class="p">,</span> <span class="n">train_pred</span><span class="p">)</span>
+<span class="n">r2_test</span> <span class="o">=</span> <span class="n">r2_score</span><span class="p">(</span><span class="n">test_target</span><span class="p">,</span> <span class="n">test_pred</span><span class="p">)</span>
+<span class="n">rmse_train</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">mean_squared_error</span><span class="p">(</span><span class="n">train_target</span><span class="p">,</span> <span class="n">train_pred</span><span class="p">))</span>
+<span class="n">rmse_test</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">mean_squared_error</span><span class="p">(</span><span class="n">test_target</span><span class="p">,</span> <span class="n">test_pred</span><span class="p">))</span>
+
+<span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span> <span class="mi">6</span><span class="p">))</span>
+
+<span class="c1"># Plot training and test predictions</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span>
+    <span class="n">train_pred</span><span class="p">,</span>
+    <span class="n">train_target</span><span class="p">,</span>
+    <span class="n">s</span><span class="o">=</span><span class="mi">60</span><span class="p">,</span>
+    <span class="n">alpha</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span>
+    <span class="n">edgecolor</span><span class="o">=</span><span class="s2">&quot;none&quot;</span><span class="p">,</span>
+    <span class="n">label</span><span class="o">=</span><span class="s2">&quot;Training&quot;</span><span class="p">,</span>
+    <span class="n">c</span><span class="o">=</span><span class="s2">&quot;#2E86AB&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span>
+    <span class="n">test_pred</span><span class="p">,</span>
+    <span class="n">test_target</span><span class="p">,</span>
+    <span class="n">s</span><span class="o">=</span><span class="mi">80</span><span class="p">,</span>
+    <span class="n">alpha</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span>
+    <span class="n">edgecolor</span><span class="o">=</span><span class="s2">&quot;black&quot;</span><span class="p">,</span>
+    <span class="n">linewidth</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+    <span class="n">label</span><span class="o">=</span><span class="s2">&quot;Test&quot;</span><span class="p">,</span>
+    <span class="n">c</span><span class="o">=</span><span class="s2">&quot;#A23B72&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="c1"># 1:1 reference line</span>
+<span class="n">min_val</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">pred_np</span><span class="o">.</span><span class="n">min</span><span class="p">(),</span> <span class="n">genetic_np</span><span class="o">.</span><span class="n">min</span><span class="p">())</span>
+<span class="n">max_val</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">pred_np</span><span class="o">.</span><span class="n">max</span><span class="p">(),</span> <span class="n">genetic_np</span><span class="o">.</span><span class="n">max</span><span class="p">())</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span>
+    <span class="p">[</span><span class="n">min_val</span><span class="p">,</span> <span class="n">max_val</span><span class="p">],</span>
+    <span class="p">[</span><span class="n">min_val</span><span class="p">,</span> <span class="n">max_val</span><span class="p">],</span>
+    <span class="s2">&quot;k--&quot;</span><span class="p">,</span>
+    <span class="n">linewidth</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+    <span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>
+    <span class="n">label</span><span class="o">=</span><span class="s2">&quot;1:1 line&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="s2">&quot;Predicted resistance distance&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">12</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s2">&quot;Observed genetic distance (Fst)&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">12</span><span class="p">)</span>
+
+<span class="c1"># Add metrics box</span>
+<span class="n">textstr</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="sa">f</span><span class="s2">&quot;Training</span><span class="se">\n</span><span class="s2">&quot;</span>
+    <span class="sa">f</span><span class="s2">&quot;  R² = </span><span class="si">{</span><span class="n">r2_train</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span>
+    <span class="sa">f</span><span class="s2">&quot;  RMSE = </span><span class="si">{</span><span class="n">rmse_train</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="se">\n\n</span><span class="s2">&quot;</span>
+    <span class="sa">f</span><span class="s2">&quot;Test</span><span class="se">\n</span><span class="s2">&quot;</span>
+    <span class="sa">f</span><span class="s2">&quot;  R² = </span><span class="si">{</span><span class="n">r2_test</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span>
+    <span class="sa">f</span><span class="s2">&quot;  RMSE = </span><span class="si">{</span><span class="n">rmse_test</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span>
+<span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">text</span><span class="p">(</span>
+    <span class="mf">0.05</span><span class="p">,</span>
+    <span class="mf">0.95</span><span class="p">,</span>
+    <span class="n">textstr</span><span class="p">,</span>
+    <span class="n">transform</span><span class="o">=</span><span class="n">ax</span><span class="o">.</span><span class="n">transAxes</span><span class="p">,</span>
+    <span class="n">fontsize</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+    <span class="n">verticalalignment</span><span class="o">=</span><span class="s2">&quot;top&quot;</span><span class="p">,</span>
+    <span class="n">bbox</span><span class="o">=</span><span class="nb">dict</span><span class="p">(</span>
+        <span class="n">boxstyle</span><span class="o">=</span><span class="s2">&quot;round&quot;</span><span class="p">,</span> <span class="n">facecolor</span><span class="o">=</span><span class="s2">&quot;white&quot;</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span> <span class="n">edgecolor</span><span class="o">=</span><span class="s2">&quot;gray&quot;</span><span class="p">,</span> <span class="n">linewidth</span><span class="o">=</span><span class="mf">1.5</span>
+    <span class="p">),</span>
+<span class="p">)</span>
+
+<span class="n">ax</span><span class="o">.</span><span class="n">legend</span><span class="p">(</span><span class="n">loc</span><span class="o">=</span><span class="s2">&quot;lower right&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">11</span><span class="p">,</span> <span class="n">framealpha</span><span class="o">=</span><span class="mf">0.9</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="kc">True</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span> <span class="n">linestyle</span><span class="o">=</span><span class="s2">&quot;:&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</code></pre></div>
+<p><img alt="img" src="../_data/c890cc12b0b04c0893a2b8f1827cc368.png" /></p>
+<p>Our model seems to perform reasonably well, capturing a significant portion of the variance in genetic distances. 
+We can now visualize the learned permeability patterns across the landscape. Remember that this is to be interpreted with great caution, as the inferred permeability surface may reflect complex interactions and correlations in the data rather than direct causal relationships.</p>
+<div class="highlight"><pre><span></span><code><span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">12</span><span class="p">,</span> <span class="mi">10</span><span class="p">))</span>
+
+<span class="c1"># Fitted permeability</span>
+<span class="n">im</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">fitted_permeability</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="s2">&quot;RdYlGn_r&quot;</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s2">&quot;Predicted permeability surface</span><span class="se">\n</span><span class="s2">after training&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">13</span><span class="p">,</span> <span class="n">pad</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">axis</span><span class="p">(</span><span class="s2">&quot;off&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">colorbar</span><span class="p">(</span><span class="n">im</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span> <span class="n">shrink</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">&quot;Permeability&quot;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</code></pre></div>
+<p><img alt="img" src="../_data/9338a74819fd482dba62410d3281d91f.png" /></p>
+<p>The red surface corresponds to mountain ranges, separating the different populations. To go further, we could use more informative features, such as elevation, climate, etc...</p>
+<h2 id="key-takeaways">Key takeaways<a class="headerlink" href="#key-takeaways" title="Permanent link">¤</a></h2>
+<p>This notebook demonstrated inverse landscape genetics: learning resistance patterns from genetic data rather than assuming them <em>a priori</em>. JAX's automatic differentiation enables gradient-based optimization, allowing to train neural networks to map landscape features to a permeability surface. Neural networks provide flexible parameterization capturing nonlinear landscape feature–permeability relationships. It would be interesting to compare this learned resistance surface with expert knowledge about the species' ecology and known barriers to movement in the landscape. We could also assess the predictive performance of e.g. the <code>LCPDistance</code>. But this goes beyond the scope of this notebook.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "toc.integrate", "header.autohide", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="../../../_static/javascripts/mathjax.js"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>
