@@ -50,8 +50,6 @@ def test_bcoo_linear_operator_mv():
 @pytest.mark.skipif(len(available_solvers) == 0, reason="No solvers available")
 @pytest.mark.parametrize("solver", available_solvers)
 def test_solver(solver):
-    if not PYAMG_AVAILABLE:
-        pytest.skip("pyamg not available for generating test matrix")
     A_scipy = poisson((10, 10), format="coo", dtype="float32")
     A_jax = BCOO.from_scipy_sparse(A_scipy)
     b = jnp.ones(A_jax.shape[0])
@@ -73,8 +71,6 @@ def test_solver(solver):
 @pytest.mark.parametrize("solver", available_solvers)
 def test_solver_differentiability(solver):
     """Test that the solver is differentiable."""
-    if not PYAMG_AVAILABLE:
-        pytest.skip("pyamg not available for generating test matrix")
     A_scipy = poisson((5, 5), format="coo", dtype="float32")
     A_jax = BCOO.from_scipy_sparse(A_scipy)
 
