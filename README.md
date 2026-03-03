@@ -109,7 +109,7 @@ If you use JAXScape in your research, please cite:
 @software{jaxscape2024,
   author = {Boussange, Victor},
   title = {JAXScape: A minimal JAX library for connectivity modelling at scale},
-  year = {2024},
+  year = {2025},
   doi = {10.5281/zenodo.15267703},
   url = {https://github.com/vboussange/jaxscape}
 }
