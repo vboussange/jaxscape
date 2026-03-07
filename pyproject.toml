@@ -22,11 +22,11 @@ classifiers = [
   "Topic :: Scientific/Engineering :: GIS"
 ]
 dependencies = [
-  "jax>=0.4.38,!=0.7.0,!=0.7.1",
+  "jax>=0.6.1",
   "equinox>=0.13.2",
   "tqdm>=4.66.1",
-  "numpy",
-  "lineax>=0.0.8"
+  "numpy>2.4.0",
+  "lineax>=0.1.0"
 ]
 description = 'A minimal JAX library for connectivity modelling at scale'
 keywords = ["jax", "graph", "machine-learning", "network"]
