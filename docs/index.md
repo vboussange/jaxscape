@@ -21,6 +21,14 @@ You may be required to install optional linear solvers for large-scale resistanc
 
 ## Quick start
 
+**1. Download sample data**
+
+```bash
+curl -sL https://github.com/vboussange/jaxscape/releases/download/v0.0.6/data.zip -o data.zip && unzip -q data.zip && rm data.zip
+```
+
+**2. Run the analysis**
+
 ```python
 import numpy as np
 import matplotlib.pyplot as plt
@@ -28,8 +36,7 @@ import jax.numpy as jnp
 from jaxscape import GridGraph
 from jaxscape import LCPDistance, ResistanceDistance, RSPDistance
 
-# loading jax array representing permeability
-permeability = jnp.array(np.loadtxt("permeability.csv", delimiter=",")) + 0.001
+permeability = jnp.array(np.loadtxt("data/permeability.csv", delimiter=",")) + 0.001
 
 # Create a grid graph where edge weights are the average permeability of the two nodes
 grid = GridGraph(grid=permeability, fun=lambda x, y: (x + y) / 2)
@@ -65,7 +72,7 @@ plt.show()
 
 <div align="center"><img src="examples/distance_calculation/distances.png" alt="Distances"  width="600"></div>
 
-But what's really cool about jaxscape is that you can autodiff through thoses distances! Check out the documentation to learn about applications and more!
+But what's really cool about jaxscape is that you can autodiff through thoses distances! Check out the Examples section to learn about applications and more!
 
 ## Features and roadmap 🚀
 See issues; most notably:
@@ -95,7 +102,7 @@ If you use JAXScape in your research, please cite:
 @software{jaxscape2024,
   author = {Boussange, Victor},
   title = {JAXScape: A minimal JAX library for connectivity modelling at scale},
-  year = {2024},
+  year = {2025},
   doi = {10.5281/zenodo.15267703},
   url = {https://github.com/vboussange/jaxscape}
 }

@@ -31,6 +31,14 @@ You may be required to install optional linear solvers for large-scale resistanc
 
 ## Quick start
 
+**1. Download sample data**
+
+```bash
+curl -sL https://github.com/vboussange/jaxscape/releases/download/v0.0.6/data.zip -o data.zip && unzip -q data.zip && rm data.zip
+```
+
+**2. Run the analysis**
+
 ```python
 import numpy as np
 import matplotlib.pyplot as plt
@@ -38,8 +46,7 @@ import jax.numpy as jnp
 from jaxscape import GridGraph
 from jaxscape import LCPDistance, ResistanceDistance, RSPDistance
 
-# loading jax array representing permeability
-permeability = jnp.array(np.loadtxt("permeability.csv", delimiter=",")) + 0.001
+permeability = jnp.array(np.loadtxt("data/permeability.csv", delimiter=",")) + 0.001
 
 # Create a grid graph where edge weights are the average permeability of the two nodes
 grid = GridGraph(grid=permeability, fun=lambda x, y: (x + y) / 2)
