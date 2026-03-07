@@ -149,8 +149,5 @@ class PyAMGSolver(AbstractLinearSolver):
         conj_state = (A_conj, packed_structures)
         return conj_state, {}
 
-    def allow_dependent_columns(self, operator):
-        return False
-
-    def allow_dependent_rows(self, operator):
-        return False
+    def assume_full_rank(self):
+        return True
