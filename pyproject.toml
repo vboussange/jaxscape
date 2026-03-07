@@ -33,12 +33,12 @@ keywords = ["jax", "graph", "machine-learning", "network"]
 license = {file = "LICENSE"}
 name = "jaxscape"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 version = "0.0.7"
 
 [project.optional-dependencies]
 cholespy = [
-  "cholespy>=2.2.1"
+  "cholespy>=2.2.0"
 ]
 dev = [
   "ipykernel>=6.29.5"
@@ -61,10 +61,6 @@ examples = [
 ]
 pyamg = [
   "pyamg>=5.1.0"
-]
-solvers = [
-  "pyamg>=5.1.0",
-  "cholespy>=2.2.1"
 ]
 tests = [
   "networkx>=3.4",

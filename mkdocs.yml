@@ -84,3 +84,4 @@ nav:
     - Linear solvers: api/solvers.md
     - Connectivity analysis: api/connectivity_analysis.md
     - Window operations: api/window_operations.md
+  - linear_solvers.md

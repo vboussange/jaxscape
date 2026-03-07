@@ -27,7 +27,7 @@ uv add jaxscape
 
 For GPU compatibility, install JAX following the [official JAX installation guide](https://jax.readthedocs.io/en/latest/installation.html). JAXScape will automatically use the JAX backend you have configured.
 
-You may be required to install optional linear solvers for large-scale resistance distance computations (see the documentation page).
+You may be required to install optional linear solvers for large-scale resistance distance computations (see [the documentation page](https://vboussange.github.io/jaxscape/linear_solvers) for details).
 
 ## Quick start
 
