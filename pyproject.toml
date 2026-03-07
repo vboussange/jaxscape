@@ -22,7 +22,7 @@ classifiers = [
   "Topic :: Scientific/Engineering :: GIS"
 ]
 dependencies = [
-  "jax>=0.6.1",
+  "jax>=0.9.0",
   "equinox>=0.13.2",
   "tqdm>=4.66.1",
   "numpy>2.4.0",
@@ -34,11 +34,11 @@ license = {file = "LICENSE"}
 name = "jaxscape"
 readme = "README.md"
 requires-python = ">=3.10"
-version = "0.0.6"
+version = "0.0.7"
 
 [project.optional-dependencies]
 cholespy = [
-  "cholespy>=2.1.0"
+  "cholespy>=2.2.1"
 ]
 dev = [
   "ipykernel>=6.29.5"
@@ -63,8 +63,8 @@ pyamg = [
   "pyamg>=5.1.0"
 ]
 solvers = [
-  "pyamg>=5.1.0,<5.3.0",
-  "cholespy>=2.1.0"
+  "pyamg>=5.1.0",
+  "cholespy>=2.2.1"
 ]
 tests = [
   "networkx>=3.4",

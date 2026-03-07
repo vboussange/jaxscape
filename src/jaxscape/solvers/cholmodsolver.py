@@ -93,7 +93,7 @@ class CholmodSolver(AbstractLinearSolver):
         x_flat_batch = jnp.zeros_like(b_flat_batch)
 
         # Initialize the Cholesky solver with CSR format
-        with jax.experimental.enable_x64():
+        with jax.enable_x64():
             solver = CholeskySolverF(
                 rhs_size,
                 A_bcoo.indices[:, 0],
