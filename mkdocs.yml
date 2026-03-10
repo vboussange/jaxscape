@@ -81,7 +81,6 @@ nav:
   - API Reference:
     - Graphs: api/graphs.md
     - Distance metrics: api/distances.md
-    - Linear solvers: api/solvers.md
+    - Linear solvers: api/linear_solvers.md
     - Connectivity analysis: api/connectivity_analysis.md
     - Window operations: api/window_operations.md
-  - linear_solvers.md
