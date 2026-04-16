@@ -1,3 +1,4 @@
+import jax
 import jax.numpy as jnp
 import jax.random as jr
 import networkx as nx
@@ -85,3 +86,21 @@ def test_lineax_solver_resistance_distance(solver):
     dist_pinv = ResistanceDistance(solver=None)(grid)
     dist_lineax = ResistanceDistance(solver=solver)(grid)
     assert jnp.allclose(dist_pinv, dist_lineax, rtol=1e-4)
+
+
+@pytest.mark.skipif(not CHOLMOD_AVAILABLE, reason="CholmodSolver unavailable")
+def test_cholmod_batched_nodes_distance_is_differentiable():
+    """Regression test for reverse-mode differentiation over multiple RHS solves."""
+    permeability = jnp.linspace(1.0, 2.0, 16, dtype=jnp.float32).reshape(4, 4)
+    nodes = jnp.array([0, 3, 12, 15], dtype=jnp.int32)
+
+    def objective(current_permeability):
+        grid = GridGraph(grid=current_permeability, fun=lambda x, y: (x + y) / 2)
+        distances = ResistanceDistance(solver=CholmodSolver())(grid, nodes=nodes)
+        return jnp.sum(distances)
+
+    grad = jax.grad(objective)(permeability)
+
+    assert isinstance(grad, jax.Array)
+    assert grad.shape == permeability.shape
+    assert jnp.all(jnp.isfinite(grad))

@@ -3,6 +3,7 @@ from typing import Any, TypeAlias
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import numpy as np
 from jax import Array as JaxArray
 from jax.experimental.sparse import BCOO
 from jaxtyping import Array, PyTree
@@ -83,29 +84,35 @@ class CholmodSolver(AbstractLinearSolver):
         if b_jax.ndim == 0:
             raise ValueError("Right-hand side must have at least one dimension.")
 
-        rhs_size = b_jax.T.shape[0]
-        if rhs_size != A_bcoo.shape[0]:
+        operator_size = A_bcoo.shape[0]
+        if b_jax.shape[0] != operator_size:
             raise ValueError(
                 "The first dimension of b must match the operator dimension."
             )
 
-        b_flat_batch = b_jax.T.reshape((rhs_size, -1))
-        x_flat_batch = jnp.zeros_like(b_flat_batch)
+        b_flat_batch = b_jax.reshape((operator_size, -1))
+        use_float64 = b_flat_batch.dtype == jnp.float64 or A_bcoo.data.dtype == jnp.float64
+        solver_cls = CholeskySolverD if use_float64 else CholeskySolverF
+        buffer_dtype = np.float64 if use_float64 else np.float32
+
+        b_host = np.array(b_flat_batch, dtype=buffer_dtype, order="C", copy=True)
+        x_host = np.zeros_like(b_host, order="C")
+        a_data_host = np.array(A_bcoo.data, dtype=np.float64, order="C", copy=True)
+        row_host = np.array(A_bcoo.indices[:, 0], dtype=np.int32, order="C", copy=True)
+        col_host = np.array(A_bcoo.indices[:, 1], dtype=np.int32, order="C", copy=True)
 
         # Initialize the Cholesky solver with CSR format
         with jax.enable_x64():
-            solver = CholeskySolverF(
-                rhs_size,
-                A_bcoo.indices[:, 0],
-                A_bcoo.indices[:, 1],
-                A_bcoo.data.astype(
-                    "float64"
-                ),  # required by cholespy, see https://github.com/rgl-epfl/cholespy/blob/main/tests/test_cholesky.py
+            solver = solver_cls(
+                operator_size,
+                row_host,
+                col_host,
+                a_data_host,
                 MatrixType.COO,
             )
-            solver.solve(b_flat_batch, x_flat_batch)
+            solver.solve(b_host, x_host)
 
-        x = x_flat_batch.reshape(b_jax.T.shape).T
+        x = jnp.asarray(x_host, dtype=b_jax.dtype).reshape(b_jax.shape)
         return x
 
     def compute(

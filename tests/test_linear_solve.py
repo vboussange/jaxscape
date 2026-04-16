@@ -35,6 +35,15 @@ if CHOLMOD_AVAILABLE:
     available_solvers.append(CholmodSolver())
 
 
+def _build_spd_system(size: int) -> BCOO:
+    diagonal = 4.0 * jnp.ones(size, dtype=jnp.float32)
+    off_diagonal = -1.0 * jnp.ones(size - 1, dtype=jnp.float32)
+    dense = jnp.diag(diagonal)
+    dense = dense + jnp.diag(off_diagonal, k=1)
+    dense = dense + jnp.diag(off_diagonal, k=-1)
+    return BCOO.fromdense(dense)
+
+
 def test_bcoo_linear_operator_mv():
     """Test BCOOLinearOperator.mv method by comparing to dense matrix multiplication."""
     key = jax.random.PRNGKey(42)
@@ -50,8 +59,7 @@ def test_bcoo_linear_operator_mv():
 @pytest.mark.skipif(len(available_solvers) == 0, reason="No solvers available")
 @pytest.mark.parametrize("solver", available_solvers)
 def test_solver(solver):
-    A_scipy = poisson((10, 10), format="coo", dtype="float32")
-    A_jax = BCOO.from_scipy_sparse(A_scipy)
+    A_jax = _build_spd_system(10)
     b = jnp.ones(A_jax.shape[0])
     x = linear_solve(A_jax, b, solver)
     residual = A_jax @ x - b
@@ -71,8 +79,7 @@ def test_solver(solver):
 @pytest.mark.parametrize("solver", available_solvers)
 def test_solver_differentiability(solver):
     """Test that the solver is differentiable."""
-    A_scipy = poisson((5, 5), format="coo", dtype="float32")
-    A_jax = BCOO.from_scipy_sparse(A_scipy)
+    A_jax = _build_spd_system(5)
 
     def objective(A_data):
         # Modify the matrix data slightly
@@ -85,3 +92,85 @@ def test_solver_differentiability(solver):
     grad_result = grad_objective(A_jax.data)
     assert isinstance(grad_result, jax.Array)
     assert grad_result.shape == A_jax.data.shape
+
+
+@pytest.mark.skipif(not CHOLMOD_AVAILABLE, reason="CholmodSolver unavailable")
+def test_cholmod_batched_solver_matches_columnwise_solves():
+    A_jax = _build_spd_system(5)
+    b = jnp.ones(A_jax.shape[0], dtype=jnp.float32)
+    B = jnp.stack([b, 2 * b, 3 * b], axis=-1)
+    solver = CholmodSolver()
+
+    X_batched = batched_linear_solve(A_jax, B, solver)
+    X_columnwise = jnp.stack(
+        [linear_solve(A_jax, B[:, i], solver) for i in range(B.shape[1])],
+        axis=-1,
+    )
+
+    assert X_batched.shape == B.shape
+    assert jnp.allclose(X_batched, X_columnwise, rtol=1e-5, atol=1e-6)
+
+
+@pytest.mark.skipif(not CHOLMOD_AVAILABLE, reason="CholmodSolver unavailable")
+def test_cholmod_batched_solver_is_differentiable():
+    A_jax = _build_spd_system(4)
+    B = jnp.stack(
+        [
+            jnp.ones(A_jax.shape[0], dtype=jnp.float32),
+            2 * jnp.ones(A_jax.shape[0], dtype=jnp.float32),
+        ],
+        axis=-1,
+    )
+    solver = CholmodSolver()
+
+    def objective(A_data):
+        A_modified = BCOO((A_data, A_jax.indices), shape=A_jax.shape)
+        X = batched_linear_solve(A_modified, B, solver)
+        return jnp.sum(X**2)
+
+    grad_result = jax.grad(objective)(A_jax.data)
+
+    assert isinstance(grad_result, jax.Array)
+    assert grad_result.shape == A_jax.data.shape
+    assert jnp.all(jnp.isfinite(grad_result))
+
+
+@pytest.mark.skipif(not CHOLMOD_AVAILABLE, reason="CholmodSolver unavailable")
+def test_cholmod_batched_solver_matches_dense_solve_and_gradients():
+    A_jax = _build_spd_system(4)
+    A_dense = A_jax.todense()
+    B = jnp.array(
+        [
+            [1.0, 0.0, 2.0],
+            [0.0, 1.0, 1.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 2.0, 1.0],
+        ],
+        dtype=jnp.float32,
+    )
+    solver = CholmodSolver()
+
+    X_batched = batched_linear_solve(A_jax, B, solver)
+    X_dense = jnp.linalg.solve(A_dense, B)
+
+    assert jnp.allclose(X_batched, X_dense, rtol=1e-5, atol=1e-6)
+
+    def objective_sparse(A_data, rhs):
+        A_sparse = BCOO((A_data, A_jax.indices), shape=A_jax.shape)
+        return jnp.sum(batched_linear_solve(A_sparse, rhs, solver) ** 2)
+
+    def objective_dense(matrix, rhs):
+        return jnp.sum(jnp.linalg.solve(matrix, rhs) ** 2)
+
+    sparse_grad_A, sparse_grad_B = jax.grad(objective_sparse, argnums=(0, 1))(
+        A_jax.data,
+        B,
+    )
+    dense_grad_A, dense_grad_B = jax.grad(objective_dense, argnums=(0, 1))(
+        A_dense,
+        B,
+    )
+    dense_grad_entries = dense_grad_A[A_jax.indices[:, 0], A_jax.indices[:, 1]]
+
+    assert jnp.allclose(sparse_grad_A, dense_grad_entries, rtol=1e-5, atol=1e-6)
+    assert jnp.allclose(sparse_grad_B, dense_grad_B, rtol=1e-5, atol=1e-6)
