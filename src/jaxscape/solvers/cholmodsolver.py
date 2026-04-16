@@ -3,7 +3,6 @@ from typing import Any, TypeAlias
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-import numpy as np
 from jax import Array as JaxArray
 from jax.experimental.sparse import BCOO
 from jaxtyping import Array, PyTree
@@ -91,18 +90,21 @@ class CholmodSolver(AbstractLinearSolver):
             )
 
         b_flat_batch = b_jax.reshape((operator_size, -1))
-        use_float64 = b_flat_batch.dtype == jnp.float64 or A_bcoo.data.dtype == jnp.float64
+        use_float64 = (
+            b_flat_batch.dtype == jnp.float64 or A_bcoo.data.dtype == jnp.float64
+        )
         solver_cls = CholeskySolverD if use_float64 else CholeskySolverF
-        buffer_dtype = np.float64 if use_float64 else np.float32
-
-        b_host = np.array(b_flat_batch, dtype=buffer_dtype, order="C", copy=True)
-        x_host = np.zeros_like(b_host, order="C")
-        a_data_host = np.array(A_bcoo.data, dtype=np.float64, order="C", copy=True)
-        row_host = np.array(A_bcoo.indices[:, 0], dtype=np.int32, order="C", copy=True)
-        col_host = np.array(A_bcoo.indices[:, 1], dtype=np.int32, order="C", copy=True)
 
         # Initialize the Cholesky solver with CSR format
         with jax.enable_x64():
+            b_host = jnp.asarray(
+                b_flat_batch,
+                dtype=jnp.float64 if use_float64 else jnp.float32,
+            )
+            x_host = jnp.zeros_like(b_host)
+            a_data_host = jnp.asarray(A_bcoo.data, dtype=jnp.float64)
+            row_host = jnp.asarray(A_bcoo.indices[:, 0], dtype=jnp.int32)
+            col_host = jnp.asarray(A_bcoo.indices[:, 1], dtype=jnp.int32)
             solver = solver_cls(
                 operator_size,
                 row_host,
