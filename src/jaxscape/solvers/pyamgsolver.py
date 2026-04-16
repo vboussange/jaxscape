@@ -139,7 +139,7 @@ class PyAMGSolver(AbstractLinearSolver):
             A_bcoo,
             vector,
             result_shape_dtypes=result_shape,
-            vmap_method="broadcast_all",
+            vmap_method="expand_dims",
         )
         solution = unravel_solution(solution, packed_structures)
         return solution, RESULTS.successful, {}
