@@ -34,6 +34,12 @@ if PYAMG_AVAILABLE:
 if CHOLMOD_AVAILABLE:
     available_solvers.append(CholmodSolver())
 
+callback_solvers = []
+if PYAMG_AVAILABLE:
+    callback_solvers.append(PyAMGSolver())
+if CHOLMOD_AVAILABLE:
+    callback_solvers.append(CholmodSolver())
+
 
 def _build_spd_system(size: int) -> BCOO:
     diagonal = 4.0 * jnp.ones(size, dtype=jnp.float32)
@@ -68,11 +74,14 @@ def test_solver(solver):
     ), f"Residual too large: {jnp.linalg.norm(residual)}"
 
     B = jnp.stack([b, 2 * b, 3 * b], axis=-1)
-    X = batched_linear_solve(A_jax, B, solver)
+    X = linear_solve(A_jax, B, solver)
     residuals = A_jax @ X - B
     assert (
         jnp.linalg.norm(residuals) < 3 * 1e-4
     ), f"Residual too large: {jnp.linalg.norm(residuals)}"
+
+    X_batched = batched_linear_solve(A_jax, B, solver)
+    assert jnp.allclose(X_batched, X, rtol=1e-6, atol=1e-6)
 
 
 @pytest.mark.skipif(len(available_solvers) == 0, reason="No solvers available")
@@ -126,6 +135,30 @@ def test_cholmod_batched_solver_is_differentiable():
     def objective(A_data):
         A_modified = BCOO((A_data, A_jax.indices), shape=A_jax.shape)
         X = batched_linear_solve(A_modified, B, solver)
+        return jnp.sum(X**2)
+
+    grad_result = jax.grad(objective)(A_jax.data)
+
+    assert isinstance(grad_result, jax.Array)
+    assert grad_result.shape == A_jax.data.shape
+    assert jnp.all(jnp.isfinite(grad_result))
+
+
+@pytest.mark.skipif(len(callback_solvers) == 0, reason="No callback solvers available")
+@pytest.mark.parametrize("solver", callback_solvers)
+def test_callback_solver_matrix_rhs_linear_solve_is_differentiable(solver):
+    A_jax = _build_spd_system(4)
+    B = jnp.stack(
+        [
+            jnp.ones(A_jax.shape[0], dtype=jnp.float32),
+            2 * jnp.ones(A_jax.shape[0], dtype=jnp.float32),
+        ],
+        axis=-1,
+    )
+
+    def objective(A_data):
+        A_modified = BCOO((A_data, A_jax.indices), shape=A_jax.shape)
+        X = linear_solve(A_modified, B, solver)
         return jnp.sum(X**2)
 
     grad_result = jax.grad(objective)(A_jax.data)

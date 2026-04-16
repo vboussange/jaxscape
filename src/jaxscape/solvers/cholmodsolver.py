@@ -1,4 +1,4 @@
-from typing import Any, TypeAlias
+from typing import Any, TypeAlias, cast
 
 import equinox as eqx
 import jax
@@ -14,12 +14,19 @@ from lineax._solver.misc import (
     unravel_solution,
 )
 
+from ._callback import (
+    collapse_broadcasted_bcoo,
+    flatten_callback_rhs,
+    restore_callback_rhs,
+)
+
 
 try:
-    from cholespy import CholeskySolverD, CholeskySolverF, MatrixType
+    from cholespy import CholeskySolverD, CholeskySolverF, MatrixType  # pyright: ignore[reportMissingImports,reportAttributeAccessIssue]
 
     CHOLESPY_AVAILABLE = True
 except ImportError:
+    CholeskySolverD = CholeskySolverF = MatrixType = None
     CHOLESPY_AVAILABLE = False
 
 _CholmodSolverState: TypeAlias = tuple[BCOO, PackedStructures]
@@ -57,7 +64,7 @@ class CholmodSolver(AbstractLinearSolver):
     ) -> _CholmodSolverState:
         del options
 
-        A_bcoo = operator.as_matrix()
+        A_bcoo = cast(BCOO, operator.as_matrix())
         packed_structures = pack_structures(operator)
         return A_bcoo, packed_structures
 
@@ -72,27 +79,22 @@ class CholmodSolver(AbstractLinearSolver):
         Returns:
             Solution vector(s)
         """
-        if A_bcoo.n_batch > 0:
-            # ugly trick to remove batch dimension
-            # specific to BCOO behavior
-            A_bcoo = BCOO(
-                (A_bcoo.data.squeeze(), A_bcoo.indices.squeeze()), shape=A_bcoo.shape
-            )
+        callback_batched = A_bcoo.n_batch > 0
+        A_bcoo = collapse_broadcasted_bcoo(A_bcoo)
         A_bcoo = A_bcoo.sum_duplicates()  # required, otherwise cholespy fails
 
-        if b_jax.ndim == 0:
-            raise ValueError("Right-hand side must have at least one dimension.")
-
         operator_size = A_bcoo.shape[0]
-        if b_jax.shape[0] != operator_size:
-            raise ValueError(
-                "The first dimension of b must match the operator dimension."
-            )
-
-        b_flat_batch = b_jax.reshape((operator_size, -1))
+        b_flat_batch, rhs_shape = flatten_callback_rhs(
+            b_jax,
+            operator_size,
+            callback_batched,
+        )
         use_float64 = (
             b_flat_batch.dtype == jnp.float64 or A_bcoo.data.dtype == jnp.float64
         )
+        assert CholeskySolverD is not None
+        assert CholeskySolverF is not None
+        assert MatrixType is not None
         solver_cls = CholeskySolverD if use_float64 else CholeskySolverF
 
         # Initialize the Cholesky solver with CSR format
@@ -114,33 +116,37 @@ class CholmodSolver(AbstractLinearSolver):
             )
             solver.solve(b_host, x_host)
 
-        x = jnp.asarray(x_host, dtype=b_jax.dtype).reshape(b_jax.shape)
-        return x
+        x = jnp.asarray(x_host, dtype=b_jax.dtype)
+        return restore_callback_rhs(x, rhs_shape, callback_batched)
 
     def compute(
         self,
         state: _CholmodSolverState,
-        b_jax: PyTree[Array],
+        vector: PyTree[Array],
         options: dict[str, Any],
     ) -> tuple[PyTree[Array], RESULTS, dict[str, Any]]:
         """
         Compute the solution to the linear system.
         """
+        del options
+
         A_bcoo, packed_structures = state
-        result_shape = jax.ShapeDtypeStruct(b_jax.shape, b_jax.dtype)
+        result_shape = jax.ShapeDtypeStruct(vector.shape, vector.dtype)
 
         solution = eqx.filter_pure_callback(
             self._compute_host,
             A_bcoo,
-            b_jax,
+            vector,
             result_shape_dtypes=result_shape,
-            vmap_method="expand_dims",
+            vmap_method="broadcast_all",
         )
 
         solution = unravel_solution(solution, packed_structures)
         return solution, RESULTS.successful, {}
 
     def transpose(self, state: _CholmodSolverState, options: dict[str, Any]):
+        del options
+
         A_bcoo, packed_structures = state
         transposed_packed_structures = transpose_packed_structures(packed_structures)
         A_bcoo_T = A_bcoo.T
@@ -148,9 +154,14 @@ class CholmodSolver(AbstractLinearSolver):
         return transpose_state, {}
 
     def conj(self, state: _CholmodSolverState, options: dict[str, Any]):
-        A_bcoo, _, packed_structures = state
+        del options
+
+        A_bcoo, packed_structures = state
         A_conj = BCOO(
-            (jnp.conj(A_bcoo.data), A_bcoo.indices, A_bcoo.indptr), shape=A_bcoo.shape
+            (jnp.conj(A_bcoo.data), A_bcoo.indices),
+            shape=A_bcoo.shape,
+            indices_sorted=A_bcoo.indices_sorted,
+            unique_indices=A_bcoo.unique_indices,
         )
         conj_state = (A_conj, packed_structures)
         return conj_state, {}
