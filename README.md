@@ -67,7 +67,10 @@ distance_cmap.set_bad(color="lightgray")
 fig, axs = plt.subplots(1, 4, figsize=(12, 4))
 
 permeability_im = axs[0].imshow(permeability, cmap="gray", vmin=0, vmax=1)
-axs[0].axis("off")
+axs[0].set_xticks([])
+axs[0].set_yticks([])
+for spine in axs[0].spines.values():
+    spine.set_visible(True)
 axs[0].set_title("Permeability")
 fig.colorbar(permeability_im, ax=axs[0], shrink=0.2)
 
