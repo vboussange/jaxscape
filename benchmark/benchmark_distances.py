@@ -33,7 +33,7 @@ from jaxscape import EuclideanDistance, GridGraph, LCPDistance, ResistanceDistan
 
 try:
     import optimistix as optx
-except ImportError as exc:  # pragma: no cover - exercised in tests through the skip path
+except ImportError as exc:  # pragma: no cover - tested via the skip path
     optx = None
     OPTIMISTIX_IMPORT_ERROR = exc
 else:  # pragma: no cover - depends on optional extra
@@ -42,6 +42,8 @@ else:  # pragma: no cover - depends on optional extra
 
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
 DEFAULT_OUTPUT = RESULTS_DIR / "benchmark_results.json"
+MIN_PERMEABILITY = 1e-3
+INVERSE_OPT_TOLERANCE = 1e-5
 SCENARIOS = ("connectivity", "sensitivity", "inverse")
 
 
@@ -163,7 +165,9 @@ def _sample_coordinates(size: int) -> Array:
 
 
 def _inverse_loss(logits: Array, sample_coords: Array, target_distances: Array) -> Array:
-    permeability = jnn.sigmoid(logits) + jnp.array(1e-3, dtype=logits.dtype)
+    permeability = jnn.sigmoid(logits) + jnp.array(
+        MIN_PERMEABILITY, dtype=logits.dtype
+    )
     grid = GridGraph(grid=permeability, fun=edge_weight)
     predicted = ResistanceDistance()(grid, nodes=sample_coords)
     return jnp.mean((predicted - target_distances) ** 2)
@@ -184,7 +188,9 @@ def _run_inverse_problem(landscape: Array, max_steps: int) -> dict[str, Any]:
         GridGraph(landscape, fun=edge_weight), nodes=sample_coords
     )
     initial_logits = jnp.zeros_like(landscape)
-    solver = optx.LBFGS(rtol=1e-5, atol=1e-5)
+    solver = optx.LBFGS(
+        rtol=INVERSE_OPT_TOLERANCE, atol=INVERSE_OPT_TOLERANCE
+    )
     solution = optx.minimise(
         _inverse_loss,
         solver,
