@@ -66,7 +66,7 @@ python benchmark/benchmark_distances.py \
 ```
 
 The resulting JSON file can be committed separately, plotted in a notebook, or
-combined with timings collected from `Circuitscape.jl`, `conefor`, `samc`, or
+combined with timings collected from `Circuitscape.jl`, `Conefor`, `samc`, or
 other reference tools.
 
 ## Output format

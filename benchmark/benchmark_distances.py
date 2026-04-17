@@ -35,9 +35,9 @@ try:
     import optimistix as optx
 except ImportError as exc:  # pragma: no cover - tested via the skip path
     optx = None
-    OPTIMISTIX_IMPORT_ERROR = exc
+    _optimistix_import_error = exc
 else:  # pragma: no cover - depends on optional extra
-    OPTIMISTIX_IMPORT_ERROR = None
+    _optimistix_import_error = None
 
 
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
@@ -87,7 +87,11 @@ def _select_devices(device_names: Iterable[str]) -> list[tuple[str, jax.Device]]
         selected.append((device_name, devices[device_name][0]))
     if not selected:
         available = ", ".join(sorted(devices)) or "none"
-        msg = f"No requested JAX devices are available. Requested={tuple(device_names)!r}; available={available}."
+        requested = ", ".join(device_names)
+        msg = (
+            "No requested JAX devices are available. "
+            f"Requested={requested}; available={available}."
+        )
         raise RuntimeError(msg)
     return selected
 
@@ -192,7 +196,7 @@ def _run_inverse_problem(landscape: Array, max_steps: int) -> dict[str, Any]:
             "status": "skipped",
             "reason": (
                 "Optional dependency 'optimistix' is not installed. "
-                f"Original import error: {OPTIMISTIX_IMPORT_ERROR}"
+                f"Original import error: {_optimistix_import_error}"
             ),
         }
 
