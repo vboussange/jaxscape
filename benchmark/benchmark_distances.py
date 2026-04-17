@@ -315,7 +315,7 @@ def run_benchmarks(config: BenchmarkConfig) -> dict[str, Any]:
         landscapes = [(landscape, _create_quality(int(landscape.shape[0]), seed=config.seed))]
 
     results: dict[str, Any] = {
-        "config": asdict(config),
+        "config": json.loads(json.dumps(asdict(config))),
         "available_devices": {
             name: [str(device) for device in devices]
             for name, devices in available_devices().items()

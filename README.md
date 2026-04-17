@@ -88,6 +88,20 @@ But what's really cool about `JAXscape` is that you can autodiff through thoses 
 
 Comprehensive documentation is available at [https://vboussange.github.io/jaxscape](https://vboussange.github.io/jaxscape/)
 
+## Benchmarking
+
+`JAXScape` now ships with a reproducible benchmark harness at
+`/home/runner/work/jaxscape/jaxscape/benchmark/benchmark_distances.py`.
+It covers:
+
+- connectivity analysis workloads
+- sensitivity-analysis gradients
+- inverse landscape genetics with `Optimistix` when the optional dependency is installed
+
+The script writes JSON results so CPU/GPU runs can be compared directly, and it
+accepts a custom raster via `--landscape-path` for benchmarking external suites
+such as `BigTests` after converting the landscape to `.npy` or `.csv`.
+
 ## Features and roadmap 🚀
 See issues; most notably:
 
