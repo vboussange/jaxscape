@@ -47,6 +47,7 @@ from jaxscape import GridGraph
 from jaxscape import LCPDistance, ResistanceDistance, RSPDistance
 
 permeability = jnp.array(np.loadtxt("data/permeability.csv", delimiter=",")) + 0.001
+barriers = np.asarray(permeability <= 0.1)
 
 # Create a grid graph where edge weights are the average permeability of the two nodes
 grid = GridGraph(grid=permeability, fun=lambda x, y: (x + y) / 2)
@@ -60,22 +61,31 @@ distances = {
     "RSP distance": RSPDistance(theta=0.01, cost=lambda x: -jnp.log(x)),
 }
 
-fig, axs = plt.subplots(1, 3, figsize=(10, 4))
-for ax, (title, distance) in zip(axs, distances.items()):
+distance_cmap = plt.cm.magma.copy()
+distance_cmap.set_bad(color="lightgray")
+
+fig, axs = plt.subplots(1, 4, figsize=(12, 4))
+
+permeability_im = axs[0].imshow(permeability, cmap="gray", vmin=0, vmax=1)
+axs[0].axis("off")
+axs[0].set_title("Permeability")
+fig.colorbar(permeability_im, ax=axs[0], shrink=0.2)
+
+for ax, (title, distance) in zip(axs[1:], distances.items()):
     # Compute distances from all nodes to the source
     dist_to_node = distance(grid, source)
 
-    # Convert from node values to 2D array and mask low-permeability areas
-    dist_array = grid.node_values_to_array(dist_to_node.ravel())
-    dist_array = dist_array * (permeability > 0.1)  # Mask barriers
+    # Convert from node values to a 2D array and hide barrier cells
+    dist_array = np.asarray(grid.node_values_to_array(dist_to_node.ravel()))
+    dist_array = np.ma.masked_where(barriers, dist_array)
     
     # Plotting
-    im = ax.imshow(dist_array, cmap="magma")
+    im = ax.imshow(dist_array, cmap=distance_cmap)
     ax.axis("off")
     ax.set_title(title)
     fig.colorbar(im, ax=ax, shrink=0.2)
 
-fig.suptitle("Distance to top left pixel")
+fig.suptitle("Permeability and distance to the top-left pixel")
 plt.tight_layout()
 plt.show()
 ```
