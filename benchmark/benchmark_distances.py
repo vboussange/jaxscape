@@ -33,7 +33,7 @@ from jaxscape import EuclideanDistance, GridGraph, LCPDistance, ResistanceDistan
 
 try:
     import optimistix as optx
-except ImportError as exc:  # pragma: no cover - tested via the skip path
+except ImportError as exc:
     optx = None
     _optimistix_import_error = exc
 else:  # pragma: no cover - depends on optional extra
@@ -43,7 +43,8 @@ else:  # pragma: no cover - depends on optional extra
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
 DEFAULT_OUTPUT = RESULTS_DIR / "benchmark_results.json"
 MIN_PERMEABILITY = 1e-3
-INVERSE_OPT_TOLERANCE = 1e-5
+INVERSE_RTOL = 1e-5
+INVERSE_ATOL = 1e-5
 SCENARIOS = ("connectivity", "sensitivity", "inverse")
 
 
@@ -205,9 +206,7 @@ def _run_inverse_problem(landscape: Array, max_steps: int) -> dict[str, Any]:
         GridGraph(landscape, fun=edge_weight), nodes=sample_coords
     )
     initial_logits = jnp.zeros_like(landscape)
-    solver = optx.LBFGS(
-        rtol=INVERSE_OPT_TOLERANCE, atol=INVERSE_OPT_TOLERANCE
-    )
+    solver = optx.LBFGS(rtol=INVERSE_RTOL, atol=INVERSE_ATOL)
     solution = optx.minimise(
         _inverse_loss,
         solver,

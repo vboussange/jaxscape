@@ -60,7 +60,7 @@ def test_run_benchmarks_connectivity_and_sensitivity(tmp_path):
     assert {run["scenario"] for run in sensitivity_results["runs"]} == {"sensitivity"}
 
 
-def test_run_benchmarks_inverse_handles_optional_dependency(tmp_path):
+def test_run_benchmark_inverse_handles_optional_dependency(tmp_path):
     output_path = tmp_path / "inverse-benchmark-results.json"
     subprocess.run(
         [
