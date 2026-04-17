@@ -41,7 +41,9 @@ There is currently no combined JAXScape extra for `CuDSSSolver`, because the
 required `spineax` installation depends on your CUDA setup.
 
 !!! info "CI/CD coverage"
-    These optional solvers are not included in the standard CI test suite.
+    `CuDSSSolver` is covered in CI through CPU-safe mocked tests. The native
+    optional backends (`cholespy`, `pyamg`, and GPU-backed `spineax`) are not
+    installed in the standard CI environment.
 
 ::: jaxscape.solvers.cholmodsolver.CholmodSolver
     options:
