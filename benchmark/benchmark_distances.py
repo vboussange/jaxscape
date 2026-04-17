@@ -48,6 +48,7 @@ SCENARIOS = ("connectivity", "sensitivity", "inverse")
 
 
 def edge_weight(x: Array, y: Array) -> Array:
+    """Average adjacent node values to obtain an undirected edge weight."""
     return (x + y) / 2
 
 
@@ -151,6 +152,11 @@ sensitivity_score = eqx.filter_jit(eqx.filter_grad(_connectivity_score))
 
 
 def _sample_coordinates(size: int) -> Array:
+    """Return corner and center sampling points for the inverse benchmark.
+
+    ``jnp.unique`` removes duplicates for very small rasters where the center can
+    coincide with one of the corners.
+    """
     candidates = jnp.array(
         [
             [0, 0],
@@ -165,6 +171,13 @@ def _sample_coordinates(size: int) -> Array:
 
 
 def _inverse_loss(logits: Array, sample_coords: Array, target_distances: Array) -> Array:
+    """Mean-squared resistance-distance error for inverse landscape genetics.
+
+    The optimization variable is an unconstrained logit raster. It is mapped to a
+    strictly positive permeability raster with a sigmoid transform and a small
+    numerical floor before resistance distances are compared against the target
+    matrix.
+    """
     permeability = jnn.sigmoid(logits) + jnp.array(
         MIN_PERMEABILITY, dtype=logits.dtype
     )
