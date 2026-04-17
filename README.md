@@ -91,7 +91,7 @@ Comprehensive documentation is available at [https://vboussange.github.io/jaxsca
 ## Benchmarking
 
 `JAXScape` now ships with a reproducible benchmark harness at
-`/home/runner/work/jaxscape/jaxscape/benchmark/benchmark_distances.py`.
+`benchmark/benchmark_distances.py`.
 It covers:
 
 - connectivity analysis workloads

@@ -42,8 +42,11 @@ else:  # pragma: no cover - depends on optional extra
 
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
 DEFAULT_OUTPUT = RESULTS_DIR / "benchmark_results.json"
-EDGE_WEIGHT = lambda x, y: (x + y) / 2
 SCENARIOS = ("connectivity", "sensitivity", "inverse")
+
+
+def edge_weight(x: Array, y: Array) -> Array:
+    return (x + y) / 2
 
 
 @dataclass(frozen=True)
@@ -133,7 +136,7 @@ def _connectivity_score(
     distance,
     dispersal_radius: Array,
 ) -> Array:
-    grid = GridGraph(grid=permeability_raster, fun=EDGE_WEIGHT)
+    grid = GridGraph(grid=permeability_raster, fun=edge_weight)
     quality = grid.array_to_node_values(quality_raster)
     dist = distance(grid)
     kernel = jnp.exp(-dist / dispersal_radius)
@@ -161,7 +164,7 @@ def _sample_coordinates(size: int) -> Array:
 
 def _inverse_loss(logits: Array, sample_coords: Array, target_distances: Array) -> Array:
     permeability = jnn.sigmoid(logits) + jnp.array(1e-3, dtype=logits.dtype)
-    grid = GridGraph(grid=permeability, fun=EDGE_WEIGHT)
+    grid = GridGraph(grid=permeability, fun=edge_weight)
     predicted = ResistanceDistance()(grid, nodes=sample_coords)
     return jnp.mean((predicted - target_distances) ** 2)
 
@@ -178,7 +181,7 @@ def _run_inverse_problem(landscape: Array, max_steps: int) -> dict[str, Any]:
 
     sample_coords = _sample_coordinates(landscape.shape[0])
     target_distances = ResistanceDistance()(
-        GridGraph(landscape, fun=EDGE_WEIGHT), nodes=sample_coords
+        GridGraph(landscape, fun=edge_weight), nodes=sample_coords
     )
     initial_logits = jnp.zeros_like(landscape)
     solver = optx.LBFGS(rtol=1e-5, atol=1e-5)
