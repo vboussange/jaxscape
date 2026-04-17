@@ -88,6 +88,10 @@ But what's really cool about `JAXscape` is that you can autodiff through thoses 
 
 Comprehensive documentation is available at [https://vboussange.github.io/jaxscape](https://vboussange.github.io/jaxscape/)
 
+## Benchmarking
+
+<div align="center"><img src="docs/assets/benchmark_scorecard.png" alt="Benchmark scorecard" width="900"></div>
+
 ## Features and roadmap 🚀
 See issues; most notably:
 
