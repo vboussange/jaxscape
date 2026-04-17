@@ -1,234 +1,144 @@
-"""Reusable benchmark suite for JAXScape workloads.
+"""Cross-tool benchmark orchestration for JAXScape distance workloads.
 
-The script benchmarks three workloads discussed in the project roadmap:
-
-1. connectivity analysis (forward pass)
-2. sensitivity analysis (gradient with respect to permeability)
-3. inverse landscape genetics (optional, requires ``optimistix``)
-
-Results are written to JSON so they can be compared across CPU/GPU runs and,
-when desired, against external tools on shared benchmark landscapes.
+This script intentionally avoids a large CLI surface. Edit the constants below or
+run `benchmark/run_benchmarks.sh` to regenerate the benchmark artifacts that are
+committed to the repository and visualised in the documentation.
 """
 
 from __future__ import annotations
 
-import argparse
+import csv
 import json
+import os
+import shutil
 import statistics
+import subprocess
+import sys
+import tempfile
+import textwrap
 import time
-from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
+
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
 
 import equinox as eqx
 import jax
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jr
-import numpy as np
-from jax import Array
 
-from jaxscape import EuclideanDistance, GridGraph, LCPDistance, ResistanceDistance, RSPDistance
+from jaxscape import (
+    EuclideanDistance,
+    GridGraph,
+    LCPDistance,
+    ResistanceDistance,
+)
 
 try:
     import optimistix as optx
-except ImportError as exc:
+except ImportError:
     optx = None
-    _optimistix_import_error = exc
-else:  # pragma: no cover - depends on optional extra
+    _optimistix_import_error = "optimistix is not installed"
+else:
     _optimistix_import_error = None
 
 
-RESULTS_DIR = Path(__file__).resolve().parent / "results"
-DEFAULT_OUTPUT = RESULTS_DIR / "benchmark_results.json"
+BENCHMARK_DIR = ROOT / "benchmark"
+RESULTS_DIR = BENCHMARK_DIR / "results"
+RESULTS_JSON = RESULTS_DIR / "benchmark_results.json"
+RESULTS_CSV = RESULTS_DIR / "benchmark_results.csv"
+CIRCUITSCAPE_SCRIPT = BENCHMARK_DIR / "external" / "circuitscape_resistance.jl"
+SAMC_SCRIPT = BENCHMARK_DIR / "external" / "samc_sensitivity.R"
+RESISTANCE_GA_SCRIPT = BENCHMARK_DIR / "external" / "resistancega_inverse.R"
+CONEFOR_SCRIPT = BENCHMARK_DIR / "external" / "conefor_runner.sh"
+REPEATS = 3
+CPU_DEVICE = jax.devices("cpu")[0]
 MIN_PERMEABILITY = 1e-3
-INVERSE_RTOL = 1e-5
-INVERSE_ATOL = 1e-5
-SCENARIOS = ("connectivity", "sensitivity", "inverse")
 
 
-def edge_weight(x: Array, y: Array) -> Array:
+@dataclass(frozen=True)
+class BenchmarkCase:
+    name: str
+    task: str
+    raster: list[list[float]]
+    points: list[tuple[int, int]]
+    repeats: int = REPEATS
+
+
+@dataclass(frozen=True)
+class BenchmarkRecord:
+    task: str
+    tool: str
+    scenario: str
+    status: str
+    median_seconds: float | None
+    timings_seconds: list[float]
+    note: str = ""
+
+
+def create_landscape(seed: int = 0, size: int = 6) -> jax.Array:
+    key = jr.PRNGKey(seed)
+    base = jr.uniform(key, (size, size), minval=0.3, maxval=1.0)
+    ridge = jnp.exp(-3 * jnp.linspace(-1.0, 1.0, size) ** 2)
+    barrier = 0.4 * jnp.outer(ridge, jnp.ones(size))
+    return jnp.clip(base - barrier, 0.15, 1.0)
+
+
+def benchmark_cases() -> dict[str, BenchmarkCase]:
+    raster = create_landscape()
+    raster_as_lists = [[float(value) for value in row] for row in raster.tolist()]
+    points = [(0, 0), (0, 5), (5, 0), (5, 5), (3, 3)]
+    return {
+        "resistance": BenchmarkCase(
+            name="synthetic_resistance",
+            task="resistance_distance",
+            raster=raster_as_lists,
+            points=points,
+        ),
+        "lcp": BenchmarkCase(
+            name="synthetic_lcp",
+            task="least_cost_path",
+            raster=raster_as_lists,
+            points=points,
+        ),
+        "sensitivity": BenchmarkCase(
+            name="synthetic_sensitivity",
+            task="sensitivity_analysis",
+            raster=raster_as_lists,
+            points=points,
+        ),
+        "inverse": BenchmarkCase(
+            name="synthetic_inverse",
+            task="inverse_landscape_genetics",
+            raster=raster_as_lists,
+            points=points,
+        ),
+    }
+
+
+CASES = benchmark_cases()
+
+
+def edge_weight(x: jax.Array, y: jax.Array) -> jax.Array:
     """Average adjacent node values to obtain an undirected edge weight."""
     return (x + y) / 2
 
 
-@dataclass(frozen=True)
-class BenchmarkConfig:
-    grid_sizes: tuple[int, ...] = (8, 12, 16)
-    repeats: int = 3
-    seed: int = 0
-    dispersal_radius: float = 5.0
-    distance_name: str = "resistance"
-    device_names: tuple[str, ...] = ("cpu",)
-    scenario_names: tuple[str, ...] = ("connectivity", "sensitivity", "inverse")
-    inverse_max_steps: int = 25
-    landscape_path: str | None = None
-    output_path: str = str(DEFAULT_OUTPUT)
-
-
-def available_devices() -> dict[str, list[jax.Device]]:
-    devices: dict[str, list[jax.Device]] = {}
-    for platform in ("cpu", "gpu", "tpu"):
-        try:
-            platform_devices = list(jax.devices(platform))
-        except RuntimeError:
-            platform_devices = []
-        if platform_devices:
-            devices[platform] = platform_devices
-    return devices
-
-
-def _select_devices(device_names: Iterable[str]) -> list[tuple[str, jax.Device]]:
-    devices = available_devices()
-    selected: list[tuple[str, jax.Device]] = []
-    for device_name in device_names:
-        if device_name not in devices:
-            continue
-        selected.append((device_name, devices[device_name][0]))
-    if not selected:
-        available = ", ".join(sorted(devices)) or "none"
-        requested = ", ".join(device_names)
-        msg = (
-            "No requested JAX devices are available. "
-            f"Requested={requested}; available={available}."
-        )
-        raise RuntimeError(msg)
-    return selected
-
-
-def _load_landscape(path: str | Path) -> Array:
-    landscape_path = Path(path)
-    if landscape_path.suffix == ".npy":
-        raster = np.load(landscape_path)
-    else:
-        raster = np.loadtxt(landscape_path, delimiter=",")
-    if raster.ndim != 2:
-        raise ValueError(f"Expected a 2D raster, got shape {raster.shape}.")
+def as_array(raster: list[list[float]]) -> jax.Array:
     return jnp.asarray(raster, dtype=jnp.float32)
 
 
-def create_landscape(size: int, seed: int = 0) -> Array:
-    key = jr.PRNGKey(seed)
-    base = jr.uniform(key, (size, size), minval=0.2, maxval=1.0)
-    x = jnp.linspace(-1.0, 1.0, size)
-    ridge = jnp.exp(-4.0 * x**2)
-    barrier = 0.35 * jnp.outer(ridge, jnp.ones_like(ridge))
-    landscape = jnp.clip(base - barrier, 0.05, 1.0)
-    return landscape.astype(jnp.float32)
+def as_point_array(points: list[tuple[int, int]]) -> jax.Array:
+    return jnp.asarray(points, dtype=jnp.int32)
 
 
-def _create_quality(size: int, seed: int) -> Array:
-    key = jr.PRNGKey(seed + 1)
-    quality = jr.uniform(key, (size, size), minval=0.5, maxval=1.0)
-    return quality.astype(jnp.float32)
-
-
-def _distance_from_name(name: str):
-    if name == "euclidean":
-        return EuclideanDistance()
-    if name == "lcp":
-        return LCPDistance()
-    if name == "resistance":
-        return ResistanceDistance()
-    if name == "rsp":
-        return RSPDistance(theta=jnp.array(1e-3, dtype=jnp.float32))
-    raise ValueError(
-        f"Unknown distance {name!r}. Expected one of ('euclidean', 'lcp', 'resistance', 'rsp')."
-    )
-
-
-def _connectivity_score(
-    permeability_raster: Array,
-    quality_raster: Array,
-    distance,
-    dispersal_radius: Array,
-) -> Array:
-    grid = GridGraph(grid=permeability_raster, fun=edge_weight)
-    quality = grid.array_to_node_values(quality_raster)
-    dist = distance(grid)
-    kernel = jnp.exp(-dist / dispersal_radius)
-    kernel = kernel.at[jnp.diag_indices_from(kernel)].set(0)
-    return quality @ kernel @ quality.T
-
-
-connectivity_score = eqx.filter_jit(_connectivity_score)
-sensitivity_score = eqx.filter_jit(eqx.filter_grad(_connectivity_score))
-
-
-def _sample_coordinates(size: int) -> Array:
-    """Return corner and center sampling points for the inverse benchmark.
-
-    ``jnp.unique`` removes duplicates for very small rasters where the center can
-    coincide with one of the corners.
-    """
-    candidates = jnp.array(
-        [
-            [0, 0],
-            [0, size - 1],
-            [size - 1, 0],
-            [size - 1, size - 1],
-            [size // 2, size // 2],
-        ],
-        dtype=jnp.int32,
-    )
-    return jnp.unique(candidates, axis=0)
-
-
-def _inverse_loss(logits: Array, sample_coords: Array, target_distances: Array) -> Array:
-    """Mean-squared resistance-distance error for inverse landscape genetics.
-
-    The optimization variable is an unconstrained logit raster. It is mapped to a
-    strictly positive permeability raster with a sigmoid transform and a small
-    numerical floor before resistance distances are compared against the target
-    matrix.
-    """
-    permeability = jnn.sigmoid(logits) + jnp.array(
-        MIN_PERMEABILITY, dtype=logits.dtype
-    )
-    grid = GridGraph(grid=permeability, fun=edge_weight)
-    predicted = ResistanceDistance()(grid, nodes=sample_coords)
-    return jnp.mean((predicted - target_distances) ** 2)
-
-
-def _run_inverse_problem(landscape: Array, max_steps: int) -> dict[str, Any]:
-    if optx is None:
-        return {
-            "status": "skipped",
-            "reason": (
-                "Optional dependency 'optimistix' is not installed. "
-                f"Original import error: {_optimistix_import_error}"
-            ),
-        }
-
-    sample_coords = _sample_coordinates(landscape.shape[0])
-    target_distances = ResistanceDistance()(
-        GridGraph(landscape, fun=edge_weight), nodes=sample_coords
-    )
-    initial_logits = jnp.zeros_like(landscape)
-    solver = optx.LBFGS(rtol=INVERSE_RTOL, atol=INVERSE_ATOL)
-    solution = optx.minimise(
-        _inverse_loss,
-        solver,
-        initial_logits,
-        args=(sample_coords, target_distances),
-        max_steps=max_steps,
-    )
-    return {
-        "status": "ok",
-        "final_loss": float(
-            _inverse_loss(solution.value, sample_coords, target_distances)
-        ),
-        "num_steps": int(solution.stats["num_steps"]),
-    }
-
-
-def _measure_runtime(
-    fun: Callable[..., Any], *args: Any, repeats: int
-) -> tuple[list[float], Any]:
+def measure_runtime(fun, *args, repeats: int) -> tuple[list[float], Any]:
     result = fun(*args)
     jax.block_until_ready(result)
-
     timings: list[float] = []
     for _ in range(repeats):
         start = time.perf_counter()
@@ -238,205 +148,296 @@ def _measure_runtime(
     return timings, result
 
 
-def _to_platform_arrays(device: jax.Device, *arrays: Array) -> list[Array]:
-    return [jax.device_put(array, device) for array in arrays]
+@eqx.filter_jit
+def _jaxscape_resistance(permeability: jax.Array, nodes: jax.Array) -> jax.Array:
+    grid = GridGraph(permeability, fun=edge_weight)
+    return ResistanceDistance()(grid, nodes=nodes)
 
 
-def _run_connectivity_case(
-    landscape: Array, quality: Array, config: BenchmarkConfig, device_name: str, device: jax.Device
-) -> dict[str, Any]:
-    distance = _distance_from_name(config.distance_name)
-    permeability_device, quality_device = _to_platform_arrays(device, landscape, quality)
-    dispersal_radius = jax.device_put(
-        jnp.array(config.dispersal_radius, dtype=jnp.float32), device
+@eqx.filter_jit
+def _jaxscape_lcp(permeability: jax.Array, nodes: jax.Array) -> jax.Array:
+    grid = GridGraph(permeability, fun=edge_weight)
+    return LCPDistance()(grid, nodes=nodes)
+
+
+def run_jaxscape_resistance(case: BenchmarkCase) -> BenchmarkRecord:
+    permeability = jax.device_put(as_array(case.raster), CPU_DEVICE)
+    nodes = jax.device_put(as_point_array(case.points), CPU_DEVICE)
+    timings, _ = measure_runtime(_jaxscape_resistance, permeability, nodes, repeats=case.repeats)
+    return BenchmarkRecord(case.task, "JAXScape", case.name, "ok", statistics.median(timings), timings)
+
+
+def run_jaxscape_lcp(case: BenchmarkCase) -> BenchmarkRecord:
+    permeability = jax.device_put(as_array(case.raster), CPU_DEVICE)
+    nodes = jax.device_put(as_point_array(case.points), CPU_DEVICE)
+    timings, _ = measure_runtime(_jaxscape_lcp, permeability, nodes, repeats=case.repeats)
+    return BenchmarkRecord(case.task, "JAXScape", case.name, "ok", statistics.median(timings), timings)
+
+
+def _sensitivity_objective(quality_raster: jax.Array) -> jax.Array:
+    distance = EuclideanDistance()
+    grid = GridGraph(quality_raster, fun=edge_weight)
+    quality = grid.array_to_node_values(quality_raster)
+    dist = distance(grid)
+    kernel = jnp.exp(-dist / 3.0)
+    kernel = kernel.at[jnp.diag_indices_from(kernel)].set(0)
+    return quality @ kernel @ quality.T
+
+
+run_sensitivity_problem = eqx.filter_jit(eqx.filter_grad(_sensitivity_objective))
+
+
+def run_jaxscape_sensitivity(case: BenchmarkCase) -> BenchmarkRecord:
+    quality = jax.device_put(as_array(case.raster), CPU_DEVICE)
+    timings, _ = measure_runtime(run_sensitivity_problem, quality, repeats=case.repeats)
+    return BenchmarkRecord(case.task, "JAXScape", case.name, "ok", statistics.median(timings), timings)
+
+
+def _sample_coordinates(size: int) -> jax.Array:
+    candidates = jnp.array(
+        [[0, 0], [0, size - 1], [size - 1, 0], [size - 1, size - 1], [size // 2, size // 2]],
+        dtype=jnp.int32,
     )
-    timings, result = _measure_runtime(
-        connectivity_score,
-        permeability_device,
-        quality_device,
-        distance,
-        dispersal_radius,
-        repeats=config.repeats,
-    )
-    return {
-        "scenario": "connectivity",
-        "device": device_name,
-        "distance": config.distance_name,
-        "grid_shape": list(map(int, landscape.shape)),
-        "timings_seconds": timings,
-        "median_seconds": statistics.median(timings),
-        "connectivity": float(result),
-    }
+    return jnp.unique(candidates, axis=0)
 
 
-def _run_sensitivity_case(
-    landscape: Array, quality: Array, config: BenchmarkConfig, device_name: str, device: jax.Device
-) -> dict[str, Any]:
-    distance = _distance_from_name(config.distance_name)
-    permeability_device, quality_device = _to_platform_arrays(device, landscape, quality)
-    dispersal_radius = jax.device_put(
-        jnp.array(config.dispersal_radius, dtype=jnp.float32), device
-    )
-    timings, gradient = _measure_runtime(
-        sensitivity_score,
-        permeability_device,
-        quality_device,
-        distance,
-        dispersal_radius,
-        repeats=config.repeats,
-    )
-    return {
-        "scenario": "sensitivity",
-        "device": device_name,
-        "distance": config.distance_name,
-        "grid_shape": list(map(int, landscape.shape)),
-        "timings_seconds": timings,
-        "median_seconds": statistics.median(timings),
-        "gradient_norm": float(jnp.linalg.norm(gradient)),
-    }
+def _inverse_loss(logits: jax.Array, sample_coords: jax.Array, target_distances: jax.Array) -> jax.Array:
+    permeability = jnn.sigmoid(logits) + jnp.array(MIN_PERMEABILITY, dtype=logits.dtype)
+    grid = GridGraph(grid=permeability, fun=edge_weight)
+    predicted = ResistanceDistance()(grid, nodes=sample_coords)
+    return jnp.mean((predicted - target_distances) ** 2)
 
 
-def _run_inverse_case(
-    landscape: Array, config: BenchmarkConfig, device_name: str, device: jax.Device
-) -> dict[str, Any]:
-    landscape_device = jax.device_put(landscape, device)
-    timings, result = _measure_runtime(
-        _run_inverse_problem, landscape_device, config.inverse_max_steps, repeats=config.repeats
-    )
-    payload = {
-        "scenario": "inverse",
-        "device": device_name,
-        "distance": "resistance",
-        "grid_shape": list(map(int, landscape.shape)),
-        "timings_seconds": timings,
-        "median_seconds": statistics.median(timings),
-    }
-    payload.update(result)
-    return payload
+def run_jaxscape_inverse(case: BenchmarkCase) -> BenchmarkRecord:
+    if optx is None:
+        return BenchmarkRecord(case.task, "JAXScape + Optimistix", case.name, "skipped", None, [], _optimistix_import_error or "optimistix missing")
+
+    landscape = jax.device_put(as_array(case.raster), CPU_DEVICE)
+    sample_coords = jax.device_put(_sample_coordinates(landscape.shape[0]), CPU_DEVICE)
+    target_distances = ResistanceDistance()(GridGraph(landscape, fun=edge_weight), nodes=sample_coords)
+    solver = optx.LBFGS(rtol=1e-5, atol=1e-5)
+
+    def objective(logits: jax.Array, args: tuple[jax.Array, jax.Array]) -> jax.Array:
+        coords, targets = args
+        return _inverse_loss(logits, coords, targets)
+
+    def solve(problem_landscape: jax.Array) -> jax.Array:
+        init_logits = jnp.zeros_like(problem_landscape)
+        solution = optx.minimise(
+            objective,
+            solver,
+            init_logits,
+            args=(sample_coords, target_distances),
+            max_steps=8,
+            throw=False,
+        )
+        return _inverse_loss(solution.value, sample_coords, target_distances)
+
+    timings, _ = measure_runtime(solve, landscape, repeats=case.repeats)
+    return BenchmarkRecord(case.task, "JAXScape + Optimistix", case.name, "ok", statistics.median(timings), timings)
 
 
-def _scenario_runner(name: str) -> Callable[..., dict[str, Any]]:
-    if name == "connectivity":
-        return _run_connectivity_case
-    if name == "sensitivity":
-        return _run_sensitivity_case
-    if name == "inverse":
-        return _run_inverse_case
-    raise ValueError(f"Unknown scenario {name!r}.")
-
-
-def run_benchmarks(config: BenchmarkConfig) -> dict[str, Any]:
-    selected_devices = _select_devices(config.device_names)
-    if config.landscape_path is None:
-        landscapes = [
-            (
-                create_landscape(size, seed=config.seed),
-                _create_quality(size, seed=config.seed),
-            )
-            for size in config.grid_sizes
+def ascii_grid_from_raster(raster: list[list[float]], nodata: float = -9999.0) -> str:
+    rows = [" ".join(f"{value:.6f}" for value in row) for row in raster]
+    return "\n".join(
+        [
+            f"ncols         {len(raster[0])}",
+            f"nrows         {len(raster)}",
+            "xllcorner     0",
+            "yllcorner     0",
+            "cellsize      1",
+            f"NODATA_value  {nodata:g}",
+            *rows,
         ]
-    else:
-        landscape = _load_landscape(config.landscape_path)
-        landscapes = [(landscape, _create_quality(int(landscape.shape[0]), seed=config.seed))]
+    )
 
-    results: dict[str, Any] = {
-        "config": json.loads(json.dumps(asdict(config))),
-        "available_devices": {
-            name: [str(device) for device in devices]
-            for name, devices in available_devices().items()
+
+def ascii_points_from_points(shape: tuple[int, int], points: list[tuple[int, int]], nodata: int = -9999) -> str:
+    grid = [[nodata for _ in range(shape[1])] for _ in range(shape[0])]
+    for index, (i, j) in enumerate(points, start=1):
+        grid[i][j] = index
+    rows = [" ".join(str(value) for value in row) for row in grid]
+    return "\n".join(
+        [
+            f"ncols         {shape[1]}",
+            f"nrows         {shape[0]}",
+            "xllcorner     0",
+            "yllcorner     0",
+            "cellsize      1",
+            f"NODATA_value  {nodata}",
+            *rows,
+        ]
+    )
+
+
+def circuitscape_ini(cellmap: Path, points: Path, output_prefix: Path) -> str:
+    return textwrap.dedent(
+        f"""
+        [Options for advanced mode]
+        ground_file_is_resistances = False
+        source_file = None
+        remove_src_or_gnd = keepall
+        ground_file = None
+        use_unit_currents = False
+        use_direct_grounds = False
+
+        [Calculation options]
+        low_memory_mode = False
+        solver = cg+amg
+        print_timings = False
+
+        [Options for pairwise and one-to-all and all-to-one modes]
+        included_pairs_file = None
+        use_included_pairs = False
+        point_file = {points}
+
+        [Output options]
+        write_cum_cur_map_only = False
+        log_transform_maps = False
+        output_file = {output_prefix}
+        write_max_cur_maps = False
+        write_volt_maps = False
+        set_null_currents_to_nodata = False
+        set_null_voltages_to_nodata = False
+        compress_grids = False
+        write_cur_maps = False
+
+        [Short circuit regions (aka polygons)]
+        use_polygons = False
+        polygon_file = None
+
+        [Connection scheme for raster habitat data]
+        connect_four_neighbors_only = True
+        connect_using_avg_resistances = True
+
+        [Habitat raster or graph]
+        habitat_file = {cellmap}
+        habitat_map_is_resistances = True
+
+        [Options for one-to-all and all-to-one modes]
+        use_variable_source_strengths = False
+        variable_source_file = None
+
+        [Version]
+        version = unknown
+
+        [Mask file]
+        use_mask = False
+        mask_file = None
+
+        [Circuitscape mode]
+        data_type = raster
+        scenario = pairwise
+        """
+    ).strip() + "\n"
+
+
+def run_circuitscape_resistance(case: BenchmarkCase) -> BenchmarkRecord:
+    if shutil.which("julia") is None:
+        return BenchmarkRecord(case.task, "Circuitscape.jl", case.name, "skipped", None, [], "Julia is not available")
+
+    with tempfile.TemporaryDirectory(prefix="jaxscape-circuitscape-") as tmpdir:
+        workspace = Path(tmpdir)
+        cellmap = workspace / "cellmap.asc"
+        points = workspace / "points.asc"
+        output_prefix = workspace / "result"
+        ini = workspace / "config.ini"
+        output = workspace / "circuitscape.json"
+        cellmap.write_text(ascii_grid_from_raster(case.raster))
+        points.write_text(ascii_points_from_points((len(case.raster), len(case.raster[0])), case.points))
+        ini.write_text(circuitscape_ini(cellmap, points, output_prefix))
+        subprocess.run(
+            ["julia", str(CIRCUITSCAPE_SCRIPT), str(ini), str(case.repeats), str(output)],
+            check=True,
+        )
+        payload = json.loads(output.read_text())
+    return BenchmarkRecord(case.task, "Circuitscape.jl", case.name, payload["status"], payload.get("median_seconds"), payload.get("timings_seconds", []), payload.get("note", ""))
+
+
+def skip_record(task: str, tool: str, scenario: str, note: str) -> BenchmarkRecord:
+    return BenchmarkRecord(task, tool, scenario, "skipped", None, [], note)
+
+
+def run_conefor_placeholder(case: BenchmarkCase, task_label: str) -> BenchmarkRecord:
+    conefor_bin = os.environ.get("CONEFOR_BIN")
+    if not conefor_bin:
+        return skip_record(task_label, "Conefor", case.name, "Set CONEFOR_BIN to enable the Conefor adapter.")
+    output = Path(tempfile.mkdtemp(prefix="jaxscape-conefor-")) / "conefor.json"
+    subprocess.run([str(CONEFOR_SCRIPT), conefor_bin, task_label, str(output)], check=True)
+    payload = json.loads(output.read_text())
+    return BenchmarkRecord(task_label, "Conefor", case.name, payload["status"], payload.get("median_seconds"), payload.get("timings_seconds", []), payload.get("note", ""))
+
+
+def run_samc_sensitivity(case: BenchmarkCase) -> BenchmarkRecord:
+    rscript = shutil.which("Rscript")
+    if rscript is None:
+        return skip_record(case.task, "samc", case.name, "Rscript is not installed in this environment.")
+    output = Path(tempfile.mkdtemp(prefix="jaxscape-samc-")) / "samc.json"
+    raster_json = Path(tempfile.mkdtemp(prefix="jaxscape-samc-input-")) / "raster.json"
+    raster_json.write_text(json.dumps(case.raster))
+    subprocess.run([rscript, str(SAMC_SCRIPT), str(raster_json), str(case.repeats), str(output)], check=True)
+    payload = json.loads(output.read_text())
+    return BenchmarkRecord(case.task, "samc", case.name, payload["status"], payload.get("median_seconds"), payload.get("timings_seconds", []), payload.get("note", ""))
+
+
+def run_resistancega_inverse(case: BenchmarkCase) -> BenchmarkRecord:
+    rscript = shutil.which("Rscript")
+    if rscript is None:
+        return skip_record(case.task, "ResistanceGA", case.name, "Rscript is not installed in this environment.")
+    output = Path(tempfile.mkdtemp(prefix="jaxscape-resistancega-")) / "resistancega.json"
+    raster_json = Path(tempfile.mkdtemp(prefix="jaxscape-resistancega-input-")) / "raster.json"
+    raster_json.write_text(json.dumps(case.raster))
+    subprocess.run([rscript, str(RESISTANCE_GA_SCRIPT), str(raster_json), str(case.repeats), str(output)], check=True)
+    payload = json.loads(output.read_text())
+    return BenchmarkRecord(case.task, "ResistanceGA", case.name, payload["status"], payload.get("median_seconds"), payload.get("timings_seconds", []), payload.get("note", ""))
+
+
+def collect_results() -> list[BenchmarkRecord]:
+    resistance_case = CASES["resistance"]
+    lcp_case = CASES["lcp"]
+    sensitivity_case = CASES["sensitivity"]
+    inverse_case = CASES["inverse"]
+    return [
+        run_jaxscape_resistance(resistance_case),
+        run_circuitscape_resistance(resistance_case),
+        run_conefor_placeholder(resistance_case, resistance_case.task),
+        run_jaxscape_lcp(lcp_case),
+        run_conefor_placeholder(lcp_case, lcp_case.task),
+        run_jaxscape_sensitivity(sensitivity_case),
+        run_samc_sensitivity(sensitivity_case),
+        run_jaxscape_inverse(inverse_case),
+        run_resistancega_inverse(inverse_case),
+    ]
+
+
+def write_results(records: list[BenchmarkRecord]) -> None:
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "environment": {
+            "python": shutil.which("python") or "python",
+            "julia": shutil.which("julia"),
+            "rscript": shutil.which("Rscript"),
+            "repeats": REPEATS,
         },
-        "runs": [],
+        "records": [asdict(record) for record in records],
     }
-
-    for scenario_name in config.scenario_names:
-        runner = _scenario_runner(scenario_name)
-        for landscape, quality in landscapes:
-            for device_name, device in selected_devices:
-                if scenario_name == "inverse":
-                    run = runner(landscape, config, device_name, device)
-                else:
-                    run = runner(landscape, quality, config, device_name, device)
-                results["runs"].append(run)
-
-    output_path = Path(config.output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(results, indent=2))
-    return results
-
-
-def _parse_args() -> BenchmarkConfig:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--scenario",
-        choices=(*SCENARIOS, "all"),
-        default="all",
-        help="Benchmark workload to execute.",
-    )
-    parser.add_argument(
-        "--distance",
-        choices=("euclidean", "lcp", "resistance", "rsp"),
-        default="resistance",
-        help="Distance metric used for connectivity and sensitivity benchmarks.",
-    )
-    parser.add_argument(
-        "--grid-sizes",
-        nargs="+",
-        type=int,
-        default=[8, 12, 16],
-        help="Synthetic square raster sizes to benchmark.",
-    )
-    parser.add_argument(
-        "--device",
-        dest="device_names",
-        nargs="+",
-        choices=("cpu", "gpu", "tpu"),
-        default=["cpu"],
-        help="JAX platforms to benchmark.",
-    )
-    parser.add_argument("--repeats", type=int, default=BenchmarkConfig.repeats)
-    parser.add_argument("--seed", type=int, default=BenchmarkConfig.seed)
-    parser.add_argument(
-        "--dispersal-radius",
-        type=float,
-        default=BenchmarkConfig.dispersal_radius,
-    )
-    parser.add_argument(
-        "--inverse-max-steps",
-        type=int,
-        default=BenchmarkConfig.inverse_max_steps,
-    )
-    parser.add_argument(
-        "--landscape-path",
-        type=str,
-        default=None,
-        help="Optional .npy or .csv raster to benchmark instead of synthetic landscapes.",
-    )
-    parser.add_argument(
-        "--output",
-        type=str,
-        default=str(DEFAULT_OUTPUT),
-        help="Path to the JSON results file.",
-    )
-    args = parser.parse_args()
-    scenario_names = SCENARIOS if args.scenario == "all" else (args.scenario,)
-    return BenchmarkConfig(
-        grid_sizes=tuple(args.grid_sizes),
-        repeats=args.repeats,
-        seed=args.seed,
-        dispersal_radius=args.dispersal_radius,
-        distance_name=args.distance,
-        device_names=tuple(args.device_names),
-        scenario_names=scenario_names,
-        inverse_max_steps=args.inverse_max_steps,
-        landscape_path=args.landscape_path,
-        output_path=args.output,
-    )
+    RESULTS_JSON.write_text(json.dumps(payload, indent=2))
+    with RESULTS_CSV.open("w", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=["task", "tool", "scenario", "status", "median_seconds", "timings_seconds", "note"],
+        )
+        writer.writeheader()
+        for record in records:
+            row = asdict(record)
+            row["timings_seconds"] = json.dumps(row["timings_seconds"])
+            writer.writerow(row)
 
 
 def main() -> None:
-    config = _parse_args()
-    results = run_benchmarks(config)
-    print(json.dumps(results, indent=2))
+    records = collect_results()
+    write_results(records)
+    print(json.dumps({"records": [asdict(record) for record in records]}, indent=2))
 
 
 if __name__ == "__main__":

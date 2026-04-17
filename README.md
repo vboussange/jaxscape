@@ -90,17 +90,7 @@ Comprehensive documentation is available at [https://vboussange.github.io/jaxsca
 
 ## Benchmarking
 
-`JAXScape` now ships with a reproducible benchmark harness at
-`benchmark/benchmark_distances.py`.
-It covers:
-
-- connectivity analysis workloads
-- sensitivity-analysis gradients
-- inverse landscape genetics with `Optimistix` when the optional dependency is installed
-
-The script writes JSON results so CPU/GPU runs can be compared directly, and it
-accepts a custom raster via `--landscape-path` for benchmarking external suites
-such as `BigTests` after converting the landscape to `.npy` or `.csv`.
+<div align="center"><img src="docs/assets/benchmark_scorecard.png" alt="Benchmark scorecard" width="900"></div>
 
 ## Features and roadmap 🚀
 See issues; most notably:

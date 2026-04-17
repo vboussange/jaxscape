@@ -1,84 +1,47 @@
 # Benchmarking
 
-JAXScape includes a lightweight benchmark harness at
-`benchmark/benchmark_distances.py`. The script focuses on the three workloads
-tracked in the benchmarking issue:
+JAXScape now ships with a small benchmark workspace inspired by the structure of
+SciMLBenchmarks: one orchestrator, tool-specific runners, committed result
+artifacts, and a rendered scorecard used by the documentation.
 
-- **Connectivity analysis**: forward-pass connectivity on a raster graph
-- **Sensitivity analysis**: gradient of connectivity with respect to permeability
-- **Inverse landscape genetics**: resistance-distance fitting with `Optimistix`
+## Workspace layout
 
-All runs are written to JSON so they can be compared across machines, devices,
-and external tools.
+- `benchmark/benchmark_distances.py`: orchestrates the benchmark suite and writes JSON/CSV results
+- `benchmark/run_benchmarks.sh`: reruns the suite and regenerates the scorecard image
+- `benchmark/install_external_tools.sh`: installs `Circuitscape.jl` and documents the extra tooling needed for `Conefor`, `samc`, and `ResistanceGA`
+- `benchmark/external/circuitscape_resistance.jl`: Julia runner for the Circuitscape resistance benchmark
+- `benchmark/external/conefor_runner.sh`: Conefor adapter hook
+- `benchmark/external/samc_sensitivity.R`: `samc` adapter hook
+- `benchmark/external/resistancega_inverse.R`: `ResistanceGA` adapter hook
+- `benchmark/results/benchmark_results.json`: committed benchmark runs
+- `benchmark/results/benchmark_results.csv`: flattened benchmark table
 
-## Install benchmark dependencies
+## Current scorecard
 
-The connectivity and sensitivity workloads only require the base package:
+<div align="center"><img src="assets/benchmark_scorecard.png" alt="Benchmark scorecard" width="900"></div>
 
-```bash
-python -m pip install -e .
-```
+The committed scorecard is generated from `benchmark/results/benchmark_results.json`.
+Measured cells are real timings collected in this repository; grey cells mark
+adapters that are wired into the orchestrator but were unavailable in the local
+benchmark environment.
 
-The inverse-landscape-genetics benchmark additionally needs `optimistix`:
-
-```bash
-python -m pip install -e '.[examples]'
-```
-
-## Benchmark synthetic landscapes
-
-Run all benchmark scenarios on CPU:
+## Regenerating the artifacts
 
 ```bash
-python benchmark/benchmark_distances.py \
-  --scenario all \
-  --device cpu \
-  --distance resistance \
-  --grid-sizes 8 12 16 \
-  --repeats 3
+./benchmark/install_external_tools.sh   # optional
+./benchmark/run_benchmarks.sh
 ```
 
-If a GPU-enabled JAX installation is available, benchmark both CPU and GPU:
+The current suite covers:
 
-```bash
-python benchmark/benchmark_distances.py \
-  --scenario all \
-  --device cpu gpu \
-  --distance resistance \
-  --grid-sizes 8 12 16 \
-  --repeats 3
-```
+- `JAXScape` resistance distance
+- `Circuitscape.jl` resistance distance
+- `Conefor` placeholders for resistance and least-cost-path comparisons
+- `JAXScape` least-cost-path distance
+- `JAXScape` sensitivity analysis
+- `samc` sensitivity adapter hook
+- `JAXScape + Optimistix` inverse landscape genetics
+- `ResistanceGA` inverse adapter hook
 
-## Benchmark a shared raster
-
-To compare JAXScape against an external benchmark suite such as
-[`BigTests`](https://github.com/Circuitscape/BigTests/), first convert the test
-landscape to `.npy` or comma-delimited `.csv`, then point the harness at that
-raster:
-
-```bash
-python benchmark/benchmark_distances.py \
-  --scenario connectivity \
-  --device cpu gpu \
-  --distance resistance \
-  --landscape-path /path/to/bigtests_landscape.npy \
-  --repeats 5
-```
-
-The resulting JSON file can be committed separately, plotted in a notebook, or
-combined with timings collected from `Circuitscape.jl`, `Conefor`, `samc`, or
-other reference tools.
-
-## Output format
-
-Each run records:
-
-- the scenario name
-- the device used
-- the distance metric
-- the raster shape
-- all measured runtimes
-- the median runtime
-
-Additional scenario-specific metadata is included as well, such as the
-connectivity value, gradient norm, or inverse-optimization status.
+This keeps the benchmark workflow outside `/tests` while still committing the
+produced scorecard into the documentation site.

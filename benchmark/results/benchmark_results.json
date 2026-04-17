@@ -1,0 +1,111 @@
+{
+  "environment": {
+    "python": "/usr/bin/python",
+    "julia": "/usr/bin/julia",
+    "rscript": null,
+    "repeats": 3
+  },
+  "records": [
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape",
+      "scenario": "synthetic_resistance",
+      "status": "ok",
+      "median_seconds": 0.0003030769998986216,
+      "timings_seconds": [
+        0.0004226610001296649,
+        0.0003030769998986216,
+        0.00027077699996880256
+      ],
+      "note": ""
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "Circuitscape.jl",
+      "scenario": "synthetic_resistance",
+      "status": "ok",
+      "median_seconds": 0.001803705,
+      "timings_seconds": [
+        0.002040659,
+        0.001803705,
+        0.001524403
+      ],
+      "note": ""
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "Conefor",
+      "scenario": "synthetic_resistance",
+      "status": "skipped",
+      "median_seconds": null,
+      "timings_seconds": [],
+      "note": "Set CONEFOR_BIN to enable the Conefor adapter."
+    },
+    {
+      "task": "least_cost_path",
+      "tool": "JAXScape",
+      "scenario": "synthetic_lcp",
+      "status": "ok",
+      "median_seconds": 0.00016749399992477265,
+      "timings_seconds": [
+        0.00019460400017123902,
+        0.00014579300000150397,
+        0.00016749399992477265
+      ],
+      "note": ""
+    },
+    {
+      "task": "least_cost_path",
+      "tool": "Conefor",
+      "scenario": "synthetic_lcp",
+      "status": "skipped",
+      "median_seconds": null,
+      "timings_seconds": [],
+      "note": "Set CONEFOR_BIN to enable the Conefor adapter."
+    },
+    {
+      "task": "sensitivity_analysis",
+      "tool": "JAXScape",
+      "scenario": "synthetic_sensitivity",
+      "status": "ok",
+      "median_seconds": 9.337500000583532e-05,
+      "timings_seconds": [
+        0.0001489889998538274,
+        9.337500000583532e-05,
+        8.744400020077592e-05
+      ],
+      "note": ""
+    },
+    {
+      "task": "sensitivity_analysis",
+      "tool": "samc",
+      "scenario": "synthetic_sensitivity",
+      "status": "skipped",
+      "median_seconds": null,
+      "timings_seconds": [],
+      "note": "Rscript is not installed in this environment."
+    },
+    {
+      "task": "inverse_landscape_genetics",
+      "tool": "JAXScape + Optimistix",
+      "scenario": "synthetic_inverse",
+      "status": "ok",
+      "median_seconds": 0.0040873890000057145,
+      "timings_seconds": [
+        0.004595801000050415,
+        0.0040873890000057145,
+        0.004003643000032753
+      ],
+      "note": ""
+    },
+    {
+      "task": "inverse_landscape_genetics",
+      "tool": "ResistanceGA",
+      "scenario": "synthetic_inverse",
+      "status": "skipped",
+      "median_seconds": null,
+      "timings_seconds": [],
+      "note": "Rscript is not installed in this environment."
+    }
+  ]
+}
