@@ -32,10 +32,13 @@ See the [Lineax documentation](https://docs.kidger.site/lineax/) for the full li
 ```console
 uv add jaxscape --extra cholespy   # Cholesky solver
 uv add jaxscape --extra pyamg      # PyAMG solver
+uv add jaxscape --extra cholespy --extra pyamg  # Both CPU-based Python extras
 ```
 
 For `CuDSSSolver`, install [`spineax`](https://github.com/johnviljoen/spineax)
 with cuDSS support by following its upstream installation instructions.
+There is currently no combined JAXScape extra for `CuDSSSolver`, because the
+required `spineax` installation depends on your CUDA setup.
 
 !!! info "CI/CD coverage"
     These optional solvers are not included in the standard CI test suite.

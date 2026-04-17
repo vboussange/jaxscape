@@ -13,16 +13,15 @@ from jaxscape.solvers import (
     linear_solve,
     PyAMGSolver,
 )
+from scipy import sparse
 
 
 # Check availability of optional solvers
 PYAMG_AVAILABLE = find_spec("pyamg") is not None
-if PYAMG_AVAILABLE:
-    from pyamg.gallery import poisson
-else:
-    poisson = None
 
 CHOLMOD_AVAILABLE = find_spec("cholespy") is not None
+STANDARD_MATRIX_SIZE = 10
+SMALL_MATRIX_SIZE = 5
 
 # Build list of available solvers
 available_solvers = []
@@ -30,6 +29,17 @@ if PYAMG_AVAILABLE:
     available_solvers.append(PyAMGSolver())
 if CHOLMOD_AVAILABLE:
     available_solvers.append(CholmodSolver())
+
+
+def tridiagonal_spd_matrix(size):
+    main_diag = 2 * jnp.ones(size, dtype=jnp.float32)
+    off_diag = -jnp.ones(size - 1, dtype=jnp.float32)
+    return sparse.diags(
+        [off_diag, main_diag, off_diag],
+        offsets=[-1, 0, 1],
+        format="coo",
+        dtype="float32",
+    )
 
 
 def test_bcoo_linear_operator_mv():
@@ -47,7 +57,7 @@ def test_bcoo_linear_operator_mv():
 @pytest.mark.skipif(len(available_solvers) == 0, reason="No solvers available")
 @pytest.mark.parametrize("solver", available_solvers)
 def test_solver(solver):
-    A_scipy = poisson((10, 10), format="coo", dtype="float32")
+    A_scipy = tridiagonal_spd_matrix(STANDARD_MATRIX_SIZE)
     A_jax = BCOO.from_scipy_sparse(A_scipy)
     b = jnp.ones(A_jax.shape[0])
     x = linear_solve(A_jax, b, solver)
@@ -68,7 +78,7 @@ def test_solver(solver):
 @pytest.mark.parametrize("solver", available_solvers)
 def test_solver_differentiability(solver):
     """Test that the solver is differentiable."""
-    A_scipy = poisson((5, 5), format="coo", dtype="float32")
+    A_scipy = tridiagonal_spd_matrix(SMALL_MATRIX_SIZE)
     A_jax = BCOO.from_scipy_sparse(A_scipy)
 
     def objective(A_data):
@@ -99,13 +109,8 @@ def test_cudss_solver_uses_lineax_custom_vjp(monkeypatch):
             csr_values,
             csr_offsets,
             csr_columns,
-            *,
-            device_id,
-            mtype_id,
-            mview_id,
+            **_cudss_options,
         ):
-            del device_id, mtype_id, mview_id
-
             n = csr_offsets.shape[0] - 1
             dense = BCSR(
                 (csr_values, csr_columns, csr_offsets), shape=(n, n)

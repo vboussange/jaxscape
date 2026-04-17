@@ -17,14 +17,14 @@ try:
     from spineax.cudss.solver import solve as cudss_solve
 
     CUDSS_AVAILABLE = True
-except Exception:
+except (ImportError, OSError):
     cudss_solve = None
     CUDSS_AVAILABLE = False
 
 _CuDSSSolverState: TypeAlias = tuple[BCOO, PackedStructures]
 
-_CUDSS_SPD_MATRIX_TYPE = 3
-_CUDSS_FULL_MATRIX_VIEW = 0
+_CUDSS_SPD_MATRIX_TYPE = 3  # spineax/cuDSS `symmetric_positive_definite`
+_CUDSS_FULL_MATRIX_VIEW = 0  # spineax/cuDSS `full` matrix storage
 
 
 class CuDSSSolver(AbstractLinearSolver):
@@ -49,7 +49,7 @@ class CuDSSSolver(AbstractLinearSolver):
         `spineax` with cuDSS support must be installed to use this solver.
     """
 
-    device_id: int = 0
+    device_id: int = 0  # GPU device ordinal forwarded to spineax/cuDSS
 
     def __check_init__(self):
         if not CUDSS_AVAILABLE:
@@ -70,12 +70,20 @@ class CuDSSSolver(AbstractLinearSolver):
 
     def _solve(self, A_bcoo: BCOO, b_jax: Array) -> Array:
         if A_bcoo.n_batch > 0:
+            batch_axes = tuple(range(A_bcoo.n_batch))
             A_bcoo = BCOO(
-                (A_bcoo.data.squeeze(), A_bcoo.indices.squeeze()), shape=A_bcoo.shape
+                (
+                    jnp.squeeze(A_bcoo.data, axis=batch_axes),
+                    jnp.squeeze(A_bcoo.indices, axis=batch_axes),
+                ),
+                shape=A_bcoo.shape[A_bcoo.n_batch :],
             )
 
         if b_jax.ndim == 0:
-            raise ValueError("Right-hand side must have at least one dimension.")
+            raise ValueError(
+                "Right-hand side must have at least one dimension, "
+                f"got {b_jax.ndim}-dimensional input."
+            )
 
         rhs_size = b_jax.shape[0]
         if rhs_size != A_bcoo.shape[0]:
@@ -131,4 +139,5 @@ class CuDSSSolver(AbstractLinearSolver):
         return conj_state, {}
 
     def assume_full_rank(self):
+        """Report that the SPD systems handled by this solver are full-rank."""
         return True
