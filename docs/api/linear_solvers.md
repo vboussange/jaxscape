@@ -20,24 +20,31 @@ See the [Lineax documentation](https://docs.kidger.site/lineax/) for the full li
 
 ## `JAXScape` solvers
 
-`JAXScape` provides two optional high-performance solvers as extras:
+`JAXScape` provides three optional high-performance sparse solvers:
 
 | Solver | Method | Memory | Best for |
 |---|---|---|---|
 | `CholmodSolver` | Direct Cholesky factorization | Higher | Speed-critical workflows |
+| `CuDSSSolver` | GPU direct Cholesky factorization | Higher | GPU-resident SPD solves |
 | `PyAMGSolver` | Algebraic multigrid (iterative) | Moderate | Memory-constrained problems |
 
 **Installation**:
 ```console
 uv add jaxscape --extra cholespy   # Cholesky solver
 uv add jaxscape --extra pyamg      # PyAMG solver
-uv add jaxscape --extra solvers    # Both solvers
 ```
+
+For `CuDSSSolver`, install [`spineax`](https://github.com/johnviljoen/spineax)
+with cuDSS support by following its upstream installation instructions.
 
 !!! info "CI/CD coverage"
     These optional solvers are not included in the standard CI test suite.
 
 ::: jaxscape.solvers.cholmodsolver.CholmodSolver
+    options:
+      members: false
+
+::: jaxscape.solvers.cudsssolver.CuDSSSolver
     options:
       members: false
 
@@ -47,7 +54,7 @@ uv add jaxscape --extra solvers    # Both solvers
 
 ## Advanced: `BCOOLinearOperator`
 
-`JAXScape` exposes a `lineax`-compatible linear operator that wraps JAX's native `BCOO` sparse matrix format. This allows any Lineax solver to operate directly on sparse matrices without converting to a dense representation, and is used internally by both `CholmodSolver` and `PyAMGSolver`.
+`JAXScape` exposes a `lineax`-compatible linear operator that wraps JAX's native `BCOO` sparse matrix format. This allows any Lineax solver to operate directly on sparse matrices without converting to a dense representation, and is used internally by `CholmodSolver`, `CuDSSSolver`, and `PyAMGSolver`.
 
 ::: jaxscape.solvers.operator.BCOOLinearOperator
     options:

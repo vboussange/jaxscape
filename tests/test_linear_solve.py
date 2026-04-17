@@ -1,31 +1,28 @@
+from importlib.util import find_spec
+
 import jax
 import jax.numpy as jnp
+import jaxscape.solvers.cudsssolver as cudsssolver_module
 import pytest
-from jax.experimental.sparse import BCOO
+from jax.experimental.sparse import BCOO, BCSR
 from jaxscape.solvers import (
     batched_linear_solve,
     BCOOLinearOperator,
     CholmodSolver,
+    CuDSSSolver,
     linear_solve,
     PyAMGSolver,
 )
 
 
 # Check availability of optional solvers
-try:
-    import pyamg
+PYAMG_AVAILABLE = find_spec("pyamg") is not None
+if PYAMG_AVAILABLE:
     from pyamg.gallery import poisson
+else:
+    poisson = None
 
-    PYAMG_AVAILABLE = True
-except ImportError:
-    PYAMG_AVAILABLE = False
-
-try:
-    import cholespy
-
-    CHOLMOD_AVAILABLE = True
-except ImportError:
-    CHOLMOD_AVAILABLE = False
+CHOLMOD_AVAILABLE = find_spec("cholespy") is not None
 
 # Build list of available solvers
 available_solvers = []
@@ -85,3 +82,63 @@ def test_solver_differentiability(solver):
     grad_result = grad_objective(A_jax.data)
     assert isinstance(grad_result, jax.Array)
     assert grad_result.shape == A_jax.data.shape
+
+
+def test_cudss_solver_requires_spineax(monkeypatch):
+    monkeypatch.setattr(cudsssolver_module, "CUDSS_AVAILABLE", False)
+
+    with pytest.raises(ImportError, match="spineax with cuDSS support"):
+        CuDSSSolver()
+
+
+def test_cudss_solver_uses_lineax_custom_vjp(monkeypatch):
+    class FakeCuDSSBackend:
+        def __call__(
+            self,
+            rhs,
+            csr_values,
+            csr_offsets,
+            csr_columns,
+            *,
+            device_id,
+            mtype_id,
+            mview_id,
+        ):
+            del device_id, mtype_id, mview_id
+
+            n = csr_offsets.shape[0] - 1
+            dense = BCSR(
+                (csr_values, csr_columns, csr_offsets), shape=(n, n)
+            ).todense()
+            solution = jnp.linalg.solve(dense, rhs)
+            inertia = jnp.array([n, 0], dtype=jnp.int32)
+            return solution, inertia
+
+    monkeypatch.setattr(cudsssolver_module, "CUDSS_AVAILABLE", True)
+    monkeypatch.setattr(cudsssolver_module, "cudss_solve", FakeCuDSSBackend())
+
+    A = jnp.array(
+        [
+            [4.0, 1.0, 0.0],
+            [1.0, 3.0, 1.0],
+            [0.0, 1.0, 2.0],
+        ],
+        dtype=jnp.float32,
+    )
+    A_bcoo = BCOO.fromdense(A)
+    solver = CuDSSSolver()
+    b = jnp.array([1.0, 2.0, 3.0], dtype=jnp.float32)
+
+    x = linear_solve(A_bcoo, b, solver)
+    assert jnp.allclose(A @ x, b, rtol=1e-5)
+
+    B = jnp.stack([b, 2 * b], axis=1)
+    X = batched_linear_solve(A_bcoo, B, solver)
+    assert jnp.allclose(A @ X, B, rtol=1e-5)
+
+    def objective(data):
+        A_dynamic = BCOO((data, A_bcoo.indices), shape=A_bcoo.shape)
+        return jnp.sum(linear_solve(A_dynamic, b, solver) ** 2)
+
+    grad = jax.grad(objective)(A_bcoo.data)
+    assert grad.shape == A_bcoo.data.shape
