@@ -360,7 +360,7 @@ def _parse_args() -> BenchmarkConfig:
         "--grid-sizes",
         nargs="+",
         type=int,
-        default=list(BenchmarkConfig.grid_sizes),
+        default=[8, 12, 16],
         help="Synthetic square raster sizes to benchmark.",
     )
     parser.add_argument(
@@ -368,7 +368,7 @@ def _parse_args() -> BenchmarkConfig:
         dest="device_names",
         nargs="+",
         choices=("cpu", "gpu", "tpu"),
-        default=list(BenchmarkConfig.device_names),
+        default=["cpu"],
         help="JAX platforms to benchmark.",
     )
     parser.add_argument("--repeats", type=int, default=BenchmarkConfig.repeats)
