@@ -73,6 +73,7 @@ extra_css:
 
 nav:
   - index.md
+  - Benchmarking: benchmarking.md
   - Examples:
     - Distance calculation: examples/distance_calculation/distance_calculation.ipynb
     - Connectivity analysis: examples/connectivity_analysis/connectivity_analysis.ipynb
