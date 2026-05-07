@@ -51,6 +51,11 @@ docs = [
   "mkdocs-include-exclude-files==0.1.0",
   "mkdocs-ipynb==0.1.1"
 ]
+benchmark = [
+  "matplotlib>=3.9",
+  "optimistix>=0.0.10",
+  "pyamg>=5.1.0"
+]
 examples = [
   "matplotlib",
   "rioxarray",
