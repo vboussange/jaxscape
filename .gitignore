@@ -12,3 +12,6 @@ docs/examples/data
 .env
 uv.lock
 .python-version
+benchmark/.julia/
+benchmark/.r-lib/
+benchmark/r-lib/

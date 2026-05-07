@@ -90,7 +90,22 @@ Comprehensive documentation is available at [https://vboussange.github.io/jaxsca
 
 ## Benchmarking
 
-<div align="center"><img src="docs/assets/benchmark_scorecard.png" alt="Benchmark scorecard" width="900"></div>
+| Feature | Automated profiles | Optional local profiles |
+| --- | --- | --- |
+| Resistance distance | `JAXScape / pinv (CPU/GPU)`, `JAXScape / PyAMG`, `gdistance / commuteDistance`, `Circuitscape.jl / cg+amg`, `Circuitscape.jl / cholmod` | `JAXScape / CholmodSolver`, `Circuitscape.jl / accelerate`, `Conefor` adapters |
+| Least-cost path | `JAXScape (CPU/GPU)`, `gdistance / costDistance` | `Conefor` adapter |
+| Sensitivity analysis | `JAXScape / shortest-path gradient (CPU/GPU)`, `gdistance / shortestPath`, `JAXScape / resistance gradient (CPU/GPU)`, `gdistance / passage` | none |
+| Inverse landscape genetics | `JAXScape + Optimistix (CPU/GPU)`, `ResistanceGA` | none |
+
+The benchmark workflow runs on every push to `main` before the documentation
+deploy step. Cross-tool comparisons are pinned to equal thread counts across
+JAX, Julia, and R with `BENCHMARK_THREADS`, and the published CI artifact uses
+`BENCHMARK_THREADS=4`. Local `--device gpu` runs only change the GPU-capable
+JAX-native profiles; when no GPU backend is available, the artifact records an
+explicit placeholder instead of dropping the series. The sensitivity scorecard
+now compares JAX gradients to matching `gdistance` centrality surfaces instead
+of the earlier Euclidean proxy. The latest scorecards, formal task definitions,
+and regeneration instructions live on the [benchmark documentation page](https://vboussange.github.io/jaxscape/benchmark/).
 
 ## Features and roadmap 🚀
 See issues; most notably:
