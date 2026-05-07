@@ -164,8 +164,9 @@ def spielman_resistance_distance(
 
 
 def _projection_size(n: int, epsilon: float) -> int:
+    """Number of Spielman-Srivastava random projections for accuracy epsilon."""
     if epsilon <= 0:
-        raise ValueError("`epsilon` must be positive (controls approximation accuracy).")
+        raise ValueError("epsilon must be positive (controls approximation accuracy).")
     return max(1, math.ceil(math.log(max(n, 2)) / epsilon**2))
 
 
@@ -195,11 +196,12 @@ def _spielman_projection(
 
 
 def _sqrt_half_weights(data: Array) -> Array:
+    """Square root of half the non-negative edge weights."""
     return jnp.sqrt(jnp.maximum(data, 0) / 2)
 
 
-def _projection_scale(k: int, dtype) -> Array:
-    return jnp.asarray(k, dtype=dtype) ** -0.5
+def _projection_scale(k: int, dtype_: jnp.dtype) -> Array:
+    return jnp.asarray(k, dtype=dtype_) ** -0.5
 
 
 def _spielman_features_reduced(
@@ -219,6 +221,7 @@ def _spielman_features_reduced(
 
 
 def _distances_from_features_reduced(features_reduced: Array) -> Array:
+    """Pairwise approximate resistance distances from reduced embeddings."""
     features = jnp.pad(features_reduced, ((0, 0), (0, 1)))
     feature_norms = jnp.sum(features**2, axis=0)
     # Pairwise squared distances: ||u - v||^2 = ||u||^2 + ||v||^2 - 2 u*v.
