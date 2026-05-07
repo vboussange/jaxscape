@@ -1,3 +1,5 @@
+import math
+from functools import partial
 from typing import Optional
 
 import equinox as eqx
@@ -24,7 +26,12 @@ class ResistanceDistance(AbstractDistance):
     BCOO matrices. We currently support `jaxscape.solvers.CholmodSolver` and
     `jaxscape.solvers.PyAMGSolver`. If None, uses pseudo-inverse method, which
     is very memory intensive for large graphs (densifies the Laplacian
-    matrix).
+    matrix), or dense solves for the approximate method.
+    - `approximate`: If True, uses the Spielman-Srivastava random projection
+    algorithm.
+    - `epsilon`: Accuracy parameter for the approximate method. Smaller values
+    use more random projections.
+    - `seed`: Random seed for the approximate method projections.
 
     !!! example
 
@@ -47,10 +54,15 @@ class ResistanceDistance(AbstractDistance):
     """
 
     solver: Optional[lx.AbstractLinearSolver] = None
+    approximate: bool = False
+    epsilon: float = 0.1
+    seed: int = 0
 
     @eqx.filter_jit
     def all_pairs_distance(self, graph: AbstractGraph) -> Array:
         A = graph.get_adjacency_matrix()
+        if self.approximate:
+            return spielman_resistance_distance(A, self.epsilon, self.seed, self.solver)
         if self.solver is None:
             return p_inv_resistance_distance(A)
         else:
@@ -62,6 +74,10 @@ class ResistanceDistance(AbstractDistance):
     @eqx.filter_jit
     def nodes_to_nodes_distance(self, graph: AbstractGraph, nodes: Array) -> Array:
         A = graph.get_adjacency_matrix()
+        if self.approximate:
+            return spielman_resistance_distance(A, self.epsilon, self.seed, self.solver)[
+                nodes[:, None], nodes[None, :]
+            ]
         if self.solver is None:
             return p_inv_resistance_distance(A)[nodes[:, None], nodes[None, :]]
         else:
@@ -131,3 +147,165 @@ def lineax_solver_nodes_to_nodes_resistance_distance(
         - (potentials_ij + potentials_ij.T)
     )
     return R
+
+
+@eqx.filter_jit
+def spielman_resistance_distance(
+    A: BCOO,
+    epsilon: float = 0.1,
+    seed: int = 0,
+    solver: Optional[lx.AbstractLinearSolver] = None,
+) -> Array:
+    """Approximate resistance distances using Spielman-Srivastava projections."""
+    return _spielman_resistance_distance_from_data(
+        A.data, A.indices, A.shape, epsilon, seed, solver
+    )
+
+
+def _projection_size(n: int, epsilon: float) -> int:
+    if epsilon <= 0:
+        raise ValueError("`epsilon` must be positive.")
+    return max(1, math.ceil(math.log(max(n, 2)) / epsilon**2))
+
+
+def _solve_reduced_laplacian(
+    L_reduced: BCOO, rhs: Array, solver: Optional[lx.AbstractLinearSolver]
+) -> Array:
+    if solver is None:
+        return jnp.linalg.solve(L_reduced.todense(), rhs)
+    return batched_linear_solve(L_reduced, rhs, solver)
+
+
+def _spielman_projection(
+    data: Array, indices: Array, shape: tuple[int, int], epsilon: float, seed: int
+) -> Array:
+    k = _projection_size(shape[0], epsilon)
+    key = jax.random.PRNGKey(seed)
+    signs = jax.random.rademacher(key, (k, data.shape[0])).astype(data.dtype)
+    rows = indices[:, 0]
+    cols = indices[:, 1]
+    weights = signs * jnp.sqrt(jnp.maximum(data, 0) / 2)[None, :] / jnp.sqrt(k)
+    projection = jnp.zeros((k, shape[0]), dtype=data.dtype)
+    projection = projection.at[:, rows].add(weights)
+    projection = projection.at[:, cols].add(-weights)
+    return projection
+
+
+def _spielman_features_reduced(
+    data: Array,
+    indices: Array,
+    shape: tuple[int, int],
+    epsilon: float,
+    seed: int,
+    solver: Optional[lx.AbstractLinearSolver],
+) -> Array:
+    A = BCOO((data, indices), shape=shape)
+    L_reduced = graph_laplacian(A)[:-1, :-1]
+    projection_reduced = _spielman_projection(data, indices, shape, epsilon, seed)[
+        :, :-1
+    ]
+    return _solve_reduced_laplacian(L_reduced, projection_reduced.T, solver).T
+
+
+def _distances_from_features_reduced(features_reduced: Array) -> Array:
+    features = jnp.pad(features_reduced, ((0, 0), (0, 1)))
+    feature_norms = jnp.sum(features**2, axis=0)
+    return feature_norms[:, None] + feature_norms[None, :] - 2 * features.T @ features
+
+
+@partial(jax.custom_vjp, nondiff_argnums=(2, 3, 4, 5))
+def _spielman_resistance_distance_from_data(
+    data: Array,
+    indices: Array,
+    shape: tuple[int, int],
+    epsilon: float,
+    seed: int,
+    solver: Optional[lx.AbstractLinearSolver],
+) -> Array:
+    features_reduced = _spielman_features_reduced(
+        data, indices, shape, epsilon, seed, solver
+    )
+    return _distances_from_features_reduced(features_reduced)
+
+
+def _spielman_resistance_distance_fwd(
+    data: Array,
+    indices: Array,
+    shape: tuple[int, int],
+    epsilon: float,
+    seed: int,
+    solver: Optional[lx.AbstractLinearSolver],
+):
+    features_reduced = _spielman_features_reduced(
+        data, indices, shape, epsilon, seed, solver
+    )
+    distances = _distances_from_features_reduced(features_reduced)
+    return distances, (data, indices, features_reduced)
+
+
+def _spielman_resistance_distance_bwd(
+    shape: tuple[int, int],
+    epsilon: float,
+    seed: int,
+    solver: Optional[lx.AbstractLinearSolver],
+    residual,
+    cotangent: Array,
+):
+    data, indices, features_reduced = residual
+    A = BCOO((data, indices), shape=shape)
+    L_reduced = graph_laplacian(A)[:-1, :-1]
+    features = jnp.pad(features_reduced, ((0, 0), (0, 1)))
+
+    symmetric_cotangent = cotangent + cotangent.T
+    row_sum = jnp.sum(symmetric_cotangent, axis=1)
+    feature_cotangent = 2 * (
+        features * row_sum[None, :] - features @ symmetric_cotangent.T
+    )
+    reduced_feature_cotangent = feature_cotangent[:, :-1].T
+
+    adjoint = _solve_reduced_laplacian(L_reduced, reduced_feature_cotangent, solver)
+    projection_cotangent = adjoint.T
+    laplacian_cotangent = -adjoint @ features_reduced
+
+    rows = indices[:, 0]
+    cols = indices[:, 1]
+    n_reduced = shape[0] - 1
+    rows_reduced = rows < n_reduced
+    cols_reduced = cols < n_reduced
+    rows_safe = jnp.minimum(rows, n_reduced - 1)
+    cols_safe = jnp.minimum(cols, n_reduced - 1)
+
+    diagonal_grad = jnp.where(
+        rows_reduced, laplacian_cotangent[rows_safe, rows_safe], 0
+    )
+    off_diagonal_grad = jnp.where(
+        rows_reduced & cols_reduced, laplacian_cotangent[rows_safe, cols_safe], 0
+    )
+    laplacian_data_cotangent = diagonal_grad - off_diagonal_grad
+
+    k = _projection_size(shape[0], epsilon)
+    signs = (
+        jax.random.rademacher(jax.random.PRNGKey(seed), (k, data.shape[0]))
+        .astype(data.dtype)
+        / jnp.sqrt(k)
+    )
+    projection_rows = jnp.where(
+        rows_reduced, projection_cotangent[:, rows_safe], 0
+    )
+    projection_cols = jnp.where(
+        cols_reduced, projection_cotangent[:, cols_safe], 0
+    )
+    sqrt_weights = jnp.sqrt(jnp.maximum(data, 0) / 2)
+    projection_data_cotangent = jnp.where(
+        data > 0,
+        jnp.sum(signs * (projection_rows - projection_cols), axis=0)
+        / (4 * sqrt_weights),
+        0,
+    )
+
+    return laplacian_data_cotangent + projection_data_cotangent, None
+
+
+_spielman_resistance_distance_from_data.defvjp(
+    _spielman_resistance_distance_fwd, _spielman_resistance_distance_bwd
+)
