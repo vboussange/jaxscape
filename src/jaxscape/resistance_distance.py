@@ -30,7 +30,8 @@ class ResistanceDistance(AbstractDistance):
     - `approximate`: If True, uses the Spielman-Srivastava random projection
     algorithm.
     - `epsilon`: Accuracy parameter for the approximate method. Smaller values
-    use more random projections.
+    use more random projections: `ceil(log(n_vertices) / epsilon**2)`, which
+    increases memory use.
     - `seed`: Random seed for the approximate method projections.
 
     !!! example
@@ -184,7 +185,9 @@ def _spielman_projection(
     signs = jax.random.rademacher(key, (k, data.shape[0])).astype(data.dtype)
     rows = indices[:, 0]
     cols = indices[:, 1]
-    normalized_weights = signs * _sqrt_half_weights(data)[None, :] / jnp.sqrt(k)
+    normalized_weights = signs * _sqrt_half_weights(data)[None, :] * _projection_scale(
+        k, data.dtype
+    )
     projection = jnp.zeros((k, shape[0]), dtype=data.dtype)
     projection = projection.at[:, rows].add(normalized_weights)
     projection = projection.at[:, cols].add(-normalized_weights)
@@ -193,6 +196,10 @@ def _spielman_projection(
 
 def _sqrt_half_weights(data: Array) -> Array:
     return jnp.sqrt(jnp.maximum(data, 0) / 2)
+
+
+def _projection_scale(k: int, dtype) -> Array:
+    return jnp.asarray(k, dtype=dtype) ** -0.5
 
 
 def _spielman_features_reduced(
@@ -294,7 +301,7 @@ def _spielman_resistance_distance_bwd(
     signs = (
         jax.random.rademacher(jax.random.PRNGKey(seed), (k, data.shape[0]))
         .astype(data.dtype)
-        / jnp.sqrt(k)
+        * _projection_scale(k, data.dtype)
     )
     projection_rows = jnp.where(
         rows_reduced, projection_cotangent[:, clamped_rows], 0
@@ -303,10 +310,11 @@ def _spielman_resistance_distance_bwd(
         cols_reduced, projection_cotangent[:, clamped_cols], 0
     )
     sqrt_weights = _sqrt_half_weights(data)
+    safe_sqrt_weights = jnp.where(data > 0, sqrt_weights, 1)
     projection_data_cotangent = jnp.where(
         data > 0,
         jnp.sum(signs * (projection_rows - projection_cols), axis=0)
-        / (4 * sqrt_weights),
+        / (4 * safe_sqrt_weights),
         0,
     )
 
