@@ -36,6 +36,10 @@ if PYAMG_AVAILABLE:
 if CHOLMOD_AVAILABLE:
     available_solvers.append(CholmodSolver())
 
+# Spielman projections are randomized; epsilon=0.05 is accurate within this
+# absolute tolerance for the deterministic seed used in the test below.
+EXPECTED_APPROXIMATION_ERROR = 8e-2
+
 
 def build_nx_resistance_distance_matrix(G):
     Rnx_dict = nx.resistance_distance(G, weight="weight", invert_weight=False)
@@ -101,12 +105,11 @@ def test_approximate_resistance_distance():
     distance = ResistanceDistance(approximate=True, epsilon=0.05)
     dist_approx = filter_jit(distance)(grid)
     dist_pinv = ResistanceDistance()(grid)
-    approximation_atol = 8e-2
 
     assert dist_approx.shape == dist_pinv.shape
     assert jnp.allclose(dist_approx, dist_approx.T, atol=1e-5)
     assert jnp.allclose(jnp.diag(dist_approx), 0, atol=1e-5)
-    assert jnp.allclose(dist_approx, dist_pinv, atol=approximation_atol)
+    assert jnp.allclose(dist_approx, dist_pinv, atol=EXPECTED_APPROXIMATION_ERROR)
 
     nodes = jnp.array([0, 2])
     sources = jnp.array([0, 1])

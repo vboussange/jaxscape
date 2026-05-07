@@ -310,11 +310,11 @@ def _spielman_resistance_distance_bwd(
         cols_reduced, projection_cotangent[:, clamped_cols], 0
     )
     sqrt_weights = _sqrt_half_weights(data)
-    safe_sqrt_weights = jnp.where(data > 0, sqrt_weights, 1)
+    sqrt_weights_or_one = jnp.where(data > 0, sqrt_weights, 1)
     projection_data_cotangent = jnp.where(
         data > 0,
         jnp.sum(signs * (projection_rows - projection_cols), axis=0)
-        / (4 * safe_sqrt_weights),
+        / (4 * sqrt_weights_or_one),
         0,
     )
 
