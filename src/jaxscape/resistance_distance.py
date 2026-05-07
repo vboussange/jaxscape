@@ -184,11 +184,15 @@ def _spielman_projection(
     signs = jax.random.rademacher(key, (k, data.shape[0])).astype(data.dtype)
     rows = indices[:, 0]
     cols = indices[:, 1]
-    weights = signs * jnp.sqrt(jnp.maximum(data, 0) / 2)[None, :] / jnp.sqrt(k)
+    normalized_weights = signs * _sqrt_half_weights(data)[None, :] / jnp.sqrt(k)
     projection = jnp.zeros((k, shape[0]), dtype=data.dtype)
-    projection = projection.at[:, rows].add(weights)
-    projection = projection.at[:, cols].add(-weights)
+    projection = projection.at[:, rows].add(normalized_weights)
+    projection = projection.at[:, cols].add(-normalized_weights)
     return projection
+
+
+def _sqrt_half_weights(data: Array) -> Array:
+    return jnp.sqrt(jnp.maximum(data, 0) / 2)
 
 
 def _spielman_features_reduced(
@@ -210,6 +214,7 @@ def _spielman_features_reduced(
 def _distances_from_features_reduced(features_reduced: Array) -> Array:
     features = jnp.pad(features_reduced, ((0, 0), (0, 1)))
     feature_norms = jnp.sum(features**2, axis=0)
+    # Pairwise squared distances: ||u - v||^2 = ||u||^2 + ||v||^2 - 2u·v.
     return feature_norms[:, None] + feature_norms[None, :] - 2 * features.T @ features
 
 
@@ -272,14 +277,16 @@ def _spielman_resistance_distance_bwd(
     n_reduced = shape[0] - 1
     rows_reduced = rows < n_reduced
     cols_reduced = cols < n_reduced
-    rows_safe = jnp.minimum(rows, n_reduced - 1)
-    cols_safe = jnp.minimum(cols, n_reduced - 1)
+    clamped_rows = jnp.minimum(rows, n_reduced - 1)
+    clamped_cols = jnp.minimum(cols, n_reduced - 1)
 
     diagonal_grad = jnp.where(
-        rows_reduced, laplacian_cotangent[rows_safe, rows_safe], 0
+        rows_reduced, laplacian_cotangent[clamped_rows, clamped_rows], 0
     )
     off_diagonal_grad = jnp.where(
-        rows_reduced & cols_reduced, laplacian_cotangent[rows_safe, cols_safe], 0
+        rows_reduced & cols_reduced,
+        laplacian_cotangent[clamped_rows, clamped_cols],
+        0,
     )
     laplacian_data_cotangent = diagonal_grad - off_diagonal_grad
 
@@ -290,12 +297,12 @@ def _spielman_resistance_distance_bwd(
         / jnp.sqrt(k)
     )
     projection_rows = jnp.where(
-        rows_reduced, projection_cotangent[:, rows_safe], 0
+        rows_reduced, projection_cotangent[:, clamped_rows], 0
     )
     projection_cols = jnp.where(
-        cols_reduced, projection_cotangent[:, cols_safe], 0
+        cols_reduced, projection_cotangent[:, clamped_cols], 0
     )
-    sqrt_weights = jnp.sqrt(jnp.maximum(data, 0) / 2)
+    sqrt_weights = _sqrt_half_weights(data)
     projection_data_cotangent = jnp.where(
         data > 0,
         jnp.sum(signs * (projection_rows - projection_cols), axis=0)
