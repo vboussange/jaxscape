@@ -165,7 +165,7 @@ def spielman_resistance_distance(
 
 def _projection_size(n: int, epsilon: float) -> int:
     if epsilon <= 0:
-        raise ValueError("`epsilon` must be positive.")
+        raise ValueError("`epsilon` must be positive (controls approximation accuracy).")
     return max(1, math.ceil(math.log(max(n, 2)) / epsilon**2))
 
 
@@ -198,8 +198,8 @@ def _sqrt_half_weights(data: Array) -> Array:
     return jnp.sqrt(jnp.maximum(data, 0) / 2)
 
 
-def _projection_scale(k: int, target_dtype) -> Array:
-    return jnp.asarray(k, dtype=target_dtype) ** -0.5
+def _projection_scale(k: int, dtype) -> Array:
+    return jnp.asarray(k, dtype=dtype) ** -0.5
 
 
 def _spielman_features_reduced(

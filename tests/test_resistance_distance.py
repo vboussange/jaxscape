@@ -36,8 +36,8 @@ if PYAMG_AVAILABLE:
 if CHOLMOD_AVAILABLE:
     available_solvers.append(CholmodSolver())
 
-# Spielman projections are randomized; epsilon=0.05 is accurate within this
-# absolute tolerance for the deterministic seed used in the test below.
+# Spielman projections are randomized; this is the expected absolute error for
+# the deterministic seed and epsilon used in the test below.
 EXPECTED_APPROXIMATION_ERROR = 8e-2
 
 
