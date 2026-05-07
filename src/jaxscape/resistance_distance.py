@@ -198,8 +198,8 @@ def _sqrt_half_weights(data: Array) -> Array:
     return jnp.sqrt(jnp.maximum(data, 0) / 2)
 
 
-def _projection_scale(k: int, dtype) -> Array:
-    return jnp.asarray(k, dtype=dtype) ** -0.5
+def _projection_scale(k: int, target_dtype) -> Array:
+    return jnp.asarray(k, dtype=target_dtype) ** -0.5
 
 
 def _spielman_features_reduced(
@@ -221,7 +221,7 @@ def _spielman_features_reduced(
 def _distances_from_features_reduced(features_reduced: Array) -> Array:
     features = jnp.pad(features_reduced, ((0, 0), (0, 1)))
     feature_norms = jnp.sum(features**2, axis=0)
-    # Pairwise squared distances: ||u - v||^2 = ||u||^2 + ||v||^2 - 2u·v.
+    # Pairwise squared distances: ||u - v||^2 = ||u||^2 + ||v||^2 - 2 u*v.
     return feature_norms[:, None] + feature_norms[None, :] - 2 * features.T @ features
 
 

@@ -101,11 +101,12 @@ def test_approximate_resistance_distance():
     distance = ResistanceDistance(approximate=True, epsilon=0.05)
     dist_approx = filter_jit(distance)(grid)
     dist_pinv = ResistanceDistance()(grid)
+    approximation_atol = 8e-2
 
     assert dist_approx.shape == dist_pinv.shape
     assert jnp.allclose(dist_approx, dist_approx.T, atol=1e-5)
     assert jnp.allclose(jnp.diag(dist_approx), 0, atol=1e-5)
-    assert jnp.allclose(dist_approx, dist_pinv, atol=8e-2)
+    assert jnp.allclose(dist_approx, dist_pinv, atol=approximation_atol)
 
     nodes = jnp.array([0, 2])
     sources = jnp.array([0, 1])
