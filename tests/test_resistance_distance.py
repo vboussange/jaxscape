@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from equinox import filter_grad, filter_jit
 from jax.experimental.sparse import BCOO
-from jaxscape import GridGraph
+from jaxscape import GridGraph, SpielmanApproximation
 from jaxscape.resistance_distance import (
     p_inv_resistance_distance,
     ResistanceDistance,
@@ -102,7 +102,7 @@ def test_approximate_resistance_distance():
     permeability_raster = jr.uniform(key, (2, 2)) + 0.5
     grid = GridGraph(grid=permeability_raster, fun=lambda x, y: (x + y) / 2)
 
-    distance = ResistanceDistance(approximate=True, epsilon=0.05)
+    distance = ResistanceDistance(method=SpielmanApproximation(epsilon=0.05))
     dist_approx = filter_jit(distance)(grid)
     dist_pinv = ResistanceDistance()(grid)
 
@@ -131,7 +131,7 @@ def test_approximate_resistance_distance_differentiability():
     """
     key = jr.PRNGKey(0)
     permeability_raster = jr.uniform(key, (2, 2)) + 0.5
-    distance = ResistanceDistance(approximate=True, epsilon=0.1)
+    distance = ResistanceDistance(method=SpielmanApproximation(epsilon=0.1))
 
     def objective(permeability_raster):
         grid = GridGraph(grid=permeability_raster, fun=lambda x, y: (x + y) / 2)

@@ -25,19 +25,16 @@ class ResistanceDistance(AbstractDistance):
     - `solver`: Optional `lineax.AbstractLinearSolver`. Must be compatible with
     BCOO matrices. We currently support `jaxscape.solvers.CholmodSolver` and
     `jaxscape.solvers.PyAMGSolver`. If None, uses pseudo-inverse method, which
-    is very memory intensive for large graphs (densifies the Laplacian
-    matrix), or dense solves for the approximate method.
-    - `approximate`: If True, uses the Spielman-Srivastava random projection
-    algorithm.
-    - `epsilon`: Accuracy parameter for the approximate method. Smaller values
-    use more random projections: `ceil(log(n_vertices) / epsilon**2)`, which
-    increases memory use.
-    - `seed`: Random seed for the approximate method projections.
+    is very memory intensive for exact all-pairs distances (densifies the
+    Laplacian matrix), or dense solves for approximate distances.
+    - `method`: A resistance distance method. Defaults to `ExactResistance()`.
+    Use `SpielmanApproximation(epsilon=..., seed=...)` for the randomized
+    Spielman-Srivastava approximation.
 
     !!! example
 
         ```python
-        from jaxscape import ResistanceDistance
+        from jaxscape import ResistanceDistance, SpielmanApproximation
         from jaxscape.solvers import PyAMGSolver
 
         # Default: pseudo-inverse (small graphs)
@@ -45,6 +42,12 @@ class ResistanceDistance(AbstractDistance):
 
         # With solver (large graphs)
         distance = ResistanceDistance(solver=PyAMGSolver())
+
+        # Approximate resistance distance
+        distance = ResistanceDistance(
+            method=SpielmanApproximation(epsilon=0.05),
+            solver=PyAMGSolver(),
+        )
 
         dist = distance(grid)
         ```
@@ -55,15 +58,17 @@ class ResistanceDistance(AbstractDistance):
     """
 
     solver: Optional[lx.AbstractLinearSolver] = None
-    approximate: bool = False
-    epsilon: float = 0.1
-    seed: int = 0
+    method: "AbstractResistanceMethod" = eqx.field(
+        default_factory=lambda: ExactResistance()
+    )
 
     @eqx.filter_jit
     def all_pairs_distance(self, graph: AbstractGraph) -> Array:
         A = graph.get_adjacency_matrix()
-        if self.approximate:
-            return spielman_resistance_distance(A, self.epsilon, self.seed, self.solver)
+        if isinstance(self.method, SpielmanApproximation):
+            return spielman_resistance_distance(
+                A, self.method.epsilon, self.method.seed, self.solver
+            )
         if self.solver is None:
             return p_inv_resistance_distance(A)
         else:
@@ -75,10 +80,10 @@ class ResistanceDistance(AbstractDistance):
     @eqx.filter_jit
     def nodes_to_nodes_distance(self, graph: AbstractGraph, nodes: Array) -> Array:
         A = graph.get_adjacency_matrix()
-        if self.approximate:
-            return spielman_resistance_distance(A, self.epsilon, self.seed, self.solver)[
-                nodes[:, None], nodes[None, :]
-            ]
+        if isinstance(self.method, SpielmanApproximation):
+            return spielman_resistance_distance(
+                A, self.method.epsilon, self.method.seed, self.solver
+            )[nodes[:, None], nodes[None, :]]
         if self.solver is None:
             return p_inv_resistance_distance(A)[nodes[:, None], nodes[None, :]]
         else:
@@ -92,6 +97,36 @@ class ResistanceDistance(AbstractDistance):
     ) -> Array:
         R = self.all_pairs_distance(graph)
         return R[sources[:, None], targets[None, :]]
+
+
+class AbstractResistanceMethod(eqx.Module):
+    """Abstract base class for resistance distance algorithms."""
+
+
+class ExactResistance(AbstractResistanceMethod):
+    """Exact resistance distance via pseudoinverse or grounded linear solves."""
+
+
+class SpielmanApproximation(AbstractResistanceMethod):
+    """
+    Spielman-Srivastava randomized resistance distance approximation.
+
+    **Attributes**:
+
+    - `epsilon`: Accuracy parameter. Smaller values use more random
+      projections: `ceil(log(n_vertices) / epsilon**2)`, which increases memory
+      use.
+    - `seed`: Random seed for the Rademacher edge projections.
+    """
+
+    epsilon: float = 0.1
+    seed: int = 0
+
+    def __check_init__(self):
+        if self.epsilon <= 0:
+            raise ValueError(
+                "epsilon must be positive (controls approximation accuracy)."
+            )
 
 
 @eqx.filter_jit
@@ -157,7 +192,18 @@ def spielman_resistance_distance(
     seed: int = 0,
     solver: Optional[lx.AbstractLinearSolver] = None,
 ) -> Array:
-    """Approximate resistance distances using Spielman-Srivastava projections."""
+    """
+    Approximate resistance distances using Spielman-Srivastava projections.
+
+    This follows Spielman and Srivastava, "Graph sparsification by effective
+    resistances" (SIAM J. Comput., 2011; arXiv version 2009). Let `B` be an
+    oriented incidence matrix, `W` the diagonal edge-weight matrix, and
+    `L = B.T @ W @ B` the graph Laplacian. The exact resistance is
+    `R_ij = ||W**0.5 @ B @ L^+ @ (e_i - e_j)||_2**2`. The algorithm replaces
+    `W**0.5 @ B` by a Johnson-Lindenstrauss/Rademacher sketch `Q W**0.5 B`
+    and computes node embeddings `Z = Q W**0.5 B L^+`; squared Euclidean
+    distances between columns of `Z` approximate resistance distances.
+    """
     return _spielman_resistance_distance_from_data(
         A.data, A.indices, A.shape, epsilon, seed, solver
     )
@@ -266,6 +312,21 @@ def _spielman_resistance_distance_bwd(
     residual,
     cotangent: Array,
 ):
+    # Custom VJP derivation. Ground the final node and write the sketched
+    # embeddings as `F = P_r L_r^{-1}`, where `P_r` is the sketched incidence
+    # matrix with the grounded column removed and `L_r` is the reduced
+    # Laplacian. The primal output is `D_ij = ||f_i - f_j||^2`.
+    #
+    # Given an output cotangent `G = d loss / dD`, first differentiate the
+    # squared-distance map. With `S = G + G.T`, the embedding cotangent is
+    # `bar_F = 2 * (F * row_sum(S) - F @ S.T)`; the last grounded column is then
+    # discarded. The linear solve is the implicit equation `F_r L_r = P_r`.
+    # Differentiating gives `dF_r L_r + F_r dL_r = dP_r`. Multiplying by the
+    # adjoint variable `Y = L_r^{-1} bar_F.T` yields the closed-form pullbacks
+    # `bar_P_r = Y.T` and `bar_L_r = -Y @ F_r`. Finally, each edge weight `w_e`
+    # contributes to `L_r` as `(e_u - e_v)(e_u - e_v)^T` after grounding, and
+    # to `P_r` as `sign_e * sqrt(w_e / 2) / sqrt(k) * (e_u - e_v)`. The code
+    # below applies these two edge-local contributions to `A.data`.
     data, indices, features_reduced = residual
     A = BCOO((data, indices), shape=shape)
     L_reduced = graph_laplacian(A)[:-1, :-1]
