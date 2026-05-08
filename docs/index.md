@@ -19,6 +19,27 @@ For GPU compatibility, install JAX following the [official JAX installation guid
 
 You may be required to install optional linear solvers for large-scale resistance distance computations (see [the documentation page](https://vboussange.github.io/jaxscape/api/linear_solvers) for details).
 
+## Resistance distance methods
+
+`ResistanceDistance()` computes exact resistance distances by default. For
+larger graphs, use the Spielman-Srivastava randomized approximation by selecting
+an explicit method object:
+
+```python
+from jaxscape import ResistanceDistance, SpielmanApproximation
+from jaxscape.solvers import PyAMGSolver
+
+distance = ResistanceDistance(
+    method=SpielmanApproximation(epsilon=0.05, seed=0),
+    solver=PyAMGSolver(),
+)
+```
+
+The `epsilon` parameter belongs to `SpielmanApproximation`: smaller values use
+more random projections and typically improve accuracy at higher memory and
+solve cost. The approximate method remains compatible with `jax.grad` via a
+custom implicit-differentiation rule.
+
 ## Quick start
 
 **1. Download sample data**
