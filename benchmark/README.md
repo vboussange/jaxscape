@@ -10,7 +10,7 @@ deterministic size tiers: `small`, `medium`, and `large`.
 
 | Feature | Automated profiles | Optional local profiles | Notes |
 | --- | --- | --- | --- |
-| Resistance distance | `JAXScape / pinv (CPU/GPU)`, `JAXScape / PyAMG`, `gdistance / commuteDistance`, `Circuitscape.jl / cg+amg`, `Circuitscape.jl / cholmod` | `JAXScape / AMJaxCGSolver`, `JAXScape / CholmodSolver`, `Conefor` adapters | Use `--device cpu` for cross-tool comparisons. The GPU series is only emitted for GPU-capable JAXScape methods. |
+| Resistance distance | `JAXScape / pinv / f32 (CPU/GPU)`, `JAXScape / pinv / f64 (CPU/GPU)`, `JAXScape / approx pinv / f32 (CPU/GPU)`, `JAXScape / approx pinv / f64 (CPU/GPU)`, `JAXScape / PyAMG`, `gdistance / commuteDistance`, `Circuitscape.jl / cg+amg`, `Circuitscape.jl / cholmod` | `JAXScape / AMJaxCGSolver / f32`, `JAXScape / AMJaxCGSolver / f64`, `JAXScape / CholmodSolver`, `JAXScape / approx CholmodSolver`, `Conefor` adapters | Use `--device cpu` for cross-tool comparisons. The GPU series is only emitted for GPU-capable pure-JAX JAXScape methods. |
 | Least-cost path | `JAXScape (CPU/GPU)`, `gdistance / costDistance` | `Conefor` adapter | Conefor remains a manual external integration. |
 | Sensitivity analysis | `JAXScape / shortest-path gradient (CPU/GPU)`, `gdistance / shortestPath`, `JAXScape / resistance gradient (CPU/GPU)`, `gdistance / passage` | none | This scorecard compares JAX gradients to the matching `gdistance` centrality surfaces. |
 | Inverse landscape genetics | `JAXScape + Optimistix (CPU/GPU)`, `ResistanceGA` | none | Both adapters run a fixed-budget synthetic optimisation problem for regression checks. |

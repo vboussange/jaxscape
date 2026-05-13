@@ -9,7 +9,7 @@ CPU and GPU series for GPU-capable JAXScape methods.
 
 | Feature | Automated profiles | Optional local profiles | Notes |
 | --- | --- | --- | --- |
-| Resistance distance | `JAXScape / pinv (CPU/GPU)`, `JAXScape / PyAMG`, `gdistance / commuteDistance`, `Circuitscape.jl / cg+amg`, `Circuitscape.jl / cholmod` | `JAXScape / AMJaxCGSolver`, `JAXScape / CholmodSolver`, `Conefor` adapters | The published `gdistance` series is rescaled from commute time to effective resistance by dividing by graph volume. |
+| Resistance distance | `JAXScape / pinv / f32 (CPU/GPU)`, `JAXScape / pinv / f64 (CPU/GPU)`, `JAXScape / approx pinv / f32 (CPU/GPU)`, `JAXScape / approx pinv / f64 (CPU/GPU)`, `JAXScape / PyAMG`, `gdistance / commuteDistance`, `Circuitscape.jl / cg+amg`, `Circuitscape.jl / cholmod` | `JAXScape / AMJaxCGSolver / f32`, `JAXScape / AMJaxCGSolver / f64`, `JAXScape / CholmodSolver`, `JAXScape / approx CholmodSolver`, `Conefor` adapters | The published `gdistance` series is rescaled from commute time to effective resistance by dividing by graph volume. |
 | Least-cost path | `JAXScape (CPU/GPU)`, `gdistance / costDistance` | `Conefor` adapter | Conefor remains a manual external integration and is omitted from the automated scorecard. |
 | Sensitivity analysis | `JAXScape / shortest-path gradient (CPU/GPU)`, `gdistance / shortestPath`, `JAXScape / resistance gradient (CPU/GPU)`, `gdistance / passage` | none | The chart compares gradients of scalar least-cost and resistance-distance functionals to the matching `gdistance` path-incidence and passage-centrality surfaces. |
 | Inverse landscape genetics | `JAXScape + Optimistix (CPU/GPU)`, `ResistanceGA` | none | The optimisation budget is fixed and reported for both toolchains. |
@@ -37,12 +37,12 @@ Synthetic setup: each benchmark raster is a deterministic cost or resistance fie
 
 Software entry points:
 
-- JAXScape dense baseline: `ResistanceDistance()(GridGraph(...), nodes=nodes)`.
-- JAXScape sparse variants: `ResistanceDistance(solver=PyAMGSolver())`, `ResistanceDistance(solver=CholmodSolver())`, and `ResistanceDistance(solver=AMJaxCGSolver(...))` with state from `distance.init(grid)`.
+- JAXScape dense baselines: `ResistanceDistance()(GridGraph(...), nodes=nodes)` and `ResistanceDistance(method=SpielmanApproximation(...))`, each benchmarked in both float32 and float64.
+- JAXScape sparse variants: `ResistanceDistance(solver=PyAMGSolver())`, `ResistanceDistance(solver=CholmodSolver())`, `ResistanceDistance(solver=CholmodSolver(), method=SpielmanApproximation(...))`, and `ResistanceDistance(solver=AMJaxCGSolver(...))` with state from `distance.init(grid)`.
 - `gdistance`: `gdistance::commuteDistance(...)` via `benchmark/external/gdistance_runner.R`, evaluated pairwise and then divided by the graph volume to report effective resistance instead of commute time.
 - Circuitscape.jl: `Circuitscape.compute(config_path)` via `benchmark/external/circuitscape_resistance.jl`, with INI solver values `cg+amg` and `cholmod`.
 
-Fairness notes: the automated cross-tool comparison uses CPU execution for every profile. Only the dense JAXScape pseudoinverse path emits an additional GPU series, because the current sparse Python and Julia adapters are CPU-only in this workspace.
+Fairness notes: the automated cross-tool comparison uses CPU execution for every profile. Additional GPU series are emitted only for the pure-JAX dense and approximate JAXScape paths, while the current sparse Python and Julia adapters remain CPU-only in this workspace.
 
 <div align="center"><img src="assets/benchmark_resistance_distance.png" alt="Resistance distance benchmark scorecard" width="900"></div>
 

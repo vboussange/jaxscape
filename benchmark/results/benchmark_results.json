@@ -37,23 +37,82 @@
       "size_label": "small",
       "grid_size": 10,
       "seed": 0,
-      "include_offset": true,
-      "point_count": 7,
+      "point_count": 64,
       "points": [
         [
-          1,
-          1
+          4,
+          7
         ],
         [
-          1,
+          3,
+          4
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          2,
+          5
+        ],
+        [
+          5,
+          7
+        ],
+        [
+          4,
           8
         ],
         [
+          2,
+          8
+        ],
+        [
+          6,
+          3
+        ],
+        [
+          4,
+          6
+        ],
+        [
+          2,
+          2
+        ],
+        [
           8,
+          5
+        ],
+        [
+          1,
+          4
+        ],
+        [
+          7,
+          6
+        ],
+        [
+          2,
+          4
+        ],
+        [
+          2,
           1
         ],
         [
           8,
+          4
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          6,
+          5
+        ],
+        [
+          1,
           8
         ],
         [
@@ -62,11 +121,179 @@
         ],
         [
           3,
+          7
+        ],
+        [
+          3,
           6
         ],
         [
-          6,
+          5,
+          8
+        ],
+        [
+          1,
+          6
+        ],
+        [
+          7,
+          4
+        ],
+        [
+          8,
+          6
+        ],
+        [
+          4,
+          5
+        ],
+        [
+          8,
+          7
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          8,
+          8
+        ],
+        [
+          5,
+          6
+        ],
+        [
+          8,
           3
+        ],
+        [
+          7,
+          8
+        ],
+        [
+          8,
+          1
+        ],
+        [
+          8,
+          2
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          4,
+          3
+        ],
+        [
+          3,
+          3
+        ],
+        [
+          7,
+          7
+        ],
+        [
+          6,
+          8
+        ],
+        [
+          6,
+          1
+        ],
+        [
+          5,
+          3
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          7,
+          2
+        ],
+        [
+          2,
+          6
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          5,
+          2
+        ],
+        [
+          5,
+          1
+        ],
+        [
+          6,
+          7
+        ],
+        [
+          1,
+          5
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          6,
+          4
+        ],
+        [
+          3,
+          8
+        ],
+        [
+          1,
+          7
+        ],
+        [
+          2,
+          3
+        ],
+        [
+          7,
+          3
+        ],
+        [
+          2,
+          7
+        ],
+        [
+          5,
+          4
+        ],
+        [
+          3,
+          5
+        ],
+        [
+          6,
+          2
+        ],
+        [
+          7,
+          1
+        ],
+        [
+          6,
+          6
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          4,
+          4
         ]
       ]
     },
@@ -76,36 +303,407 @@
       "size_label": "medium",
       "grid_size": 100,
       "seed": 1,
-      "include_offset": true,
-      "point_count": 7,
+      "point_count": 100,
       "points": [
         [
-          1,
-          1
+          26,
+          45
         ],
         [
-          1,
-          98
+          48,
+          21
         ],
         [
-          98,
-          1
+          52,
+          85
         ],
         [
-          98,
-          98
+          37,
+          94
         ],
         [
-          50,
-          50
+          44,
+          96
+        ],
+        [
+          7,
+          32
+        ],
+        [
+          46,
+          65
+        ],
+        [
+          18,
+          74
+        ],
+        [
+          27,
+          63
+        ],
+        [
+          27,
+          11
+        ],
+        [
+          60,
+          29
+        ],
+        [
+          47,
+          15
+        ],
+        [
+          8,
+          85
+        ],
+        [
+          15,
+          24
+        ],
+        [
+          59,
+          9
+        ],
+        [
+          24,
+          89
+        ],
+        [
+          49,
+          14
         ],
         [
           33,
-          66
+          41
         ],
         [
-          66,
+          1,
+          1
+        ],
+        [
+          79,
+          21
+        ],
+        [
+          27,
+          58
+        ],
+        [
+          41,
+          38
+        ],
+        [
+          51,
+          6
+        ],
+        [
+          84,
+          19
+        ],
+        [
+          37,
+          27
+        ],
+        [
+          57,
+          64
+        ],
+        [
+          54,
+          52
+        ],
+        [
+          43,
+          39
+        ],
+        [
+          7,
+          76
+        ],
+        [
+          80,
+          48
+        ],
+        [
+          70,
+          95
+        ],
+        [
+          7,
+          14
+        ],
+        [
+          53,
+          83
+        ],
+        [
+          85,
+          19
+        ],
+        [
+          69,
+          62
+        ],
+        [
+          39,
+          11
+        ],
+        [
+          67,
+          15
+        ],
+        [
+          80,
+          56
+        ],
+        [
+          8,
+          70
+        ],
+        [
+          9,
+          28
+        ],
+        [
+          97,
+          87
+        ],
+        [
+          87,
+          90
+        ],
+        [
+          86,
+          50
+        ],
+        [
+          69,
+          10
+        ],
+        [
+          31,
+          89
+        ],
+        [
+          5,
+          43
+        ],
+        [
+          43,
+          32
+        ],
+        [
+          52,
+          6
+        ],
+        [
+          95,
+          22
+        ],
+        [
+          4,
+          73
+        ],
+        [
+          87,
+          60
+        ],
+        [
+          69,
+          64
+        ],
+        [
+          35,
+          36
+        ],
+        [
+          51,
+          30
+        ],
+        [
+          77,
+          63
+        ],
+        [
+          75,
+          23
+        ],
+        [
+          27,
+          15
+        ],
+        [
+          35,
+          58
+        ],
+        [
+          5,
+          16
+        ],
+        [
+          55,
+          27
+        ],
+        [
+          41,
+          97
+        ],
+        [
+          1,
+          20
+        ],
+        [
+          42,
+          48
+        ],
+        [
+          58,
+          15
+        ],
+        [
+          18,
+          1
+        ],
+        [
+          85,
+          56
+        ],
+        [
+          9,
+          27
+        ],
+        [
+          84,
+          7
+        ],
+        [
+          89,
+          43
+        ],
+        [
+          92,
+          56
+        ],
+        [
+          46,
+          73
+        ],
+        [
+          86,
+          92
+        ],
+        [
+          9,
+          86
+        ],
+        [
+          45,
+          73
+        ],
+        [
+          62,
+          78
+        ],
+        [
+          60,
+          18
+        ],
+        [
+          62,
+          17
+        ],
+        [
+          11,
+          28
+        ],
+        [
+          1,
+          58
+        ],
+        [
+          49,
+          30
+        ],
+        [
+          44,
+          90
+        ],
+        [
+          89,
+          20
+        ],
+        [
+          28,
+          50
+        ],
+        [
+          46,
+          57
+        ],
+        [
+          10,
+          57
+        ],
+        [
+          64,
+          95
+        ],
+        [
+          85,
+          16
+        ],
+        [
+          16,
+          92
+        ],
+        [
+          31,
           33
+        ],
+        [
+          57,
+          80
+        ],
+        [
+          56,
+          89
+        ],
+        [
+          73,
+          80
+        ],
+        [
+          57,
+          20
+        ],
+        [
+          98,
+          20
+        ],
+        [
+          79,
+          52
+        ],
+        [
+          30,
+          73
+        ],
+        [
+          80,
+          65
+        ],
+        [
+          96,
+          40
+        ],
+        [
+          7,
+          9
+        ],
+        [
+          69,
+          1
         ]
       ]
     },
@@ -115,36 +713,407 @@
       "size_label": "large",
       "grid_size": 1000,
       "seed": 2,
-      "include_offset": true,
-      "point_count": 7,
+      "point_count": 100,
       "points": [
         [
-          1,
-          1
+          229,
+          675
         ],
         [
-          1,
+          10,
+          819
+        ],
+        [
+          281,
+          33
+        ],
+        [
+          667,
+          827
+        ],
+        [
+          124,
+          647
+        ],
+        [
+          625,
+          501
+        ],
+        [
+          980,
+          935
+        ],
+        [
+          237,
+          395
+        ],
+        [
+          612,
+          247
+        ],
+        [
+          219,
+          537
+        ],
+        [
+          563,
+          677
+        ],
+        [
+          314,
+          151
+        ],
+        [
+          431,
+          628
+        ],
+        [
+          56,
+          491
+        ],
+        [
+          924,
+          745
+        ],
+        [
+          807,
+          499
+        ],
+        [
+          270,
+          284
+        ],
+        [
+          52,
+          95
+        ],
+        [
+          556,
+          667
+        ],
+        [
+          740,
+          499
+        ],
+        [
+          89,
+          156
+        ],
+        [
+          244,
+          319
+        ],
+        [
+          73,
+          315
+        ],
+        [
+          802,
+          384
+        ],
+        [
+          303,
+          515
+        ],
+        [
+          728,
+          312
+        ],
+        [
+          415,
+          794
+        ],
+        [
+          820,
+          296
+        ],
+        [
+          411,
+          717
+        ],
+        [
+          220,
+          346
+        ],
+        [
+          345,
+          175
+        ],
+        [
+          156,
+          183
+        ],
+        [
+          579,
+          361
+        ],
+        [
+          887,
+          703
+        ],
+        [
+          824,
+          981
+        ],
+        [
+          73,
+          188
+        ],
+        [
+          524,
+          359
+        ],
+        [
+          510,
+          837
+        ],
+        [
+          595,
+          426
+        ],
+        [
+          811,
+          310
+        ],
+        [
+          468,
+          343
+        ],
+        [
+          762,
+          963
+        ],
+        [
+          908,
           998
         ],
         [
-          998,
-          1
+          531,
+          957
         ],
         [
-          998,
-          998
+          455,
+          929
         ],
         [
-          500,
-          500
+          148,
+          320
         ],
         [
-          333,
+          651,
+          591
+        ],
+        [
+          714,
+          161
+        ],
+        [
+          678,
+          669
+        ],
+        [
+          403,
+          669
+        ],
+        [
+          441,
+          496
+        ],
+        [
+          69,
+          892
+        ],
+        [
+          138,
+          825
+        ],
+        [
+          957,
+          749
+        ],
+        [
+          198,
+          647
+        ],
+        [
+          921,
+          891
+        ],
+        [
+          691,
+          231
+        ],
+        [
+          410,
+          96
+        ],
+        [
+          901,
+          402
+        ],
+        [
+          736,
+          692
+        ],
+        [
+          394,
+          948
+        ],
+        [
+          506,
+          51
+        ],
+        [
+          780,
+          348
+        ],
+        [
+          661,
           666
         ],
         [
-          666,
-          333
+          882,
+          777
+        ],
+        [
+          123,
+          131
+        ],
+        [
+          746,
+          120
+        ],
+        [
+          840,
+          586
+        ],
+        [
+          78,
+          157
+        ],
+        [
+          287,
+          84
+        ],
+        [
+          3,
+          386
+        ],
+        [
+          417,
+          458
+        ],
+        [
+          553,
+          559
+        ],
+        [
+          715,
+          395
+        ],
+        [
+          700,
+          415
+        ],
+        [
+          58,
+          397
+        ],
+        [
+          274,
+          377
+        ],
+        [
+          661,
+          179
+        ],
+        [
+          399,
+          178
+        ],
+        [
+          613,
+          883
+        ],
+        [
+          432,
+          739
+        ],
+        [
+          983,
+          890
+        ],
+        [
+          713,
+          844
+        ],
+        [
+          101,
+          66
+        ],
+        [
+          300,
+          469
+        ],
+        [
+          10,
+          380
+        ],
+        [
+          492,
+          555
+        ],
+        [
+          726,
+          937
+        ],
+        [
+          629,
+          908
+        ],
+        [
+          982,
+          186
+        ],
+        [
+          447,
+          502
+        ],
+        [
+          926,
+          12
+        ],
+        [
+          110,
+          886
+        ],
+        [
+          665,
+          856
+        ],
+        [
+          612,
+          609
+        ],
+        [
+          869,
+          382
+        ],
+        [
+          572,
+          916
+        ],
+        [
+          224,
+          562
+        ],
+        [
+          299,
+          26
+        ],
+        [
+          467,
+          900
         ]
       ]
     }
@@ -152,30 +1121,60 @@
   "records": [
     {
       "task": "resistance_distance",
-      "tool": "JAXScape / pinv (CPU)",
+      "tool": "JAXScape / pinv / f32 (CPU)",
       "software": "JAXScape",
       "scenario": "synthetic_resistance_small",
       "status": "ok",
-      "median_seconds": 0.0029568090103566647,
+      "median_seconds": 0.0029969769529998302,
       "timings_seconds": [
-        0.0031891780672594905,
-        0.002901019062846899,
-        0.0029568090103566647
+        0.003099677967838943,
+        0.0029969769529998302,
+        0.002909378963522613
       ],
       "metrics": {},
       "note": ""
     },
     {
       "task": "resistance_distance",
-      "tool": "JAXScape / pinv (GPU)",
+      "tool": "JAXScape / pinv / f32 (GPU)",
       "software": "JAXScape",
       "scenario": "synthetic_resistance_small",
       "status": "ok",
-      "median_seconds": 0.002706139930523932,
+      "median_seconds": 0.002845939015969634,
       "timings_seconds": [
-        0.0028582080267369747,
-        0.002706139930523932,
-        0.0026795800076797605
+        0.0030089369975030422,
+        0.0028437289875000715,
+        0.002845939015969634
+      ],
+      "metrics": {},
+      "note": ""
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / pinv / f64 (CPU)",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_small",
+      "status": "ok",
+      "median_seconds": 0.0037635640474036336,
+      "timings_seconds": [
+        0.003994904924184084,
+        0.0037635640474036336,
+        0.0036773160099983215
+      ],
+      "metrics": {},
+      "note": ""
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / pinv / f64 (GPU)",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_small",
+      "status": "ok",
+      "median_seconds": 0.03336805198341608,
+      "timings_seconds": [
+        0.033529571024701,
+        0.03336805198341608,
+        0.03335133090149611
       ],
       "metrics": {},
       "note": ""
@@ -186,11 +1185,11 @@
       "software": "JAXScape",
       "scenario": "synthetic_resistance_small",
       "status": "ok",
-      "median_seconds": 0.027485584025271237,
+      "median_seconds": 0.06769038795027882,
       "timings_seconds": [
-        0.03207089600618929,
-        0.027485584025271237,
-        0.02180351596325636
+        0.09429943596478552,
+        0.06684714194852859,
+        0.06769038795027882
       ],
       "metrics": {},
       "note": ""
@@ -201,51 +1200,163 @@
       "software": "JAXScape",
       "scenario": "synthetic_resistance_small",
       "status": "ok",
-      "median_seconds": 0.009883451042696834,
+      "median_seconds": 0.01103027700446546,
       "timings_seconds": [
-        0.012246124097146094,
-        0.009883451042696834,
-        0.009762682020664215
+        0.014091775985434651,
+        0.01103027700446546,
+        0.01064736908301711
       ],
       "metrics": {},
       "note": ""
     },
     {
       "task": "resistance_distance",
-      "tool": "JAXScape / AMJaxCGSolver",
+      "tool": "JAXScape / AMJaxCGSolver / f32",
       "software": "JAXScape",
       "scenario": "synthetic_resistance_small",
       "status": "ok",
-      "median_seconds": 0.0029154790099710226,
+      "median_seconds": 0.01050213910639286,
       "timings_seconds": [
-        0.00301984790712595,
-        0.002828578930348158,
-        0.0029154790099710226
+        0.010606179013848305,
+        0.01032462005969137,
+        0.01050213910639286
       ],
       "metrics": {},
       "note": ""
     },
     {
       "task": "resistance_distance",
-      "tool": "JAXScape / pinv (CPU)",
+      "tool": "JAXScape / AMJaxCGSolver / f64",
       "software": "JAXScape",
-      "scenario": "synthetic_resistance_medium",
-      "status": "failed",
-      "median_seconds": null,
-      "timings_seconds": [],
+      "scenario": "synthetic_resistance_small",
+      "status": "ok",
+      "median_seconds": 0.012590840924531221,
+      "timings_seconds": [
+        0.01311155897565186,
+        0.012590840924531221,
+        0.012400932959280908
+      ],
       "metrics": {},
-      "note": "Exceeded walltime of 60s while running JAXScape / pinv (CPU)."
+      "note": ""
     },
     {
       "task": "resistance_distance",
-      "tool": "JAXScape / pinv (GPU)",
+      "tool": "JAXScape / approx pinv / f32 (CPU)",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_small",
+      "status": "ok",
+      "median_seconds": 0.016971981967799366,
+      "timings_seconds": [
+        0.016971981967799366,
+        0.01627478504087776,
+        0.017144371988251805
+      ],
+      "metrics": {},
+      "note": ""
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / approx pinv / f32 (GPU)",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_small",
+      "status": "ok",
+      "median_seconds": 0.0005968279438093305,
+      "timings_seconds": [
+        0.0007619179086759686,
+        0.0005968279438093305,
+        0.000591948046348989
+      ],
+      "metrics": {},
+      "note": ""
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / approx pinv / f64 (CPU)",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_small",
+      "status": "ok",
+      "median_seconds": 0.017364664934575558,
+      "timings_seconds": [
+        0.019740396994166076,
+        0.017364664934575558,
+        0.015779561013914645
+      ],
+      "metrics": {},
+      "note": ""
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / approx pinv / f64 (GPU)",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_small",
+      "status": "ok",
+      "median_seconds": 0.001253386028110981,
+      "timings_seconds": [
+        0.0014249359956011176,
+        0.001209805952385068,
+        0.001253386028110981
+      ],
+      "metrics": {},
+      "note": ""
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / approx CholmodSolver",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_small",
+      "status": "ok",
+      "median_seconds": 0.03593804792035371,
+      "timings_seconds": [
+        0.03593804792035371,
+        0.0363318370655179,
+        0.03538947110064328
+      ],
+      "metrics": {},
+      "note": ""
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / pinv / f32 (CPU)",
       "software": "JAXScape",
       "scenario": "synthetic_resistance_medium",
       "status": "failed",
       "median_seconds": null,
       "timings_seconds": [],
       "metrics": {},
-      "note": "Exceeded walltime of 60s while running JAXScape / pinv (GPU)."
+      "note": "Exceeded walltime of 60s while running JAXScape / pinv / f32 (CPU)."
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / pinv / f32 (GPU)",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_medium",
+      "status": "failed",
+      "median_seconds": null,
+      "timings_seconds": [],
+      "metrics": {},
+      "note": "Exceeded walltime of 60s while running JAXScape / pinv / f32 (GPU)."
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / pinv / f64 (CPU)",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_medium",
+      "status": "failed",
+      "median_seconds": null,
+      "timings_seconds": [],
+      "metrics": {},
+      "note": "Exceeded walltime of 60s while running JAXScape / pinv / f64 (CPU)."
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / pinv / f64 (GPU)",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_medium",
+      "status": "failed",
+      "median_seconds": null,
+      "timings_seconds": [],
+      "metrics": {},
+      "note": "Exceeded walltime of 60s while running JAXScape / pinv / f64 (GPU)."
     },
     {
       "task": "resistance_distance",
@@ -253,11 +1364,11 @@
       "software": "JAXScape",
       "scenario": "synthetic_resistance_medium",
       "status": "ok",
-      "median_seconds": 0.1556275599868968,
+      "median_seconds": 1.1837708700913936,
       "timings_seconds": [
-        0.15344677900429815,
-        0.16409283806569874,
-        0.1556275599868968
+        1.204269055975601,
+        1.1789102760376409,
+        1.1837708700913936
       ],
       "metrics": {},
       "note": ""
@@ -268,29 +1379,119 @@
       "software": "JAXScape",
       "scenario": "synthetic_resistance_medium",
       "status": "ok",
-      "median_seconds": 0.12081599701195955,
+      "median_seconds": 0.23917483899276704,
       "timings_seconds": [
-        0.12081599701195955,
-        0.12058975792024285,
-        0.12715666100848466
+        0.23518425994552672,
+        0.23917483899276704,
+        0.24425820203032345
       ],
       "metrics": {},
       "note": ""
     },
     {
       "task": "resistance_distance",
-      "tool": "JAXScape / AMJaxCGSolver",
+      "tool": "JAXScape / AMJaxCGSolver / f32",
       "software": "JAXScape",
       "scenario": "synthetic_resistance_medium",
       "status": "failed",
       "median_seconds": null,
       "timings_seconds": [],
       "metrics": {},
-      "note": "Above is the stack outside of JIT. Below is the stack inside of JIT:\n  File \"/home/boussang/jaxscape/benchmark/jaxscape/resistance_distance.py\", line 265, in _jaxscape_prepared_resistance\n    return distance(grid, nodes=nodes, state=state)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/distance.py\", line 90, in __call__\n    return self.nodes_to_nodes_distance(graph, nodes, state)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/_module/_prebuilt.py\", line 82, in __call__\n    return self.func(*self.args, *args, **kwargs, **self.keywords)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/resistance_distance.py\", line 114, in nodes_to_nodes_distance\n    return lineax_solver_nodes_to_nodes_resistance_distance(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/resistance_distance.py\", line 206, in lineax_solver_nodes_to_nodes_resistance_distance\n    potentials = batched_linear_solve(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/solvers/operator.py\", line 57, in batched_linear_solve\n    return jax.vmap(\n           ^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/solvers/operator.py\", line 58, in <lambda>\n    lambda A, b: linear_solve(A, b, solver, options=options, state=state),\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/solvers/operator.py\", line 40, in linear_solve\n    return lx.linear_solve(\n           ^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/internal/_primitive.py\", line 316, in batch_rule\n    out = _vprim_p.bind(\n          ^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/internal/_primitive.py\", line 368, in _vprim_abstract_eval\n    outs = abstract_eval(*inputs, **dict(params))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/internal/_primitive.py\", line 159, in _wrapper\n    out = rule(*args)\n          ^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/lineax/_solve.py\", line 125, in _linear_solve_abstract_eval\n    out = eqx.filter_eval_shape(\n          ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/lineax/_solve.py\", line 113, in _linear_solve_impl\n    solution, result, stats = result.error_if(\n                              ^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/_module/_prebuilt.py\", line 34, in __call__\n    return self.__func__(self.__self__, *args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nequinox.EquinoxRuntimeError: The maximum number of solver steps was reached. Try increasing `max_steps`.\n\n-------------------\n\nAn error occurred during the runtime of your JAX program.\n\n1) Setting the environment variable `EQX_ON_ERROR=breakpoint` is usually the most useful\nway to debug such errors. This can be interacted with using most of the usual commands\nfor the Python debugger: `u` and `d` to move up and down frames, the name of a variable\nto print its value, etc.\n\n2) You may also like to try setting `JAX_DISABLE_JIT=1`. This will mean that you can\n(mostly) inspect the state of your program as if it was normal Python.\n\n3) See `https://docs.kidger.site/equinox/api/debug/` for more suggestions.\n"
+      "note": "Exceeded walltime of 60s while running JAXScape / AMJaxCGSolver / f32."
     },
     {
       "task": "resistance_distance",
-      "tool": "JAXScape / pinv (CPU)",
+      "tool": "JAXScape / AMJaxCGSolver / f64",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_medium",
+      "status": "ok",
+      "median_seconds": 2.736831270973198,
+      "timings_seconds": [
+        2.58349751890637,
+        2.736831270973198,
+        2.7557354259770364
+      ],
+      "metrics": {},
+      "note": ""
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / approx pinv / f32 (CPU)",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_medium",
+      "status": "ok",
+      "median_seconds": 7.693360588047653,
+      "timings_seconds": [
+        7.287425703019835,
+        7.693360588047653,
+        7.901740976958536
+      ],
+      "metrics": {},
+      "note": ""
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / approx pinv / f32 (GPU)",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_medium",
+      "status": "ok",
+      "median_seconds": 0.14608304388821125,
+      "timings_seconds": [
+        0.14608304388821125,
+        0.14623261406086385,
+        0.14603285503108054
+      ],
+      "metrics": {},
+      "note": ""
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / approx pinv / f64 (CPU)",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_medium",
+      "status": "ok",
+      "median_seconds": 13.401145690004341,
+      "timings_seconds": [
+        13.496526947012171,
+        12.127100036013871,
+        13.401145690004341
+      ],
+      "metrics": {},
+      "note": ""
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / approx pinv / f64 (GPU)",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_medium",
+      "status": "ok",
+      "median_seconds": 4.069125002017245,
+      "timings_seconds": [
+        4.069274422014132,
+        4.068075166083872,
+        4.069125002017245
+      ],
+      "metrics": {},
+      "note": ""
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / approx CholmodSolver",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_medium",
+      "status": "ok",
+      "median_seconds": 4.975695775006898,
+      "timings_seconds": [
+        5.0633904210990295,
+        4.975695775006898,
+        4.872969301999547
+      ],
+      "metrics": {},
+      "note": ""
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / pinv / f32 (CPU)",
       "software": "JAXScape",
       "scenario": "synthetic_resistance_large",
       "status": "failed",
@@ -301,29 +1502,47 @@
     },
     {
       "task": "resistance_distance",
-      "tool": "JAXScape / pinv (GPU)",
+      "tool": "JAXScape / pinv / f32 (GPU)",
       "software": "JAXScape",
       "scenario": "synthetic_resistance_large",
       "status": "failed",
       "median_seconds": null,
       "timings_seconds": [],
       "metrics": {},
-      "note": "Out-of-memory while running resistance benchmark: RESOURCE_EXHAUSTED: Autotuning failed for HLO: %custom-call.1 = (f32[1000000,1000000]{1,0}, s8[4194304]{0}) custom-call(%bitcast.162, %bitcast.166), custom_call_target=\"__cublas$lt$matmul\", metadata={op_name=\"jit(_jaxscape_resistance)/jit(nodes_to_nodes_distance)/jit(p_inv_resistance_distance)/jit(_pinv)/dot_general\" stack_frame_id=212}, backend_config={\"operation_queue_id\":\"0\",\"gemm_backend_config\":{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"0\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"HIGHEST\",\"HIGHEST\"],\"algorithm\":\"ALG_UNSET\"},\"epilogue\":\"DEFAULT\",\"lhs_stride\":\"1000000000000\",\"rhs_stride\":\"1000000000000\",\"grad_x\":false,\"grad_y\":false,\"damax_output\":false,\"autotune_workspace_size\":\"0\",\"scale_mode\":0},\"force_earliest_schedule\":false,\"reification_cost\":[],\"device_type\":\"DEVICE_TYPE_INVALID\"}. Failed to profile configs: Out of memory while trying to allocate 3.64TiB."
+      "note": "Out-of-memory while running resistance benchmark: RESOURCE_EXHAUSTED: Autotuning failed for HLO: %custom-call.1 = (f32[1000000,1000000]{1,0}, s8[4194304]{0}) custom-call(%bitcast.162, %bitcast.166), custom_call_target=\"__cublas$lt$matmul\", metadata={op_name=\"jit(_jaxscape_resistance_with_distance)/jit(nodes_to_nodes_distance)/jit(p_inv_resistance_distance)/jit(_pinv)/dot_general\" stack_frame_id=212}, backend_config={\"operation_queue_id\":\"0\",\"gemm_backend_config\":{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"0\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"HIGHEST\",\"HIGHEST\"],\"algorithm\":\"ALG_UNSET\"},\"epilogue\":\"DEFAULT\",\"lhs_stride\":\"1000000000000\",\"rhs_stride\":\"1000000000000\",\"grad_x\":false,\"grad_y\":false,\"damax_output\":false,\"autotune_workspace_size\":\"0\",\"scale_mode\":0},\"force_earliest_schedule\":false,\"reification_cost\":[],\"device_type\":\"DEVICE_TYPE_INVALID\"}. Failed to profile configs: Out of memory while trying to allocate 3.64TiB."
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / pinv / f64 (CPU)",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_large",
+      "status": "failed",
+      "median_seconds": null,
+      "timings_seconds": [],
+      "metrics": {},
+      "note": "Out-of-memory while running resistance benchmark: RESOURCE_EXHAUSTED: Buffer Definition Event: Out of memory allocating 24000008000040 bytes."
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / pinv / f64 (GPU)",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_large",
+      "status": "failed",
+      "median_seconds": null,
+      "timings_seconds": [],
+      "metrics": {},
+      "note": "Out-of-memory while running resistance benchmark: RESOURCE_EXHAUSTED: Autotuning failed for HLO: %custom-call.1 = (f64[1000000,1000000]{1,0}, s8[4194304]{0}) custom-call(%bitcast.163, %bitcast.167), custom_call_target=\"__cublas$lt$matmul\", metadata={op_name=\"jit(_jaxscape_resistance_with_distance)/jit(nodes_to_nodes_distance)/jit(p_inv_resistance_distance)/jit(_pinv)/dot_general\" stack_frame_id=212}, backend_config={\"operation_queue_id\":\"0\",\"gemm_backend_config\":{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"0\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"HIGHEST\",\"HIGHEST\"],\"algorithm\":\"ALG_UNSET\"},\"epilogue\":\"DEFAULT\",\"lhs_stride\":\"1000000000000\",\"rhs_stride\":\"1000000000000\",\"grad_x\":false,\"grad_y\":false,\"damax_output\":false,\"autotune_workspace_size\":\"0\",\"scale_mode\":0},\"force_earliest_schedule\":false,\"reification_cost\":[],\"device_type\":\"DEVICE_TYPE_INVALID\"}. Failed to profile configs: Out of memory while trying to allocate 7.28TiB."
     },
     {
       "task": "resistance_distance",
       "tool": "JAXScape / PyAMG",
       "software": "JAXScape",
       "scenario": "synthetic_resistance_large",
-      "status": "ok",
-      "median_seconds": 11.606486305012368,
-      "timings_seconds": [
-        11.396987849962898,
-        11.674205293995328,
-        11.606486305012368
-      ],
+      "status": "failed",
+      "median_seconds": null,
+      "timings_seconds": [],
       "metrics": {},
-      "note": ""
+      "note": "Exceeded walltime of 60s while running JAXScape / PyAMG."
     },
     {
       "task": "resistance_distance",
@@ -338,14 +1557,80 @@
     },
     {
       "task": "resistance_distance",
-      "tool": "JAXScape / AMJaxCGSolver",
+      "tool": "JAXScape / AMJaxCGSolver / f32",
       "software": "JAXScape",
       "scenario": "synthetic_resistance_large",
       "status": "failed",
       "median_seconds": null,
       "timings_seconds": [],
       "metrics": {},
-      "note": "Above is the stack outside of JIT. Below is the stack inside of JIT:\n  File \"/home/boussang/jaxscape/benchmark/jaxscape/resistance_distance.py\", line 265, in _jaxscape_prepared_resistance\n    return distance(grid, nodes=nodes, state=state)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/distance.py\", line 90, in __call__\n    return self.nodes_to_nodes_distance(graph, nodes, state)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/_module/_prebuilt.py\", line 82, in __call__\n    return self.func(*self.args, *args, **kwargs, **self.keywords)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/resistance_distance.py\", line 114, in nodes_to_nodes_distance\n    return lineax_solver_nodes_to_nodes_resistance_distance(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/resistance_distance.py\", line 206, in lineax_solver_nodes_to_nodes_resistance_distance\n    potentials = batched_linear_solve(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/solvers/operator.py\", line 57, in batched_linear_solve\n    return jax.vmap(\n           ^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/solvers/operator.py\", line 58, in <lambda>\n    lambda A, b: linear_solve(A, b, solver, options=options, state=state),\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/solvers/operator.py\", line 40, in linear_solve\n    return lx.linear_solve(\n           ^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/internal/_primitive.py\", line 316, in batch_rule\n    out = _vprim_p.bind(\n          ^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/internal/_primitive.py\", line 368, in _vprim_abstract_eval\n    outs = abstract_eval(*inputs, **dict(params))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/internal/_primitive.py\", line 159, in _wrapper\n    out = rule(*args)\n          ^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/lineax/_solve.py\", line 125, in _linear_solve_abstract_eval\n    out = eqx.filter_eval_shape(\n          ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/lineax/_solve.py\", line 113, in _linear_solve_impl\n    solution, result, stats = result.error_if(\n                              ^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/_module/_prebuilt.py\", line 34, in __call__\n    return self.__func__(self.__self__, *args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nequinox.EquinoxRuntimeError: A linear solver returned non-finite (NaN or inf) output. This usually means that an\noperator was not well-posed, and that its solver does not support this.\n\nIf you are trying solve a linear least-squares problem then you should pass\n`solver=AutoLinearSolver(well_posed=False)`. By default `lineax.linear_solve`\nassumes that the operator is square and nonsingular.\n\nIf you *were* expecting this solver to work with this operator, then it may be because:\n\n(a) the operator is singular, and your code has a bug; or\n\n(b) the operator was nearly singular (i.e. it had a high condition number:\n    `jnp.linalg.cond(operator.as_matrix())` is large), and the solver suffered from\n    numerical instability issues; or\n\n(c) the operator is declared to exhibit a certain property (e.g. positive definiteness)\n    that is does not actually satisfy.\n\n-------------------\n\nAn error occurred during the runtime of your JAX program.\n\n1) Setting the environment variable `EQX_ON_ERROR=breakpoint` is usually the most useful\nway to debug such errors. This can be interacted with using most of the usual commands\nfor the Python debugger: `u` and `d` to move up and down frames, the name of a variable\nto print its value, etc.\n\n2) You may also like to try setting `JAX_DISABLE_JIT=1`. This will mean that you can\n(mostly) inspect the state of your program as if it was normal Python.\n\n3) See `https://docs.kidger.site/equinox/api/debug/` for more suggestions.\n"
+      "note": "Above is the stack outside of JIT. Below is the stack inside of JIT:\n  File \"/home/boussang/jaxscape/benchmark/jaxscape/resistance_distance.py\", line 326, in _jaxscape_prepared_resistance\n    return distance(grid, nodes=nodes, state=state)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/distance.py\", line 90, in __call__\n    return self.nodes_to_nodes_distance(graph, nodes, state)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/_module/_prebuilt.py\", line 82, in __call__\n    return self.func(*self.args, *args, **kwargs, **self.keywords)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/resistance_distance.py\", line 114, in nodes_to_nodes_distance\n    return lineax_solver_nodes_to_nodes_resistance_distance(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/resistance_distance.py\", line 206, in lineax_solver_nodes_to_nodes_resistance_distance\n    potentials = batched_linear_solve(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/solvers/operator.py\", line 57, in batched_linear_solve\n    return jax.vmap(\n           ^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/solvers/operator.py\", line 58, in <lambda>\n    lambda A, b: linear_solve(A, b, solver, options=options, state=state),\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/solvers/operator.py\", line 40, in linear_solve\n    return lx.linear_solve(\n           ^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/internal/_primitive.py\", line 316, in batch_rule\n    out = _vprim_p.bind(\n          ^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/internal/_primitive.py\", line 368, in _vprim_abstract_eval\n    outs = abstract_eval(*inputs, **dict(params))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/internal/_primitive.py\", line 159, in _wrapper\n    out = rule(*args)\n          ^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/lineax/_solve.py\", line 125, in _linear_solve_abstract_eval\n    out = eqx.filter_eval_shape(\n          ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/lineax/_solve.py\", line 113, in _linear_solve_impl\n    solution, result, stats = result.error_if(\n                              ^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/_module/_prebuilt.py\", line 34, in __call__\n    return self.__func__(self.__self__, *args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nequinox.EquinoxRuntimeError: A linear solver returned non-finite (NaN or inf) output. This usually means that an\noperator was not well-posed, and that its solver does not support this.\n\nIf you are trying solve a linear least-squares problem then you should pass\n`solver=AutoLinearSolver(well_posed=False)`. By default `lineax.linear_solve`\nassumes that the operator is square and nonsingular.\n\nIf you *were* expecting this solver to work with this operator, then it may be because:\n\n(a) the operator is singular, and your code has a bug; or\n\n(b) the operator was nearly singular (i.e. it had a high condition number:\n    `jnp.linalg.cond(operator.as_matrix())` is large), and the solver suffered from\n    numerical instability issues; or\n\n(c) the operator is declared to exhibit a certain property (e.g. positive definiteness)\n    that is does not actually satisfy.\n\n-------------------\n\nAn error occurred during the runtime of your JAX program.\n\n1) Setting the environment variable `EQX_ON_ERROR=breakpoint` is usually the most useful\nway to debug such errors. This can be interacted with using most of the usual commands\nfor the Python debugger: `u` and `d` to move up and down frames, the name of a variable\nto print its value, etc.\n\n2) You may also like to try setting `JAX_DISABLE_JIT=1`. This will mean that you can\n(mostly) inspect the state of your program as if it was normal Python.\n\n3) See `https://docs.kidger.site/equinox/api/debug/` for more suggestions.\n"
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / AMJaxCGSolver / f64",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_large",
+      "status": "failed",
+      "median_seconds": null,
+      "timings_seconds": [],
+      "metrics": {},
+      "note": "Exceeded walltime of 60s while running JAXScape / AMJaxCGSolver / f64."
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / approx pinv / f32 (CPU)",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_large",
+      "status": "failed",
+      "median_seconds": null,
+      "timings_seconds": [],
+      "metrics": {},
+      "note": "Out-of-memory while running resistance benchmark: RESOURCE_EXHAUSTED: Buffer Definition Event: Out of memory allocating 8022100000384 bytes."
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / approx pinv / f32 (GPU)",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_large",
+      "status": "failed",
+      "median_seconds": null,
+      "timings_seconds": [],
+      "metrics": {},
+      "note": "Out-of-memory while running resistance benchmark: RESOURCE_EXHAUSTED: Autotuning failed for HLO: %gemm_fusion_dot_general.2 = f32[1000000,1000000]{1,0} fusion(%pad.3, %pad.3), kind=kCustom, calls=%gemm_fusion_dot_general.2_computation, metadata={op_name=\"jit(_jaxscape_resistance_with_distance)/jit(nodes_to_nodes_distance)/jit(spielman_resistance_distance)/dot_general\" stack_frame_id=344}, backend_config={\"operation_queue_id\":\"0\",\"fusion_backend_config\":{\"kind\":\"__triton_gemm\"},\"force_earliest_schedule\":false,\"reification_cost\":[],\"device_type\":\"DEVICE_TYPE_INVALID\"}. Failed to profile configs: Out of memory while trying to allocate 20.60GiB."
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / approx pinv / f64 (CPU)",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_large",
+      "status": "failed",
+      "median_seconds": null,
+      "timings_seconds": [],
+      "metrics": {},
+      "note": "Out-of-memory while running resistance benchmark: RESOURCE_EXHAUSTED: Buffer Definition Event: Out of memory allocating 16044192000384 bytes."
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / approx pinv / f64 (GPU)",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_large",
+      "status": "failed",
+      "median_seconds": null,
+      "timings_seconds": [],
+      "metrics": {},
+      "note": "Out-of-memory while running resistance benchmark: RESOURCE_EXHAUSTED: Autotuning failed for HLO: %custom-call.1 = (f64[1000000,1000000]{1,0}, s8[4194304]{0}) custom-call(%mul.63, %pad.3), custom_call_target=\"__cublas$lt$matmul\", metadata={op_name=\"jit(_jaxscape_resistance_with_distance)/jit(nodes_to_nodes_distance)/jit(spielman_resistance_distance)/dot_general\" stack_frame_id=344}, backend_config={\"operation_queue_id\":\"0\",\"gemm_backend_config\":{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"0\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"],\"algorithm\":\"ALG_UNSET\"},\"epilogue\":\"DEFAULT\",\"lhs_stride\":\"5527000000\",\"rhs_stride\":\"5527000000\",\"grad_x\":false,\"grad_y\":false,\"damax_output\":false,\"autotune_workspace_size\":\"0\",\"scale_mode\":0},\"force_earliest_schedule\":false,\"reification_cost\":[],\"device_type\":\"DEVICE_TYPE_INVALID\"}. Failed to profile configs: Out of memory while trying to allocate 41.19GiB."
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / approx CholmodSolver",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_large",
+      "status": "failed",
+      "median_seconds": null,
+      "timings_seconds": [],
+      "metrics": {},
+      "note": "Out-of-memory while running resistance benchmark: RESOURCE_EXHAUSTED: Out of memory allocating 4044908000320 bytes."
     }
   ]
 }

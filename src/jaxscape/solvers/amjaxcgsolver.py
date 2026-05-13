@@ -113,8 +113,8 @@ class AMJaxCGSolver(AbstractLinearSolver):
         may need to transpose the preconditioner during autodiff.
     """
 
-    rtol: float = 1e-6
-    atol: float = 1e-6
+    rtol: float = 1e-3
+    atol: float = 1e-3
     max_steps: int | None = None
     stabilise_every: int | None = 10
     cycle: str = "V"

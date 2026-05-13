@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 import logging
 import sys
 from collections.abc import Callable
@@ -33,7 +34,8 @@ configure_standalone_environment()
 
 import equinox as eqx
 import jax
-from jaxscape import GridGraph, ResistanceDistance
+import jax.numpy as jnp
+from jaxscape import GridGraph, ResistanceDistance, SpielmanApproximation
 
 from benchmark.benchmark_distances import (
     as_array,
@@ -58,8 +60,16 @@ class ResistanceProfile:
     key: str
     tool: str
     solver_factory: Callable[[], Any] | None = None
+    method_factory: Callable[[], Any] | None = None
     gpu_capable: bool = False
     requires_preparation: bool = False
+    dtype: Any = jnp.float32
+
+
+RESISTANCE_SOLVER_RTOL = 1e-3
+RESISTANCE_SOLVER_ATOL = 1e-3
+RESISTANCE_SOLVER_MAX_ITERATIONS: int | None = None
+RESISTANCE_APPROXIMATION_EPSILON = 0.05
 
 
 def make_pyamg_solver() -> Any:
@@ -69,7 +79,10 @@ def make_pyamg_solver() -> Any:
         raise ImportError(
             "Install the benchmark Python extra to enable the PyAMG resistance profile."
         ) from error
-    return PyAMGSolver(rtol=1e-6, maxiter=50_000)
+    return PyAMGSolver(
+        rtol=RESISTANCE_SOLVER_RTOL,
+        maxiter=RESISTANCE_SOLVER_MAX_ITERATIONS,
+    )
 
 
 def make_cholmod_solver() -> Any:
@@ -90,20 +103,67 @@ def make_amjaxcg_solver() -> Any:
             "Install the amjax Python extra to enable the AMJaxCG resistance "
             "profile."
         ) from error
-    return AMJaxCGSolver(rtol=1e-5, atol=1e-5, max_steps=500)
+    return AMJaxCGSolver(
+        rtol=RESISTANCE_SOLVER_RTOL,
+        atol=RESISTANCE_SOLVER_ATOL,
+        max_steps=RESISTANCE_SOLVER_MAX_ITERATIONS,
+    )
+
+
+def make_spielman_method() -> Any:
+    return SpielmanApproximation(epsilon=RESISTANCE_APPROXIMATION_EPSILON, seed=0)
 
 
 JAXSCAPE_RESISTANCE_PROFILES = (
-    ResistanceProfile("pinv", "JAXScape / pinv", gpu_capable=True),
+    ResistanceProfile(
+        "pinv_f32",
+        "JAXScape / pinv / f32",
+        gpu_capable=True,
+        dtype=jnp.float32,
+    ),
+    ResistanceProfile(
+        "pinv_f64",
+        "JAXScape / pinv / f64",
+        gpu_capable=True,
+        dtype=jnp.float64,
+    ),
     ResistanceProfile("pyamg", "JAXScape / PyAMG", solver_factory=make_pyamg_solver),
     ResistanceProfile(
         "cholmod", "JAXScape / CholmodSolver", solver_factory=make_cholmod_solver
     ),
     ResistanceProfile(
-        "amjaxcg",
-        "JAXScape / AMJaxCGSolver",
+        "amjaxcg_f32",
+        "JAXScape / AMJaxCGSolver / f32",
         solver_factory=make_amjaxcg_solver,
         requires_preparation=True,
+        dtype=jnp.float32,
+    ),
+    ResistanceProfile(
+        "amjaxcg_f64",
+        "JAXScape / AMJaxCGSolver / f64",
+        solver_factory=make_amjaxcg_solver,
+        requires_preparation=True,
+        dtype=jnp.float64,
+    ),
+    ResistanceProfile(
+        "approx_pinv_f32",
+        "JAXScape / approx pinv / f32",
+        method_factory=make_spielman_method,
+        gpu_capable=True,
+        dtype=jnp.float32,
+    ),
+    ResistanceProfile(
+        "approx_pinv_f64",
+        "JAXScape / approx pinv / f64",
+        method_factory=make_spielman_method,
+        gpu_capable=True,
+        dtype=jnp.float64,
+    ),
+    ResistanceProfile(
+        "approx_cholmod",
+        "JAXScape / approx CholmodSolver",
+        solver_factory=make_cholmod_solver,
+        method_factory=make_spielman_method,
     ),
 )
 PROFILE_BY_KEY = {profile.key: profile for profile in JAXSCAPE_RESISTANCE_PROFILES}
@@ -117,7 +177,9 @@ def _run_resistance_profile_direct(
     device: jax.Device,
     repeats: int,
     solver_factory: Callable[[], Any] | None = None,
+    method_factory: Callable[[], Any] | None = None,
     requires_preparation: bool = False,
+    dtype: Any = jnp.float32,
 ) -> BenchmarkRecord:
     LOGGER.info(
         "Starting resistance benchmark for case=%s tool=%s backend=%s repeats=%s",
@@ -128,6 +190,7 @@ def _run_resistance_profile_direct(
     )
     try:
         solver = None if solver_factory is None else solver_factory()
+        method = None if method_factory is None else method_factory()
     except ImportError as error:
         LOGGER.warning(
             "Skipping resistance benchmark for case=%s tool=%s: %s",
@@ -145,32 +208,34 @@ def _run_resistance_profile_direct(
         return failed_record(case.task, tool_label, "JAXScape", case.name, str(error))
 
     try:
-        permeability = jax.device_put(as_array(case.raster), device)
-        nodes = jax.device_put(as_point_array(case.points), device)
-        if solver is None:
-            timings, _ = measure_runtime(
-                _jaxscape_resistance, permeability, nodes, repeats=repeats
+        dtype_context = jax.enable_x64() if dtype == jnp.float64 else nullcontext()
+        with dtype_context:
+            permeability = jax.device_put(jnp.asarray(case.raster, dtype=dtype), device)
+            nodes = jax.device_put(as_point_array(case.points), device)
+            distance = (
+                ResistanceDistance(solver=solver)
+                if method is None
+                else ResistanceDistance(solver=solver, method=method)
             )
-        elif requires_preparation:
-            grid = GridGraph(permeability, fun=cost_conductance)
-            distance = ResistanceDistance(solver=solver)
-            state = distance.init(grid)
-            timings, _ = measure_runtime(
-                _jaxscape_prepared_resistance,
-                distance,
-                grid,
-                nodes,
-                state,
-                repeats=repeats,
-            )
-        else:
-            timings, _ = measure_runtime(
-                _jaxscape_resistance_with_solver,
-                permeability,
-                nodes,
-                solver,
-                repeats=repeats,
-            )
+            if requires_preparation:
+                grid = GridGraph(permeability, fun=cost_conductance)
+                state = distance.init(grid)
+                timings, _ = measure_runtime(
+                    _jaxscape_prepared_resistance,
+                    distance,
+                    grid,
+                    nodes,
+                    state,
+                    repeats=repeats,
+                )
+            else:
+                timings, _ = measure_runtime(
+                    _jaxscape_resistance_with_distance,
+                    distance,
+                    permeability,
+                    nodes,
+                    repeats=repeats,
+                )
     except MemoryError as error:
         note = f"Out-of-memory while running resistance benchmark: {error}"
         LOGGER.exception(
@@ -240,22 +305,18 @@ def run_worker(payload: dict[str, Any]) -> BenchmarkRecord:
         device=device,
         repeats=repeats,
         solver_factory=profile.solver_factory,
+        method_factory=profile.method_factory,
         requires_preparation=profile.requires_preparation,
+        dtype=profile.dtype,
     )
 
 
 @eqx.filter_jit
-def _jaxscape_resistance(permeability: jax.Array, nodes: jax.Array) -> jax.Array:
-    grid = GridGraph(permeability, fun=cost_conductance)
-    return ResistanceDistance()(grid, nodes=nodes)
-
-
-@eqx.filter_jit
-def _jaxscape_resistance_with_solver(
-    permeability: jax.Array, nodes: jax.Array, solver: Any
+def _jaxscape_resistance_with_distance(
+    distance: ResistanceDistance, permeability: jax.Array, nodes: jax.Array
 ) -> jax.Array:
     grid = GridGraph(permeability, fun=cost_conductance)
-    return ResistanceDistance(solver=solver)(grid, nodes=nodes)
+    return distance(grid, nodes=nodes)
 
 
 @eqx.filter_jit

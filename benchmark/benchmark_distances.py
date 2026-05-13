@@ -89,7 +89,10 @@ CASE_GROUP_SPECS = {
 }
 REQUIRED_BASE_TOOL_LABELS_BY_TASK = {
     "resistance_distance": {
-        "JAXScape / pinv",
+        "JAXScape / pinv / f32",
+        "JAXScape / pinv / f64",
+        "JAXScape / approx pinv / f32",
+        "JAXScape / approx pinv / f64",
         "JAXScape / PyAMG",
         "gdistance / commuteDistance",
         "Circuitscape.jl / cg+amg",
@@ -105,7 +108,12 @@ REQUIRED_BASE_TOOL_LABELS_BY_TASK = {
     "inverse_landscape_genetics": {"JAXScape + Optimistix", "ResistanceGA"},
 }
 GPU_CAPABLE_TOOL_LABELS_BY_TASK = {
-    "resistance_distance": {"JAXScape / pinv"},
+    "resistance_distance": {
+        "JAXScape / pinv / f32",
+        "JAXScape / pinv / f64",
+        "JAXScape / approx pinv / f32",
+        "JAXScape / approx pinv / f64",
+    },
     "least_cost_path": {"JAXScape"},
     "sensitivity_analysis": {
         "JAXScape / shortest-path gradient",
