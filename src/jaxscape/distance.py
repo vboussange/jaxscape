@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Optional
+from typing import Any
 
 import equinox as eqx
 import jax.numpy as jnp
@@ -17,11 +17,15 @@ class AbstractDistance(eqx.Module):
     **Arguments:**
 
     - `graph`: Graph on which to compute distances.
-    - `sources`: Source nodes as vertex indices (1D array) or coordinates (Nx2 array for `GridGraph`).
-    - `targets`: Target nodes as vertex indices (1D array) or coordinates (Nx2 array for `GridGraph`).
-    - `nodes`: Nodes for pairwise distances as vertex indices (1D) or coordinates (Nx2).
+        - `sources`: Source nodes as vertex indices (1D array) or coordinates
+            (Nx2 array for `GridGraph`).
+        - `targets`: Target nodes as vertex indices (1D array) or coordinates
+            (Nx2 array for `GridGraph`).
+        - `nodes`: Nodes for pairwise distances as vertex indices (1D) or
+            coordinates (Nx2).
 
-    Specify either: `nodes` alone, `sources` and/or `targets`, or neither (for all-pairs).
+    Specify either: `nodes` alone, `sources` and/or `targets`, or neither
+    (for all-pairs).
 
     **Returns:**
 
@@ -40,10 +44,18 @@ class AbstractDistance(eqx.Module):
         D = distance(grid)  # Shape: (n_nodes, n_nodes)
 
         # Using vertex indices
-        D = distance(grid, sources=jnp.array([0, 1]), targets=jnp.array([10, 20]))  # Shape: (2, 2)
+        D = distance(
+            grid,
+            sources=jnp.array([0, 1]),
+            targets=jnp.array([10, 20]),
+        )
 
         # Using coordinates (for GridGraph)
-        D = distance(grid, sources=jnp.array([[0, 0], [1, 1]]), targets=jnp.array([[10, 10]]))  # Shape: (2, 1)
+        D = distance(
+            grid,
+            sources=jnp.array([[0, 0], [1, 1]]),
+            targets=jnp.array([[10, 10]]),
+        )
 
         # Pairwise among subset
         D = distance(grid, nodes=jnp.array([0, 5, 10]))  # Shape: (3, 3)
@@ -53,14 +65,21 @@ class AbstractDistance(eqx.Module):
     def __call__(
         self,
         graph: AbstractGraph,
-        sources: Optional[Array] = None,
-        targets: Optional[Array] = None,
-        nodes: Optional[Array] = None,
+        sources: Array | None = None,
+        targets: Array | None = None,
+        nodes: Array | None = None,
+        state: Any = None,
     ) -> Array:
+        if state is None:
+            state = self.init(graph)
+
         if nodes is not None:
             assert (
                 sources is None and targets is None
-            ), "Specify either `nodes`, `sources`, `targets`, or both `sources` and `targets`."
+            ), (
+                "Specify either `nodes`, `sources`, `targets`, or both "
+                "`sources` and `targets`."
+            )
             if nodes.ndim == 2:
                 if not hasattr(graph, "coord_to_index"):
                     raise ValueError(
@@ -68,7 +87,7 @@ class AbstractDistance(eqx.Module):
                         "Use vertex indices (1D array) for Graph objects."
                     )
                 nodes = graph.coord_to_index(nodes[:, 0], nodes[:, 1])
-            return self.nodes_to_nodes_distance(graph, nodes)
+            return self.nodes_to_nodes_distance(graph, nodes, state)
 
         elif sources is not None or targets is not None:
             sources = jnp.arange(graph.nv) if sources is None else sources
@@ -90,21 +109,31 @@ class AbstractDistance(eqx.Module):
                     )
                 targets = graph.coord_to_index(targets[:, 0], targets[:, 1])
 
-            return self.sources_to_targets_distance(graph, sources, targets)
+            return self.sources_to_targets_distance(graph, sources, targets, state)
 
         else:
-            return self.all_pairs_distance(graph)
+            return self.all_pairs_distance(graph, state)
 
     @abstractmethod
-    def nodes_to_nodes_distance(self, graph: AbstractGraph, nodes: Array) -> Array:
+    def init(self, graph: AbstractGraph) -> Any:
         pass
 
     @abstractmethod
-    def sources_to_targets_distance(
-        self, graph: AbstractGraph, sources: Array, targets: Array
+    def nodes_to_nodes_distance(
+        self, graph: AbstractGraph, nodes: Array, state: Any = None
     ) -> Array:
         pass
 
     @abstractmethod
-    def all_pairs_distance(self, graph: AbstractGraph) -> Array:
+    def sources_to_targets_distance(
+        self,
+        graph: AbstractGraph,
+        sources: Array,
+        targets: Array,
+        state: Any = None,
+    ) -> Array:
+        pass
+
+    @abstractmethod
+    def all_pairs_distance(self, graph: AbstractGraph, state: Any = None) -> Array:
         pass

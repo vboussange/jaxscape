@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import Union
+from typing import Any
 
 import equinox as eqx
 import jax.numpy as jnp
@@ -39,12 +39,12 @@ class RSPDistance(AbstractDistance):
     """
 
     theta: Array
-    _cost: Union[Callable[[Array], Array], BCOO]
+    _cost: Callable[[Array], Array] | BCOO
 
     def __init__(
         self,
-        theta: Union[float, Array],
-        cost: Union[Callable[[Array], Array], BCOO] = lambda x: -jnp.log(x),
+        theta: float | Array,
+        cost: Callable[[Array], Array] | BCOO = lambda x: -jnp.log(x),
     ):
         self._cost = cost
         self.theta = theta
@@ -55,20 +55,31 @@ class RSPDistance(AbstractDistance):
         else:
             return self._cost
 
+    def init(self, graph: AbstractGraph) -> None:
+        del graph
+        return None
+
     @eqx.filter_jit
-    def nodes_to_nodes_distance(self, graph: AbstractGraph, nodes: Array) -> Array:
-        distances = self.all_pairs_distance(graph)
+    def nodes_to_nodes_distance(
+        self, graph: AbstractGraph, nodes: Array, state: Any = None
+    ) -> Array:
+        distances = self.all_pairs_distance(graph, state)
         return distances[nodes[:, None], nodes[None, :]]
 
     @eqx.filter_jit
     def sources_to_targets_distance(
-        self, graph: AbstractGraph, sources: Array, targets: Array
+        self,
+        graph: AbstractGraph,
+        sources: Array,
+        targets: Array,
+        state: Any = None,
     ) -> Array:
-        distances = self.all_pairs_distance(graph)
+        distances = self.all_pairs_distance(graph, state)
         return distances[sources[:, None], targets[None, :]]
 
     @eqx.filter_jit
-    def all_pairs_distance(self, graph: AbstractGraph) -> Array:
+    def all_pairs_distance(self, graph: AbstractGraph, state: Any = None) -> Array:
+        del state
         A = graph.get_adjacency_matrix()
         C = self.cost_matrix(graph)
         return rsp_distance(self.theta, A, C)
@@ -81,7 +92,7 @@ def fundamental_matrix(W: BCOO) -> Array:
 
 
 @eqx.filter_jit
-def rsp_distance(theta: Union[float, Array], A: BCOO, C: BCOO) -> Array:
+def rsp_distance(theta: float | Array, A: BCOO, C: BCOO) -> Array:
     row_sum = A.sum(1).todense()[:, None]
     Prw = A / row_sum  # random walk probability
     W = Prw * jnp.exp(-theta * C.todense())  # TODO: to optimze

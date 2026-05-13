@@ -1,3 +1,5 @@
+from typing import Any
+
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -20,7 +22,8 @@ class LCPDistance(AbstractDistance):
 
     **Parameters:**
 
-    - `algorithm`: Algorithm choice: `"bellman-ford"` (default) or `"floyd-warshall"`.
+        - `algorithm`: Algorithm choice: `"bellman-ford"` (default) or
+            `"floyd-warshall"`.
 
     !!! example
 
@@ -46,8 +49,15 @@ class LCPDistance(AbstractDistance):
         if self.algorithm not in ["bellman-ford", "floyd-warshall"]:
             raise ValueError("`algorithm` must be 'bellman-ford' or 'floyd-warshall'")
 
+    def init(self, graph: AbstractGraph) -> None:
+        del graph
+        return None
+
     @eqx.filter_jit
-    def nodes_to_nodes_distance(self, graph: AbstractGraph, nodes: Array) -> Array:
+    def nodes_to_nodes_distance(
+        self, graph: AbstractGraph, nodes: Array, state: Any = None
+    ) -> Array:
+        del state
         A = graph.get_adjacency_matrix()
         if self.algorithm == "floyd-warshall":
             distances = floyd_warshall(A)
@@ -58,8 +68,13 @@ class LCPDistance(AbstractDistance):
 
     @eqx.filter_jit
     def sources_to_targets_distance(
-        self, graph: AbstractGraph, sources: Array, targets: Array
+        self,
+        graph: AbstractGraph,
+        sources: Array,
+        targets: Array,
+        state: Any = None,
     ) -> Array:
+        del state
         A = graph.get_adjacency_matrix()
         if self.algorithm == "floyd-warshall":
             distances = floyd_warshall(A)
@@ -69,7 +84,8 @@ class LCPDistance(AbstractDistance):
             return distances[:, targets]
 
     @eqx.filter_jit
-    def all_pairs_distance(self, graph: AbstractGraph) -> Array:
+    def all_pairs_distance(self, graph: AbstractGraph, state: Any = None) -> Array:
+        del state
         A = graph.get_adjacency_matrix()
         if self.algorithm == "floyd-warshall":
             return floyd_warshall(A)
@@ -80,7 +96,8 @@ class LCPDistance(AbstractDistance):
 @eqx.filter_jit
 def floyd_warshall(A: BCOO) -> Array:
     """
-    Computes the shortest paths between all pairs of nodes in a graph using the Floyd-Warshall algorithm. Complexity O(V^3).
+    Computes shortest paths between all pairs of nodes with Floyd-Warshall.
+    Complexity O(V^3).
     Converts A to a dense matrix, which may lead to out of memory problems.
     """
 
@@ -104,8 +121,9 @@ def floyd_warshall(A: BCOO) -> Array:
 @eqx.filter_jit
 def bellman_ford(A: BCOO, source: int) -> Array:
     """
-    Computes the shortest paths from a source node to all other nodes in a graph using the Bellman-Ford algorithm.
-    Should you need to compute the shortest paths from multiple source nodes, consider using `jax.vmap` to vectorize this function.
+    Computes shortest paths from a source node to all other nodes with the
+    Bellman-Ford algorithm. For multiple source nodes, consider using
+    `jax.vmap` to vectorize this function.
     """
 
     N = A.shape[0]

@@ -1,3 +1,5 @@
+from typing import Any
+
 import equinox as eqx
 import jax.numpy as jnp
 from jax import Array
@@ -20,21 +22,30 @@ class EuclideanDistance(AbstractDistance):
         ```
     """
 
+    def init(self, graph: GridGraph) -> None:
+        del graph
+        return None
+
     @eqx.filter_jit
-    def nodes_to_nodes_distance(self, graph: GridGraph, nodes: Array) -> Array:
+    def nodes_to_nodes_distance(
+        self, graph: GridGraph, nodes: Array, state: Any = None
+    ) -> Array:
+        del state
         coords = graph.index_to_coord(nodes)
         return euclidean_distance(coords, coords)
 
     @eqx.filter_jit
     def sources_to_targets_distance(
-        self, graph: GridGraph, sources: Array, targets: Array
+        self, graph: GridGraph, sources: Array, targets: Array, state: Any = None
     ) -> Array:
+        del state
         source_coords = graph.index_to_coord(sources)
         target_coords = graph.index_to_coord(targets)
         return euclidean_distance(source_coords, target_coords)
 
     @eqx.filter_jit
-    def all_pairs_distance(self, graph: GridGraph) -> Array:
+    def all_pairs_distance(self, graph: GridGraph, state: Any = None) -> Array:
+        del state
         coords = graph.index_to_coord(jnp.arange(graph.nv))
         return euclidean_distance(coords, coords)
 
