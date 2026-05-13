@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import json
 import sys
-from dataclasses import asdict
 from pathlib import Path
 
 
@@ -16,6 +14,13 @@ for path in (ROOT, SRC_DIR):
         sys.path.remove(path_string)
 for path in (ROOT, SRC_DIR):
     sys.path.insert(0, str(path))
+
+from benchmark.jaxscape.utils import (
+    configure_standalone_environment,
+    run_standalone_task,
+)
+
+configure_standalone_environment()
 
 import jax
 import jax.nn as jnn
@@ -39,7 +44,6 @@ from benchmark.benchmark_distances import (
     MIN_PERMEABILITY,
     ok_record_with_metrics,
     skip_record,
-    write_results,
 )
 
 
@@ -174,10 +178,11 @@ def collect_task_results(config: BenchmarkConfig) -> list[BenchmarkRecord]:
 
 
 def main() -> None:
-    config = default_jaxscape_config()
-    records = collect_task_results(config)
-    write_results(records, config, cases=CASES["inverse"])
-    print(json.dumps({"records": [asdict(record) for record in records]}, indent=2))
+    run_standalone_task(
+        collect_task_results=collect_task_results,
+        config_factory=default_jaxscape_config,
+        cases=CASES["inverse"],
+    )
 
 
 if __name__ == "__main__":

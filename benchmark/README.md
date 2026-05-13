@@ -15,14 +15,7 @@ deterministic size tiers: `small`, `medium`, and `large`.
 | Sensitivity analysis | `JAXScape / shortest-path gradient (CPU/GPU)`, `gdistance / shortestPath`, `JAXScape / resistance gradient (CPU/GPU)`, `gdistance / passage` | none | This scorecard compares JAX gradients to the matching `gdistance` centrality surfaces. |
 | Inverse landscape genetics | `JAXScape + Optimistix (CPU/GPU)`, `ResistanceGA` | none | Both adapters run a fixed-budget synthetic optimisation problem for regression checks. |
 
-## Problem sizes
-
-| Feature | Small | Medium | Large |
-| --- | --- | --- | --- |
-| Resistance distance | `12 x 12`, seed `0` | `18 x 18`, seed `1` | `24 x 24`, seed `2` |
-| Least-cost path | `16 x 16`, seed `10` | `24 x 24`, seed `11` | `32 x 32`, seed `12` |
-| Sensitivity analysis | `6 x 6`, seed `20` | `8 x 8`, seed `21` | `10 x 10`, seed `22` |
-| Inverse landscape genetics | `6 x 6`, seed `30` | `8 x 8`, seed `31` | `10 x 10`, seed `32` |
+## Tasks
 
 The exact mathematical setup of the raster generator, point sets, and objective
 functions is documented on `docs/benchmark.md` and mirrored into the generated
@@ -35,19 +28,11 @@ default, and the published CI default, is `BENCHMARK_THREADS=4`.
 
 ## Workspace layout
 
-- `benchmark/benchmark_distances.py`: owns the full-suite orchestration, cross-software adapters, shared cases, result writing, and JSON/CSV output.
-- `benchmark/jaxscape/`: JAXScape-only benchmark task modules imported by the orchestrator; each has a lightweight no-argument `main()` for standalone execution.
-- `benchmark/jaxscape/resistance_distance.py`: resistance-distance task runner. The JAXScape solver profiles live in `JAXSCAPE_RESISTANCE_PROFILES`, so adding a new solver should usually mean adding one registry entry and a small factory.
-- `benchmark/jaxscape/least_cost_path.py`: least-cost path task runner.
-- `benchmark/jaxscape/sensitivity_analysis.py`: gradient and centrality sensitivity task runner.
-- `benchmark/jaxscape/inverse_landscape_genetics.py`: inverse landscape genetics task runner.
-- `benchmark/render_scorecard.py`: renders one PNG scorecard per feature from the JSON results.
-- `benchmark/run_benchmarks.sh`: reruns the suite and regenerates the scorecards.
-- `benchmark/install_external_tools.sh`: provisions local Julia and R toolchains under `benchmark/julia`, `benchmark/.julia`, and `benchmark/.r-lib`.
-- `benchmark/external/circuitscape_resistance.jl`: Julia runner for the Circuitscape resistance profiles.
-- `benchmark/external/gdistance_runner.R`: R runner for `gdistance` least-cost, commute-distance, shortest-path, and passage-centrality profiles.
-- `benchmark/external/conefor_runner.sh`: Conefor adapter hook.
-- `benchmark/external/resistancega_inverse.R`: `ResistanceGA` inverse-landscape-genetics adapter.
+- `benchmark/benchmark_distances.py`: full-suite orchestration, shared synthetic cases, cross-software adapters, and JSON/CSV artifact writing.
+- `benchmark/jaxscape/`: JAXScape-only task entry points plus `utils.py`, which owns the shared standalone runner, worker subprocess plumbing, and task-level benchmark helpers.
+- `benchmark/render_scorecard.py` and `benchmark/run_benchmarks.sh`: artifact rendering and end-to-end reruns.
+- `benchmark/install_external_tools.sh`, `benchmark/julia/`, `benchmark/.julia/`, and `benchmark/.r-lib/`: local Julia and R benchmark toolchain setup.
+- `benchmark/external/`: adapter scripts for Circuitscape, `gdistance`, Conefor, and `ResistanceGA`.
 
 ## Regenerating the artifacts
 
@@ -84,3 +69,6 @@ uv run --extra benchmark python benchmark/jaxscape/resistance_distance.py
 
 Those lightweight entry points use the default benchmark configuration and keep
 JAXScape-specific benchmark code separate from the cross-software orchestration.
+Benchmark entry points set `XLA_PYTHON_CLIENT_PREALLOCATE=false` by default,
+unless the environment already defines a different value, so the coordinator
+does not reserve most GPU memory before the worker subprocesses start.

@@ -151,4 +151,7 @@ uv run --extra benchmark python benchmark/jaxscape/resistance_distance.py
 
 Resistance solver variants are registered in `JAXSCAPE_RESISTANCE_PROFILES` in
 `benchmark/jaxscape/resistance_distance.py`; adding a new JAXScape solver should
-usually be a new profile entry plus its solver factory.
+usually be a new profile entry plus its solver factory. Benchmark entry points
+set `XLA_PYTHON_CLIENT_PREALLOCATE=false` by default unless it is already set,
+so the coordinator does not grab most GPU memory before the worker
+subprocesses start.

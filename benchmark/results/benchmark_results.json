@@ -1,21 +1,21 @@
 {
   "environment": {
-    "python": "/Users/victorboussange/projects/jaxscape/.venv/bin/python",
-    "julia": "/Users/victorboussange/.juliaup/bin/julia",
-    "rscript": "/opt/homebrew/bin/Rscript",
-    "platform": "darwin",
-    "jax_backend": "cpu",
-    "requested_device_platform": "cpu",
+    "python": "/home/boussang/jaxscape/.venv/bin/python",
+    "julia": null,
+    "rscript": "/usr/bin/Rscript",
+    "platform": "linux",
+    "jax_backend": "gpu",
+    "requested_device_platform": "default",
     "available_jax_platforms": [
-      "cpu"
+      "gpu"
     ],
     "cpu_device": "CpuDevice(id=0)",
-    "gpu_device": null,
-    "gpu_backend_available": false,
-    "julia_project": "/Users/victorboussange/projects/jaxscape/benchmark/julia",
-    "julia_depot": "/Users/victorboussange/projects/jaxscape/benchmark/.julia",
-    "r_libs_user": "/Users/victorboussange/projects/jaxscape/benchmark/.r-lib",
-    "repeats": 1,
+    "gpu_device": "CudaDevice(id=0)",
+    "gpu_backend_available": true,
+    "julia_project": "/home/boussang/jaxscape/benchmark/julia",
+    "julia_depot": "/home/boussang/jaxscape/benchmark/.julia",
+    "r_libs_user": "/home/boussang/jaxscape/benchmark/.r-lib",
+    "repeats": 3,
     "benchmark_threads": 4,
     "thread_environment": {
       "BENCHMARK_THREADS": "4",
@@ -35,7 +35,7 @@
       "name": "synthetic_resistance_small",
       "task": "resistance_distance",
       "size_label": "small",
-      "grid_size": 12,
+      "grid_size": 10,
       "seed": 0,
       "include_offset": true,
       "point_count": 7,
@@ -46,27 +46,27 @@
         ],
         [
           1,
-          10
-        ],
-        [
-          10,
-          1
-        ],
-        [
-          10,
-          10
-        ],
-        [
-          6,
-          6
-        ],
-        [
-          4,
           8
         ],
         [
           8,
-          4
+          1
+        ],
+        [
+          8,
+          8
+        ],
+        [
+          5,
+          5
+        ],
+        [
+          3,
+          6
+        ],
+        [
+          6,
+          3
         ]
       ]
     },
@@ -74,7 +74,7 @@
       "name": "synthetic_resistance_medium",
       "task": "resistance_distance",
       "size_label": "medium",
-      "grid_size": 18,
+      "grid_size": 100,
       "seed": 1,
       "include_offset": true,
       "point_count": 7,
@@ -85,27 +85,27 @@
         ],
         [
           1,
-          16
+          98
         ],
         [
-          16,
+          98,
           1
         ],
         [
-          16,
-          16
+          98,
+          98
         ],
         [
-          9,
-          9
+          50,
+          50
         ],
         [
-          6,
-          12
+          33,
+          66
         ],
         [
-          12,
-          6
+          66,
+          33
         ]
       ]
     },
@@ -113,7 +113,7 @@
       "name": "synthetic_resistance_large",
       "task": "resistance_distance",
       "size_label": "large",
-      "grid_size": 24,
+      "grid_size": 1000,
       "seed": 2,
       "include_offset": true,
       "point_count": 7,
@@ -124,330 +124,27 @@
         ],
         [
           1,
-          22
+          998
         ],
         [
-          22,
+          998,
           1
         ],
         [
-          22,
-          22
+          998,
+          998
         ],
         [
-          12,
-          12
+          500,
+          500
         ],
         [
-          8,
-          16
+          333,
+          666
         ],
         [
-          16,
-          8
-        ]
-      ]
-    },
-    {
-      "name": "synthetic_lcp_small",
-      "task": "least_cost_path",
-      "size_label": "small",
-      "grid_size": 16,
-      "seed": 10,
-      "include_offset": true,
-      "point_count": 7,
-      "points": [
-        [
-          1,
-          1
-        ],
-        [
-          1,
-          14
-        ],
-        [
-          14,
-          1
-        ],
-        [
-          14,
-          14
-        ],
-        [
-          8,
-          8
-        ],
-        [
-          5,
-          10
-        ],
-        [
-          10,
-          5
-        ]
-      ]
-    },
-    {
-      "name": "synthetic_lcp_medium",
-      "task": "least_cost_path",
-      "size_label": "medium",
-      "grid_size": 24,
-      "seed": 11,
-      "include_offset": true,
-      "point_count": 7,
-      "points": [
-        [
-          1,
-          1
-        ],
-        [
-          1,
-          22
-        ],
-        [
-          22,
-          1
-        ],
-        [
-          22,
-          22
-        ],
-        [
-          12,
-          12
-        ],
-        [
-          8,
-          16
-        ],
-        [
-          16,
-          8
-        ]
-      ]
-    },
-    {
-      "name": "synthetic_lcp_large",
-      "task": "least_cost_path",
-      "size_label": "large",
-      "grid_size": 32,
-      "seed": 12,
-      "include_offset": true,
-      "point_count": 7,
-      "points": [
-        [
-          1,
-          1
-        ],
-        [
-          1,
-          30
-        ],
-        [
-          30,
-          1
-        ],
-        [
-          30,
-          30
-        ],
-        [
-          16,
-          16
-        ],
-        [
-          10,
-          21
-        ],
-        [
-          21,
-          10
-        ]
-      ]
-    },
-    {
-      "name": "synthetic_sensitivity_small",
-      "task": "sensitivity_analysis",
-      "size_label": "small",
-      "grid_size": 6,
-      "seed": 20,
-      "include_offset": false,
-      "point_count": 5,
-      "points": [
-        [
-          1,
-          1
-        ],
-        [
-          1,
-          4
-        ],
-        [
-          4,
-          1
-        ],
-        [
-          4,
-          4
-        ],
-        [
-          3,
-          3
-        ]
-      ]
-    },
-    {
-      "name": "synthetic_sensitivity_medium",
-      "task": "sensitivity_analysis",
-      "size_label": "medium",
-      "grid_size": 8,
-      "seed": 21,
-      "include_offset": false,
-      "point_count": 5,
-      "points": [
-        [
-          1,
-          1
-        ],
-        [
-          1,
-          6
-        ],
-        [
-          6,
-          1
-        ],
-        [
-          6,
-          6
-        ],
-        [
-          4,
-          4
-        ]
-      ]
-    },
-    {
-      "name": "synthetic_sensitivity_large",
-      "task": "sensitivity_analysis",
-      "size_label": "large",
-      "grid_size": 10,
-      "seed": 22,
-      "include_offset": false,
-      "point_count": 5,
-      "points": [
-        [
-          1,
-          1
-        ],
-        [
-          1,
-          8
-        ],
-        [
-          8,
-          1
-        ],
-        [
-          8,
-          8
-        ],
-        [
-          5,
-          5
-        ]
-      ]
-    },
-    {
-      "name": "synthetic_inverse_small",
-      "task": "inverse_landscape_genetics",
-      "size_label": "small",
-      "grid_size": 6,
-      "seed": 30,
-      "include_offset": false,
-      "point_count": 5,
-      "points": [
-        [
-          1,
-          1
-        ],
-        [
-          1,
-          4
-        ],
-        [
-          4,
-          1
-        ],
-        [
-          4,
-          4
-        ],
-        [
-          3,
-          3
-        ]
-      ]
-    },
-    {
-      "name": "synthetic_inverse_medium",
-      "task": "inverse_landscape_genetics",
-      "size_label": "medium",
-      "grid_size": 8,
-      "seed": 31,
-      "include_offset": false,
-      "point_count": 5,
-      "points": [
-        [
-          1,
-          1
-        ],
-        [
-          1,
-          6
-        ],
-        [
-          6,
-          1
-        ],
-        [
-          6,
-          6
-        ],
-        [
-          4,
-          4
-        ]
-      ]
-    },
-    {
-      "name": "synthetic_inverse_large",
-      "task": "inverse_landscape_genetics",
-      "size_label": "large",
-      "grid_size": 10,
-      "seed": 32,
-      "include_offset": false,
-      "point_count": 5,
-      "points": [
-        [
-          1,
-          1
-        ],
-        [
-          1,
-          8
-        ],
-        [
-          8,
-          1
-        ],
-        [
-          8,
-          8
-        ],
-        [
-          5,
-          5
+          666,
+          333
         ]
       ]
     }
@@ -459,9 +156,11 @@
       "software": "JAXScape",
       "scenario": "synthetic_resistance_small",
       "status": "ok",
-      "median_seconds": 0.0015635000308975577,
+      "median_seconds": 0.0029568090103566647,
       "timings_seconds": [
-        0.0015635000308975577
+        0.0031891780672594905,
+        0.002901019062846899,
+        0.0029568090103566647
       ],
       "metrics": {},
       "note": ""
@@ -471,11 +170,15 @@
       "tool": "JAXScape / pinv (GPU)",
       "software": "JAXScape",
       "scenario": "synthetic_resistance_small",
-      "status": "skipped",
-      "median_seconds": null,
-      "timings_seconds": [],
+      "status": "ok",
+      "median_seconds": 0.002706139930523932,
+      "timings_seconds": [
+        0.0028582080267369747,
+        0.002706139930523932,
+        0.0026795800076797605
+      ],
       "metrics": {},
-      "note": "GPU backend unavailable on this machine; placeholder emitted for the GPU-capable JAX profile."
+      "note": ""
     },
     {
       "task": "resistance_distance",
@@ -483,9 +186,11 @@
       "software": "JAXScape",
       "scenario": "synthetic_resistance_small",
       "status": "ok",
-      "median_seconds": 0.0076927500776946545,
+      "median_seconds": 0.027485584025271237,
       "timings_seconds": [
-        0.0076927500776946545
+        0.03207089600618929,
+        0.027485584025271237,
+        0.02180351596325636
       ],
       "metrics": {},
       "note": ""
@@ -495,114 +200,27 @@
       "tool": "JAXScape / CholmodSolver",
       "software": "JAXScape",
       "scenario": "synthetic_resistance_small",
-      "status": "skipped",
-      "median_seconds": null,
-      "timings_seconds": [],
-      "metrics": {},
-      "note": "cholespy is required for CholmodSolver. Install it with: pip install cholespy"
-    },
-    {
-      "task": "resistance_distance",
-      "tool": "gdistance / commuteDistance",
-      "software": "gdistance",
-      "scenario": "synthetic_resistance_small",
       "status": "ok",
-      "median_seconds": 0.025,
+      "median_seconds": 0.009883451042696834,
       "timings_seconds": [
-        0.025
-      ],
-      "metrics": {
-        "graph_volume": 1275.193115234375,
-        "distance_matrix": [
-          [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ]
-        ]
-      },
-      "note": "Commute times computed with gdistance::commuteDistance on a 4-neighbour conductance graph. Reported values are rescaled from commute time to effective resistance by dividing by the graph volume."
-    },
-    {
-      "task": "resistance_distance",
-      "tool": "Circuitscape.jl / cg+amg",
-      "software": "Circuitscape.jl",
-      "scenario": "synthetic_resistance_small",
-      "status": "ok",
-      "median_seconds": 0.002102084,
-      "timings_seconds": [
-        0.002102084
+        0.012246124097146094,
+        0.009883451042696834,
+        0.009762682020664215
       ],
       "metrics": {},
       "note": ""
     },
     {
       "task": "resistance_distance",
-      "tool": "Circuitscape.jl / cholmod",
-      "software": "Circuitscape.jl",
+      "tool": "JAXScape / AMJaxCGSolver",
+      "software": "JAXScape",
       "scenario": "synthetic_resistance_small",
       "status": "ok",
-      "median_seconds": 0.001890291,
+      "median_seconds": 0.0029154790099710226,
       "timings_seconds": [
-        0.001890291
+        0.00301984790712595,
+        0.002828578930348158,
+        0.0029154790099710226
       ],
       "metrics": {},
       "note": ""
@@ -612,24 +230,22 @@
       "tool": "JAXScape / pinv (CPU)",
       "software": "JAXScape",
       "scenario": "synthetic_resistance_medium",
-      "status": "ok",
-      "median_seconds": 0.007817832985892892,
-      "timings_seconds": [
-        0.007817832985892892
-      ],
+      "status": "failed",
+      "median_seconds": null,
+      "timings_seconds": [],
       "metrics": {},
-      "note": ""
+      "note": "Exceeded walltime of 60s while running JAXScape / pinv (CPU)."
     },
     {
       "task": "resistance_distance",
       "tool": "JAXScape / pinv (GPU)",
       "software": "JAXScape",
       "scenario": "synthetic_resistance_medium",
-      "status": "skipped",
+      "status": "failed",
       "median_seconds": null,
       "timings_seconds": [],
       "metrics": {},
-      "note": "GPU backend unavailable on this machine; placeholder emitted for the GPU-capable JAX profile."
+      "note": "Exceeded walltime of 60s while running JAXScape / pinv (GPU)."
     },
     {
       "task": "resistance_distance",
@@ -637,9 +253,11 @@
       "software": "JAXScape",
       "scenario": "synthetic_resistance_medium",
       "status": "ok",
-      "median_seconds": 0.008133041905239224,
+      "median_seconds": 0.1556275599868968,
       "timings_seconds": [
-        0.008133041905239224
+        0.15344677900429815,
+        0.16409283806569874,
+        0.1556275599868968
       ],
       "metrics": {},
       "note": ""
@@ -649,141 +267,48 @@
       "tool": "JAXScape / CholmodSolver",
       "software": "JAXScape",
       "scenario": "synthetic_resistance_medium",
-      "status": "skipped",
+      "status": "ok",
+      "median_seconds": 0.12081599701195955,
+      "timings_seconds": [
+        0.12081599701195955,
+        0.12058975792024285,
+        0.12715666100848466
+      ],
+      "metrics": {},
+      "note": ""
+    },
+    {
+      "task": "resistance_distance",
+      "tool": "JAXScape / AMJaxCGSolver",
+      "software": "JAXScape",
+      "scenario": "synthetic_resistance_medium",
+      "status": "failed",
       "median_seconds": null,
       "timings_seconds": [],
       "metrics": {},
-      "note": "cholespy is required for CholmodSolver. Install it with: pip install cholespy"
-    },
-    {
-      "task": "resistance_distance",
-      "tool": "gdistance / commuteDistance",
-      "software": "gdistance",
-      "scenario": "synthetic_resistance_medium",
-      "status": "ok",
-      "median_seconds": 0.053,
-      "timings_seconds": [
-        0.053
-      ],
-      "metrics": {
-        "graph_volume": 3044.099609375,
-        "distance_matrix": [
-          [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ]
-        ]
-      },
-      "note": "Commute times computed with gdistance::commuteDistance on a 4-neighbour conductance graph. Reported values are rescaled from commute time to effective resistance by dividing by the graph volume."
-    },
-    {
-      "task": "resistance_distance",
-      "tool": "Circuitscape.jl / cg+amg",
-      "software": "Circuitscape.jl",
-      "scenario": "synthetic_resistance_medium",
-      "status": "ok",
-      "median_seconds": 0.002803625,
-      "timings_seconds": [
-        0.002803625
-      ],
-      "metrics": {},
-      "note": ""
-    },
-    {
-      "task": "resistance_distance",
-      "tool": "Circuitscape.jl / cholmod",
-      "software": "Circuitscape.jl",
-      "scenario": "synthetic_resistance_medium",
-      "status": "ok",
-      "median_seconds": 0.002092709,
-      "timings_seconds": [
-        0.002092709
-      ],
-      "metrics": {},
-      "note": ""
+      "note": "Above is the stack outside of JIT. Below is the stack inside of JIT:\n  File \"/home/boussang/jaxscape/benchmark/jaxscape/resistance_distance.py\", line 265, in _jaxscape_prepared_resistance\n    return distance(grid, nodes=nodes, state=state)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/distance.py\", line 90, in __call__\n    return self.nodes_to_nodes_distance(graph, nodes, state)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/_module/_prebuilt.py\", line 82, in __call__\n    return self.func(*self.args, *args, **kwargs, **self.keywords)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/resistance_distance.py\", line 114, in nodes_to_nodes_distance\n    return lineax_solver_nodes_to_nodes_resistance_distance(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/resistance_distance.py\", line 206, in lineax_solver_nodes_to_nodes_resistance_distance\n    potentials = batched_linear_solve(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/solvers/operator.py\", line 57, in batched_linear_solve\n    return jax.vmap(\n           ^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/solvers/operator.py\", line 58, in <lambda>\n    lambda A, b: linear_solve(A, b, solver, options=options, state=state),\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/solvers/operator.py\", line 40, in linear_solve\n    return lx.linear_solve(\n           ^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/internal/_primitive.py\", line 316, in batch_rule\n    out = _vprim_p.bind(\n          ^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/internal/_primitive.py\", line 368, in _vprim_abstract_eval\n    outs = abstract_eval(*inputs, **dict(params))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/internal/_primitive.py\", line 159, in _wrapper\n    out = rule(*args)\n          ^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/lineax/_solve.py\", line 125, in _linear_solve_abstract_eval\n    out = eqx.filter_eval_shape(\n          ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/lineax/_solve.py\", line 113, in _linear_solve_impl\n    solution, result, stats = result.error_if(\n                              ^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/_module/_prebuilt.py\", line 34, in __call__\n    return self.__func__(self.__self__, *args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nequinox.EquinoxRuntimeError: The maximum number of solver steps was reached. Try increasing `max_steps`.\n\n-------------------\n\nAn error occurred during the runtime of your JAX program.\n\n1) Setting the environment variable `EQX_ON_ERROR=breakpoint` is usually the most useful\nway to debug such errors. This can be interacted with using most of the usual commands\nfor the Python debugger: `u` and `d` to move up and down frames, the name of a variable\nto print its value, etc.\n\n2) You may also like to try setting `JAX_DISABLE_JIT=1`. This will mean that you can\n(mostly) inspect the state of your program as if it was normal Python.\n\n3) See `https://docs.kidger.site/equinox/api/debug/` for more suggestions.\n"
     },
     {
       "task": "resistance_distance",
       "tool": "JAXScape / pinv (CPU)",
       "software": "JAXScape",
       "scenario": "synthetic_resistance_large",
-      "status": "ok",
-      "median_seconds": 0.022275042021647096,
-      "timings_seconds": [
-        0.022275042021647096
-      ],
+      "status": "failed",
+      "median_seconds": null,
+      "timings_seconds": [],
       "metrics": {},
-      "note": ""
+      "note": "Out-of-memory while running resistance benchmark: RESOURCE_EXHAUSTED: Buffer Definition Event: Out of memory allocating 12000004000040 bytes."
     },
     {
       "task": "resistance_distance",
       "tool": "JAXScape / pinv (GPU)",
       "software": "JAXScape",
       "scenario": "synthetic_resistance_large",
-      "status": "skipped",
+      "status": "failed",
       "median_seconds": null,
       "timings_seconds": [],
       "metrics": {},
-      "note": "GPU backend unavailable on this machine; placeholder emitted for the GPU-capable JAX profile."
+      "note": "Out-of-memory while running resistance benchmark: RESOURCE_EXHAUSTED: Autotuning failed for HLO: %custom-call.1 = (f32[1000000,1000000]{1,0}, s8[4194304]{0}) custom-call(%bitcast.162, %bitcast.166), custom_call_target=\"__cublas$lt$matmul\", metadata={op_name=\"jit(_jaxscape_resistance)/jit(nodes_to_nodes_distance)/jit(p_inv_resistance_distance)/jit(_pinv)/dot_general\" stack_frame_id=212}, backend_config={\"operation_queue_id\":\"0\",\"gemm_backend_config\":{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"0\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"HIGHEST\",\"HIGHEST\"],\"algorithm\":\"ALG_UNSET\"},\"epilogue\":\"DEFAULT\",\"lhs_stride\":\"1000000000000\",\"rhs_stride\":\"1000000000000\",\"grad_x\":false,\"grad_y\":false,\"damax_output\":false,\"autotune_workspace_size\":\"0\",\"scale_mode\":0},\"force_earliest_schedule\":false,\"reification_cost\":[],\"device_type\":\"DEVICE_TYPE_INVALID\"}. Failed to profile configs: Out of memory while trying to allocate 3.64TiB."
     },
     {
       "task": "resistance_distance",
@@ -791,9 +316,11 @@
       "software": "JAXScape",
       "scenario": "synthetic_resistance_large",
       "status": "ok",
-      "median_seconds": 0.010951833100989461,
+      "median_seconds": 11.606486305012368,
       "timings_seconds": [
-        0.010951833100989461
+        11.396987849962898,
+        11.674205293995328,
+        11.606486305012368
       ],
       "metrics": {},
       "note": ""
@@ -803,1345 +330,22 @@
       "tool": "JAXScape / CholmodSolver",
       "software": "JAXScape",
       "scenario": "synthetic_resistance_large",
-      "status": "skipped",
+      "status": "failed",
       "median_seconds": null,
       "timings_seconds": [],
       "metrics": {},
-      "note": "cholespy is required for CholmodSolver. Install it with: pip install cholespy"
+      "note": "Exceeded walltime of 60s while running JAXScape / CholmodSolver."
     },
     {
       "task": "resistance_distance",
-      "tool": "gdistance / commuteDistance",
-      "software": "gdistance",
+      "tool": "JAXScape / AMJaxCGSolver",
+      "software": "JAXScape",
       "scenario": "synthetic_resistance_large",
-      "status": "ok",
-      "median_seconds": 0.028,
-      "timings_seconds": [
-        0.028
-      ],
-      "metrics": {
-        "graph_volume": 5834.39599609375,
-        "distance_matrix": [
-          [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ]
-        ]
-      },
-      "note": "Commute times computed with gdistance::commuteDistance on a 4-neighbour conductance graph. Reported values are rescaled from commute time to effective resistance by dividing by the graph volume."
-    },
-    {
-      "task": "resistance_distance",
-      "tool": "Circuitscape.jl / cg+amg",
-      "software": "Circuitscape.jl",
-      "scenario": "synthetic_resistance_large",
-      "status": "ok",
-      "median_seconds": 0.003796666,
-      "timings_seconds": [
-        0.003796666
-      ],
-      "metrics": {},
-      "note": ""
-    },
-    {
-      "task": "resistance_distance",
-      "tool": "Circuitscape.jl / cholmod",
-      "software": "Circuitscape.jl",
-      "scenario": "synthetic_resistance_large",
-      "status": "ok",
-      "median_seconds": 0.002235875,
-      "timings_seconds": [
-        0.002235875
-      ],
-      "metrics": {},
-      "note": ""
-    },
-    {
-      "task": "least_cost_path",
-      "tool": "JAXScape (CPU)",
-      "software": "JAXScape",
-      "scenario": "synthetic_lcp_small",
-      "status": "ok",
-      "median_seconds": 0.0016115830512717366,
-      "timings_seconds": [
-        0.0016115830512717366
-      ],
-      "metrics": {},
-      "note": ""
-    },
-    {
-      "task": "least_cost_path",
-      "tool": "JAXScape (GPU)",
-      "software": "JAXScape",
-      "scenario": "synthetic_lcp_small",
-      "status": "skipped",
+      "status": "failed",
       "median_seconds": null,
       "timings_seconds": [],
       "metrics": {},
-      "note": "GPU backend unavailable on this machine; placeholder emitted for the GPU-capable JAX profile."
-    },
-    {
-      "task": "least_cost_path",
-      "tool": "gdistance / costDistance",
-      "software": "gdistance",
-      "scenario": "synthetic_lcp_small",
-      "status": "ok",
-      "median_seconds": 0.002,
-      "timings_seconds": [
-        0.002
-      ],
-      "metrics": {
-        "distance_matrix": [
-          [
-            0,
-            6.7622,
-            4.7032,
-            7.3262,
-            4.0522,
-            4.7787,
-            3.9175
-          ],
-          [
-            6.7622,
-            0,
-            7.4364,
-            4.8495,
-            3.474,
-            2.923,
-            4.6778
-          ],
-          [
-            4.7032,
-            7.4364,
-            0,
-            7.5659,
-            4.3346,
-            5.0611,
-            3.1819
-          ],
-          [
-            7.3262,
-            4.8495,
-            7.5659,
-            0,
-            3.3463,
-            3.9173,
-            4.384
-          ],
-          [
-            4.0522,
-            3.474,
-            4.3346,
-            3.3463,
-            0,
-            1.0987,
-            1.307
-          ],
-          [
-            4.7787,
-            2.923,
-            5.0611,
-            3.9173,
-            1.0987,
-            0,
-            2.3025
-          ],
-          [
-            3.9175,
-            4.6778,
-            3.1819,
-            4.384,
-            1.307,
-            2.3025,
-            0
-          ]
-        ]
-      },
-      "note": "Least-cost distances computed with gdistance::costDistance on a 4-neighbour transition graph."
-    },
-    {
-      "task": "least_cost_path",
-      "tool": "JAXScape (CPU)",
-      "software": "JAXScape",
-      "scenario": "synthetic_lcp_medium",
-      "status": "ok",
-      "median_seconds": 0.007800874998793006,
-      "timings_seconds": [
-        0.007800874998793006
-      ],
-      "metrics": {},
-      "note": ""
-    },
-    {
-      "task": "least_cost_path",
-      "tool": "JAXScape (GPU)",
-      "software": "JAXScape",
-      "scenario": "synthetic_lcp_medium",
-      "status": "skipped",
-      "median_seconds": null,
-      "timings_seconds": [],
-      "metrics": {},
-      "note": "GPU backend unavailable on this machine; placeholder emitted for the GPU-capable JAX profile."
-    },
-    {
-      "task": "least_cost_path",
-      "tool": "gdistance / costDistance",
-      "software": "gdistance",
-      "scenario": "synthetic_lcp_medium",
-      "status": "ok",
-      "median_seconds": 0.003,
-      "timings_seconds": [
-        0.003
-      ],
-      "metrics": {
-        "distance_matrix": [
-          [
-            0,
-            11.4068,
-            7.9177,
-            11.9249,
-            6.2021,
-            7.2499,
-            6.2955
-          ],
-          [
-            11.4068,
-            0,
-            12.0873,
-            8.8266,
-            5.8389,
-            4.3079,
-            7.2452
-          ],
-          [
-            7.9177,
-            12.0873,
-            0,
-            11.9414,
-            6.457,
-            8.102,
-            4.8421
-          ],
-          [
-            11.9249,
-            8.8266,
-            11.9414,
-            0,
-            5.7511,
-            6.037,
-            7.0992
-          ],
-          [
-            6.2021,
-            5.8389,
-            6.457,
-            5.7511,
-            0,
-            1.7607,
-            2.1375
-          ],
-          [
-            7.2499,
-            4.3079,
-            8.102,
-            6.037,
-            1.7607,
-            0,
-            3.4088
-          ],
-          [
-            6.2955,
-            7.2452,
-            4.8421,
-            7.0992,
-            2.1375,
-            3.4088,
-            0
-          ]
-        ]
-      },
-      "note": "Least-cost distances computed with gdistance::costDistance on a 4-neighbour transition graph."
-    },
-    {
-      "task": "least_cost_path",
-      "tool": "JAXScape (CPU)",
-      "software": "JAXScape",
-      "scenario": "synthetic_lcp_large",
-      "status": "ok",
-      "median_seconds": 0.02489504194818437,
-      "timings_seconds": [
-        0.02489504194818437
-      ],
-      "metrics": {},
-      "note": ""
-    },
-    {
-      "task": "least_cost_path",
-      "tool": "JAXScape (GPU)",
-      "software": "JAXScape",
-      "scenario": "synthetic_lcp_large",
-      "status": "skipped",
-      "median_seconds": null,
-      "timings_seconds": [],
-      "metrics": {},
-      "note": "GPU backend unavailable on this machine; placeholder emitted for the GPU-capable JAX profile."
-    },
-    {
-      "task": "least_cost_path",
-      "tool": "gdistance / costDistance",
-      "software": "gdistance",
-      "scenario": "synthetic_lcp_large",
-      "status": "ok",
-      "median_seconds": 0.003,
-      "timings_seconds": [
-        0.003
-      ],
-      "metrics": {
-        "distance_matrix": [
-          [
-            0,
-            16.9314,
-            12.2893,
-            18.8314,
-            9.5192,
-            11.1656,
-            9.4825
-          ],
-          [
-            16.9314,
-            0,
-            17.0252,
-            12.2754,
-            8.2425,
-            6.4839,
-            10.5762
-          ],
-          [
-            12.2893,
-            17.0252,
-            0,
-            16.2874,
-            9.3731,
-            11.4501,
-            6.449
-          ],
-          [
-            18.8314,
-            12.2754,
-            16.2874,
-            0,
-            9.7116,
-            9.3434,
-            10.715
-          ],
-          [
-            9.5192,
-            8.2425,
-            9.3731,
-            9.7116,
-            0,
-            3.1859,
-            2.9365
-          ],
-          [
-            11.1656,
-            6.4839,
-            11.4501,
-            9.3434,
-            3.1859,
-            0,
-            5.0651
-          ],
-          [
-            9.4825,
-            10.5762,
-            6.449,
-            10.715,
-            2.9365,
-            5.0651,
-            0
-          ]
-        ]
-      },
-      "note": "Least-cost distances computed with gdistance::costDistance on a 4-neighbour transition graph."
-    },
-    {
-      "task": "sensitivity_analysis",
-      "tool": "JAXScape / shortest-path gradient (CPU)",
-      "software": "JAXScape",
-      "scenario": "synthetic_sensitivity_small",
-      "status": "ok",
-      "median_seconds": 0.0003513329429551959,
-      "timings_seconds": [
-        0.0003513329429551959
-      ],
-      "metrics": {
-        "centrality_mass": 16.0,
-        "cosine_similarity": 0.9544198227247085,
-        "normalised_l1": 0.275000007916242,
-        "normalised_rmse": 0.01666666760769057
-      },
-      "note": "Gradient of the summed single-origin least-cost objective on the shared cost surface."
-    },
-    {
-      "task": "sensitivity_analysis",
-      "tool": "JAXScape / shortest-path gradient (GPU)",
-      "software": "JAXScape",
-      "scenario": "synthetic_sensitivity_small",
-      "status": "skipped",
-      "median_seconds": null,
-      "timings_seconds": [],
-      "metrics": {},
-      "note": "GPU backend unavailable on this machine; placeholder emitted for the GPU-capable JAX profile."
-    },
-    {
-      "task": "sensitivity_analysis",
-      "tool": "gdistance / shortestPath",
-      "software": "gdistance",
-      "scenario": "synthetic_sensitivity_small",
-      "status": "ok",
-      "median_seconds": 0.07,
-      "timings_seconds": [
-        0.07
-      ],
-      "metrics": {
-        "centrality_raster": [
-          [
-            0,
-            0,
-            0,
-            0,
-            0,
-            0
-          ],
-          [
-            0,
-            4,
-            1,
-            1,
-            1,
-            0
-          ],
-          [
-            0,
-            3,
-            2,
-            2,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0,
-            2,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0,
-            1,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            0,
-            0,
-            0,
-            0
-          ]
-        ]
-      },
-      "note": "Single-origin shortest-path incidence computed by summing gdistance::shortestPath transition rasters over all destinations."
-    },
-    {
-      "task": "sensitivity_analysis",
-      "tool": "JAXScape / resistance gradient (CPU)",
-      "software": "JAXScape",
-      "scenario": "synthetic_sensitivity_small",
-      "status": "ok",
-      "median_seconds": 0.0003169159172102809,
-      "timings_seconds": [
-        0.0003169159172102809
-      ],
-      "metrics": {
-        "centrality_mass": 986.6011352539062,
-        "cosine_similarity": 0.8610171548481442,
-        "normalised_l1": 0.5266155136276691,
-        "normalised_rmse": 0.018552307998883678
-      },
-      "note": "Gradient of graph-volume-scaled effective resistance, matching commute-time passage counts on the shared cost surface."
-    },
-    {
-      "task": "sensitivity_analysis",
-      "tool": "JAXScape / resistance gradient (GPU)",
-      "software": "JAXScape",
-      "scenario": "synthetic_sensitivity_small",
-      "status": "skipped",
-      "median_seconds": null,
-      "timings_seconds": [],
-      "metrics": {},
-      "note": "GPU backend unavailable on this machine; placeholder emitted for the GPU-capable JAX profile."
-    },
-    {
-      "task": "sensitivity_analysis",
-      "tool": "gdistance / passage",
-      "software": "gdistance",
-      "scenario": "synthetic_sensitivity_small",
-      "status": "ok",
-      "median_seconds": 0.012,
-      "timings_seconds": [
-        0.012
-      ],
-      "metrics": {
-        "centrality_raster": [
-          [
-            6.599,
-            9.9034,
-            6.19,
-            5.5427,
-            4.2236,
-            1.713
-          ],
-          [
-            16.3419,
-            22.8271,
-            9.7748,
-            6.3981,
-            6.0308,
-            3.0494
-          ],
-          [
-            16.5966,
-            15.1662,
-            7.8711,
-            11.1584,
-            9.8684,
-            5.1798
-          ],
-          [
-            11.9212,
-            10.2136,
-            7.3452,
-            11.1462,
-            8.5528,
-            5.6549
-          ],
-          [
-            5.4118,
-            5.0285,
-            4.9454,
-            8.3188,
-            7.3434,
-            3.9582
-          ],
-          [
-            3.5721,
-            3.7367,
-            2.7571,
-            3.8031,
-            3.042,
-            1.4287
-          ]
-        ]
-      },
-      "note": "Single-origin random-walk passage centrality computed by summing gdistance::passage(..., totalNet = \"total\") rasters over all destinations."
-    },
-    {
-      "task": "sensitivity_analysis",
-      "tool": "JAXScape / shortest-path gradient (CPU)",
-      "software": "JAXScape",
-      "scenario": "synthetic_sensitivity_medium",
-      "status": "ok",
-      "median_seconds": 0.0008026669966056943,
-      "timings_seconds": [
-        0.0008026669966056943
-      ],
-      "metrics": {
-        "centrality_mass": 28.0,
-        "cosine_similarity": 0.9669875554331901,
-        "normalised_l1": 0.21428571611034633,
-        "normalised_rmse": 0.008463030925291392
-      },
-      "note": "Gradient of the summed single-origin least-cost objective on the shared cost surface."
-    },
-    {
-      "task": "sensitivity_analysis",
-      "tool": "JAXScape / shortest-path gradient (GPU)",
-      "software": "JAXScape",
-      "scenario": "synthetic_sensitivity_medium",
-      "status": "skipped",
-      "median_seconds": null,
-      "timings_seconds": [],
-      "metrics": {},
-      "note": "GPU backend unavailable on this machine; placeholder emitted for the GPU-capable JAX profile."
-    },
-    {
-      "task": "sensitivity_analysis",
-      "tool": "gdistance / shortestPath",
-      "software": "gdistance",
-      "scenario": "synthetic_sensitivity_medium",
-      "status": "ok",
-      "median_seconds": 0.075,
-      "timings_seconds": [
-        0.075
-      ],
-      "metrics": {
-        "centrality_raster": [
-          [
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0
-          ],
-          [
-            0,
-            4,
-            3,
-            3,
-            0,
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            1,
-            0,
-            3,
-            3,
-            2,
-            1,
-            0
-          ],
-          [
-            0,
-            1,
-            0,
-            0,
-            1,
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0,
-            0,
-            1,
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0,
-            0,
-            0,
-            1,
-            1,
-            0
-          ],
-          [
-            0,
-            1,
-            0,
-            0,
-            0,
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0
-          ]
-        ]
-      },
-      "note": "Single-origin shortest-path incidence computed by summing gdistance::shortestPath transition rasters over all destinations."
-    },
-    {
-      "task": "sensitivity_analysis",
-      "tool": "JAXScape / resistance gradient (CPU)",
-      "software": "JAXScape",
-      "scenario": "synthetic_sensitivity_medium",
-      "status": "ok",
-      "median_seconds": 0.0005956670502200723,
-      "timings_seconds": [
-        0.0005956670502200723
-      ],
-      "metrics": {
-        "centrality_mass": 2761.27294921875,
-        "cosine_similarity": 0.7801169883563001,
-        "normalised_l1": 0.6975218331766582,
-        "normalised_rmse": 0.016541911620655946
-      },
-      "note": "Gradient of graph-volume-scaled effective resistance, matching commute-time passage counts on the shared cost surface."
-    },
-    {
-      "task": "sensitivity_analysis",
-      "tool": "JAXScape / resistance gradient (GPU)",
-      "software": "JAXScape",
-      "scenario": "synthetic_sensitivity_medium",
-      "status": "skipped",
-      "median_seconds": null,
-      "timings_seconds": [],
-      "metrics": {},
-      "note": "GPU backend unavailable on this machine; placeholder emitted for the GPU-capable JAX profile."
-    },
-    {
-      "task": "sensitivity_analysis",
-      "tool": "gdistance / passage",
-      "software": "gdistance",
-      "scenario": "synthetic_sensitivity_medium",
-      "status": "ok",
-      "median_seconds": 0.013,
-      "timings_seconds": [
-        0.013
-      ],
-      "metrics": {
-        "centrality_raster": [
-          [
-            5.8514,
-            10.7241,
-            9.7838,
-            7.2496,
-            6.4963,
-            6.5585,
-            4.2246,
-            2.8102
-          ],
-          [
-            12.0774,
-            24.4649,
-            20.4354,
-            18.1462,
-            11.6146,
-            8.1653,
-            6.1398,
-            5.5732
-          ],
-          [
-            18.7715,
-            21.1448,
-            23.2938,
-            24.678,
-            20.1547,
-            19.2446,
-            8.3641,
-            6.257
-          ],
-          [
-            20.9251,
-            21.156,
-            23.8357,
-            14.3836,
-            13.0041,
-            24.9109,
-            19.2392,
-            11.525
-          ],
-          [
-            16.1744,
-            25.2048,
-            23.9842,
-            12.6059,
-            11.1882,
-            15.7201,
-            11.8108,
-            9.0368
-          ],
-          [
-            11.0156,
-            20.6933,
-            22.894,
-            15.7509,
-            9.6859,
-            10.8246,
-            8.2641,
-            6.7038
-          ],
-          [
-            5.2159,
-            7.1316,
-            7.3975,
-            7.4565,
-            7.855,
-            6.2695,
-            6.4541,
-            5.3904
-          ],
-          [
-            4.3577,
-            6.1582,
-            4.834,
-            5.2751,
-            5.7992,
-            3.9557,
-            4.5958,
-            3.4924
-          ]
-        ]
-      },
-      "note": "Single-origin random-walk passage centrality computed by summing gdistance::passage(..., totalNet = \"total\") rasters over all destinations."
-    },
-    {
-      "task": "sensitivity_analysis",
-      "tool": "JAXScape / shortest-path gradient (CPU)",
-      "software": "JAXScape",
-      "scenario": "synthetic_sensitivity_large",
-      "status": "ok",
-      "median_seconds": 0.0016965840477496386,
-      "timings_seconds": [
-        0.0016965840477496386
-      ],
-      "metrics": {
-        "centrality_mass": 36.0,
-        "cosine_similarity": 0.9712920371790655,
-        "normalised_l1": 0.1722221926038641,
-        "normalised_rmse": 0.005343161366888472
-      },
-      "note": "Gradient of the summed single-origin least-cost objective on the shared cost surface."
-    },
-    {
-      "task": "sensitivity_analysis",
-      "tool": "JAXScape / shortest-path gradient (GPU)",
-      "software": "JAXScape",
-      "scenario": "synthetic_sensitivity_large",
-      "status": "skipped",
-      "median_seconds": null,
-      "timings_seconds": [],
-      "metrics": {},
-      "note": "GPU backend unavailable on this machine; placeholder emitted for the GPU-capable JAX profile."
-    },
-    {
-      "task": "sensitivity_analysis",
-      "tool": "gdistance / shortestPath",
-      "software": "gdistance",
-      "scenario": "synthetic_sensitivity_large",
-      "status": "ok",
-      "median_seconds": 0.296,
-      "timings_seconds": [
-        0.296
-      ],
-      "metrics": {
-        "centrality_raster": [
-          [
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0
-          ],
-          [
-            0,
-            4,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            0
-          ],
-          [
-            0,
-            3,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0
-          ],
-          [
-            0,
-            3,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0
-          ],
-          [
-            0,
-            3,
-            2,
-            2,
-            2,
-            2,
-            0,
-            0,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0,
-            0,
-            0,
-            2,
-            1,
-            0,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0,
-            0,
-            0,
-            0,
-            1,
-            1,
-            1,
-            0
-          ],
-          [
-            0,
-            1,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            1,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0
-          ]
-        ]
-      },
-      "note": "Single-origin shortest-path incidence computed by summing gdistance::shortestPath transition rasters over all destinations."
-    },
-    {
-      "task": "sensitivity_analysis",
-      "tool": "JAXScape / resistance gradient (CPU)",
-      "software": "JAXScape",
-      "scenario": "synthetic_sensitivity_large",
-      "status": "ok",
-      "median_seconds": 0.0011461669346317649,
-      "timings_seconds": [
-        0.0011461669346317649
-      ],
-      "metrics": {
-        "centrality_mass": 6188.34375,
-        "cosine_similarity": 0.7942924437957158,
-        "normalised_l1": 0.65445382753453,
-        "normalised_rmse": 0.00962479392067002
-      },
-      "note": "Gradient of graph-volume-scaled effective resistance, matching commute-time passage counts on the shared cost surface."
-    },
-    {
-      "task": "sensitivity_analysis",
-      "tool": "JAXScape / resistance gradient (GPU)",
-      "software": "JAXScape",
-      "scenario": "synthetic_sensitivity_large",
-      "status": "skipped",
-      "median_seconds": null,
-      "timings_seconds": [],
-      "metrics": {},
-      "note": "GPU backend unavailable on this machine; placeholder emitted for the GPU-capable JAX profile."
-    },
-    {
-      "task": "sensitivity_analysis",
-      "tool": "gdistance / passage",
-      "software": "gdistance",
-      "scenario": "synthetic_sensitivity_large",
-      "status": "ok",
-      "median_seconds": 0.012,
-      "timings_seconds": [
-        0.012
-      ],
-      "metrics": {
-        "centrality_raster": [
-          [
-            12.9548,
-            20.2674,
-            13.4631,
-            10.3741,
-            8.7155,
-            7.5593,
-            7.6118,
-            8.8084,
-            8.0347,
-            3.539
-          ],
-          [
-            15.2799,
-            24.7227,
-            18.2093,
-            14.9974,
-            16.5569,
-            15.9712,
-            11.5709,
-            9.0497,
-            8.5072,
-            6.0685
-          ],
-          [
-            13.0531,
-            18.7726,
-            20.9586,
-            16.2163,
-            14.3214,
-            13.8841,
-            11.199,
-            12.2227,
-            11.5679,
-            8.8463
-          ],
-          [
-            25.1397,
-            29.1953,
-            21.988,
-            23.2046,
-            21.912,
-            13.8433,
-            10.8781,
-            13.0446,
-            18.3352,
-            13.1309
-          ],
-          [
-            20.4237,
-            23.5597,
-            34.0905,
-            33.0276,
-            22.9128,
-            17.9234,
-            13.3835,
-            14.5302,
-            25.1938,
-            19.4877
-          ],
-          [
-            28.7246,
-            32.8985,
-            30.4841,
-            21.9009,
-            18.1634,
-            16.614,
-            14.0125,
-            11.5821,
-            17.2455,
-            16.1464
-          ],
-          [
-            16.5741,
-            15.9903,
-            16.6556,
-            13.2328,
-            13.0993,
-            11.177,
-            16.226,
-            15.4456,
-            20.747,
-            16.6185
-          ],
-          [
-            7.7443,
-            10.3398,
-            10.715,
-            10.283,
-            11.9532,
-            8.5419,
-            9.1873,
-            8.7615,
-            7.9594,
-            5.625
-          ],
-          [
-            5.5151,
-            7.8459,
-            6.9931,
-            8.1256,
-            10.8261,
-            14.5402,
-            12.3386,
-            7.0401,
-            6.2483,
-            4.1071
-          ],
-          [
-            3.2449,
-            5.1831,
-            6.8849,
-            8.2863,
-            7.2673,
-            8.088,
-            6.1883,
-            4.4674,
-            4.5814,
-            2.8219
-          ]
-        ]
-      },
-      "note": "Single-origin random-walk passage centrality computed by summing gdistance::passage(..., totalNet = \"total\") rasters over all destinations."
-    },
-    {
-      "task": "inverse_landscape_genetics",
-      "tool": "JAXScape + Optimistix (CPU)",
-      "software": "JAXScape + Optimistix",
-      "scenario": "synthetic_inverse_small",
-      "status": "ok",
-      "median_seconds": 0.0017364580417051911,
-      "timings_seconds": [
-        0.0017364580417051911
-      ],
-      "metrics": {
-        "rmse": 0.07578656077384949,
-        "relative_rmse": 0.031019724905490875,
-        "final_mse": 0.0045948815532028675,
-        "converged": false,
-        "iteration_count": 8,
-        "iteration_limit": 8
-      },
-      "note": "Fixed-budget L-BFGS calibration against the synthetic resistance-distance target."
-    },
-    {
-      "task": "inverse_landscape_genetics",
-      "tool": "JAXScape + Optimistix (GPU)",
-      "software": "JAXScape + Optimistix",
-      "scenario": "synthetic_inverse_small",
-      "status": "skipped",
-      "median_seconds": null,
-      "timings_seconds": [],
-      "metrics": {},
-      "note": "GPU backend unavailable on this machine; placeholder emitted for the GPU-capable JAX profile."
-    },
-    {
-      "task": "inverse_landscape_genetics",
-      "tool": "ResistanceGA",
-      "software": "ResistanceGA",
-      "scenario": "synthetic_inverse_small",
-      "status": "ok",
-      "median_seconds": 3.701,
-      "timings_seconds": [
-        3.701
-      ],
-      "metrics": {
-        "rmse": 3.9946,
-        "relative_rmse": 0.5283,
-        "aicc": 32.9081,
-        "converged": true,
-        "iteration_count": 1,
-        "iteration_limit": 3
-      },
-      "note": "Fixed-budget ResistanceGA calibration against the synthetic least-cost response generated from the benchmark raster."
-    },
-    {
-      "task": "inverse_landscape_genetics",
-      "tool": "JAXScape + Optimistix (CPU)",
-      "software": "JAXScape + Optimistix",
-      "scenario": "synthetic_inverse_medium",
-      "status": "ok",
-      "median_seconds": 0.0035233329981565475,
-      "timings_seconds": [
-        0.0035233329981565475
-      ],
-      "metrics": {
-        "rmse": 0.17699028551578522,
-        "relative_rmse": 0.05576986446976662,
-        "final_mse": 0.025060443207621574,
-        "converged": false,
-        "iteration_count": 8,
-        "iteration_limit": 8
-      },
-      "note": "Fixed-budget L-BFGS calibration against the synthetic resistance-distance target."
-    },
-    {
-      "task": "inverse_landscape_genetics",
-      "tool": "JAXScape + Optimistix (GPU)",
-      "software": "JAXScape + Optimistix",
-      "scenario": "synthetic_inverse_medium",
-      "status": "skipped",
-      "median_seconds": null,
-      "timings_seconds": [],
-      "metrics": {},
-      "note": "GPU backend unavailable on this machine; placeholder emitted for the GPU-capable JAX profile."
-    },
-    {
-      "task": "inverse_landscape_genetics",
-      "tool": "ResistanceGA",
-      "software": "ResistanceGA",
-      "scenario": "synthetic_inverse_medium",
-      "status": "ok",
-      "median_seconds": 3.97,
-      "timings_seconds": [
-        3.97
-      ],
-      "metrics": {
-        "rmse": 5.7025,
-        "relative_rmse": 0.4237,
-        "aicc": 70.2093,
-        "converged": true,
-        "iteration_count": 1,
-        "iteration_limit": 3
-      },
-      "note": "Fixed-budget ResistanceGA calibration against the synthetic least-cost response generated from the benchmark raster."
-    },
-    {
-      "task": "inverse_landscape_genetics",
-      "tool": "JAXScape + Optimistix (CPU)",
-      "software": "JAXScape + Optimistix",
-      "scenario": "synthetic_inverse_large",
-      "status": "ok",
-      "median_seconds": 0.008135374984703958,
-      "timings_seconds": [
-        0.008135374984703958
-      ],
-      "metrics": {
-        "rmse": 0.10468482226133347,
-        "relative_rmse": 0.03145236149430275,
-        "final_mse": 0.008767125196754932,
-        "converged": false,
-        "iteration_count": 8,
-        "iteration_limit": 8
-      },
-      "note": "Fixed-budget L-BFGS calibration against the synthetic resistance-distance target."
-    },
-    {
-      "task": "inverse_landscape_genetics",
-      "tool": "JAXScape + Optimistix (GPU)",
-      "software": "JAXScape + Optimistix",
-      "scenario": "synthetic_inverse_large",
-      "status": "skipped",
-      "median_seconds": null,
-      "timings_seconds": [],
-      "metrics": {},
-      "note": "GPU backend unavailable on this machine; placeholder emitted for the GPU-capable JAX profile."
-    },
-    {
-      "task": "inverse_landscape_genetics",
-      "tool": "ResistanceGA",
-      "software": "ResistanceGA",
-      "scenario": "synthetic_inverse_large",
-      "status": "ok",
-      "median_seconds": 3.658,
-      "timings_seconds": [
-        3.658
-      ],
-      "metrics": {
-        "rmse": 4.6164,
-        "relative_rmse": 0.3041,
-        "aicc": 69.56,
-        "converged": true,
-        "iteration_count": 1,
-        "iteration_limit": 3
-      },
-      "note": "Fixed-budget ResistanceGA calibration against the synthetic least-cost response generated from the benchmark raster."
+      "note": "Above is the stack outside of JIT. Below is the stack inside of JIT:\n  File \"/home/boussang/jaxscape/benchmark/jaxscape/resistance_distance.py\", line 265, in _jaxscape_prepared_resistance\n    return distance(grid, nodes=nodes, state=state)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/distance.py\", line 90, in __call__\n    return self.nodes_to_nodes_distance(graph, nodes, state)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/_module/_prebuilt.py\", line 82, in __call__\n    return self.func(*self.args, *args, **kwargs, **self.keywords)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/resistance_distance.py\", line 114, in nodes_to_nodes_distance\n    return lineax_solver_nodes_to_nodes_resistance_distance(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/resistance_distance.py\", line 206, in lineax_solver_nodes_to_nodes_resistance_distance\n    potentials = batched_linear_solve(\n                 ^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/solvers/operator.py\", line 57, in batched_linear_solve\n    return jax.vmap(\n           ^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/solvers/operator.py\", line 58, in <lambda>\n    lambda A, b: linear_solve(A, b, solver, options=options, state=state),\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/src/jaxscape/solvers/operator.py\", line 40, in linear_solve\n    return lx.linear_solve(\n           ^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/internal/_primitive.py\", line 316, in batch_rule\n    out = _vprim_p.bind(\n          ^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/internal/_primitive.py\", line 368, in _vprim_abstract_eval\n    outs = abstract_eval(*inputs, **dict(params))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/internal/_primitive.py\", line 159, in _wrapper\n    out = rule(*args)\n          ^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/lineax/_solve.py\", line 125, in _linear_solve_abstract_eval\n    out = eqx.filter_eval_shape(\n          ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/lineax/_solve.py\", line 113, in _linear_solve_impl\n    solution, result, stats = result.error_if(\n                              ^^^^^^^^^^^^^^^^\n  File \"/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/_module/_prebuilt.py\", line 34, in __call__\n    return self.__func__(self.__self__, *args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nequinox.EquinoxRuntimeError: A linear solver returned non-finite (NaN or inf) output. This usually means that an\noperator was not well-posed, and that its solver does not support this.\n\nIf you are trying solve a linear least-squares problem then you should pass\n`solver=AutoLinearSolver(well_posed=False)`. By default `lineax.linear_solve`\nassumes that the operator is square and nonsingular.\n\nIf you *were* expecting this solver to work with this operator, then it may be because:\n\n(a) the operator is singular, and your code has a bug; or\n\n(b) the operator was nearly singular (i.e. it had a high condition number:\n    `jnp.linalg.cond(operator.as_matrix())` is large), and the solver suffered from\n    numerical instability issues; or\n\n(c) the operator is declared to exhibit a certain property (e.g. positive definiteness)\n    that is does not actually satisfy.\n\n-------------------\n\nAn error occurred during the runtime of your JAX program.\n\n1) Setting the environment variable `EQX_ON_ERROR=breakpoint` is usually the most useful\nway to debug such errors. This can be interacted with using most of the usual commands\nfor the Python debugger: `u` and `d` to move up and down frames, the name of a variable\nto print its value, etc.\n\n2) You may also like to try setting `JAX_DISABLE_JIT=1`. This will mean that you can\n(mostly) inspect the state of your program as if it was normal Python.\n\n3) See `https://docs.kidger.site/equinox/api/debug/` for more suggestions.\n"
     }
   ]
 }

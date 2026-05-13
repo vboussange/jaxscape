@@ -31,6 +31,8 @@ for path in (ROOT, SRC_DIR):
     sys.path.insert(0, str(path))
 sys.modules.setdefault("benchmark.benchmark_distances", sys.modules[__name__])
 
+os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
+
 BENCHMARK_DIR = ROOT / "benchmark"
 RESULTS_DIR = BENCHMARK_DIR / "results"
 RESULTS_JSON = RESULTS_DIR / "benchmark_results.json"
@@ -58,6 +60,7 @@ DEFAULT_BENCHMARK_THREADS = 4
 REPEATS = 3
 MIN_PERMEABILITY = 1e-3
 SIZE_LABELS = ("small", "medium", "large")
+DEFAULT_BENCHMARK_POINT_COUNT = 100
 GPU_PLACEHOLDER_NOTE = (
     "GPU backend unavailable on this machine; placeholder emitted for the "
     "GPU-capable JAX profile."
@@ -65,25 +68,21 @@ GPU_PLACEHOLDER_NOTE = (
 CASE_GROUP_SPECS = {
     "resistance": {
         "task": "resistance_distance",
-        "include_offset": True,
-        "size_by_label": {"small": 12, "medium": 18, "large": 24},
+        "size_by_label": {"small": 10, "medium": 100, "large": 1000},
         "seed_base": 0,
     },
     "lcp": {
         "task": "least_cost_path",
-        "include_offset": True,
-        "size_by_label": {"small": 16, "medium": 24, "large": 32},
+        "size_by_label": {"small": 10, "medium": 100, "large": 1000},
         "seed_base": 10,
     },
     "sensitivity": {
         "task": "sensitivity_analysis",
-        "include_offset": False,
-        "size_by_label": {"small": 6, "medium": 8, "large": 10},
+        "size_by_label": {"small": 10, "medium": 100, "large": 1000},
         "seed_base": 20,
     },
     "inverse": {
         "task": "inverse_landscape_genetics",
-        "include_offset": False,
         "size_by_label": {"small": 6, "medium": 8, "large": 10},
         "seed_base": 30,
     },
@@ -116,16 +115,6 @@ GPU_CAPABLE_TOOL_LABELS_BY_TASK = {
 }
 
 
-def normalise_thread_count(raw_value: str | None) -> int:
-    if raw_value is None:
-        return DEFAULT_BENCHMARK_THREADS
-    try:
-        return max(1, int(raw_value))
-    except ValueError as error:
-        message = f"BENCHMARK_THREADS must be an integer, received {raw_value!r}."
-        raise RuntimeError(message) from error
-
-
 def configure_thread_environment(thread_count: int) -> None:
     thread_value = str(thread_count)
     os.environ.setdefault("BENCHMARK_THREADS", thread_value)
@@ -146,8 +135,35 @@ def configure_thread_environment(thread_count: int) -> None:
         os.environ["XLA_FLAGS"] = " ".join(filter(None, [xla_flags, *extra_flags]))
 
 
-BENCHMARK_THREADS = normalise_thread_count(os.environ.get("BENCHMARK_THREADS"))
+try:
+    BENCHMARK_THREADS = max(
+        1, int(os.environ.get("BENCHMARK_THREADS", DEFAULT_BENCHMARK_THREADS))
+    )
+except ValueError as error:
+    raw_value = os.environ.get("BENCHMARK_THREADS")
+    message = f"BENCHMARK_THREADS must be an integer, received {raw_value!r}."
+    raise RuntimeError(message) from error
+
 configure_thread_environment(BENCHMARK_THREADS)
+try:
+    BENCHMARK_POINT_COUNT = int(
+        os.environ.get(
+            "JAXSCAPE_BENCHMARK_POINT_COUNT", DEFAULT_BENCHMARK_POINT_COUNT
+        )
+    )
+except ValueError as error:
+    raw_value = os.environ.get("JAXSCAPE_BENCHMARK_POINT_COUNT")
+    message = (
+        "JAXSCAPE_BENCHMARK_POINT_COUNT must be an integer, received "
+        f"{raw_value!r}."
+    )
+    raise RuntimeError(message) from error
+
+if BENCHMARK_POINT_COUNT < 1:
+    raise RuntimeError(
+        "JAXSCAPE_BENCHMARK_POINT_COUNT must be at least 1, received "
+        f"{BENCHMARK_POINT_COUNT}."
+    )
 
 import jax
 import jax.numpy as jnp
@@ -161,7 +177,6 @@ class BenchmarkCase:
     size_label: str
     grid_size: int
     seed: int
-    include_offset: bool
     raster: list[list[float]]
     points: list[tuple[int, int]]
 
@@ -213,25 +228,34 @@ def unique_points(points: list[tuple[int, int]]) -> list[tuple[int, int]]:
     return ordered
 
 
-def benchmark_points(size: int, include_offset: bool = True) -> list[tuple[int, int]]:
-    margin = 1 if size > 4 else 0
-    lower = margin
-    upper = size - 1 - margin
-    candidates = [
-        (lower, lower),
-        (lower, upper),
-        (upper, lower),
-        (upper, upper),
-        (size // 2, size // 2),
-    ]
-    if include_offset and size > 4:
-        candidates.extend(
-            [
-                (size // 3, min(size - 1, (2 * size) // 3)),
-                (min(size - 1, (2 * size) // 3), size // 3),
-            ]
+def benchmark_points(
+    size: int,
+    *,
+    point_count: int | None = None,
+) -> list[tuple[int, int]]:
+    resolved_point_count = BENCHMARK_POINT_COUNT if point_count is None else int(point_count)
+    if resolved_point_count < 1:
+        raise RuntimeError(
+            "JAXSCAPE_BENCHMARK_POINT_COUNT must be at least 1, received "
+            f"{resolved_point_count}."
         )
-    return unique_points(candidates)
+    if size <= 0:
+        return []
+
+    margin = 1 if size > 4 else 0
+    interior_points = [
+        (i, j)
+        for i in range(margin, size - margin)
+        for j in range(margin, size - margin)
+    ]
+    if not interior_points:
+        return []
+
+    sample_size = min(resolved_point_count, len(interior_points))
+    sample_indices = np.random.default_rng().choice(
+        len(interior_points), size=sample_size, replace=False
+    )
+    return [interior_points[int(index)] for index in np.atleast_1d(sample_indices)]
 
 
 def build_case(
@@ -240,8 +264,6 @@ def build_case(
     size_label: str,
     size: int,
     seed: int,
-    *,
-    include_offset: bool = True,
 ) -> BenchmarkCase:
     raster = create_landscape(seed=seed, size=size)
     raster_as_lists = [[float(value) for value in row] for row in raster.tolist()]
@@ -251,9 +273,8 @@ def build_case(
         size_label=size_label,
         grid_size=size,
         seed=seed,
-        include_offset=include_offset,
         raster=raster_as_lists,
-        points=benchmark_points(size, include_offset=include_offset),
+        points=benchmark_points(size),
     )
 
 
@@ -269,11 +290,30 @@ def benchmark_cases() -> dict[str, list[BenchmarkCase]]:
                     size_label=size_label,
                     size=spec["size_by_label"][size_label],
                     seed=spec["seed_base"] + offset,
-                    include_offset=bool(spec["include_offset"]),
                 )
             )
         cases[group_name] = group_cases
     return cases
+
+
+def refresh_benchmark_cases() -> None:
+    CASES.clear()
+    CASES.update(benchmark_cases())
+    CASES_BY_TASK.clear()
+    CASES_BY_TASK.update(cases_by_task(CASES))
+
+
+def configure_benchmark_point_count(point_count: int) -> int:
+    global BENCHMARK_POINT_COUNT
+
+    BENCHMARK_POINT_COUNT = int(point_count)
+    if BENCHMARK_POINT_COUNT < 1:
+        raise RuntimeError(
+            "JAXSCAPE_BENCHMARK_POINT_COUNT must be at least 1, received "
+            f"{BENCHMARK_POINT_COUNT}."
+        )
+    refresh_benchmark_cases()
+    return BENCHMARK_POINT_COUNT
 
 
 def cases_by_task(
@@ -614,7 +654,6 @@ def write_case_payload(case: BenchmarkCase, directory: Path) -> Path:
         "size_label": case.size_label,
         "grid_size": case.grid_size,
         "seed": case.seed,
-        "include_offset": case.include_offset,
         "raster": case.raster,
         "points": case.points,
     }
@@ -916,7 +955,6 @@ def case_payload(cases: list[BenchmarkCase]) -> list[dict[str, object]]:
             "size_label": case.size_label,
             "grid_size": case.grid_size,
             "seed": case.seed,
-            "include_offset": case.include_offset,
             "point_count": len(case.points),
             "points": case.points,
         }
