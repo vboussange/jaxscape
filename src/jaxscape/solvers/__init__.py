@@ -1,6 +1,7 @@
 """Linear solvers for jaxscape."""
 
 from .cholmodsolver import CholmodSolver as CholmodSolver
+from .cudsssolver import CuDSSSolver as CuDSSSolver
 from .operator import (
     batched_linear_solve as batched_linear_solve,
     BCOOLinearOperator as BCOOLinearOperator,
