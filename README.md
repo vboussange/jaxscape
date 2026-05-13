@@ -16,7 +16,7 @@ JAXScape is a minimal JAX library for connectivity analysis at scales. It provid
 - differentiable raster to graph and graph to raster mappings
 - moving window utilities for implementing large-scale connectivity analysis pipelines
 
-JAXScape leverages JAX's capabilities to accelerate distance computations on CPUs/GPUs/TPUs, while ensuring differentiability of all implemented classes and methods for awesome sensitivity analysis and optimization.
+JAXScape implements custom methods and leverages JAX's capabilities to accelerate distance computations on CPUs/GPUs/TPUs, while ensuring differentiability across the codebase for awesome sensitivity analysis and optimization.
 
 
 ## Installation

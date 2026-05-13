@@ -28,13 +28,24 @@ def amjax_preconditioner_operator(
     cycle: str = "V",
 ) -> lx.FunctionLinearOperator:
     """Wrap an AMJax preconditioner as a Lineax linear operator."""
+    preconditioner = amjax_solver.aspreconditioner(cycle=cycle)
+    tags = (lx.positive_semidefinite_tag,)
+    if getattr(amjax_solver, "symmetric_smoothing", False):
+        # Lineax transposes solver states during reverse-mode autodiff. If this
+        # tag is omitted, it tries to build a transpose of AMJax's V-cycle via
+        # `jax.linear_transpose`, which currently exposes JAX internal cotangent
+        # wrappers to AMJax. For symmetric smoothers, AMJax's V-cycle is safe to
+        # reuse as its own transpose, so mark that property explicitly.
+        tags = tags + (lx.symmetric_tag,)
+
+    def _matvec(rhs: Any) -> Array:
+        return preconditioner(rhs)
+
     return lx.FunctionLinearOperator(
-        amjax_solver.aspreconditioner(cycle=cycle),
+        _matvec,
         input_structure,
-        tags=(lx.positive_semidefinite_tag,),
+        tags=tags,
     )
-
-
 def build_amjax_solver(
     matrix: BCOO,
     *,
@@ -49,7 +60,8 @@ def build_amjax_solver(
     if not AMJAX_AVAILABLE:
         raise ImportError(
             "AMJaxCGSolver requires amjax and pyamg. "
-            "Install AMJax from the local repository with: uv add ../AMJax/"
+            "Run with the optional extras enabled, for example: "
+            "uv run --extra pyamg --extra amjax ..."
         )
 
     if pyamg_method is None:
@@ -93,6 +105,12 @@ class AMJaxCGSolver(AbstractLinearSolver):
 
     !!! warning
         `amjax` and `pyamg` must be installed to use this solver.
+
+        Reverse-mode gradients through solver calls require a symmetric AMJax
+        preconditioner. This holds for the default matching pre/post Jacobi
+        smoothers, but may not hold for custom non-symmetric smoother choices.
+        Such configurations can still be valid for forward solves, but Lineax
+        may need to transpose the preconditioner during autodiff.
     """
 
     rtol: float = 1e-6
@@ -111,7 +129,8 @@ class AMJaxCGSolver(AbstractLinearSolver):
         if not AMJAX_AVAILABLE:
             raise ImportError(
                 "AMJaxCGSolver requires amjax and pyamg. "
-                "Install AMJax from the local repository with: uv add ../AMJax/"
+                "Run with the optional extras enabled, for example: "
+                "uv run --extra pyamg --extra amjax ..."
             )
 
         if isinstance(self.rtol, (int, float)) and self.rtol < 0:

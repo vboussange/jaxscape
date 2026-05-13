@@ -1,12 +1,14 @@
 from importlib.util import find_spec
 
+import jax
 import jax.numpy as jnp
 import jax.random as jr
 import networkx as nx
 import numpy as np
 import pytest
+from equinox import filter_grad, filter_jit
 from jax.experimental.sparse import BCOO
-from jaxscape import GridGraph
+from jaxscape import GridGraph, SpielmanApproximation
 from jaxscape.resistance_distance import (
     p_inv_resistance_distance,
     ResistanceDistance,
@@ -27,6 +29,10 @@ if CHOLMOD_AVAILABLE:
     available_solvers.append(CholmodSolver())
 if AMJAX_AVAILABLE:
     available_solvers.append(AMJaxCGSolver(rtol=1e-5, atol=1e-5, max_steps=500))
+
+# Spielman projections are randomized; this is the expected absolute error for
+# the deterministic seed and epsilon used in the test below.
+EXPECTED_APPROXIMATION_ERROR = 8e-2
 
 
 def build_nx_resistance_distance_matrix(G):
@@ -81,3 +87,61 @@ def test_lineax_solver_resistance_distance(solver):
     state = distance.init(grid)
     dist_lineax = distance(grid, state=state)
     assert jnp.allclose(dist_pinv, dist_lineax, rtol=1e-4)
+
+
+def test_approximate_resistance_distance():
+    """
+    Tests that the Spielman approximation is jittable and close to the
+    pseudo-inverse method.
+    """
+    key = jr.PRNGKey(0)
+    permeability_raster = jr.uniform(key, (2, 2)) + 0.5
+    grid = GridGraph(grid=permeability_raster, fun=lambda x, y: (x + y) / 2)
+
+    distance = ResistanceDistance(method=SpielmanApproximation(epsilon=0.05))
+    dist_approx = filter_jit(distance)(grid)
+    dist_pinv = ResistanceDistance()(grid)
+
+    assert dist_approx.shape == dist_pinv.shape
+    assert jnp.allclose(dist_approx, dist_approx.T, atol=1e-5)
+    assert jnp.allclose(jnp.diag(dist_approx), 0, atol=1e-5)
+    assert jnp.allclose(dist_approx, dist_pinv, atol=EXPECTED_APPROXIMATION_ERROR)
+
+    nodes = jnp.array([0, 2])
+    sources = jnp.array([0, 1])
+    targets = jnp.array([2, 3])
+    assert jnp.allclose(
+        filter_jit(distance)(grid, nodes=nodes),
+        dist_approx[nodes[:, None], nodes[None, :]],
+    )
+    assert jnp.allclose(
+        filter_jit(distance)(grid, sources=sources, targets=targets),
+        dist_approx[sources[:, None], targets[None, :]],
+    )
+
+
+def test_approximate_resistance_distance_differentiability():
+    """
+    Tests that the custom VJP keeps the approximate method compatible with
+    jax.grad.
+    """
+    key = jr.PRNGKey(0)
+    permeability_raster = jr.uniform(key, (2, 2)) + 0.5
+    distance = ResistanceDistance(method=SpielmanApproximation(epsilon=0.1))
+
+    def objective(permeability_raster):
+        grid = GridGraph(grid=permeability_raster, fun=lambda x, y: (x + y) / 2)
+        return jnp.sum(distance(grid))
+
+    gradient = filter_jit(filter_grad(objective))(permeability_raster)
+
+    step = 1e-2
+    perturbation = jnp.zeros_like(permeability_raster).at[0, 0].set(step)
+    finite_difference = (
+        objective(permeability_raster + perturbation)
+        - objective(permeability_raster - perturbation)
+    ) / (2 * step)
+
+    assert isinstance(gradient, jax.Array)
+    assert jnp.all(jnp.isfinite(gradient))
+    assert jnp.allclose(gradient[0, 0], finite_difference, atol=1e-3)

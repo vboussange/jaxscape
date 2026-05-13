@@ -15,7 +15,14 @@
     options:
       members: false
 
-::: jaxscape.rsp_distance.RSPDistance
+::: jaxscape.resistance_distance.ExactResistance
     options:
       members: false
 
+::: jaxscape.resistance_distance.SpielmanApproximation
+    options:
+      members: false
+
+::: jaxscape.rsp_distance.RSPDistance
+    options:
+      members: false

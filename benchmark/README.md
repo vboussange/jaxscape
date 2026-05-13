@@ -69,7 +69,7 @@ To include the optional direct JAXScape solvers locally, install the extras once
 uv sync --extra benchmark --extra cholespy
 ```
 
-To benchmark `AMJaxCGSolver`, also install the local `amjax` extra:
+To benchmark `AMJaxCGSolver`, also enable the `amjax` extra:
 
 ```bash
 uv sync --extra benchmark --extra amjax

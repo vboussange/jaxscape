@@ -15,7 +15,11 @@ from .graph import (
     ROOK_CONTIGUITY as ROOK_CONTIGUITY,
 )
 from .lcp_distance import LCPDistance as LCPDistance
-from .resistance_distance import ResistanceDistance as ResistanceDistance
+from .resistance_distance import (
+    ExactResistance as ExactResistance,
+    ResistanceDistance as ResistanceDistance,
+    SpielmanApproximation as SpielmanApproximation,
+)
 from .rsp_distance import RSPDistance as RSPDistance
 from .utils import padding as padding
 from .window_operation import WindowOperation as WindowOperation

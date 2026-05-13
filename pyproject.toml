@@ -88,6 +88,9 @@ reportIncompatibleMethodOverride = true
 # [tool.pytest.ini_options]
 # addopts = "--jaxtyping-packages=jaxscape,beartype.beartype(conf=beartype.BeartypeConf(strategy=beartype.BeartypeStrategy.On))"
 
+[tool.uv.sources]
+amjax = { git = "https://github.com/vboussange/AMJax" }
+
 [tool.ruff]
 extend-include = ["*.ipynb"]
 fixable = ["I001", "F401", "UP"]
