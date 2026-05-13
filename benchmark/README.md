@@ -10,7 +10,7 @@ deterministic size tiers: `small`, `medium`, and `large`.
 
 | Feature | Automated profiles | Optional local profiles | Notes |
 | --- | --- | --- | --- |
-| Resistance distance | `JAXScape / pinv (CPU/GPU)`, `JAXScape / PyAMG`, `gdistance / commuteDistance`, `Circuitscape.jl / cg+amg`, `Circuitscape.jl / cholmod` | `JAXScape / CholmodSolver`, `Circuitscape.jl / accelerate`, `Conefor` adapters | Use `--device cpu` for cross-tool comparisons. The GPU series is only emitted for GPU-capable JAXScape methods. |
+| Resistance distance | `JAXScape / pinv (CPU/GPU)`, `JAXScape / PyAMG`, `gdistance / commuteDistance`, `Circuitscape.jl / cg+amg`, `Circuitscape.jl / cholmod` | `JAXScape / AMJaxCGSolver`, `JAXScape / CholmodSolver`, `Conefor` adapters | Use `--device cpu` for cross-tool comparisons. The GPU series is only emitted for GPU-capable JAXScape methods. |
 | Least-cost path | `JAXScape (CPU/GPU)`, `gdistance / costDistance` | `Conefor` adapter | Conefor remains a manual external integration. |
 | Sensitivity analysis | `JAXScape / shortest-path gradient (CPU/GPU)`, `gdistance / shortestPath`, `JAXScape / resistance gradient (CPU/GPU)`, `gdistance / passage` | none | This scorecard compares JAX gradients to the matching `gdistance` centrality surfaces. |
 | Inverse landscape genetics | `JAXScape + Optimistix (CPU/GPU)`, `ResistanceGA` | none | Both adapters run a fixed-budget synthetic optimisation problem for regression checks. |
@@ -35,7 +35,12 @@ default, and the published CI default, is `BENCHMARK_THREADS=4`.
 
 ## Workspace layout
 
-- `benchmark/benchmark_distances.py`: orchestrates the suite and writes JSON/CSV results.
+- `benchmark/benchmark_distances.py`: owns the full-suite orchestration, cross-software adapters, shared cases, result writing, and JSON/CSV output.
+- `benchmark/jaxscape/`: JAXScape-only benchmark task modules imported by the orchestrator; each has a lightweight no-argument `main()` for standalone execution.
+- `benchmark/jaxscape/resistance_distance.py`: resistance-distance task runner. The JAXScape solver profiles live in `JAXSCAPE_RESISTANCE_PROFILES`, so adding a new solver should usually mean adding one registry entry and a small factory.
+- `benchmark/jaxscape/least_cost_path.py`: least-cost path task runner.
+- `benchmark/jaxscape/sensitivity_analysis.py`: gradient and centrality sensitivity task runner.
+- `benchmark/jaxscape/inverse_landscape_genetics.py`: inverse landscape genetics task runner.
 - `benchmark/render_scorecard.py`: renders one PNG scorecard per feature from the JSON results.
 - `benchmark/run_benchmarks.sh`: reruns the suite and regenerates the scorecards.
 - `benchmark/install_external_tools.sh`: provisions local Julia and R toolchains under `benchmark/julia`, `benchmark/.julia`, and `benchmark/.r-lib`.
@@ -58,8 +63,24 @@ For local GPU profiling, keep the same workflow and switch the device flag:
 ./benchmark/run_benchmarks.sh --device gpu
 ```
 
-To include the optional direct JAXScape solver locally, install the extra once:
+To include the optional direct JAXScape solvers locally, install the extras once:
 
 ```bash
 uv sync --extra benchmark --extra cholespy
 ```
+
+To benchmark `AMJaxCGSolver`, also install the local `amjax` extra:
+
+```bash
+uv sync --extra benchmark --extra amjax
+```
+
+The modules under `benchmark/jaxscape/` can be executed directly without CLI
+flags. For example:
+
+```bash
+uv run --extra benchmark python benchmark/jaxscape/resistance_distance.py
+```
+
+Those lightweight entry points use the default benchmark configuration and keep
+JAXScape-specific benchmark code separate from the cross-software orchestration.

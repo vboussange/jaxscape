@@ -1,4 +1,4 @@
-"""Render one benchmark scorecard per feature from benchmark/results/benchmark_results.json."""
+"""Render benchmark scorecards from benchmark/results/benchmark_results.json."""
 
 from __future__ import annotations
 
@@ -30,11 +30,11 @@ DISPLAY_ORDER = {
         "JAXScape / pinv (CPU)",
         "JAXScape / pinv (GPU)",
         "JAXScape / PyAMG",
+        "JAXScape / AMJaxCGSolver",
         "JAXScape / CholmodSolver",
         "gdistance / commuteDistance",
         "Circuitscape.jl / cg+amg",
         "Circuitscape.jl / cholmod",
-        "Circuitscape.jl / accelerate",
         "Conefor",
     ],
     "least_cost_path": ["JAXScape (CPU)", "JAXScape (GPU)", "gdistance / costDistance", "Conefor"],
@@ -51,11 +51,11 @@ DISPLAY_ORDER = {
 TOOL_COLORS = {
     "JAXScape / pinv": "#1F77B4",
     "JAXScape / PyAMG": "#17BECF",
+    "JAXScape / AMJaxCGSolver": "#4C78A8",
     "JAXScape / CholmodSolver": "#9467BD",
     "gdistance / commuteDistance": "#FF7F0E",
     "Circuitscape.jl / cg+amg": "#2CA02C",
     "Circuitscape.jl / cholmod": "#8C564B",
-    "Circuitscape.jl / accelerate": "#BCBD22",
     "JAXScape": "#1F77B4",
     "gdistance / costDistance": "#FF7F0E",
     "JAXScape / shortest-path gradient": "#1F77B4",

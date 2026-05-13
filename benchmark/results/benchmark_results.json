@@ -609,17 +609,6 @@
     },
     {
       "task": "resistance_distance",
-      "tool": "Circuitscape.jl / accelerate",
-      "software": "Circuitscape.jl",
-      "scenario": "synthetic_resistance_small",
-      "status": "failed",
-      "median_seconds": null,
-      "timings_seconds": [],
-      "metrics": {},
-      "note": "MethodError: no method matching construct_cholesky_factor(::SparseArrays.SparseMatrixCSC{Float64, Int64}, ::Circuitscape.AccelerateSolver)\nThe function `construct_cholesky_factor` exists, but no method is defined for this combination of argument types.\n\nClosest candidates are:\n  construct_cholesky_factor(::Any, !Matched::Circuitscape.CholmodSolver)\n   @ Circuitscape ~/projects/jaxscape/benchmark/.julia/packages/Circuitscape/GEA8x/src/core.jl:516\n"
-    },
-    {
-      "task": "resistance_distance",
       "tool": "JAXScape / pinv (CPU)",
       "software": "JAXScape",
       "scenario": "synthetic_resistance_medium",
@@ -774,17 +763,6 @@
     },
     {
       "task": "resistance_distance",
-      "tool": "Circuitscape.jl / accelerate",
-      "software": "Circuitscape.jl",
-      "scenario": "synthetic_resistance_medium",
-      "status": "failed",
-      "median_seconds": null,
-      "timings_seconds": [],
-      "metrics": {},
-      "note": "MethodError: no method matching construct_cholesky_factor(::SparseArrays.SparseMatrixCSC{Float64, Int64}, ::Circuitscape.AccelerateSolver)\nThe function `construct_cholesky_factor` exists, but no method is defined for this combination of argument types.\n\nClosest candidates are:\n  construct_cholesky_factor(::Any, !Matched::Circuitscape.CholmodSolver)\n   @ Circuitscape ~/projects/jaxscape/benchmark/.julia/packages/Circuitscape/GEA8x/src/core.jl:516\n"
-    },
-    {
-      "task": "resistance_distance",
       "tool": "JAXScape / pinv (CPU)",
       "software": "JAXScape",
       "scenario": "synthetic_resistance_large",
@@ -936,17 +914,6 @@
       ],
       "metrics": {},
       "note": ""
-    },
-    {
-      "task": "resistance_distance",
-      "tool": "Circuitscape.jl / accelerate",
-      "software": "Circuitscape.jl",
-      "scenario": "synthetic_resistance_large",
-      "status": "failed",
-      "median_seconds": null,
-      "timings_seconds": [],
-      "metrics": {},
-      "note": "MethodError: no method matching construct_cholesky_factor(::SparseArrays.SparseMatrixCSC{Float64, Int64}, ::Circuitscape.AccelerateSolver)\nThe function `construct_cholesky_factor` exists, but no method is defined for this combination of argument types.\n\nClosest candidates are:\n  construct_cholesky_factor(::Any, !Matched::Circuitscape.CholmodSolver)\n   @ Circuitscape ~/projects/jaxscape/benchmark/.julia/packages/Circuitscape/GEA8x/src/core.jl:516\n"
     },
     {
       "task": "least_cost_path",
