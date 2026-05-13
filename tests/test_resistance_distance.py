@@ -1,3 +1,5 @@
+from importlib.util import find_spec
+
 import jax.numpy as jnp
 import jax.random as jr
 import networkx as nx
@@ -9,23 +11,13 @@ from jaxscape.resistance_distance import (
     p_inv_resistance_distance,
     ResistanceDistance,
 )
-from jaxscape.solvers import CholmodSolver, PyAMGSolver
+from jaxscape.solvers import AMJaxCGSolver, CholmodSolver, PyAMGSolver
 
 
 # Check availability of optional solvers
-try:
-    import pyamg
-
-    PYAMG_AVAILABLE = True
-except ImportError:
-    PYAMG_AVAILABLE = False
-
-try:
-    import cholespy
-
-    CHOLMOD_AVAILABLE = True
-except ImportError:
-    CHOLMOD_AVAILABLE = False
+PYAMG_AVAILABLE = find_spec("pyamg") is not None
+CHOLMOD_AVAILABLE = find_spec("cholespy") is not None
+AMJAX_AVAILABLE = PYAMG_AVAILABLE and find_spec("amjax") is not None
 
 # Build list of available solvers
 available_solvers = []
@@ -33,6 +25,8 @@ if PYAMG_AVAILABLE:
     available_solvers.append(PyAMGSolver())
 if CHOLMOD_AVAILABLE:
     available_solvers.append(CholmodSolver())
+if AMJAX_AVAILABLE:
+    available_solvers.append(AMJaxCGSolver(rtol=1e-5, atol=1e-5, max_steps=500))
 
 
 def build_nx_resistance_distance_matrix(G):
@@ -83,5 +77,7 @@ def test_lineax_solver_resistance_distance(solver):
 
     # nodes to nodes
     dist_pinv = ResistanceDistance(solver=None)(grid)
-    dist_lineax = ResistanceDistance(solver=solver)(grid)
+    distance = ResistanceDistance(solver=solver)
+    state = distance.init(grid)
+    dist_lineax = distance(grid, state=state)
     assert jnp.allclose(dist_pinv, dist_lineax, rtol=1e-4)
