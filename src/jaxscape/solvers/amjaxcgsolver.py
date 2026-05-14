@@ -10,11 +10,13 @@ from jaxscape.utils import zero_copy_jax_csr_to_scipy_csr
 
 
 try:
-    import pyamg
-    from amjax import AMJAXSolver
+    import pyamg as _pyamg
+    from amjax import AMJAXSolver as _AMJAXSolver
 
     AMJAX_AVAILABLE = True
 except ImportError:
+    _pyamg = None
+    _AMJAXSolver = None
     AMJAX_AVAILABLE = False
 
 
@@ -46,6 +48,8 @@ def amjax_preconditioner_operator(
         input_structure,
         tags=tags,
     )
+
+
 def build_amjax_solver(
     matrix: BCOO,
     *,
@@ -65,13 +69,14 @@ def build_amjax_solver(
         )
 
     if pyamg_method is None:
-        pyamg_method = pyamg.smoothed_aggregation_solver
+        assert _pyamg is not None
+        pyamg_method = _pyamg.smoothed_aggregation_solver
 
     matrix = _unbatched_bcoo(matrix).sum_duplicates(nse=matrix.nse)
     scipy_matrix = zero_copy_jax_csr_to_scipy_csr(BCSR.from_bcoo(matrix))
     pyamg_hierarchy = pyamg_method(scipy_matrix, **(pyamg_kwargs or {}))
 
-    from_pyamg_kwargs = {
+    from_pyamg_kwargs: dict[str, Any] = {
         "coarse_solver": coarse_solver,
     }
     if presmoother is not None:
@@ -81,7 +86,8 @@ def build_amjax_solver(
     if coarse_solver_kwargs is not None:
         from_pyamg_kwargs["coarse_solver_kwargs"] = coarse_solver_kwargs
 
-    return AMJAXSolver.from_pyamg(pyamg_hierarchy, **from_pyamg_kwargs)
+    assert _AMJAXSolver is not None
+    return _AMJAXSolver.from_pyamg(pyamg_hierarchy, **from_pyamg_kwargs)
 
 
 class AMJaxCGSolver(AbstractLinearSolver):
@@ -145,7 +151,8 @@ class AMJaxCGSolver(AbstractLinearSolver):
             )
 
         if self.pyamg_method is None:
-            object.__setattr__(self, "pyamg_method", pyamg.smoothed_aggregation_solver)
+            assert _pyamg is not None
+            object.__setattr__(self, "pyamg_method", _pyamg.smoothed_aggregation_solver)
         if self.pyamg_kwargs is None:
             object.__setattr__(self, "pyamg_kwargs", {})
 
@@ -185,14 +192,14 @@ class AMJaxCGSolver(AbstractLinearSolver):
     def compute(
         self,
         state: _AMJaxCGSolverState,
-        b_jax: PyTree[Array],
+        vector: PyTree[Array],
         options: dict[str, Any],
     ) -> tuple[PyTree[Array], RESULTS, dict[str, Any]]:
         self._check_options(options)
         cg_state, preconditioner = state
         cg_options = dict(options)
         cg_options["preconditioner"] = preconditioner
-        return self._cg_solver().compute(cg_state, b_jax, cg_options)
+        return self._cg_solver().compute(cg_state, vector, cg_options)
 
     def transpose(
         self, state: _AMJaxCGSolverState, options: dict[str, Any]
@@ -232,4 +239,17 @@ class AMJaxCGSolver(AbstractLinearSolver):
 def _unbatched_bcoo(matrix: BCOO) -> BCOO:
     if matrix.n_batch == 0:
         return matrix
-    return BCOO((matrix.data.squeeze(), matrix.indices.squeeze()), shape=matrix.shape)
+
+    batch_shape = matrix.shape[: matrix.n_batch]
+    if any(size != 1 for size in batch_shape):
+        raise ValueError("AMJaxCGSolver supports only singleton matrix batches.")
+
+    # Avoid `squeeze()`: it can accidentally remove length-one matrix axes.
+    # Explicit batch indexing drops only BCOO batch dimensions.
+    batch_index = (0,) * matrix.n_batch
+    return BCOO(
+        (matrix.data[batch_index], matrix.indices[batch_index]),
+        shape=matrix.shape[-2:],
+        indices_sorted=matrix.indices_sorted,
+        unique_indices=matrix.unique_indices,
+    )

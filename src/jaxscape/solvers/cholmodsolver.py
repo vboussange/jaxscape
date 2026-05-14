@@ -3,6 +3,8 @@ from typing import Any, TypeAlias
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import numpy as np
+from jax import errors as jax_errors
 from jax import Array as JaxArray
 from jax.experimental.sparse import BCOO
 from jaxtyping import Array, PyTree
@@ -16,13 +18,23 @@ from lineax._solver.misc import (
 
 
 try:
-    from cholespy import CholeskySolverD, CholeskySolverF, MatrixType
+    import cholespy as _cholespy
 
     CHOLESPY_AVAILABLE = True
 except ImportError:
+    _cholespy = None
     CHOLESPY_AVAILABLE = False
 
-_CholmodSolverState: TypeAlias = tuple[BCOO, PackedStructures]
+
+class _CholespyFactor(eqx.Module):
+    # Native cholespy factors are host objects, so keep them static leaves rather
+    # than asking JAX to trace or transfer them.
+    solver: Any = eqx.field(static=True)
+    solve_dtype: np.dtype = eqx.field(static=True)
+    size: int = eqx.field(static=True)
+
+
+_CholmodSolverState: TypeAlias = tuple[BCOO, PackedStructures, _CholespyFactor | None]
 
 
 class CholmodSolver(AbstractLinearSolver):
@@ -38,12 +50,15 @@ class CholmodSolver(AbstractLinearSolver):
 
         solver = CholmodSolver()
         distance = ResistanceDistance(solver=solver)
-        dist = distance(grid)
+        state = distance.init(grid)  # pre-factorizes the grounded Laplacian
+        dist = distance(grid, state=state)
         ```
 
     !!! warning
         `cholespy` must be installed to use this solver.
     """
+
+    factorize_in_init: bool = True
 
     def __check_init__(self):
         if not CHOLESPY_AVAILABLE:
@@ -58,10 +73,20 @@ class CholmodSolver(AbstractLinearSolver):
         del options
 
         A_bcoo = operator.as_matrix()
+        if not isinstance(A_bcoo, BCOO):
+            raise ValueError("CholmodSolver requires a BCOO-backed operator.")
         packed_structures = pack_structures(operator)
-        return A_bcoo, packed_structures
+        factor = None
+        # `init` may be called inside a traced Lineax solve. In that case the
+        # sparse buffers are abstract values, so defer native factorization to
+        # the host callback where concrete arrays are available.
+        if self.factorize_in_init and _can_materialize_bcoo(A_bcoo):
+            solve_dtype = _factor_dtype_from_matrix(A_bcoo)
+            if solve_dtype is not None:
+                factor = _factorize_host(A_bcoo, solve_dtype)
+        return A_bcoo, packed_structures, factor
 
-    def _compute_host(self, A_bcoo: BCOO, b_jax: JaxArray) -> JaxArray:
+    def _compute_host(self, A_bcoo: BCOO, b_jax: JaxArray) -> np.ndarray:
         """
         Solve the linear system using CHOLMOD via cholespy.
 
@@ -72,79 +97,177 @@ class CholmodSolver(AbstractLinearSolver):
         Returns:
             Solution vector(s)
         """
-        if A_bcoo.n_batch > 0:
-            # ugly trick to remove batch dimension
-            # specific to BCOO behavior
-            A_bcoo = BCOO(
-                (A_bcoo.data.squeeze(), A_bcoo.indices.squeeze()), shape=A_bcoo.shape
-            )
-        A_bcoo = A_bcoo.sum_duplicates()  # required, otherwise cholespy fails
-
-        if b_jax.ndim == 0:
-            raise ValueError("Right-hand side must have at least one dimension.")
-
-        rhs_size = b_jax.T.shape[0]
-        if rhs_size != A_bcoo.shape[0]:
-            raise ValueError(
-                "The first dimension of b must match the operator dimension."
-            )
-
-        b_flat_batch = b_jax.T.reshape((rhs_size, -1))
-        x_flat_batch = jnp.zeros_like(b_flat_batch)
-
-        # Initialize the Cholesky solver with CSR format
-        with jax.enable_x64():
-            solver = CholeskySolverF(
-                rhs_size,
-                A_bcoo.indices[:, 0],
-                A_bcoo.indices[:, 1],
-                A_bcoo.data.astype(
-                    "float64"
-                ),  # required by cholespy, see https://github.com/rgl-epfl/cholespy/blob/main/tests/test_cholesky.py
-                MatrixType.COO,
-            )
-            solver.solve(b_flat_batch, x_flat_batch)
-
-        x = x_flat_batch.reshape(b_jax.T.shape).T
-        return x
+        solve_dtype = _solve_dtype_from_rhs(b_jax)
+        factor = _factorize_host(A_bcoo, solve_dtype)
+        return _solve_with_factor_host(factor, b_jax)
 
     def compute(
         self,
         state: _CholmodSolverState,
-        b_jax: PyTree[Array],
+        vector: PyTree[Array],
         options: dict[str, Any],
     ) -> tuple[PyTree[Array], RESULTS, dict[str, Any]]:
         """
         Compute the solution to the linear system.
         """
-        A_bcoo, packed_structures = state
+        del options
+        b_jax = vector
+        A_bcoo, packed_structures, factor = state
         result_shape = jax.ShapeDtypeStruct(b_jax.shape, b_jax.dtype)
 
-        solution = eqx.filter_pure_callback(
-            self._compute_host,
-            A_bcoo,
-            b_jax,
-            result_shape_dtypes=result_shape,
-            vmap_method="expand_dims",
-        )
+        if factor is not None and factor.solve_dtype == np.dtype(b_jax.dtype):
+            # Reuse the expensive symbolic/numeric factorization when callers
+            # pass state from `init`; `expand_dims` still coalesces vmapped RHS
+            # solves into one batched host callback.
+            solution = eqx.filter_pure_callback(
+                lambda rhs: _solve_with_factor_host(factor, rhs),
+                b_jax,
+                result_shape_dtypes=result_shape,
+                vmap_method="expand_dims",
+            )
+        else:
+            solution = eqx.filter_pure_callback(
+                self._compute_host,
+                A_bcoo,
+                b_jax,
+                result_shape_dtypes=result_shape,
+                vmap_method="expand_dims",
+            )
 
         solution = unravel_solution(solution, packed_structures)
         return solution, RESULTS.successful, {}
 
     def transpose(self, state: _CholmodSolverState, options: dict[str, Any]):
-        A_bcoo, packed_structures = state
+        del options
+        A_bcoo, packed_structures, factor = state
         transposed_packed_structures = transpose_packed_structures(packed_structures)
         A_bcoo_T = A_bcoo.T
-        transpose_state = (A_bcoo_T, transposed_packed_structures)
+        transpose_state = (A_bcoo_T, transposed_packed_structures, factor)
         return transpose_state, {}
 
     def conj(self, state: _CholmodSolverState, options: dict[str, Any]):
-        A_bcoo, _, packed_structures = state
+        del options
+        A_bcoo, packed_structures, factor = state
         A_conj = BCOO(
-            (jnp.conj(A_bcoo.data), A_bcoo.indices, A_bcoo.indptr), shape=A_bcoo.shape
+            (jnp.conj(A_bcoo.data), A_bcoo.indices),
+            shape=A_bcoo.shape,
+            indices_sorted=A_bcoo.indices_sorted,
+            unique_indices=A_bcoo.unique_indices,
         )
-        conj_state = (A_conj, packed_structures)
+        conj_state = (A_conj, packed_structures, factor)
         return conj_state, {}
 
     def assume_full_rank(self):
         return True
+
+
+def _can_materialize_bcoo(A_bcoo: BCOO) -> bool:
+    leaves = jax.tree.leaves((A_bcoo.data, A_bcoo.indices))
+    try:
+        for leaf in leaves:
+            # Converting to NumPy is the relevant test: concrete host/device
+            # arrays can be materialized for cholespy, tracers cannot.
+            np.asarray(leaf)
+    except (jax_errors.TracerArrayConversionError, TypeError):
+        return False
+    return True
+
+
+def _factor_dtype_from_matrix(A_bcoo: BCOO) -> np.dtype | None:
+    dtype = np.dtype(A_bcoo.data.dtype)
+    if dtype in (np.dtype(np.float32), np.dtype(np.float64)):
+        return dtype
+    return None
+
+
+def _solve_dtype_from_rhs(rhs: JaxArray) -> np.dtype:
+    dtype = np.dtype(rhs.dtype)
+    if dtype in (np.dtype(np.float32), np.dtype(np.float64)):
+        return dtype
+    raise TypeError(
+        "CholmodSolver supports only float32 and float64 right-hand sides; "
+        f"got {dtype}."
+    )
+
+
+def _factorize_host(A_bcoo: BCOO, solve_dtype: np.dtype) -> _CholespyFactor:
+    # CHOLMOD expects canonical sparse input. Duplicate BCOO entries can arise
+    # from sparse arithmetic and may trigger native cholespy aborts.
+    A_bcoo = _unbatched_bcoo(A_bcoo).sum_duplicates()
+    if A_bcoo.shape[0] != A_bcoo.shape[1]:
+        raise ValueError("CholmodSolver requires a square operator.")
+
+    # cholespy rejects read-only JAX -> NumPy views; make writable C-order host
+    # buffers while preserving the matrix value dtype.
+    indices = _writable_c_array(A_bcoo.indices, dtype=np.int32)
+    data = _writable_c_array(A_bcoo.data)
+    if np.iscomplexobj(data) or not np.issubdtype(data.dtype, np.floating):
+        raise TypeError(
+            "CholmodSolver supports only real floating-point sparse matrices."
+        )
+
+    solver_cls = _cholespy_solver_cls(solve_dtype)
+    assert _cholespy is not None
+    matrix_type = getattr(_cholespy, "MatrixType")
+    solver = solver_cls(
+        A_bcoo.shape[0],
+        _writable_c_array(indices[:, 0], dtype=np.int32),
+        _writable_c_array(indices[:, 1], dtype=np.int32),
+        data,
+        matrix_type.COO,
+    )
+    return _CholespyFactor(solver, solve_dtype, A_bcoo.shape[0])
+
+
+def _solve_with_factor_host(factor: _CholespyFactor, b_jax: JaxArray) -> np.ndarray:
+    if b_jax.ndim == 0:
+        raise ValueError("Right-hand side must have at least one dimension.")
+
+    # The cholespy solve API is in-place and has no implicit casting: RHS and
+    # output buffers must exactly match CholeskySolverF/D precision.
+    rhs = _writable_c_array(b_jax, dtype=factor.solve_dtype)
+    if rhs.shape[-1] != factor.size:
+        raise ValueError(
+            "The last dimension of b must match the operator dimension."
+        )
+
+    rhs_shape = rhs.shape
+    # Lineax gives vector-shaped RHS values; cholespy's fast path expects
+    # `(n_rows, n_rhs)`, so flatten any leading callback/vmap dimensions.
+    rhs_matrix = _writable_c_array(rhs.reshape((-1, factor.size)).T)
+    solution_matrix = np.empty_like(rhs_matrix)
+    factor.solver.solve(rhs_matrix, solution_matrix)
+    return solution_matrix.T.reshape(rhs_shape)
+
+
+def _cholespy_solver_cls(solve_dtype: np.dtype) -> Any:
+    assert _cholespy is not None
+    if solve_dtype == np.dtype(np.float32):
+        return getattr(_cholespy, "CholeskySolverF")
+    if solve_dtype == np.dtype(np.float64):
+        return getattr(_cholespy, "CholeskySolverD")
+    raise TypeError(
+        "CholmodSolver supports only float32 and float64 right-hand sides; "
+        f"got {solve_dtype}."
+    )
+
+
+def _writable_c_array(array: Any, dtype: Any | None = None) -> np.ndarray:
+    array_np = np.asarray(array)
+    return np.require(array_np, dtype=dtype, requirements=["C", "W"])
+
+
+def _unbatched_bcoo(matrix: BCOO) -> BCOO:
+    if matrix.n_batch == 0:
+        return matrix
+
+    # `pure_callback(..., vmap_method="expand_dims")` can wrap the shared matrix
+    # in a batch dimension while batching only RHS values. The first slice is the
+    # matrix to factor; RHS batching is handled separately in `_solve_with_factor_host`.
+    batch_index = (0,) * matrix.n_batch
+    return BCOO(
+        (matrix.data[batch_index], matrix.indices[batch_index]),
+        shape=matrix.shape[-2:],
+        indices_sorted=matrix.indices_sorted,
+        unique_indices=matrix.unique_indices,
+    )

@@ -72,7 +72,7 @@ else:
     _optimistix_import_error = None
 
 
-INVERSE_OPTIMISTIX_MAX_STEPS = 8
+INVERSE_OPTIMISTIX_MAX_STEPS = 50
 INVERSE_TARGET_DTYPE = jnp.dtype(jnp.float64)
 INVERSE_TARGET_TOOL = "JAXScape / CholmodSolver"
 LOGGER = logging.getLogger(__name__)
