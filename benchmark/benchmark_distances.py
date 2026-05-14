@@ -59,7 +59,6 @@ THREAD_ENVIRONMENT_VARIABLES = (
 DEFAULT_BENCHMARK_THREADS = 4
 REPEATS = 3
 MIN_PERMEABILITY = 1e-3
-SIZE_LABELS = ("small", "medium", "large")
 DEFAULT_BENCHMARK_POINT_COUNT = 20
 GPU_PLACEHOLDER_NOTE = (
     "GPU backend unavailable on this machine; placeholder emitted for the "
@@ -83,7 +82,7 @@ CASE_GROUP_SPECS = {
     },
     "inverse": {
         "task": "inverse_landscape_genetics",
-        "size_by_label": {"small": 6, "medium": 8, "large": 10},
+        "size_by_label": {"medium": 100},
         "seed_base": 30,
     },
 }
@@ -105,7 +104,14 @@ REQUIRED_BASE_TOOL_LABELS_BY_TASK = {
         "JAXScape / resistance gradient",
         "gdistance / passage",
     },
-    "inverse_landscape_genetics": {"JAXScape + Optimistix", "ResistanceGA"},
+    "inverse_landscape_genetics": {
+        "JAXScape / CholmodSolver / f32",
+        "JAXScape / AMJaxCGSolver / f32",
+        "JAXScape / AMJaxCGSolver / f64",
+        "JAXScape / approx pinv / f32",
+        "JAXScape / approx pinv / f64",
+        "ResistanceGA",
+    },
 }
 GPU_CAPABLE_TOOL_LABELS_BY_TASK = {
     "resistance_distance": {
@@ -119,7 +125,12 @@ GPU_CAPABLE_TOOL_LABELS_BY_TASK = {
         "JAXScape / shortest-path gradient",
         "JAXScape / resistance gradient",
     },
-    "inverse_landscape_genetics": {"JAXScape + Optimistix"},
+    "inverse_landscape_genetics": {
+        "JAXScape / AMJaxCGSolver / f32",
+        "JAXScape / AMJaxCGSolver / f64",
+        "JAXScape / approx pinv / f32",
+        "JAXScape / approx pinv / f64",
+    },
 }
 
 
@@ -155,15 +166,12 @@ except ValueError as error:
 configure_thread_environment(BENCHMARK_THREADS)
 try:
     BENCHMARK_POINT_COUNT = int(
-        os.environ.get(
-            "JAXSCAPE_BENCHMARK_POINT_COUNT", DEFAULT_BENCHMARK_POINT_COUNT
-        )
+        os.environ.get("JAXSCAPE_BENCHMARK_POINT_COUNT", DEFAULT_BENCHMARK_POINT_COUNT)
     )
 except ValueError as error:
     raw_value = os.environ.get("JAXSCAPE_BENCHMARK_POINT_COUNT")
     message = (
-        "JAXSCAPE_BENCHMARK_POINT_COUNT must be an integer, received "
-        f"{raw_value!r}."
+        f"JAXSCAPE_BENCHMARK_POINT_COUNT must be an integer, received {raw_value!r}."
     )
     raise RuntimeError(message) from error
 
@@ -240,8 +248,11 @@ def benchmark_points(
     size: int,
     *,
     point_count: int | None = None,
+    seed: int = 0,
 ) -> list[tuple[int, int]]:
-    resolved_point_count = BENCHMARK_POINT_COUNT if point_count is None else int(point_count)
+    resolved_point_count = (
+        BENCHMARK_POINT_COUNT if point_count is None else int(point_count)
+    )
     if resolved_point_count < 1:
         raise RuntimeError(
             "JAXSCAPE_BENCHMARK_POINT_COUNT must be at least 1, received "
@@ -260,7 +271,7 @@ def benchmark_points(
         return []
 
     sample_size = min(resolved_point_count, len(interior_points))
-    sample_indices = np.random.default_rng().choice(
+    sample_indices = np.random.default_rng(seed).choice(
         len(interior_points), size=sample_size, replace=False
     )
     return [interior_points[int(index)] for index in np.atleast_1d(sample_indices)]
@@ -282,7 +293,7 @@ def build_case(
         grid_size=size,
         seed=seed,
         raster=raster_as_lists,
-        points=benchmark_points(size),
+        points=benchmark_points(size, seed=seed),
     )
 
 
@@ -290,13 +301,13 @@ def benchmark_cases() -> dict[str, list[BenchmarkCase]]:
     cases: dict[str, list[BenchmarkCase]] = {}
     for group_name, spec in CASE_GROUP_SPECS.items():
         group_cases: list[BenchmarkCase] = []
-        for offset, size_label in enumerate(SIZE_LABELS):
+        for offset, (size_label, size) in enumerate(spec["size_by_label"].items()):
             group_cases.append(
                 build_case(
                     name=f"synthetic_{group_name}_{size_label}",
                     task=spec["task"],
                     size_label=size_label,
-                    size=spec["size_by_label"][size_label],
+                    size=size,
                     seed=spec["seed_base"] + offset,
                 )
             )

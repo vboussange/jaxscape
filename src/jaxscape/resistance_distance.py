@@ -16,6 +16,12 @@ from jaxscape.solvers import batched_linear_solve, BCOOLinearOperator
 from jaxscape.utils import graph_laplacian
 
 
+# Building the full Rademacher projection matrix is faster for moderate sizes,
+# but beyond this many sign entries the temporary allocation becomes large
+# enough that the streamed scan path is the safer default.
+SPIELMAN_DENSE_PROJECTION_MAX_SIGN_ENTRIES = 200_000_000
+
+
 class ResistanceDistance(AbstractDistance):
     """
     Compute the resistance distances.
@@ -419,7 +425,7 @@ def _spielman_project_potentials(
     edge_deltas = _edge_potential_deltas(potentials, indices, shape)
     scaled_weights = _sqrt_half_weights(data) * _projection_scale(k, data.dtype)
 
-    if k * data.shape[0] <= 200_000_000:
+    if k * data.shape[0] <= SPIELMAN_DENSE_PROJECTION_MAX_SIGN_ENTRIES:
         signs = _rademacher_projection_signs(k, data.shape[0], seed, data.dtype)
         return (signs * scaled_weights[None, :]) @ edge_deltas
 

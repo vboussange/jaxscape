@@ -14,10 +14,19 @@ ROOT = Path(__file__).resolve().parents[1]
 RESULTS_JSON = ROOT / "benchmark" / "results" / "benchmark_results.json"
 SIZE_ORDER = {"small": 0, "medium": 1, "large": 2}
 OUTPUTS = {
-    "resistance_distance": ROOT / "docs" / "assets" / "benchmark_resistance_distance.png",
+    "resistance_distance": ROOT
+    / "docs"
+    / "assets"
+    / "benchmark_resistance_distance.png",
     "least_cost_path": ROOT / "docs" / "assets" / "benchmark_least_cost_path.png",
-    "sensitivity_analysis": ROOT / "docs" / "assets" / "benchmark_sensitivity_analysis.png",
-    "inverse_landscape_genetics": ROOT / "docs" / "assets" / "benchmark_inverse_landscape_genetics.png",
+    "sensitivity_analysis": ROOT
+    / "docs"
+    / "assets"
+    / "benchmark_sensitivity_analysis.png",
+    "inverse_landscape_genetics": ROOT
+    / "docs"
+    / "assets"
+    / "benchmark_inverse_landscape_genetics.png",
 }
 TASK_LABELS = {
     "resistance_distance": "Resistance distance",
@@ -37,7 +46,12 @@ DISPLAY_ORDER = {
         "Circuitscape.jl / cholmod",
         "Conefor",
     ],
-    "least_cost_path": ["JAXScape (CPU)", "JAXScape (GPU)", "gdistance / costDistance", "Conefor"],
+    "least_cost_path": [
+        "JAXScape (CPU)",
+        "JAXScape (GPU)",
+        "gdistance / costDistance",
+        "Conefor",
+    ],
     "sensitivity_analysis": [
         "JAXScape / shortest-path gradient (CPU)",
         "JAXScape / shortest-path gradient (GPU)",
@@ -46,7 +60,18 @@ DISPLAY_ORDER = {
         "JAXScape / resistance gradient (GPU)",
         "gdistance / passage",
     ],
-    "inverse_landscape_genetics": ["JAXScape + Optimistix (CPU)", "JAXScape + Optimistix (GPU)", "ResistanceGA"],
+    "inverse_landscape_genetics": [
+        "JAXScape / CholmodSolver / f32",
+        "JAXScape / AMJaxCGSolver / f32 (CPU)",
+        "JAXScape / AMJaxCGSolver / f32 (GPU)",
+        "JAXScape / AMJaxCGSolver / f64 (CPU)",
+        "JAXScape / AMJaxCGSolver / f64 (GPU)",
+        "JAXScape / approx pinv / f32 (CPU)",
+        "JAXScape / approx pinv / f32 (GPU)",
+        "JAXScape / approx pinv / f64 (CPU)",
+        "JAXScape / approx pinv / f64 (GPU)",
+        "ResistanceGA",
+    ],
 }
 TOOL_COLORS = {
     "JAXScape / pinv": "#1F77B4",
@@ -108,7 +133,10 @@ def ordered_cases(task: str, cases: dict[str, dict]) -> list[dict]:
     task_cases = [case for case in cases.values() if case["task"] == task]
     return sorted(
         task_cases,
-        key=lambda case: (SIZE_ORDER.get(case.get("size_label", ""), len(SIZE_ORDER)), case.get("grid_size", 0)),
+        key=lambda case: (
+            SIZE_ORDER.get(case.get("size_label", ""), len(SIZE_ORDER)),
+            case.get("grid_size", 0),
+        ),
     )
 
 
@@ -148,9 +176,12 @@ def convergence_value(record: dict) -> bool | None:
 
 
 def tool_family(tool: str) -> str:
-    if tool.endswith(" (CPU)") or tool.endswith(" (GPU)"):
-        return tool.rsplit(" (", 1)[0]
-    return tool
+    family = tool
+    if family.endswith(" (CPU)") or family.endswith(" (GPU)"):
+        family = family.rsplit(" (", 1)[0]
+    if family.endswith(" / f32") or family.endswith(" / f64"):
+        family = family.rsplit(" / ", 1)[0]
+    return family
 
 
 def tool_backend(tool: str) -> str | None:
@@ -165,7 +196,9 @@ def skipped_placeholder_records(task: str, records: list[dict]) -> list[dict]:
     return [
         record
         for record in records
-        if record["task"] == task and record.get("status") == "skipped" and "placeholder" in (record.get("note") or "").lower()
+        if record["task"] == task
+        and record.get("status") == "skipped"
+        and "placeholder" in (record.get("note") or "").lower()
     ]
 
 
@@ -196,13 +229,24 @@ def plot_grouped_bars(
     visible_tools = [
         tool
         for tool in candidate_tools
-        if any(value_getter(indexed[(tool, case["name"])]) is not None for case in cases if (tool, case["name"]) in indexed)
+        if any(
+            value_getter(indexed[(tool, case["name"])]) is not None
+            for case in cases
+            if (tool, case["name"]) in indexed
+        )
     ]
     x_positions = np.arange(len(cases), dtype=float)
     tick_labels = [case_tick_label(case) for case in cases]
 
     if not visible_tools:
-        axis.text(0.5, 0.5, "No compatible benchmark data", ha="center", va="center", transform=axis.transAxes)
+        axis.text(
+            0.5,
+            0.5,
+            "No compatible benchmark data",
+            ha="center",
+            va="center",
+            transform=axis.transAxes,
+        )
         axis.set_axis_off()
         return []
 
@@ -280,7 +324,9 @@ def add_placeholder_note(fig: plt.Figure, task: str, records: list[dict]) -> Non
     )
 
 
-def render_runtime_chart(task: str, records: list[dict], output_path: Path, cases: dict[str, dict]) -> None:
+def render_runtime_chart(
+    task: str, records: list[dict], output_path: Path, cases: dict[str, dict]
+) -> None:
     task_cases = ordered_cases(task, cases)
     fig, axis = plt.subplots(figsize=(9.2, 5.2))
     fig.suptitle(f"{TASK_LABELS[task]} benchmark")
@@ -297,7 +343,9 @@ def render_runtime_chart(task: str, records: list[dict], output_path: Path, case
     )
     axis.set_xlabel("Problem size")
     if visible_tools:
-        axis.legend(frameon=False, loc="upper left", ncol=legend_columns(len(visible_tools)))
+        axis.legend(
+            frameon=False, loc="upper left", ncol=legend_columns(len(visible_tools))
+        )
     add_placeholder_note(fig, task, records)
     fig.tight_layout(rect=(0, 0.03, 1, 0.95))
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -305,9 +353,13 @@ def render_runtime_chart(task: str, records: list[dict], output_path: Path, case
     plt.close(fig)
 
 
-def render_centrality_chart(task: str, records: list[dict], output_path: Path, cases: dict[str, dict]) -> None:
+def render_centrality_chart(
+    task: str, records: list[dict], output_path: Path, cases: dict[str, dict]
+) -> None:
     task_cases = ordered_cases(task, cases)
-    fig, axes = plt.subplots(2, 1, figsize=(9.2, 7.4), sharex=True, gridspec_kw={"height_ratios": [1.4, 1.0]})
+    fig, axes = plt.subplots(
+        2, 1, figsize=(9.2, 7.4), sharex=True, gridspec_kw={"height_ratios": [1.4, 1.0]}
+    )
     fig.suptitle(f"{TASK_LABELS[task]} benchmark")
 
     visible_tools = plot_grouped_bars(
@@ -322,12 +374,18 @@ def render_centrality_chart(task: str, records: list[dict], output_path: Path, c
         show_convergence=False,
     )
     if visible_tools:
-        axes[0].legend(frameon=False, loc="upper left", ncol=legend_columns(len(visible_tools)))
+        axes[0].legend(
+            frameon=False, loc="upper left", ncol=legend_columns(len(visible_tools))
+        )
 
     alignment_tools = [
         tool
         for tool in display_tools(task, records)
-        if any(metric_value(record, "cosine_similarity") is not None for record in records if record["tool"] == tool)
+        if any(
+            metric_value(record, "cosine_similarity") is not None
+            for record in records
+            if record["tool"] == tool
+        )
     ]
     plot_grouped_bars(
         axes[1],
@@ -351,9 +409,17 @@ def render_centrality_chart(task: str, records: list[dict], output_path: Path, c
     plt.close(fig)
 
 
-def render_inverse_chart(task: str, records: list[dict], output_path: Path, cases: dict[str, dict]) -> None:
+def render_inverse_chart(
+    task: str, records: list[dict], output_path: Path, cases: dict[str, dict]
+) -> None:
     task_cases = ordered_cases(task, cases)
-    fig, axes = plt.subplots(2, 1, figsize=(9.2, 7.4), sharex=True, gridspec_kw={"height_ratios": [1.35, 1.0]})
+    fig, axes = plt.subplots(
+        2,
+        1,
+        figsize=(9.2, 7.4),
+        sharex=True,
+        gridspec_kw={"height_ratios": [1.35, 1.0]},
+    )
     fig.suptitle(f"{TASK_LABELS[task]} benchmark")
 
     visible_tools = plot_grouped_bars(
@@ -368,24 +434,28 @@ def render_inverse_chart(task: str, records: list[dict], output_path: Path, case
         show_convergence=True,
     )
     if visible_tools:
-        axes[0].legend(frameon=False, loc="upper left", ncol=legend_columns(len(visible_tools)))
+        axes[0].legend(
+            frameon=False, loc="upper left", ncol=legend_columns(len(visible_tools))
+        )
 
     plot_grouped_bars(
         axes[1],
         task=task,
         cases=task_cases,
         records=records,
-        value_getter=lambda record: metric_value(record, "relative_rmse"),
+        value_getter=lambda record: metric_value(record, "final_mse"),
         formatter=format_error,
-        ylabel="Final relative RMSE",
+        ylabel="Final objective MSE",
         use_log_scale=False,
         show_convergence=True,
     )
-    axes[1].set_xlabel("Problem size")
+    axes[1].set_xlabel("Benchmark scenario")
     axes[1].legend(
         handles=[
             Patch(facecolor="#111827", edgecolor="#111827", label="converged"),
-            Patch(facecolor="white", edgecolor="#111827", hatch="xx", label="budget hit"),
+            Patch(
+                facecolor="white", edgecolor="#111827", hatch="xx", label="budget hit"
+            ),
         ],
         frameon=False,
         loc="upper right",
@@ -399,11 +469,20 @@ def render_inverse_chart(task: str, records: list[dict], output_path: Path, case
     plt.close(fig)
 
 
-def render_task(task: str, records: list[dict], output_path: Path, cases: dict[str, dict]) -> None:
+def render_task(
+    task: str, records: list[dict], output_path: Path, cases: dict[str, dict]
+) -> None:
     task_cases = ordered_cases(task, cases)
     if not records and not task_cases:
         fig, axis = plt.subplots(figsize=(8, 2.4))
-        axis.text(0.5, 0.5, "No compatible benchmark data", ha="center", va="center", fontsize=11)
+        axis.text(
+            0.5,
+            0.5,
+            "No compatible benchmark data",
+            ha="center",
+            va="center",
+            fontsize=11,
+        )
         axis.set_axis_off()
         fig.tight_layout()
         output_path.parent.mkdir(parents=True, exist_ok=True)
