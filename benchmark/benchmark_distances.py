@@ -60,7 +60,7 @@ DEFAULT_BENCHMARK_THREADS = 4
 REPEATS = 3
 MIN_PERMEABILITY = 1e-3
 SIZE_LABELS = ("small", "medium", "large")
-DEFAULT_BENCHMARK_POINT_COUNT = 100
+DEFAULT_BENCHMARK_POINT_COUNT = 20
 GPU_PLACEHOLDER_NOTE = (
     "GPU backend unavailable on this machine; placeholder emitted for the "
     "GPU-capable JAX profile."
