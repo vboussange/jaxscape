@@ -68,12 +68,26 @@ def mapnz(mat: BCOO, f: Callable[[Array], Array]) -> BCOO:
 
 
 def zero_copy_jax_csr_to_scipy_csr(A_jax: BCSR) -> ssp.csr_matrix:
-    data, indices, indptr = A_jax.data, A_jax.indices, A_jax.indptr
+    data, indices, indptr = _csr_arrays_to_numpy(A_jax)
     A_scipy = ssp.csr_matrix(
-        (np.from_dlpack(data), np.from_dlpack(indices), np.from_dlpack(indptr)),
+        (data, indices, indptr),
         shape=A_jax.shape,
     )
     return A_scipy
+
+
+def _csr_arrays_to_numpy(A_jax: BCSR) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    arrays = (A_jax.data, A_jax.indices, A_jax.indptr)
+    if all(_array_is_on_cpu(array) for array in arrays):
+        return tuple(np.from_dlpack(array) for array in arrays)
+    return tuple(np.asarray(array) for array in jax.device_get(arrays))
+
+
+def _array_is_on_cpu(array: Array) -> bool:
+    device = getattr(array, "device", None)
+    if device is not None:
+        return getattr(device, "platform", None) == "cpu"
+    return all(device.platform == "cpu" for device in array.devices())
 
 
 def BCOO_to_coo(A: BCOO) -> coo_array:

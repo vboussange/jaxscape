@@ -57,6 +57,22 @@ def solver_state(solver, A):
     return None
 
 
+def solver_tolerances(solver):
+    if isinstance(solver, CholmodSolver):
+        return {
+            "solve_rtol": 1e-5,
+            "solve_atol": 1e-6,
+            "grad_rtol": 1e-4,
+            "grad_atol": 1e-6,
+        }
+    return {
+        "solve_rtol": 2e-3,
+        "solve_atol": 1e-4,
+        "grad_rtol": 5e-2,
+        "grad_atol": 5e-4,
+    }
+
+
 @pytest.mark.skipif(len(available_solvers) == 0, reason="No solvers available")
 @pytest.mark.parametrize("solver", available_solvers)
 def test_solver(solver):
@@ -81,23 +97,63 @@ def test_solver(solver):
 @pytest.mark.skipif(len(available_solvers) == 0, reason="No solvers available")
 @pytest.mark.parametrize("solver", available_solvers)
 def test_solver_differentiability(solver):
-    """Test that the solver is differentiable."""
+    """Test that solver values and gradients match a dense JAX reference."""
     A_scipy = poisson((5, 5), format="coo", dtype="float32")
     A_jax = BCOO.from_scipy_sparse(A_scipy)
     b = jnp.ones(A_jax.shape[0], dtype=A_jax.data.dtype)
     state = solver_state(solver, A_jax)
+    tolerances = solver_tolerances(solver)
+
+    def dense_solve(A_data, rhs):
+        A_modified = BCOO((A_data, A_jax.indices), shape=A_jax.shape)
+        return jnp.linalg.solve(A_modified.todense(), rhs)
 
     def objective(A_data):
-        # Modify the matrix data slightly
         A_modified = BCOO((A_data, A_jax.indices), shape=A_jax.shape)
         x = linear_solve(A_modified, b, solver, state=state)
         return jnp.sum(x**2)
 
-    grad_objective = jax.jit(jax.grad(objective))
-    grad_result = grad_objective(A_jax.data)
-    assert isinstance(grad_result, jax.Array)
-    assert grad_result.shape == A_jax.data.shape
-    assert jnp.all(jnp.isfinite(grad_result))
+    def dense_objective(A_data):
+        x = dense_solve(A_data, b)
+        return jnp.sum(x**2)
+
+    grad_result = jax.jit(jax.grad(objective))(A_jax.data)
+    grad_reference = jax.jit(jax.grad(dense_objective))(A_jax.data)
+    assert jnp.allclose(
+        grad_result,
+        grad_reference,
+        rtol=tolerances["grad_rtol"],
+        atol=tolerances["grad_atol"],
+    )
+
+    B = jnp.stack([b, 2 * b, 3 * b], axis=-1)
+
+    X = batched_linear_solve(A_jax, B, solver, state=state)
+    X_reference = dense_solve(A_jax.data, B)
+    assert jnp.allclose(
+        X,
+        X_reference,
+        rtol=tolerances["solve_rtol"],
+        atol=tolerances["solve_atol"],
+    )
+
+    def batched_objective(A_data):
+        A_modified = BCOO((A_data, A_jax.indices), shape=A_jax.shape)
+        X = batched_linear_solve(A_modified, B, solver, state=state)
+        return jnp.sum(X**2)
+
+    def dense_batched_objective(A_data):
+        X = dense_solve(A_data, B)
+        return jnp.sum(X**2)
+
+    grad_result = jax.jit(jax.grad(batched_objective))(A_jax.data)
+    grad_reference = jax.jit(jax.grad(dense_batched_objective))(A_jax.data)
+    assert jnp.allclose(
+        grad_result,
+        grad_reference,
+        rtol=tolerances["grad_rtol"],
+        atol=tolerances["grad_atol"],
+    )
 
 
 @pytest.mark.skipif(not AMJAX_AVAILABLE, reason="AMJax not available")
