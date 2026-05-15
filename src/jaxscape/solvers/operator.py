@@ -215,7 +215,7 @@ def _solver_state(
     solve_state = _solver_state_from_operator(operator, solver, options, state)
     if solve_state is not None:
         return solve_state
-    return solver.init(operator, options)
+    return solver.init(_stop_gradient_operator(operator), options)
 
 
 def _solver_options(options: dict[str, Any] | None) -> dict[str, Any]:
@@ -235,4 +235,11 @@ def _solver_state_from_operator(
     materialize_state = getattr(solver, "materialize_state", None)
     if materialize_state is None:
         return state
-    return materialize_state(operator, options, state)
+    return materialize_state(_stop_gradient_operator(operator), options, state)
+
+
+def _stop_gradient_operator(
+    operator: lx.AbstractLinearOperator,
+) -> lx.AbstractLinearOperator:
+    dynamic_operator, static_operator = eqx.partition(operator, eqx.is_array)
+    return eqx.combine(jax.lax.stop_gradient(dynamic_operator), static_operator)
