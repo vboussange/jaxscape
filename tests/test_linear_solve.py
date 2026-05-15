@@ -53,7 +53,7 @@ def test_bcoo_linear_operator_mv():
 
 def solver_state(solver, A):
     if isinstance(solver, AMJaxCGSolver):
-        return solver.init(BCOOLinearOperator(A), {})
+        return solver.init_preconditioner(BCOOLinearOperator(A), {})
     return None
 
 
@@ -154,6 +154,28 @@ def test_solver_differentiability(solver):
         rtol=tolerances["grad_rtol"],
         atol=tolerances["grad_atol"],
     )
+
+
+@pytest.mark.skipif(not AMJAX_AVAILABLE, reason="AMJax not available")
+def test_amjax_preconditioner_only_state_uses_current_operator():
+    A_scipy = poisson((5, 5), format="coo", dtype="float32")
+    A_jax = BCOO.from_scipy_sparse(A_scipy)
+    A_scaled = BCOO(
+        (1.2 * A_jax.data, A_jax.indices),
+        shape=A_jax.shape,
+        indices_sorted=A_jax.indices_sorted,
+        unique_indices=A_jax.unique_indices,
+    )
+    b = jnp.ones(A_jax.shape[0], dtype=A_jax.data.dtype)
+    solver = AMJaxCGSolver(rtol=1e-5, atol=1e-5, max_steps=500)
+
+    state = solver.init_preconditioner(BCOOLinearOperator(A_jax), {})
+    assert not state.has_cg_state
+    assert solver.init(BCOOLinearOperator(A_jax), {}).has_cg_state
+
+    x = linear_solve(A_scaled, b, solver, state=state)
+    residual = A_scaled @ x - b
+    assert jnp.linalg.norm(residual) < 1e-4
 
 
 @pytest.mark.skipif(not AMJAX_AVAILABLE, reason="AMJax not available")

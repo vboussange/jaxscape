@@ -1,6 +1,7 @@
 from collections.abc import Callable
-from typing import Any, TypeAlias
+from typing import Any, final
 
+import equinox as eqx
 import lineax as lx
 from jax.experimental.sparse import BCOO, BCSR
 from jaxtyping import Array, PyTree
@@ -20,7 +21,28 @@ except ImportError:
     AMJAX_AVAILABLE = False
 
 
-_AMJaxCGSolverState: TypeAlias = tuple[PyTree[Any], AbstractLinearOperator]
+class AbstractAMJaxCGSolverState(eqx.Module):
+    """Abstract state for `AMJaxCGSolver`."""
+
+    cg_state: eqx.AbstractVar[PyTree[Any] | None]
+    preconditioner: eqx.AbstractVar[AbstractLinearOperator]
+
+
+@final
+class AMJaxCGSolverState(AbstractAMJaxCGSolverState):
+    """State for `AMJaxCGSolver`.
+
+    `cg_state=None` means that only the AMJax preconditioner has been initialized.
+    JAXScape's `linear_solve` wrappers complete such a state against the current
+    operator before dispatching to Lineax.
+    """
+
+    cg_state: PyTree[Any] | None
+    preconditioner: AbstractLinearOperator
+
+    @property
+    def has_cg_state(self) -> bool:
+        return self.cg_state is not None
 
 
 def amjax_preconditioner_operator(
@@ -164,11 +186,55 @@ class AMJaxCGSolver(AbstractLinearSolver):
             max_steps=self.max_steps,
         )
 
+    def init_preconditioner(
+        self,
+        operator: AbstractLinearOperator,
+        options: dict[str, Any] | None = None,
+    ) -> AMJaxCGSolverState:
+        """Initialize only the AMJax preconditioner for `operator`.
+
+        The returned state intentionally leaves `cg_state` unset, so callers can
+        reuse the preconditioner with later operators that have the same
+        structure but different values.
+        """
+        options = {} if options is None else options
+        self._check_options(options)
+        preconditioner = self._init_preconditioner(operator, options)
+        return AMJaxCGSolverState(cg_state=None, preconditioner=preconditioner)
+
     def init(
         self, operator: AbstractLinearOperator, options: dict[str, Any]
-    ) -> _AMJaxCGSolverState:
+    ) -> AMJaxCGSolverState:
         self._check_options(options)
+        state = self.init_preconditioner(operator, options)
+        return self.materialize_state(operator, options, state)
 
+    def materialize_state(
+        self,
+        operator: AbstractLinearOperator,
+        options: dict[str, Any],
+        state: Any,
+    ) -> Any:
+        """Fill in operator-dependent CG state when given preconditioner state."""
+        state = self._normalise_state(state)
+        if state.has_cg_state:
+            return state
+        cg_state = self._cg_solver().init(operator, options)
+        return AMJaxCGSolverState(
+            cg_state=cg_state,
+            preconditioner=state.preconditioner,
+        )
+
+    def _init_preconditioner(
+        self, operator: AbstractLinearOperator, options: dict[str, Any]
+    ) -> AbstractLinearOperator:
+        option_preconditioner = options.get("preconditioner")
+        if option_preconditioner is not None:
+            if not isinstance(option_preconditioner, AbstractLinearOperator):
+                raise TypeError(
+                    "`preconditioner` must be a lineax.AbstractLinearOperator."
+                )
+            return option_preconditioner
         matrix = operator.as_matrix()
         if not isinstance(matrix, BCOO):
             matrix = BCOO.fromdense(matrix)
@@ -186,54 +252,98 @@ class AMJaxCGSolver(AbstractLinearSolver):
             operator.in_structure(),
             cycle=self.cycle,
         )
-        cg_state = self._cg_solver().init(operator, options)
-        return cg_state, preconditioner
+        return preconditioner
 
     def compute(
         self,
-        state: _AMJaxCGSolverState,
+        state: AMJaxCGSolverState,
         vector: PyTree[Array],
         options: dict[str, Any],
     ) -> tuple[PyTree[Array], RESULTS, dict[str, Any]]:
         self._check_options(options)
-        cg_state, preconditioner = state
+        state = self._normalise_state(state)
+        if state.cg_state is None:
+            raise ValueError(
+                "AMJaxCGSolver received preconditioner-only state without "
+                "operator-specific CG state. Use `jaxscape.solvers.linear_solve`, "
+                "`jaxscape.solvers.batched_linear_solve`, or call "
+                "`solver.materialize_state(operator, options, state)` before "
+                "passing the state to `lineax.linear_solve` directly."
+            )
         cg_options = dict(options)
-        cg_options["preconditioner"] = preconditioner
-        return self._cg_solver().compute(cg_state, vector, cg_options)
+        cg_options["preconditioner"] = state.preconditioner
+        return self._cg_solver().compute(state.cg_state, vector, cg_options)
 
     def transpose(
-        self, state: _AMJaxCGSolverState, options: dict[str, Any]
-    ) -> tuple[_AMJaxCGSolverState, dict[str, Any]]:
+        self, state: AMJaxCGSolverState, options: dict[str, Any]
+    ) -> tuple[AMJaxCGSolverState, dict[str, Any]]:
         self._check_options(options)
-        cg_state, preconditioner = state
-        cg_options = {"preconditioner": preconditioner}
+        state = self._normalise_state(state)
+        if state.cg_state is None:
+            raise ValueError(
+                "Cannot transpose preconditioner-only AMJaxCGSolver state."
+            )
+        cg_options = {"preconditioner": state.preconditioner}
         transposed_cg_state, transposed_options = self._cg_solver().transpose(
-            cg_state,
+            state.cg_state,
             cg_options,
         )
         transposed_preconditioner = transposed_options["preconditioner"]
-        return (transposed_cg_state, transposed_preconditioner), {}
+        return (
+            AMJaxCGSolverState(
+                cg_state=transposed_cg_state,
+                preconditioner=transposed_preconditioner,
+            ),
+            {},
+        )
 
     def conj(
-        self, state: _AMJaxCGSolverState, options: dict[str, Any]
-    ) -> tuple[_AMJaxCGSolverState, dict[str, Any]]:
+        self, state: AMJaxCGSolverState, options: dict[str, Any]
+    ) -> tuple[AMJaxCGSolverState, dict[str, Any]]:
         self._check_options(options)
-        cg_state, preconditioner = state
-        cg_options = {"preconditioner": preconditioner}
-        conj_cg_state, conj_options = self._cg_solver().conj(cg_state, cg_options)
+        state = self._normalise_state(state)
+        if state.cg_state is None:
+            raise ValueError(
+                "Cannot conjugate preconditioner-only AMJaxCGSolver state."
+            )
+        cg_options = {"preconditioner": state.preconditioner}
+        conj_cg_state, conj_options = self._cg_solver().conj(state.cg_state, cg_options)
         conj_preconditioner = conj_options["preconditioner"]
-        return (conj_cg_state, conj_preconditioner), {}
+        return (
+            AMJaxCGSolverState(
+                cg_state=conj_cg_state,
+                preconditioner=conj_preconditioner,
+            ),
+            {},
+        )
 
     def assume_full_rank(self):
         return True
 
     @staticmethod
     def _check_options(options: dict[str, Any]) -> None:
-        if "preconditioner" in options:
-            raise ValueError(
-                "AMJaxCGSolver constructs its own AMJax preconditioner; "
-                "do not pass a `preconditioner` option."
+        option_preconditioner = options.get("preconditioner")
+        if option_preconditioner is not None and not isinstance(
+            option_preconditioner, AbstractLinearOperator
+        ):
+            raise TypeError(
+                "`preconditioner` must be a lineax.AbstractLinearOperator."
             )
+
+    @staticmethod
+    def _normalise_state(state: Any) -> AMJaxCGSolverState:
+        if isinstance(state, AMJaxCGSolverState):
+            return state
+        if isinstance(state, tuple) and len(state) == 2:
+            cg_state, preconditioner = state
+            return AMJaxCGSolverState(
+                cg_state=cg_state,
+                preconditioner=preconditioner,
+            )
+        raise TypeError(
+            "AMJaxCGSolver state must be an AMJaxCGSolverState returned by "
+            "`init` or `init_preconditioner`."
+        )
 
 
 def _unbatched_bcoo(matrix: BCOO) -> BCOO:

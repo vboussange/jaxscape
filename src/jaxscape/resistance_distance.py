@@ -58,6 +58,12 @@ class ResistanceDistance(AbstractDistance):
 
         dist = distance(grid, state=state)
 
+        # Or reuse only the AMJax preconditioner across related graphs.
+        preconditioner_state = distance.init_preconditioner(grid)
+        updated_permeability = permeability * 1.1
+        updated_grid = GridGraph(updated_permeability, fun=lambda x, y: (x + y) / 2)
+        dist = distance(updated_grid, state=preconditioner_state)
+
         # Approximate resistance distance
         distance = ResistanceDistance(
             method=SpielmanApproximation(epsilon=0.05),
@@ -90,6 +96,25 @@ class ResistanceDistance(AbstractDistance):
         A = graph.get_adjacency_matrix()
         L_reduced = graph_laplacian(A)[:-1, :-1]
         return self.solver.init(BCOOLinearOperator(L_reduced), {})
+
+    def init_preconditioner(self, graph: AbstractGraph) -> Any:
+        """Initialize reusable preconditioner state for `graph` when supported.
+
+        For `AMJaxCGSolver`, this builds the AMJax hierarchy without binding the
+        state to the current Laplacian values. Passing the returned state to
+        distance calls lets JAXScape materialize fresh CG state for each graph
+        while reusing the preconditioner.
+        """
+        if self.solver is None:
+            return None
+
+        init_preconditioner = getattr(self.solver, "init_preconditioner", None)
+        if init_preconditioner is None:
+            return self.init(graph)
+
+        A = graph.get_adjacency_matrix()
+        L_reduced = graph_laplacian(A)[:-1, :-1]
+        return init_preconditioner(BCOOLinearOperator(L_reduced), {})
 
     @eqx.filter_jit
     def all_pairs_distance(self, graph: AbstractGraph, state: Any = None) -> Array:

@@ -26,7 +26,7 @@ See the [Lineax documentation](https://docs.kidger.site/lineax/) for the full li
 |---|---|---|---|
 | `CholmodSolver` | CPU only. Uses an external host callback, so accelerator-backed arrays must cross the host-device boundary. | High | Fastest option on CPU for a fixed sparse SPD system when memory permits. Handles multiple right-hand sides efficiently once inside the direct solve. Main downside is factorization memory, plus the callback introduces a data-transfer bottleneck and prevents a fully on-device GPU solve path. |
 | `PyAMGSolver` | CPU only. Built around SciPy CG + PyAMG through an external host callback. | Moderate | Lower memory than direct Cholesky and useful when a direct factorization is too expensive. Main downside is that each solve crosses into Python/NumPy space; batched solves are handled by a Python loop over right-hand sides, so throughput is usually weaker than the other two solvers. |
-| `AMJaxCGSolver` | Yes after initialization. The one-time hierarchy build uses PyAMG on CPU, but the initialized CG + AMJax preconditioner solve runs in JAX and can execute on CPU or GPU. | Moderate | Best choice for repeated, JIT-compiled, differentiable solves. Reuses the initialized preconditioner state across vmapped batched solves without a per-solve host callback. Main downside is the upfront initialization cost and the need to initialize on the exact matrix/operator you plan to reuse. |
+| `AMJaxCGSolver` | Yes after initialization. The one-time hierarchy build uses PyAMG on CPU, but the initialized CG + AMJax preconditioner solve runs in JAX and can execute on CPU or GPU. | Moderate | Best choice for repeated, JIT-compiled, differentiable solves. Reuses initialized preconditioner state across vmapped batched solves without a per-solve host callback. The preconditioner can be reused while CG state is refreshed for related operators with the same structure. |
 
 **Installation**:
 ```console
@@ -44,7 +44,7 @@ uv add jaxscape --extra amjax      # Lineax CG + AMJax preconditioner
 
 In algebraic multigrid, the preconditioner is built as a hierarchy of progressively coarser linear systems derived from the original sparse operator. This hierarchy consists of coarse operators together with prolongation and restriction maps between levels; one multigrid cycle smooths the error on the fine level, transfers the residual to coarser levels, approximately solves there, and interpolates the correction back to the fine level.
 
-For direct sparse solves, initialize the solver state once against the matrix shape you plan to reuse:
+For direct sparse solves against an unchanged matrix, initialize the full solver state once:
 
 ```python
 import jax.numpy as jnp
@@ -59,7 +59,16 @@ state = solver.init(BCOOLinearOperator(A), {})
 x = linear_solve(A, b, solver, state=state)
 ```
 
-For resistance distance, initialize distance state against the graph once so the solver is initialized on the grounded Laplacian used internally:
+For related matrices whose values change but whose geometry is stable, initialize only the preconditioner and let JAXScape materialize fresh CG state for each current operator:
+
+```python
+solver = AMJaxCGSolver(rtol=1e-6, atol=1e-6, max_steps=1_000)
+preconditioner_state = solver.init_preconditioner(BCOOLinearOperator(A0), {})
+
+x = linear_solve(A1, b, solver, state=preconditioner_state)
+```
+
+For resistance distance, initialize preconditioner state against a reference graph so the AMJax hierarchy is built on the grounded Laplacian used internally:
 
 ```python
 from jaxscape import GridGraph, ResistanceDistance
@@ -69,10 +78,12 @@ grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
 distance = ResistanceDistance(
   solver=AMJaxCGSolver(rtol=1e-6, atol=1e-6, max_steps=1_000)
 )
-state = distance.init(grid)
+state = distance.init_preconditioner(grid)
 
 R = distance(grid, state=state)
 ```
+
+Use `distance.init(grid)` instead when the graph is fixed and you want to reuse the full solver state.
 
 ::: jaxscape.solvers.cholmodsolver.CholmodSolver
     options:

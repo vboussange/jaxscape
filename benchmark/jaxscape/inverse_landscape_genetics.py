@@ -227,10 +227,10 @@ def _run_inverse_profile_direct(
             init_logits = jnp.zeros_like(landscape)
             fixed_state = None
             if profile.requires_preparation:
-                # Benchmark design choice: reuse the initial solver state across
-                # optimisation steps to measure the impact of preparation reuse.
-                # This is not the recommended pattern for real calibration runs.
-                fixed_state = distance.init(
+                # Benchmark design choice: reuse only the AMJax preconditioner
+                # built on the initial graph. CG state is refreshed against the
+                # current Laplacian inside the solve wrappers.
+                fixed_state = distance.init_preconditioner(
                     _inverse_grid(_permeability_from_logits(init_logits))
                 )
 
@@ -279,7 +279,7 @@ def _run_inverse_profile_direct(
                     ),
                     "iteration_count": int(solution.stats["num_steps"]),
                     "iteration_limit": INVERSE_OPTIMISTIX_MAX_STEPS,
-                    "solver_state_reused": bool(profile.requires_preparation),
+                    "solver_preconditioner_reused": bool(profile.requires_preparation),
                     "dtype": str(jnp.dtype(profile.dtype)),
                     "backend": device.platform,
                     "target_distance_tool": INVERSE_TARGET_TOOL,

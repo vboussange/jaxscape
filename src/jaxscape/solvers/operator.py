@@ -42,14 +42,16 @@ def linear_solve(
     state: Any = None,
 ) -> Array:
     operator = BCOOLinearOperator(A)
-    if state is None:
+    options = _solver_options(options)
+    solve_state = _solver_state_from_operator(operator, solver, options, state)
+    if solve_state is None:
         return lx.linear_solve(operator, b, solver=solver, options=options).value
     return lx.linear_solve(
         operator,
         b,
         solver=solver,
         options=options,
-        state=state,
+        state=solve_state,
     ).value
 
 
@@ -208,12 +210,29 @@ def _solver_state(
     options: dict[str, Any] | None,
     state: Any,
 ) -> Any:
-    if state is not None:
-        return state
-    return solver.init(BCOOLinearOperator(A), _solver_options(options))
+    options = _solver_options(options)
+    operator = BCOOLinearOperator(A)
+    solve_state = _solver_state_from_operator(operator, solver, options, state)
+    if solve_state is not None:
+        return solve_state
+    return solver.init(operator, options)
 
 
 def _solver_options(options: dict[str, Any] | None) -> dict[str, Any]:
     if options is None:
         return {}
     return options
+
+
+def _solver_state_from_operator(
+    operator: lx.AbstractLinearOperator,
+    solver: lx.AbstractLinearSolver,
+    options: dict[str, Any],
+    state: Any,
+) -> Any:
+    if state is None:
+        return None
+    materialize_state = getattr(solver, "materialize_state", None)
+    if materialize_state is None:
+        return state
+    return materialize_state(operator, options, state)
