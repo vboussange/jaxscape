@@ -50,6 +50,4 @@ elif ! command -v python >/dev/null 2>&1; then
 	exit 1
 fi
 
-"${PYTHON_RUNNER[@]}" benchmark/benchmark_distances.py "$@"
-"${PYTHON_RUNNER[@]}" benchmark/render_scorecard.py
-"${PYTHON_RUNNER[@]}" benchmark/generate_benchmark_docs.py
+"${PYTHON_RUNNER[@]}" benchmark/smoke_check.py "$@"

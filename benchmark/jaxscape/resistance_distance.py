@@ -76,7 +76,16 @@ JAXSCAPE_RESISTANCE_PROFILES = (
     ),
     ResistanceProfile("pyamg", "JAXScape / PyAMG", solver_factory=make_pyamg_solver),
     ResistanceProfile(
-        "cholmod", "JAXScape / CholmodSolver", solver_factory=make_cholmod_solver
+        "cholmod_f32",
+        "JAXScape / CholmodSolver / f32",
+        solver_factory=make_cholmod_solver,
+        dtype=jnp.float32,
+    ),
+    ResistanceProfile(
+        "cholmod_f64",
+        "JAXScape / CholmodSolver / f64",
+        solver_factory=make_cholmod_solver,
+        dtype=jnp.float64,
     ),
     ResistanceProfile(
         "amjaxcg_f32",
@@ -127,10 +136,18 @@ JAXSCAPE_RESISTANCE_PROFILES = (
         dtype=jnp.float64,
     ),
     ResistanceProfile(
-        "approx_cholmod",
-        "JAXScape / approx CholmodSolver",
+        "approx_cholmod_f32",
+        "JAXScape / approx CholmodSolver / f32",
         solver_factory=make_cholmod_solver,
         method_factory=make_spielman_method,
+        dtype=jnp.float32,
+    ),
+    ResistanceProfile(
+        "approx_cholmod_f64",
+        "JAXScape / approx CholmodSolver / f64",
+        solver_factory=make_cholmod_solver,
+        method_factory=make_spielman_method,
+        dtype=jnp.float64,
     ),
 )
 PROFILE_BY_KEY = {profile.key: profile for profile in JAXSCAPE_RESISTANCE_PROFILES}

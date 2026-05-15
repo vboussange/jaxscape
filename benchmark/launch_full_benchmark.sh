@@ -5,6 +5,18 @@ cd "$(dirname "$0")/.."
 source benchmark/toolchain_env.sh
 benchmark_ensure_local_julia
 
+CUDA_DEVICE="${CUDA_DEVICE:-3}"
+RUN_NAME="${RUN_NAME:-$(date -u +%Y%m%dT%H%M%SZ)}"
+RUN_DIR="benchmark/results/runs/${RUN_NAME}"
+LOG_DIR="${RUN_DIR}/logs"
+ASSET_DIR="${RUN_DIR}/assets"
+RESULTS_JSON="${RUN_DIR}/benchmark_results.json"
+RESULTS_CSV="${RUN_DIR}/benchmark_results.csv"
+STDOUT_LOG="${LOG_DIR}/stdout.log"
+STDERR_LOG="${LOG_DIR}/stderr.log"
+
+mkdir -p "${LOG_DIR}" "${ASSET_DIR}"
+
 BENCHMARK_THREADS="${BENCHMARK_THREADS:-4}"
 export BENCHMARK_THREADS
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-$BENCHMARK_THREADS}"
@@ -15,6 +27,7 @@ export NUMEXPR_NUM_THREADS="${NUMEXPR_NUM_THREADS:-$BENCHMARK_THREADS}"
 export JULIA_NUM_THREADS="${JULIA_NUM_THREADS:-$BENCHMARK_THREADS}"
 export RCPP_PARALLEL_NUM_THREADS="${RCPP_PARALLEL_NUM_THREADS:-$BENCHMARK_THREADS}"
 export RCPPTHREAD_NUM_THREADS="${RCPPTHREAD_NUM_THREADS:-$BENCHMARK_THREADS}"
+export CUDA_VISIBLE_DEVICES="${CUDA_DEVICE}"
 
 if [[ "${BENCHMARK_THREADS}" == "1" ]]; then
 	if [[ " ${XLA_FLAGS:-} " != *" --xla_cpu_multi_thread_eigen=false "* ]]; then
@@ -50,6 +63,30 @@ elif ! command -v python >/dev/null 2>&1; then
 	exit 1
 fi
 
-"${PYTHON_RUNNER[@]}" benchmark/benchmark_distances.py "$@"
-"${PYTHON_RUNNER[@]}" benchmark/render_scorecard.py
-"${PYTHON_RUNNER[@]}" benchmark/generate_benchmark_docs.py
+echo "Launching benchmark run ${RUN_NAME}"
+echo "  CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES}"
+echo "  results=${RESULTS_JSON}"
+echo "  stdout=${STDOUT_LOG}"
+echo "  stderr=${STDERR_LOG}"
+
+nohup bash -lc '
+set -euo pipefail
+cd "'$PWD'"
+export BENCHMARK_THREADS="'"${BENCHMARK_THREADS}"'"
+export OMP_NUM_THREADS="'"${OMP_NUM_THREADS}"'"
+export OPENBLAS_NUM_THREADS="'"${OPENBLAS_NUM_THREADS}"'"
+export MKL_NUM_THREADS="'"${MKL_NUM_THREADS}"'"
+export VECLIB_MAXIMUM_THREADS="'"${VECLIB_MAXIMUM_THREADS}"'"
+export NUMEXPR_NUM_THREADS="'"${NUMEXPR_NUM_THREADS}"'"
+export JULIA_NUM_THREADS="'"${JULIA_NUM_THREADS}"'"
+export RCPP_PARALLEL_NUM_THREADS="'"${RCPP_PARALLEL_NUM_THREADS}"'"
+export RCPPTHREAD_NUM_THREADS="'"${RCPPTHREAD_NUM_THREADS}"'"
+export XLA_FLAGS="'"${XLA_FLAGS}"'"
+export CUDA_VISIBLE_DEVICES="'"${CUDA_VISIBLE_DEVICES}"'"
+'"${PYTHON_RUNNER[*]}"' benchmark/benchmark_distances.py --device gpu --require-complete --results-json "'"${RESULTS_JSON}"'" --results-csv "'"${RESULTS_CSV}"'"
+'"${PYTHON_RUNNER[*]}"' benchmark/render_scorecard.py --results-json "'"${RESULTS_JSON}"'" --output-dir "'"${ASSET_DIR}"'"
+'"${PYTHON_RUNNER[*]}"' benchmark/generate_benchmark_docs.py --results-json "'"${RESULTS_JSON}"'" --output "'"${RUN_DIR}"'"/benchmark.md
+' >"${STDOUT_LOG}" 2>"${STDERR_LOG}" &
+
+echo $! > "${RUN_DIR}/pid"
+echo "PID $(cat "${RUN_DIR}/pid")"

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import argparse
 import json
+import math
+import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -11,86 +14,26 @@ from matplotlib.patches import Patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RESULTS_JSON = ROOT / "benchmark" / "results" / "benchmark_results.json"
-SIZE_ORDER = {"small": 0, "medium": 1, "large": 2}
-OUTPUTS = {
-    "resistance_distance": ROOT
-    / "docs"
-    / "assets"
-    / "benchmark_resistance_distance.png",
-    "least_cost_path": ROOT / "docs" / "assets" / "benchmark_least_cost_path.png",
-    "sensitivity_analysis": ROOT
-    / "docs"
-    / "assets"
-    / "benchmark_sensitivity_analysis.png",
-    "inverse_landscape_genetics": ROOT
-    / "docs"
-    / "assets"
-    / "benchmark_inverse_landscape_genetics.png",
-}
-TASK_LABELS = {
-    "resistance_distance": "Resistance distance",
-    "least_cost_path": "Least-cost path",
-    "sensitivity_analysis": "Centrality and gradient sensitivity",
-    "inverse_landscape_genetics": "Inverse landscape genetics",
-}
-DISPLAY_ORDER = {
-    "resistance_distance": [
-        "JAXScape / pinv (CPU)",
-        "JAXScape / pinv (GPU)",
-        "JAXScape / PyAMG",
-        "JAXScape / AMJaxCGSolver",
-        "JAXScape / CholmodSolver",
-        "gdistance / commuteDistance",
-        "Circuitscape.jl / cg+amg",
-        "Circuitscape.jl / cholmod",
-        "Conefor",
-    ],
-    "least_cost_path": [
-        "JAXScape (CPU)",
-        "JAXScape (GPU)",
-        "gdistance / costDistance",
-        "Conefor",
-    ],
-    "sensitivity_analysis": [
-        "JAXScape / shortest-path gradient (CPU)",
-        "JAXScape / shortest-path gradient (GPU)",
-        "gdistance / shortestPath",
-        "JAXScape / resistance gradient (CPU)",
-        "JAXScape / resistance gradient (GPU)",
-        "gdistance / passage",
-    ],
-    "inverse_landscape_genetics": [
-        "JAXScape / CholmodSolver / f32",
-        "JAXScape / AMJaxCGSolver / f32 (CPU)",
-        "JAXScape / AMJaxCGSolver / f32 (GPU)",
-        "JAXScape / AMJaxCGSolver / f64 (CPU)",
-        "JAXScape / AMJaxCGSolver / f64 (GPU)",
-        "JAXScape / approx pinv / f32 (CPU)",
-        "JAXScape / approx pinv / f32 (GPU)",
-        "JAXScape / approx pinv / f64 (CPU)",
-        "JAXScape / approx pinv / f64 (GPU)",
-        "ResistanceGA",
-    ],
-}
-TOOL_COLORS = {
-    "JAXScape / pinv": "#1F77B4",
-    "JAXScape / PyAMG": "#17BECF",
-    "JAXScape / AMJaxCGSolver": "#4C78A8",
-    "JAXScape / CholmodSolver": "#9467BD",
-    "gdistance / commuteDistance": "#FF7F0E",
-    "Circuitscape.jl / cg+amg": "#2CA02C",
-    "Circuitscape.jl / cholmod": "#8C564B",
-    "JAXScape": "#1F77B4",
-    "gdistance / costDistance": "#FF7F0E",
-    "JAXScape / shortest-path gradient": "#1F77B4",
-    "gdistance / shortestPath": "#FF7F0E",
-    "JAXScape / resistance gradient": "#D62728",
-    "gdistance / passage": "#2CA02C",
-    "JAXScape + Optimistix": "#C44E52",
-    "ResistanceGA": "#E377C2",
-    "Conefor": "#6C757D",
-}
+SRC_DIR = ROOT / "src"
+for path in (ROOT, SRC_DIR):
+    path_string = str(path)
+    while path_string in sys.path:
+        sys.path.remove(path_string)
+for path in (ROOT, SRC_DIR):
+    sys.path.insert(0, str(path))
+
+from benchmark.benchmark_registry import (
+    benchmark_scorecard_outputs,
+    DISPLAY_ORDER_BY_TASK,
+    SIZE_ORDER,
+    TASK_LABELS,
+    TOOL_FAMILY_COLORS,
+    tool_family,
+)
+
+
+DEFAULT_RESULTS_JSON = ROOT / "benchmark" / "results" / "benchmark_results.json"
+DEFAULT_OUTPUTS = benchmark_scorecard_outputs(ROOT)
 BAR_HATCHES = {
     "cpu": "",
     "gpu": "//",
@@ -98,8 +41,27 @@ BAR_HATCHES = {
 DEFAULT_COLOR = "#6B7280"
 
 
-def load_payload() -> dict:
-    return json.loads(RESULTS_JSON.read_text())
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--results-json", type=Path, default=DEFAULT_RESULTS_JSON)
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=ROOT / "docs" / "assets",
+        help="Directory where benchmark_*.png scorecards are written.",
+    )
+    return parser.parse_args()
+
+
+def scorecard_outputs(output_dir: Path) -> dict[str, Path]:
+    return {
+        task: output_dir / default_output.name
+        for task, default_output in DEFAULT_OUTPUTS.items()
+    }
+
+
+def load_payload(results_json: Path) -> dict:
+    return json.loads(results_json.read_text())
 
 
 def case_lookup(payload: dict) -> dict[str, dict]:
@@ -142,10 +104,9 @@ def ordered_cases(task: str, cases: dict[str, dict]) -> list[dict]:
 
 def case_tick_label(case: dict) -> str:
     size = case.get("grid_size")
-    label = str(case.get("size_label", case["name"])).replace("_", " ").title()
     if size is None:
-        return label
-    return f"{label}\n{size}x{size}"
+        return str(case.get("name", ""))
+    return f"{size}x{size}"
 
 
 def record_index(records: list[dict]) -> dict[tuple[str, str], dict]:
@@ -154,7 +115,7 @@ def record_index(records: list[dict]) -> dict[tuple[str, str], dict]:
 
 def display_tools(task: str, records: list[dict]) -> list[str]:
     available = {record["tool"] for record in records}
-    ordered = [tool for tool in DISPLAY_ORDER.get(task, []) if tool in available]
+    ordered = [tool for tool in DISPLAY_ORDER_BY_TASK.get(task, []) if tool in available]
     extras = sorted(available - set(ordered))
     return ordered + extras
 
@@ -173,15 +134,6 @@ def convergence_value(record: dict) -> bool | None:
     if value is None:
         return None
     return bool(value)
-
-
-def tool_family(tool: str) -> str:
-    family = tool
-    if family.endswith(" (CPU)") or family.endswith(" (GPU)"):
-        family = family.rsplit(" (", 1)[0]
-    if family.endswith(" / f32") or family.endswith(" / f64"):
-        family = family.rsplit(" / ", 1)[0]
-    return family
 
 
 def tool_backend(tool: str) -> str | None:
@@ -203,11 +155,42 @@ def skipped_placeholder_records(task: str, records: list[dict]) -> list[dict]:
 
 
 def legend_columns(tool_count: int) -> int:
+    if tool_count > 9:
+        return 4
     if tool_count > 6:
         return 3
     if tool_count > 3:
         return 2
     return 1
+
+
+def legend_rows(tool_count: int) -> int:
+    return max(1, math.ceil(tool_count / legend_columns(tool_count)))
+
+
+def chart_size(tool_count: int, case_count: int, *, base_height: float) -> tuple[float, float]:
+    width = min(max(9.2, 1.4 * max(case_count, 1) + 0.9 * max(tool_count, 1)), 16.0)
+    height = base_height + 0.45 * max(legend_rows(tool_count) - 1, 0)
+    return width, height
+
+
+def layout_rect_top(tool_count: int) -> float:
+    return max(0.74, 0.88 - 0.06 * max(legend_rows(tool_count) - 1, 0))
+
+
+def add_tool_legend(fig: plt.Figure, axis: plt.Axes, tool_count: int) -> float:
+    handles, labels = axis.get_legend_handles_labels()
+    if not handles:
+        return 0.95
+    fig.legend(
+        handles,
+        labels,
+        frameon=False,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.93),
+        ncol=legend_columns(tool_count),
+    )
+    return layout_rect_top(tool_count)
 
 
 def plot_grouped_bars(
@@ -251,9 +234,10 @@ def plot_grouped_bars(
         return []
 
     width = min(0.84 / max(len(visible_tools), 1), 0.22)
+    annotation_fontsize = 8 if len(visible_tools) <= 6 else 7 if len(visible_tools) <= 10 else 6
     for tool_index, tool in enumerate(visible_tools):
         offset = (tool_index - (len(visible_tools) - 1) / 2) * width
-        base_color = TOOL_COLORS.get(tool_family(tool), DEFAULT_COLOR)
+        base_color = TOOL_FAMILY_COLORS.get(tool_family(tool), DEFAULT_COLOR)
         backend = tool_backend(tool)
         label_added = False
 
@@ -293,7 +277,7 @@ def plot_grouped_bars(
                 textcoords="offset points",
                 xytext=(0, 4 if not use_log_scale else 6),
                 ha="center",
-                fontsize=8,
+                fontsize=annotation_fontsize,
             )
 
     if use_log_scale:
@@ -328,7 +312,8 @@ def render_runtime_chart(
     task: str, records: list[dict], output_path: Path, cases: dict[str, dict]
 ) -> None:
     task_cases = ordered_cases(task, cases)
-    fig, axis = plt.subplots(figsize=(9.2, 5.2))
+    tool_count = len(display_tools(task, records))
+    fig, axis = plt.subplots(figsize=chart_size(tool_count, len(task_cases), base_height=5.2))
     fig.suptitle(f"{TASK_LABELS[task]} benchmark")
     visible_tools = plot_grouped_bars(
         axis,
@@ -341,13 +326,10 @@ def render_runtime_chart(
         use_log_scale=True,
         show_convergence=False,
     )
-    axis.set_xlabel("Problem size")
-    if visible_tools:
-        axis.legend(
-            frameon=False, loc="upper left", ncol=legend_columns(len(visible_tools))
-        )
+    axis.set_xlabel("Grid size")
+    top = add_tool_legend(fig, axis, len(visible_tools)) if visible_tools else 0.95
     add_placeholder_note(fig, task, records)
-    fig.tight_layout(rect=(0, 0.03, 1, 0.95))
+    fig.tight_layout(rect=(0, 0.03, 1, top))
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=200, bbox_inches="tight")
     plt.close(fig)
@@ -357,8 +339,13 @@ def render_centrality_chart(
     task: str, records: list[dict], output_path: Path, cases: dict[str, dict]
 ) -> None:
     task_cases = ordered_cases(task, cases)
+    tool_count = len(display_tools(task, records))
     fig, axes = plt.subplots(
-        2, 1, figsize=(9.2, 7.4), sharex=True, gridspec_kw={"height_ratios": [1.4, 1.0]}
+        2,
+        1,
+        figsize=chart_size(tool_count, len(task_cases), base_height=7.4),
+        sharex=True,
+        gridspec_kw={"height_ratios": [1.4, 1.0]},
     )
     fig.suptitle(f"{TASK_LABELS[task]} benchmark")
 
@@ -373,10 +360,7 @@ def render_centrality_chart(
         use_log_scale=True,
         show_convergence=False,
     )
-    if visible_tools:
-        axes[0].legend(
-            frameon=False, loc="upper left", ncol=legend_columns(len(visible_tools))
-        )
+    top = add_tool_legend(fig, axes[0], len(visible_tools)) if visible_tools else 0.95
 
     alignment_tools = [
         tool
@@ -400,10 +384,10 @@ def render_centrality_chart(
         tool_subset=alignment_tools,
         ylim=(0.0, 1.05),
     )
-    axes[1].set_xlabel("Problem size")
+    axes[1].set_xlabel("Grid size")
 
     add_placeholder_note(fig, task, records)
-    fig.tight_layout(rect=(0, 0.03, 1, 0.95))
+    fig.tight_layout(rect=(0, 0.03, 1, top))
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=200, bbox_inches="tight")
     plt.close(fig)
@@ -413,10 +397,11 @@ def render_inverse_chart(
     task: str, records: list[dict], output_path: Path, cases: dict[str, dict]
 ) -> None:
     task_cases = ordered_cases(task, cases)
+    tool_count = len(display_tools(task, records))
     fig, axes = plt.subplots(
         2,
         1,
-        figsize=(9.2, 7.4),
+        figsize=chart_size(tool_count, len(task_cases), base_height=7.4),
         sharex=True,
         gridspec_kw={"height_ratios": [1.35, 1.0]},
     )
@@ -433,10 +418,7 @@ def render_inverse_chart(
         use_log_scale=True,
         show_convergence=True,
     )
-    if visible_tools:
-        axes[0].legend(
-            frameon=False, loc="upper left", ncol=legend_columns(len(visible_tools))
-        )
+    top = add_tool_legend(fig, axes[0], len(visible_tools)) if visible_tools else 0.95
 
     plot_grouped_bars(
         axes[1],
@@ -449,7 +431,7 @@ def render_inverse_chart(
         use_log_scale=False,
         show_convergence=True,
     )
-    axes[1].set_xlabel("Benchmark scenario")
+    axes[1].set_xlabel("Grid size")
     axes[1].legend(
         handles=[
             Patch(facecolor="#111827", edgecolor="#111827", label="converged"),
@@ -463,7 +445,7 @@ def render_inverse_chart(
     )
 
     add_placeholder_note(fig, task, records)
-    fig.tight_layout(rect=(0, 0.03, 1, 0.95))
+    fig.tight_layout(rect=(0, 0.03, 1, top))
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=200, bbox_inches="tight")
     plt.close(fig)
@@ -500,15 +482,16 @@ def render_task(
     render_runtime_chart(task, records, output_path, cases)
 
 
-def render() -> None:
-    payload = load_payload()
+def render(*, results_json: Path = DEFAULT_RESULTS_JSON, output_dir: Path | None = None) -> None:
+    payload = load_payload(results_json)
     cases = case_lookup(payload)
-    grouped: dict[str, list[dict]] = {task: [] for task in OUTPUTS}
+    outputs = DEFAULT_OUTPUTS if output_dir is None else scorecard_outputs(output_dir)
+    grouped: dict[str, list[dict]] = {task: [] for task in outputs}
     for record in payload["records"]:
         if record["task"] in grouped:
             grouped[record["task"]].append(record)
 
-    for task, output_path in OUTPUTS.items():
+    for task, output_path in outputs.items():
         renderable_records = [
             record
             for record in grouped.get(task, [])
@@ -518,4 +501,5 @@ def render() -> None:
 
 
 if __name__ == "__main__":
-    render()
+    args = parse_args()
+    render(results_json=args.results_json, output_dir=args.output_dir)

@@ -2,6 +2,13 @@ args <- commandArgs(trailingOnly = TRUE)
 case_path <- args[[1]]
 repeats <- as.integer(args[[2]])
 output_path <- args[[3]]
+ga_method <- if (length(args) >= 4) args[[4]] else "LL"
+ga_transformation <- if (length(args) >= 5) args[[5]] else "M"
+ga_pop_size <- if (length(args) >= 6) as.integer(args[[6]]) else 12L
+ga_maxiter <- if (length(args) >= 7) as.integer(args[[7]]) else 3L
+ga_run <- if (length(args) >= 8) as.integer(args[[8]]) else 1L
+ga_max_cont <- if (length(args) >= 9) as.integer(args[[9]]) else 25L
+ga_seed <- if (length(args) >= 10) as.integer(args[[10]]) else 7L
 
 coerce_numeric_matrix <- function(value) {
   if (is.matrix(value)) {
@@ -69,7 +76,15 @@ fit_error_metrics <- function(result, target_vector) {
     aicc = if (!is.null(result$AICc) && nrow(result$AICc) > 0) unname(result$AICc$AICc[[1]]) else NULL,
     converged = converged,
     iteration_count = iteration_count,
-    iteration_limit = iteration_limit
+    iteration_limit = iteration_limit,
+    ga_method = ga_method,
+    ga_transformation = ga_transformation,
+    ga_pop_size = ga_pop_size,
+    ga_maxiter = ga_maxiter,
+    ga_run = ga_run,
+    ga_max_cont = ga_max_cont,
+    ga_seed = ga_seed,
+    budget_policy = "fixed_ga_iterations"
   )
 }
 
@@ -85,14 +100,14 @@ run_once <- function() {
   ga_inputs <- ResistanceGA::GA.prep(
     ASCII.dir = resistance_raster,
     Results.dir = paste0(results_dir, "/"),
-    method = "LL",
-    select.trans = list("M"),
-    seed = 7,
+    method = ga_method,
+    select.trans = list(ga_transformation),
+    seed = ga_seed,
     parallel = benchmark_threads,
-    pop.size = 12,
-    maxiter = 3,
-    run = 1,
-    max.cont = 25
+    pop.size = ga_pop_size,
+    maxiter = ga_maxiter,
+    run = ga_run,
+    max.cont = ga_max_cont
   )
   result <- ResistanceGA::SS_optim(
     gdist.inputs = gdist_inputs,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import logging
 import os
 import shutil
 import statistics
@@ -13,8 +14,9 @@ import sys
 import tempfile
 import textwrap
 import time
-from collections.abc import Callable
-from dataclasses import asdict, dataclass, field
+from collections import Counter
+from collections.abc import Callable, Sequence
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -31,7 +33,22 @@ for path in (ROOT, SRC_DIR):
     sys.path.insert(0, str(path))
 sys.modules.setdefault("benchmark.benchmark_distances", sys.modules[__name__])
 
+from benchmark.benchmark_registry import (
+    backend_tool_label,
+    BENCHMARK_TASK_SPECS,
+    GPU_CAPABLE_TOOL_LABELS_BY_TASK,
+    REQUIRED_BASE_TOOL_LABELS_BY_TASK,
+)
+from benchmark.inverse_benchmark_settings import load_inverse_benchmark_settings
+from benchmark.jaxscape.utils import (
+    benchmark_walltime_seconds,
+    configure_logging,
+    format_walltime_seconds,
+)
+
 os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
+
+LOGGER = logging.getLogger(__name__)
 
 BENCHMARK_DIR = ROOT / "benchmark"
 RESULTS_DIR = BENCHMARK_DIR / "results"
@@ -45,6 +62,10 @@ CIRCUITSCAPE_SCRIPT = EXTERNAL_DIR / "circuitscape_resistance.jl"
 GDISTANCE_SCRIPT = EXTERNAL_DIR / "gdistance_runner.R"
 RESISTANCE_GA_SCRIPT = EXTERNAL_DIR / "resistancega_inverse.R"
 CONEFOR_SCRIPT = EXTERNAL_DIR / "conefor_runner.sh"
+LOCAL_TOOLCHAIN_BIN_DIRS = (
+    Path.home() / ".juliaup" / "bin",
+    Path.home() / ".local" / "bin",
+)
 
 THREAD_ENVIRONMENT_VARIABLES = (
     "OMP_NUM_THREADS",
@@ -60,78 +81,34 @@ DEFAULT_BENCHMARK_THREADS = 4
 REPEATS = 3
 MIN_PERMEABILITY = 1e-3
 DEFAULT_BENCHMARK_POINT_COUNT = 20
+DEFAULT_EXTERNAL_WALLTIME_SECONDS = 900.0
+EXTERNAL_WALLTIME_ENV = "JAXSCAPE_BENCHMARK_EXTERNAL_WALLTIME_SECONDS"
+EXTERNAL_WALLTIME_ENV_BY_SOFTWARE = {
+    "Circuitscape.jl": "JAXSCAPE_BENCHMARK_CIRCUITSCAPE_WALLTIME_SECONDS",
+    "gdistance": "JAXSCAPE_BENCHMARK_GDISTANCE_WALLTIME_SECONDS",
+    "ResistanceGA": "JAXSCAPE_BENCHMARK_RESISTANCEGA_WALLTIME_SECONDS",
+    "Conefor": "JAXSCAPE_BENCHMARK_CONEFOR_WALLTIME_SECONDS",
+}
 GPU_PLACEHOLDER_NOTE = (
     "GPU backend unavailable on this machine; placeholder emitted for the "
     "GPU-capable JAX profile."
 )
-CASE_GROUP_SPECS = {
-    "resistance": {
-        "task": "resistance_distance",
-        "size_by_label": {"small": 10, "medium": 100, "large": 1000},
-        "seed_base": 0,
-    },
-    "lcp": {
-        "task": "least_cost_path",
-        "size_by_label": {"small": 10, "medium": 100, "large": 1000},
-        "seed_base": 10,
-    },
-    "sensitivity": {
-        "task": "sensitivity_analysis",
-        "size_by_label": {"small": 10, "medium": 100, "large": 1000},
-        "seed_base": 20,
-    },
-    "inverse": {
-        "task": "inverse_landscape_genetics",
-        "size_by_label": {"medium": 100},
-        "seed_base": 30,
-    },
-}
-REQUIRED_BASE_TOOL_LABELS_BY_TASK = {
-    "resistance_distance": {
-        "JAXScape / pinv / f32",
-        "JAXScape / pinv / f64",
-        "JAXScape / approx pinv / f32",
-        "JAXScape / approx pinv / f64",
-        "JAXScape / PyAMG",
-        "gdistance / commuteDistance",
-        "Circuitscape.jl / cg+amg",
-        "Circuitscape.jl / cholmod",
-    },
-    "least_cost_path": {"JAXScape", "gdistance / costDistance"},
-    "sensitivity_analysis": {
-        "JAXScape / shortest-path gradient",
-        "gdistance / shortestPath",
-        "JAXScape / resistance gradient",
-        "gdistance / passage",
-    },
-    "inverse_landscape_genetics": {
-        "JAXScape / CholmodSolver / f32",
-        "JAXScape / AMJaxCGSolver / f32",
-        "JAXScape / AMJaxCGSolver / f64",
-        "JAXScape / approx pinv / f32",
-        "JAXScape / approx pinv / f64",
-        "ResistanceGA",
-    },
-}
-GPU_CAPABLE_TOOL_LABELS_BY_TASK = {
-    "resistance_distance": {
-        "JAXScape / pinv / f32",
-        "JAXScape / pinv / f64",
-        "JAXScape / approx pinv / f32",
-        "JAXScape / approx pinv / f64",
-    },
-    "least_cost_path": {"JAXScape"},
-    "sensitivity_analysis": {
-        "JAXScape / shortest-path gradient",
-        "JAXScape / resistance gradient",
-    },
-    "inverse_landscape_genetics": {
-        "JAXScape / AMJaxCGSolver / f32",
-        "JAXScape / AMJaxCGSolver / f64",
-        "JAXScape / approx pinv / f32",
-        "JAXScape / approx pinv / f64",
-    },
-}
+
+
+def configure_local_toolchain_path() -> None:
+    current_path = os.environ.get("PATH", "")
+    path_entries = [entry for entry in current_path.split(os.pathsep) if entry]
+    existing_entries = set(path_entries)
+    prepended_entries: list[str] = []
+    for candidate_dir in LOCAL_TOOLCHAIN_BIN_DIRS:
+        candidate_string = str(candidate_dir)
+        if candidate_dir.is_dir() and candidate_string not in existing_entries:
+            prepended_entries.append(candidate_string)
+            existing_entries.add(candidate_string)
+    if prepended_entries:
+        os.environ["PATH"] = os.pathsep.join(
+            [*prepended_entries, *path_entries]
+        )
 
 
 def configure_thread_environment(thread_count: int) -> None:
@@ -164,6 +141,7 @@ except ValueError as error:
     raise RuntimeError(message) from error
 
 configure_thread_environment(BENCHMARK_THREADS)
+configure_local_toolchain_path()
 try:
     BENCHMARK_POINT_COUNT = int(
         os.environ.get("JAXSCAPE_BENCHMARK_POINT_COUNT", DEFAULT_BENCHMARK_POINT_COUNT)
@@ -299,19 +277,19 @@ def build_case(
 
 def benchmark_cases() -> dict[str, list[BenchmarkCase]]:
     cases: dict[str, list[BenchmarkCase]] = {}
-    for group_name, spec in CASE_GROUP_SPECS.items():
+    for spec in BENCHMARK_TASK_SPECS:
         group_cases: list[BenchmarkCase] = []
-        for offset, (size_label, size) in enumerate(spec["size_by_label"].items()):
+        for offset, (size_label, size) in enumerate(spec.size_by_label.items()):
             group_cases.append(
                 build_case(
-                    name=f"synthetic_{group_name}_{size_label}",
-                    task=spec["task"],
+                    name=f"synthetic_{spec.group_name}_{size_label}",
+                    task=spec.task,
                     size_label=size_label,
                     size=size,
-                    seed=spec["seed_base"] + offset,
+                    seed=spec.seed_base + offset,
                 )
             )
-        cases[group_name] = group_cases
+        cases[spec.group_name] = group_cases
     return cases
 
 
@@ -402,6 +380,31 @@ def build_config(
         benchmark_threads=BENCHMARK_THREADS,
         available_device_platforms=available_device_platforms(),
     )
+
+
+def standalone_task_result_paths(task: str) -> tuple[Path, Path]:
+    task_results_dir = RESULTS_DIR / "tasks" / task
+    return (
+        task_results_dir / "benchmark_results.json",
+        task_results_dir / "benchmark_results.csv",
+    )
+
+
+def config_for_standalone_task(
+    config: BenchmarkConfig, cases: Sequence[BenchmarkCase]
+) -> BenchmarkConfig:
+    if not cases:
+        return config
+    if config.results_json != RESULTS_JSON or config.results_csv != RESULTS_CSV:
+        return config
+
+    task_names = {case.task for case in cases}
+    if len(task_names) != 1:
+        return config
+
+    task = next(iter(task_names))
+    results_json, results_csv = standalone_task_result_paths(task)
+    return replace(config, results_json=results_json, results_csv=results_csv)
 
 
 def thread_environment_snapshot() -> dict[str, str]:
@@ -588,10 +591,6 @@ def failed_record(
     return BenchmarkRecord(task, tool, software, scenario, "failed", None, [], {}, note)
 
 
-def backend_tool_label(tool: str, backend: str) -> str:
-    return f"{tool} ({backend.upper()})"
-
-
 def gpu_placeholder_record(
     case: BenchmarkCase, tool: str, software: str
 ) -> BenchmarkRecord:
@@ -679,6 +678,133 @@ def write_case_payload(case: BenchmarkCase, directory: Path) -> Path:
     payload_path = directory / f"{case.name}.json"
     payload_path.write_text(json.dumps(payload, indent=2))
     return payload_path
+
+
+def _walltime_seconds_from_env(env_name: str) -> float | None:
+    raw_value = os.environ.get(env_name)
+    if raw_value is None:
+        return None
+    try:
+        return max(1.0, float(raw_value))
+    except ValueError as error:
+        message = (
+            f"{env_name} must be numeric, received {raw_value!r}."
+        )
+        raise RuntimeError(message) from error
+
+
+def external_tool_walltime_seconds(software: str) -> float:
+    for env_name in (
+        EXTERNAL_WALLTIME_ENV_BY_SOFTWARE.get(software),
+        EXTERNAL_WALLTIME_ENV,
+        "JAXSCAPE_BENCHMARK_WALLTIME_SECONDS",
+    ):
+        if env_name is None:
+            continue
+        resolved = _walltime_seconds_from_env(env_name)
+        if resolved is not None:
+            return resolved
+    return DEFAULT_EXTERNAL_WALLTIME_SECONDS
+
+
+def external_failure_note(
+    tool_label: str,
+    *,
+    timeout_seconds: float | None = None,
+    returncode: int | None = None,
+) -> str:
+    if timeout_seconds is not None:
+        return (
+            f"Exceeded walltime of {format_walltime_seconds(timeout_seconds)} "
+            f"while running {tool_label}."
+        )
+    if returncode is not None and returncode < 0:
+        if returncode == -9:
+            return (
+                f"Process was killed while running {tool_label}; this often "
+                "indicates an out-of-memory condition."
+            )
+        return f"Process exited from signal {-returncode} while running {tool_label}."
+    return f"External tool exited with status {returncode} while running {tool_label}."
+
+
+def run_external_subprocess(
+    *,
+    args: Sequence[str],
+    case: BenchmarkCase,
+    tool_label: str,
+    software: str,
+    env: dict[str, str] | None = None,
+) -> str | None:
+    configure_logging()
+    timeout_seconds = external_tool_walltime_seconds(software)
+    LOGGER.info(
+        "Starting external benchmark for case=%s tool=%s walltime=%s",
+        case.name,
+        tool_label,
+        format_walltime_seconds(timeout_seconds),
+    )
+    start_time = time.perf_counter()
+    try:
+        completed = subprocess.run(
+            list(args),
+            check=False,
+            env=env,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired:
+        LOGGER.error(
+            "External benchmark timed out for case=%s tool=%s after %s",
+            case.name,
+            tool_label,
+            format_walltime_seconds(timeout_seconds),
+        )
+        return external_failure_note(tool_label, timeout_seconds=timeout_seconds)
+
+    elapsed_seconds = time.perf_counter() - start_time
+    if completed.returncode != 0:
+        note = external_failure_note(tool_label, returncode=completed.returncode)
+        LOGGER.error(
+            "External benchmark failed for case=%s tool=%s after %.3fs: %s",
+            case.name,
+            tool_label,
+            elapsed_seconds,
+            note,
+        )
+        return note
+
+    LOGGER.info(
+        "Completed external benchmark for case=%s tool=%s in %.3fs",
+        case.name,
+        tool_label,
+        elapsed_seconds,
+    )
+    return None
+
+
+def log_case_start(case: BenchmarkCase) -> None:
+    configure_logging()
+    LOGGER.info(
+        "Starting benchmark case task=%s scenario=%s grid=%sx%s points=%s",
+        case.task,
+        case.name,
+        case.grid_size,
+        case.grid_size,
+        len(case.points),
+    )
+
+
+def log_case_completion(case: BenchmarkCase, records: Sequence[BenchmarkRecord]) -> None:
+    status_counts = Counter(record.status for record in records)
+    counts = ", ".join(
+        f"{status}={count}" for status, count in sorted(status_counts.items())
+    )
+    LOGGER.info(
+        "Completed benchmark case task=%s scenario=%s records=%s",
+        case.task,
+        case.name,
+        counts or "none",
+    )
 
 
 def ascii_grid_from_raster(raster: list[list[float]], nodata: float = -9999.0) -> str:
@@ -809,8 +935,8 @@ def run_circuitscape_resistance(
             )
         )
         ini.write_text(circuitscape_ini(cellmap, points, output_prefix, solver_name))
-        subprocess.run(
-            [
+        note = run_external_subprocess(
+            args=[
                 "julia",
                 f"--project={JULIA_PROJECT_DIR}",
                 str(CIRCUITSCAPE_SCRIPT),
@@ -818,10 +944,23 @@ def run_circuitscape_resistance(
                 str(config.repeats),
                 str(output),
             ],
-            check=True,
+            case=case,
+            tool_label=tool_label,
+            software="Circuitscape.jl",
             env=benchmark_environment(),
         )
-        payload = json.loads(output.read_text())
+        if note is not None:
+            return failed_record(case.task, tool_label, "Circuitscape.jl", case.name, note)
+        try:
+            payload = json.loads(output.read_text())
+        except Exception as error:
+            return failed_record(
+                case.task,
+                tool_label,
+                "Circuitscape.jl",
+                case.name,
+                f"Failed to decode Circuitscape output: {error}",
+            )
     return BenchmarkRecord(
         case.task,
         tool_label,
@@ -852,8 +991,14 @@ def run_gdistance_payload(
         workspace = Path(tmpdir)
         output = workspace / f"{mode}.json"
         payload_path = write_case_payload(case, workspace)
-        subprocess.run(
-            [
+        tool_label = {
+            "resistance_distance": "gdistance / commuteDistance",
+            "least_cost_path": "gdistance / costDistance",
+            "least_cost_centrality": "gdistance / shortestPath",
+            "resistance_centrality": "gdistance / passage",
+        }.get(mode, f"gdistance / {mode}")
+        note = run_external_subprocess(
+            args=[
                 rscript,
                 str(GDISTANCE_SCRIPT),
                 mode,
@@ -861,10 +1006,29 @@ def run_gdistance_payload(
                 str(config.repeats),
                 str(output),
             ],
-            check=True,
+            case=case,
+            tool_label=tool_label,
+            software="gdistance",
             env=benchmark_environment(),
         )
-        return json.loads(output.read_text())
+        if note is not None:
+            return {
+                "status": "failed",
+                "timings_seconds": [],
+                "median_seconds": None,
+                "metrics": {},
+                "note": note,
+            }
+        try:
+            return json.loads(output.read_text())
+        except Exception as error:
+            return {
+                "status": "failed",
+                "timings_seconds": [],
+                "median_seconds": None,
+                "metrics": {},
+                "note": f"Failed to decode gdistance output: {error}",
+            }
 
 
 def gdistance_record_from_payload(
@@ -908,10 +1072,24 @@ def run_conefor_placeholder(case: BenchmarkCase, task_label: str) -> BenchmarkRe
             "Set CONEFOR_BIN to enable the Conefor adapter.",
         )
     output = Path(tempfile.mkdtemp(prefix="jaxscape-conefor-")) / "conefor.json"
-    subprocess.run(
-        [str(CONEFOR_SCRIPT), conefor_bin, task_label, str(output)], check=True
+    note = run_external_subprocess(
+        args=[str(CONEFOR_SCRIPT), conefor_bin, task_label, str(output)],
+        case=case,
+        tool_label="Conefor",
+        software="Conefor",
     )
-    payload = json.loads(output.read_text())
+    if note is not None:
+        return failed_record(task_label, "Conefor", "Conefor", case.name, note)
+    try:
+        payload = json.loads(output.read_text())
+    except Exception as error:
+        return failed_record(
+            task_label,
+            "Conefor",
+            "Conefor",
+            case.name,
+            f"Failed to decode Conefor output: {error}",
+        )
     return BenchmarkRecord(
         task_label,
         "Conefor",
@@ -928,6 +1106,7 @@ def run_conefor_placeholder(case: BenchmarkCase, task_label: str) -> BenchmarkRe
 def run_resistancega_inverse(
     case: BenchmarkCase, config: BenchmarkConfig
 ) -> BenchmarkRecord:
+    resistancega_settings = load_inverse_benchmark_settings().resistancega
     rscript = shutil.which("Rscript")
     if rscript is None:
         return skip_record(
@@ -941,18 +1120,57 @@ def run_resistancega_inverse(
         workspace = Path(tmpdir)
         output = workspace / "resistancega.json"
         payload_path = write_case_payload(case, workspace)
-        subprocess.run(
-            [
+        note = run_external_subprocess(
+            args=[
                 rscript,
                 str(RESISTANCE_GA_SCRIPT),
                 str(payload_path),
                 str(config.repeats),
                 str(output),
+                resistancega_settings.method,
+                resistancega_settings.transformation,
+                str(resistancega_settings.pop_size),
+                str(resistancega_settings.maxiter),
+                str(resistancega_settings.run),
+                str(resistancega_settings.max_cont),
+                str(resistancega_settings.seed),
             ],
-            check=True,
+            case=case,
+            tool_label="ResistanceGA",
+            software="ResistanceGA",
             env=benchmark_environment(),
         )
-        payload = json.loads(output.read_text())
+        if note is not None:
+            return failed_record(
+                case.task,
+                "ResistanceGA",
+                "ResistanceGA",
+                case.name,
+                note,
+            )
+        try:
+            payload = json.loads(output.read_text())
+        except Exception as error:
+            return failed_record(
+                case.task,
+                "ResistanceGA",
+                "ResistanceGA",
+                case.name,
+                f"Failed to decode ResistanceGA output: {error}",
+            )
+    payload_metrics = payload.get("metrics", {})
+    payload_metrics.update(
+        {
+            "ga_method": resistancega_settings.method,
+            "ga_transformation": resistancega_settings.transformation,
+            "ga_pop_size": resistancega_settings.pop_size,
+            "ga_maxiter": resistancega_settings.maxiter,
+            "ga_run": resistancega_settings.run,
+            "ga_max_cont": resistancega_settings.max_cont,
+            "ga_seed": resistancega_settings.seed,
+            "budget_policy": "fixed_ga_iterations",
+        }
+    )
     return BenchmarkRecord(
         case.task,
         "ResistanceGA",
@@ -961,7 +1179,7 @@ def run_resistancega_inverse(
         payload["status"],
         payload.get("median_seconds"),
         payload.get("timings_seconds", []),
-        payload.get("metrics", {}),
+        payload_metrics,
         payload.get("note", ""),
     )
 
@@ -1175,15 +1393,28 @@ def collect_inverse_results(
 
 
 def collect_results(config: BenchmarkConfig) -> list[BenchmarkRecord]:
+    configure_logging()
     records: list[BenchmarkRecord] = []
     for case in CASES["resistance"]:
-        records.extend(collect_resistance_results(case, config))
+        log_case_start(case)
+        case_records = collect_resistance_results(case, config)
+        records.extend(case_records)
+        log_case_completion(case, case_records)
     for case in CASES["lcp"]:
-        records.extend(collect_least_cost_results(case, config))
+        log_case_start(case)
+        case_records = collect_least_cost_results(case, config)
+        records.extend(case_records)
+        log_case_completion(case, case_records)
     for case in CASES["sensitivity"]:
-        records.extend(collect_sensitivity_results(case, config))
+        log_case_start(case)
+        case_records = collect_sensitivity_results(case, config)
+        records.extend(case_records)
+        log_case_completion(case, case_records)
     for case in CASES["inverse"]:
-        records.extend(collect_inverse_results(case, config))
+        log_case_start(case)
+        case_records = collect_inverse_results(case, config)
+        records.extend(case_records)
+        log_case_completion(case, case_records)
     return records
 
 
@@ -1194,6 +1425,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    configure_logging()
     args = parse_args()
     config = config_from_args(args)
     records = collect_results(config)

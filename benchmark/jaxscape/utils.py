@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    import jax
     from benchmark.benchmark_distances import BenchmarkCase, BenchmarkConfig, BenchmarkRecord
 
 
@@ -32,6 +31,10 @@ OOM_ERROR_MARKERS = (
 
 def configure_standalone_environment() -> None:
     os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
+    # Float64 pure callbacks run on host callback threads, so worker-local
+    # `with jax.enable_x64()` blocks are not enough to keep callback outputs in
+    # sync with declared ShapeDtypeStruct contracts.
+    os.environ.setdefault("JAX_ENABLE_X64", "1")
 
 
 def configure_logging() -> None:
@@ -80,7 +83,7 @@ def case_by_name(cases: Sequence[BenchmarkCase], case_name: str) -> BenchmarkCas
         ) from error
 
 
-def device_for_backend(backend: str) -> jax.Device:
+def device_for_backend(backend: str) -> Any:
     import jax
 
     try:
@@ -142,7 +145,9 @@ def run_worker_subprocess(
 ) -> BenchmarkRecord:
     from benchmark.benchmark_distances import BenchmarkRecord, failed_record
 
+    configure_logging()
     env = os.environ.copy()
+    env.setdefault("JAX_ENABLE_X64", "1")
     env[WORKER_PAYLOAD_ENV] = json.dumps(payload)
     logger.info(
         "Dispatching benchmark worker for case=%s tool=%s walltime=%s",
@@ -220,6 +225,15 @@ def run_worker_subprocess(
             tool_label,
             completed.stderr.strip(),
         )
+    logger.info(
+        "Completed benchmark worker for case=%s tool=%s status=%s median=%s",
+        case_name,
+        tool_label,
+        record.status,
+        "n/a"
+        if record.median_seconds is None
+        else format_walltime_seconds(float(record.median_seconds)),
+    )
     return record
 
 
@@ -230,7 +244,11 @@ def run_standalone_task(
     cases,
     worker_handler=None,
 ) -> None:
-    from benchmark.benchmark_distances import BenchmarkConfig, write_results
+    from benchmark.benchmark_distances import (
+        BenchmarkConfig,
+        config_for_standalone_task,
+        write_results,
+    )
 
     configure_logging()
     if worker_handler is not None:
@@ -240,6 +258,7 @@ def run_standalone_task(
             return
 
     config: BenchmarkConfig = config_factory()
+    config = config_for_standalone_task(config, cases)
     records = collect_task_results(config)
     write_results(records, config, cases=cases)
     print(json.dumps({"records": [asdict(record) for record in records]}, indent=2))

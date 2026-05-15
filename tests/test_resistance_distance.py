@@ -188,3 +188,44 @@ def test_approximate_nodes_to_nodes_resistance_distance_differentiability():
     assert isinstance(gradient, jax.Array)
     assert gradient.shape == permeability_raster.shape
     assert jnp.all(jnp.isfinite(gradient))
+
+
+@pytest.mark.skipif(not CHOLMOD_AVAILABLE, reason="Cholmod not available")
+def test_approximate_cholmod_float64_nodes_to_nodes_distance():
+    key = jr.PRNGKey(0)
+    nodes = jnp.array([0, 2], dtype=jnp.int32)
+    distance = ResistanceDistance(
+        solver=CholmodSolver(),
+        method=SpielmanApproximation(epsilon=0.05),
+    )
+
+    with jax.enable_x64():
+        permeability_raster = jr.uniform(key, (2, 2), dtype=jnp.float64) + 0.5
+        grid = GridGraph(permeability_raster, fun=lambda x, y: (x + y) / 2)
+        approx = filter_jit(distance)(grid, nodes=nodes)
+
+    assert approx.dtype == jnp.float64
+    assert approx.shape == (nodes.shape[0], nodes.shape[0])
+    assert jnp.all(jnp.isfinite(approx))
+
+
+@pytest.mark.skipif(not CHOLMOD_AVAILABLE, reason="Cholmod not available")
+def test_approximate_cholmod_float64_nodes_to_nodes_distance_large_graph_auto_state():
+    distance = ResistanceDistance(
+        solver=CholmodSolver(),
+        method=SpielmanApproximation(epsilon=0.05),
+    )
+    coords = jnp.stack(
+        [jnp.arange(20, dtype=jnp.int32) // 10, jnp.arange(20, dtype=jnp.int32) % 10],
+        axis=1,
+    )
+
+    with jax.enable_x64():
+        key = jr.PRNGKey(0)
+        permeability_raster = jr.uniform(key, (10, 10), dtype=jnp.float64) + 0.5
+        grid = GridGraph(permeability_raster, fun=lambda x, y: (x + y) / 2)
+        approx = filter_jit(distance)(grid, nodes=coords)
+
+    assert approx.dtype == jnp.float64
+    assert approx.shape == (coords.shape[0], coords.shape[0])
+    assert jnp.all(jnp.isfinite(approx))

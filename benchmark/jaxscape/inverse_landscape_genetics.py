@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import sys
 from collections.abc import Callable
-from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -55,6 +54,7 @@ from benchmark.benchmark_distances import (
     ok_record_with_metrics,
     skip_record,
 )
+from benchmark.inverse_benchmark_settings import load_inverse_benchmark_settings
 from benchmark.jaxscape.resistance_profile_support import (
     make_amjaxcg_solver,
     make_cholmod_solver,
@@ -72,10 +72,16 @@ else:
     _optimistix_import_error = None
 
 
-INVERSE_OPTIMISTIX_MAX_STEPS = 50
 INVERSE_TARGET_DTYPE = jnp.dtype(jnp.float64)
 INVERSE_TARGET_TOOL = "JAXScape / CholmodSolver"
 LOGGER = logging.getLogger(__name__)
+MONOMOLECULAR_SCALE_MIN = 0.0
+MONOMOLECULAR_SCALE_MAX = 10.0
+MONOMOLECULAR_INIT_SHAPE = 5.0
+MONOMOLECULAR_SHAPE_MIN = 1e-3
+MONOMOLECULAR_MAX_MIN = 1e-3
+MONOMOLECULAR_RESISTANCE_CAP = 1e6
+INVERSE_AMJAX_CPU_WALLTIME_SECONDS = 180.0
 
 JAXSCAPE_INVERSE_PROFILES = (
     ResistanceProfile(
@@ -118,8 +124,74 @@ JAXSCAPE_INVERSE_PROFILES = (
 PROFILE_BY_KEY = {profile.key: profile for profile in JAXSCAPE_INVERSE_PROFILES}
 
 
-def _permeability_from_logits(logits: jax.Array) -> jax.Array:
-    return jnn.sigmoid(logits) + jnp.array(MIN_PERMEABILITY, dtype=logits.dtype)
+def _base_resistance(permeability: jax.Array) -> jax.Array:
+    minimum = jnp.array(MIN_PERMEABILITY, dtype=permeability.dtype)
+    return 1.0 / jnp.maximum(permeability, minimum)
+
+
+def _resistancega_scale(resistance: jax.Array) -> jax.Array:
+    minimum = jnp.min(resistance)
+    maximum = jnp.max(resistance)
+    span = maximum - minimum
+    midpoint = jnp.array(
+        (MONOMOLECULAR_SCALE_MIN + MONOMOLECULAR_SCALE_MAX) / 2,
+        dtype=resistance.dtype,
+    )
+    return jnp.where(
+        span > 0,
+        (MONOMOLECULAR_SCALE_MAX - MONOMOLECULAR_SCALE_MIN)
+        / span
+        * (resistance - maximum)
+        + MONOMOLECULAR_SCALE_MAX,
+        jnp.full_like(resistance, midpoint),
+    )
+
+
+def _positive_parameter(raw: jax.Array, minimum: float) -> jax.Array:
+    return jnn.softplus(raw) + jnp.array(minimum, dtype=raw.dtype)
+
+
+def _positive_parameter_inverse(value: jax.Array, minimum: float) -> jax.Array:
+    shifted = jnp.maximum(
+        value - jnp.array(minimum, dtype=value.dtype),
+        jnp.array(1e-6, dtype=value.dtype),
+    )
+    return jnp.log(jnp.expm1(shifted))
+
+
+def _permeability_from_inverse_params(
+    params: jax.Array, base_resistance: jax.Array
+) -> jax.Array:
+    scaled_resistance = _resistancega_scale(base_resistance)
+    shape = _positive_parameter(params[0], MONOMOLECULAR_SHAPE_MIN)
+    max_resistance = _positive_parameter(params[1], MONOMOLECULAR_MAX_MIN)
+    transformed_resistance = max_resistance * (
+        1.0 - jnp.exp(-scaled_resistance / shape)
+    ) + 1.0
+    transformed_resistance = jnp.clip(
+        transformed_resistance,
+        1.0,
+        jnp.array(MONOMOLECULAR_RESISTANCE_CAP, dtype=base_resistance.dtype),
+    )
+    return jnp.maximum(
+        1.0 / transformed_resistance,
+        jnp.array(MIN_PERMEABILITY, dtype=base_resistance.dtype),
+    )
+
+
+def _initial_inverse_params(base_resistance: jax.Array) -> jax.Array:
+    dtype = base_resistance.dtype
+    init_shape = jnp.array(MONOMOLECULAR_INIT_SHAPE, dtype=dtype)
+    init_max = (
+        jnp.maximum(jnp.max(base_resistance) - 1.0, jnp.array(1e-3, dtype=dtype))
+        / (1.0 - jnp.exp(-MONOMOLECULAR_SCALE_MAX / init_shape))
+    )
+    return jnp.stack(
+        [
+            _positive_parameter_inverse(init_shape, MONOMOLECULAR_SHAPE_MIN),
+            _positive_parameter_inverse(init_max, MONOMOLECULAR_MAX_MIN),
+        ]
+    )
 
 
 def _inverse_grid(permeability: jax.Array) -> GridGraph:
@@ -161,14 +233,15 @@ def _distance_state(
 
 
 def _inverse_loss(
-    logits: jax.Array,
+    params: jax.Array,
+    base_resistance: jax.Array,
     sample_coords: jax.Array,
     target_distances: jax.Array,
     *,
     distance: ResistanceDistance,
     state: Any = None,
 ) -> jax.Array:
-    permeability = _permeability_from_logits(logits)
+    permeability = _permeability_from_inverse_params(params, base_resistance)
     grid = _inverse_grid(permeability)
     predicted = distance(
         grid,
@@ -203,69 +276,83 @@ def _run_inverse_profile_direct(
         )
     assert optx is not None
     optimistix = optx
+    inverse_settings = load_inverse_benchmark_settings().jaxscape
 
     try:
         distance = _distance_for_profile(
             solver_factory=profile.solver_factory,
             method_factory=profile.method_factory,
         )
-        dtype_context = (
-            jax.enable_x64()
-            if jnp.dtype(profile.dtype) == INVERSE_TARGET_DTYPE
-            else nullcontext()
-        )
+        dtype_context = jax.enable_x64(jnp.dtype(profile.dtype) == INVERSE_TARGET_DTYPE)
         with dtype_context:
             landscape = jax.device_put(
                 jnp.asarray(case.raster, dtype=profile.dtype), device
             )
+            base_resistance = _base_resistance(landscape)
             sample_coords = jax.device_put(as_point_array(case.points), device)
             target_distances = jax.device_put(
                 _target_distances(case, profile.dtype), device
             )
             target_values = lower_triangle_values(target_distances)
-            solver = optimistix.LBFGS(rtol=1e-5, atol=1e-5)
-            init_logits = jnp.zeros_like(landscape)
+            if inverse_settings.optimizer.lower() != "lbfgs":
+                raise ValueError(
+                    "Only the LBFGS inverse optimizer is currently supported, "
+                    f"received {inverse_settings.optimizer!r}."
+                )
+            solver = optimistix.LBFGS(
+                rtol=inverse_settings.rtol,
+                atol=inverse_settings.atol,
+            )
+            init_params = _initial_inverse_params(base_resistance)
             fixed_state = None
             if profile.requires_preparation:
-                # Benchmark design choice: reuse only the AMJax preconditioner
-                # built on the initial graph. CG state is refreshed against the
-                # current Laplacian inside the solve wrappers.
+                # Match the ResistanceGA benchmark setup: both tools optimise a
+                # transformed version of the same base surface, so AMJax can
+                # safely reuse a hierarchy built from the initial transform.
                 fixed_state = distance.init_preconditioner(
-                    _inverse_grid(_permeability_from_logits(init_logits))
+                    _inverse_grid(
+                        _permeability_from_inverse_params(init_params, base_resistance)
+                    )
                 )
 
             def objective(
-                logits: jax.Array, args: tuple[jax.Array, jax.Array]
+                params: jax.Array,
+                args: tuple[jax.Array, jax.Array, jax.Array],
             ) -> jax.Array:
-                coords, targets = args
+                reference_resistance, coords, targets = args
                 return _inverse_loss(
-                    logits,
+                    params,
+                    reference_resistance,
                     coords,
                     targets,
                     distance=distance,
                     state=fixed_state,
                 )
 
-            def solve(start_logits: jax.Array):
+            def solve(start_params: jax.Array):
                 return optimistix.minimise(
                     objective,
                     solver,
-                    start_logits,
-                    args=(sample_coords, target_distances),
-                    max_steps=INVERSE_OPTIMISTIX_MAX_STEPS,
+                    start_params,
+                    args=(base_resistance, sample_coords, target_distances),
+                    max_steps=inverse_settings.max_steps,
                     throw=False,
                 )
 
-            timings, solution = measure_runtime(solve, init_logits, repeats=repeats)
-            fitted_permeability = _permeability_from_logits(solution.value)
+            timings, solution = measure_runtime(solve, init_params, repeats=repeats)
+
+            fitted_permeability = _permeability_from_inverse_params(
+                solution.value,
+                base_resistance,
+            )
+            final_grid = _inverse_grid(fitted_permeability)
+            final_state = None
+            if profile.requires_preparation:
+                final_state = distance.init(final_grid)
             predicted_distances = distance(
-                _inverse_grid(fitted_permeability),
+                final_grid,
                 nodes=sample_coords,
-                state=_distance_state(
-                    distance,
-                    _inverse_grid(fitted_permeability),
-                    state=fixed_state,
-                ),
+                state=_distance_state(distance, final_grid, state=final_state),
             )
             final_mse = jnp.mean((predicted_distances - target_distances) ** 2)
             metrics: dict[str, Any] = fit_error_metrics(
@@ -278,11 +365,33 @@ def _run_inverse_profile_direct(
                         solution.result == optimistix.RESULTS.successful
                     ),
                     "iteration_count": int(solution.stats["num_steps"]),
-                    "iteration_limit": INVERSE_OPTIMISTIX_MAX_STEPS,
-                    "solver_preconditioner_reused": bool(profile.requires_preparation),
+                    "iteration_limit": inverse_settings.max_steps,
+                    "solver_preconditioner_reused": bool(
+                        profile.requires_preparation
+                    ),
+                    "solver_cg_state_refreshed": bool(profile.requires_preparation),
+                    "solver_preconditioner_refresh_count": 1
+                    if profile.requires_preparation
+                    else 0,
+                    "parameterization": "monomolecular_base_resistance",
+                    "parameter_count": 2,
+                    "final_shape_parameter": float(
+                        _positive_parameter(
+                            solution.value[0], MONOMOLECULAR_SHAPE_MIN
+                        )
+                    ),
+                    "final_max_parameter": float(
+                        _positive_parameter(
+                            solution.value[1], MONOMOLECULAR_MAX_MIN
+                        )
+                    ),
                     "dtype": str(jnp.dtype(profile.dtype)),
                     "backend": device.platform,
                     "target_distance_tool": INVERSE_TARGET_TOOL,
+                    "optimizer": inverse_settings.optimizer,
+                    "optimizer_rtol": inverse_settings.rtol,
+                    "optimizer_atol": inverse_settings.atol,
+                    "budget_policy": "fixed_max_steps",
                 }
             )
     except ImportError as error:
@@ -359,6 +468,15 @@ def inverse_worker_payload(
     }
 
 
+def inverse_worker_walltime_seconds(
+    profile: ResistanceProfile, backend: str
+) -> float:
+    walltime_seconds = benchmark_walltime_seconds()
+    if profile.requires_preparation and backend == "cpu":
+        return max(walltime_seconds, INVERSE_AMJAX_CPU_WALLTIME_SECONDS)
+    return walltime_seconds
+
+
 def run_worker(payload: dict[str, Any]) -> BenchmarkRecord:
     case = case_by_name(CASES["inverse"], payload["case_name"])
     profile = PROFILE_BY_KEY[payload["profile_key"]]
@@ -395,7 +513,7 @@ def run_jaxscape_inverse_profile(
         case_name=case.name,
         tool_label=tool_label,
         software="JAXScape + Optimistix",
-        walltime_seconds=benchmark_walltime_seconds(),
+        walltime_seconds=inverse_worker_walltime_seconds(profile, backend),
         logger=LOGGER,
     )
 

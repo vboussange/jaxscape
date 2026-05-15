@@ -87,7 +87,43 @@ install_if_missing <- function(packages) {
   install.packages(missing, quiet = FALSE)
 }
 
-install_if_missing(c("jsonlite", "remotes", "samc"))
+install_archive_if_missing <- function(package, version) {
+  if (requireNamespace(package, quietly = TRUE)) {
+    return(invisible(NULL))
+  }
+
+  message(sprintf("Installing archived package %s (%s)", package, version))
+  remotes::install_version(
+    package,
+    version = version,
+    upgrade = "never",
+    dependencies = NA,
+    build_vignettes = FALSE,
+    quiet = FALSE
+  )
+}
+
+install_optional_if_requested <- function(package) {
+  optional_raw <- tolower(Sys.getenv("JAXSCAPE_INSTALL_OPTIONAL_R_PACKAGES", "false"))
+  if (!(optional_raw %in% c("1", "true", "yes", "on"))) {
+    return(invisible(NULL))
+  }
+  if (requireNamespace(package, quietly = TRUE)) {
+    return(invisible(NULL))
+  }
+
+  message(sprintf("Attempting optional R package install for %s", package))
+  tryCatch(
+    install.packages(package, quiet = FALSE),
+    error = function(error) {
+      warning(sprintf("Optional package %s failed to install: %s", package, conditionMessage(error)))
+    }
+  )
+}
+
+install_if_missing(c("jsonlite", "remotes", "gdistance", "raster", "sp"))
+install_archive_if_missing("MuMIn", "1.46.0")
+install_optional_if_requested("samc")
 
 if (!requireNamespace("ResistanceGA", quietly = TRUE)) {
   message("Installing ResistanceGA from GitHub with hard dependencies only.")
@@ -100,7 +136,7 @@ if (!requireNamespace("ResistanceGA", quietly = TRUE)) {
   )
 }
 
-required_packages <- c("jsonlite", "samc", "ResistanceGA", "gdistance", "raster", "sp")
+required_packages <- c("jsonlite", "MuMIn", "ResistanceGA", "gdistance", "raster", "sp")
 missing_required <- required_packages[!vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing_required) > 0) {
   stop(sprintf("Failed to install required R benchmark packages: %s", paste(missing_required, collapse = ", ")))

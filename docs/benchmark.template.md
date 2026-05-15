@@ -1,35 +1,16 @@
-<!-- Generated from docs/benchmark.template.md by benchmark/generate_benchmark_docs.py. -->
-
 # Benchmark
 
 JAXScape ships with a benchmark workspace that keeps benchmark inputs synthetic and reproducible, records the exact runtime context used for each published artifact, and renders the benchmark page from shared metadata plus the latest benchmark result JSON.
 
-!!! tip "Observed Best JAXScape Configurations"
-    - Resistance distance: no successful JAXScape run is available for `synthetic_resistance_large` in the current artifact.
-    - Least-cost path: no successful JAXScape run is available for `synthetic_lcp_large` in the current artifact.
-    - Centrality and gradient sensitivity: no successful JAXScape run is available for `synthetic_sensitivity_large` in the current artifact.
-    - Inverse landscape genetics: `JAXScape / AMJaxCGSolver / f32 (GPU)` is the fastest successful JAXScape configuration on `synthetic_inverse_medium` at 0.033 s, final MSE 1.4, converged=False, about 9.28x faster than the matching CPU run.
+{{RECOMMENDATION_BOX}}
 
 ## Environment snapshot
 
-| Setting | Value |
-| --- | --- |
-| Requested device | `default` |
-| Available JAX platforms | `gpu` |
-| Repeats | `3` |
-| Benchmark threads | `4` |
-| CPU device | `CpuDevice(id=0)` |
-| GPU device | `CudaDevice(id=0)` |
-| Thread environment | `BENCHMARK_THREADS=4, OMP_NUM_THREADS=4, OPENBLAS_NUM_THREADS=4, MKL_NUM_THREADS=4, VECLIB_MAXIMUM_THREADS=4, NUMEXPR_NUM_THREADS=4, JULIA_NUM_THREADS=4, RCPP_PARALLEL_NUM_THREADS=4, RCPPTHREAD_NUM_THREADS=4, XLA_FLAGS=--xla_cpu_multi_thread_eigen=true intra_op_parallelism_threads=4` |
+{{ENVIRONMENT_TABLE}}
 
 ## Compatibility summary
 
-| Feature | Published benchmark coverage | Notes |
-| --- | --- | --- |
-| Resistance distance | `JAXScape`, `gdistance`, `Circuitscape.jl` | The published `gdistance` series is rescaled from commute time to effective resistance by dividing by graph volume. |
-| Least-cost path | `JAXScape`, `gdistance` | The published comparison uses the same grid-graph least-cost task in JAXScape and `gdistance`. |
-| Centrality and gradient sensitivity | `JAXScape`, `gdistance` | The chart compares JAXScape gradients against the closest path-incidence or passage-centrality reference available in `gdistance`. |
-| Inverse landscape genetics | `JAXScape`, `ResistanceGA` | Runtime, convergence status, and final fit quality are reported together for the optimization benchmark. |
+{{COMPATIBILITY_TABLE}}
 
 ## Fairness policy
 
@@ -43,7 +24,7 @@ Formal problem: given an undirected grid graph $G = (V, E)$ with conductance wei
 
 Published benchmark coverage:
 
-`JAXScape`, `gdistance`, `Circuitscape.jl`
+{{RESISTANCE_PROFILES}}
 
 <div align="center"><img src="assets/benchmark_resistance_distance.png" alt="Resistance distance benchmark scorecard" width="900"></div>
 
@@ -53,7 +34,7 @@ Formal problem: given the same grid graph and sampled node set $S$, compute the 
 
 Published benchmark coverage:
 
-`JAXScape`, `gdistance`
+{{LCP_PROFILES}}
 
 <div align="center"><img src="assets/benchmark_least_cost_path.png" alt="Least-cost path benchmark scorecard" width="900"></div>
 
@@ -63,7 +44,7 @@ The sensitivity benchmark differentiates scalar connectivity objectives with res
 
 Published benchmark coverage:
 
-`JAXScape`, `gdistance`
+{{SENSITIVITY_PROFILES}}
 
 <div align="center"><img src="assets/benchmark_sensitivity_analysis.png" alt="Sensitivity analysis benchmark scorecard" width="900"></div>
 
@@ -77,7 +58,7 @@ $$
 
 Published benchmark coverage:
 
-`JAXScape`, `ResistanceGA`
+{{INVERSE_PROFILES}}
 
 The published inverse benchmark aligns JAXScape and ResistanceGA around the same base-surface task. JAXScape optimizes a differentiable monomolecular transform of the base resistance surface derived from the synthetic raster, using two learnable parameters that mirror ResistanceGA's `select.trans = list("M")` setup. AMJax profiles build one preconditioner from that initial transformed graph and then reuse it while JAXScape refreshes CG state against each current operator.
 

@@ -56,6 +56,14 @@ class CholmodSolver(AbstractLinearSolver):
 
     !!! warning
         `cholespy` must be installed to use this solver.
+
+    !!! warning
+        Float64 callback-backed solves require process-wide x64 support to be
+        enabled before JAX work starts, e.g. via `JAX_ENABLE_X64=1` or
+        `jax.config.update("jax_enable_x64", True)`. A thread-local
+        `with jax.enable_x64()` block is not sufficient for host callback
+        threads, and can surface as a callback dtype mismatch such as
+        `Expected: float64, Actual: float32`.
     """
 
     factorize_in_init: bool = True
@@ -86,7 +94,11 @@ class CholmodSolver(AbstractLinearSolver):
                 factor = _factorize_host(A_bcoo, solve_dtype)
         return A_bcoo, packed_structures, factor
 
-    def _compute_host(self, A_bcoo: BCOO, b_jax: JaxArray) -> np.ndarray:
+    def _compute_host(
+        self,
+        A_bcoo: BCOO,
+        b_jax: JaxArray,
+    ) -> np.ndarray:
         """
         Solve the linear system using CHOLMOD via cholespy.
 
