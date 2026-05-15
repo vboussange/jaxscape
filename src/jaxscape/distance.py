@@ -71,8 +71,8 @@ class AbstractDistance(eqx.Module):
         nodes: Array | None = None,
         state: Any = None,
     ) -> Array:
-        if state is None and not _contains_tracer(graph):
-            state = self.init(graph)
+        if state is None:
+            state = self.init(jax.tree.map(jax.lax.stop_gradient, graph))
 
         if nodes is not None:
             assert (
@@ -139,7 +139,3 @@ class AbstractDistance(eqx.Module):
     def all_pairs_distance(self, graph: AbstractGraph, state: Any = None) -> Array:
         pass
 
-
-def _contains_tracer(pytree: Any) -> bool:
-    leaves = jax.tree.leaves(pytree)
-    return any(isinstance(leaf, jax.core.Tracer) for leaf in leaves)
