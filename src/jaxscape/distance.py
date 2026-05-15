@@ -2,6 +2,7 @@ from abc import abstractmethod
 from typing import Any
 
 import equinox as eqx
+import jax
 import jax.numpy as jnp
 from jax import Array
 
@@ -70,7 +71,7 @@ class AbstractDistance(eqx.Module):
         nodes: Array | None = None,
         state: Any = None,
     ) -> Array:
-        if state is None:
+        if state is None and not _contains_tracer(graph):
             state = self.init(graph)
 
         if nodes is not None:
@@ -137,3 +138,8 @@ class AbstractDistance(eqx.Module):
     @abstractmethod
     def all_pairs_distance(self, graph: AbstractGraph, state: Any = None) -> Array:
         pass
+
+
+def _contains_tracer(pytree: Any) -> bool:
+    leaves = jax.tree.leaves(pytree)
+    return any(isinstance(leaf, jax.core.Tracer) for leaf in leaves)

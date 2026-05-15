@@ -91,6 +91,23 @@ def test_lineax_solver_resistance_distance(solver):
     assert jnp.allclose(dist_pinv, dist_lineax, rtol=1e-4)
 
 
+@pytest.mark.skipif(not CHOLMOD_AVAILABLE, reason="Cholmod not available")
+def test_cholmod_nodes_to_nodes_distance_differentiability_without_explicit_state():
+    nodes = jnp.array([0, 1, 3, 4], dtype=jnp.int32)
+    distance = ResistanceDistance(solver=CholmodSolver())
+
+    def objective(permeability):
+        graph = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
+        return jnp.sum(distance(graph, nodes=nodes))
+
+    permeability = jnp.ones((3, 3), dtype=jnp.float32)
+    gradient = jax.grad(objective)(permeability)
+
+    assert isinstance(gradient, jax.Array)
+    assert gradient.shape == permeability.shape
+    assert jnp.all(jnp.isfinite(gradient))
+
+
 def test_approximate_resistance_distance():
     """
     Tests that the Spielman approximation is jittable and close to the
