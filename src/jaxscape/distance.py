@@ -72,6 +72,9 @@ class AbstractDistance(eqx.Module):
         state: Any = None,
     ) -> Array:
         if state is None:
+            # Solver state is setup data, not part of the differentiable solve.
+            # Stop gradients here so auto-initialized state matches Lineax's
+            # `state=None` semantics and never carries tangents into custom VJPs.
             state = self.init(jax.tree.map(jax.lax.stop_gradient, graph))
 
         if nodes is not None:
@@ -138,4 +141,3 @@ class AbstractDistance(eqx.Module):
     @abstractmethod
     def all_pairs_distance(self, graph: AbstractGraph, state: Any = None) -> Array:
         pass
-
