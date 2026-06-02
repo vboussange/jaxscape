@@ -84,6 +84,7 @@ def batched_linear_solve(
 # semantics, while the backward rule below applies the standard full-rank linear
 # solve adjoint without passing through JAX's broken transpose rule for vmapped
 # `BCOO @ vector` products.
+# TODO: this could be not needed anymore thanks to fix https://github.com/jax-ml/jax/issues/37647#event-25863292581
 @eqx.filter_custom_vjp
 def _batched_linear_solve(
     solve_args: tuple[Array, Array],

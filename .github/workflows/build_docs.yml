@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -12,10 +11,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      BENCHMARK_THREADS: "4"
-      JULIA_DEPOT_PATH: ${{ github.workspace }}/benchmark/.julia
-      R_LIBS_USER: ${{ github.workspace }}/benchmark/.r-lib
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -30,58 +25,19 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Set up Julia
-        uses: julia-actions/setup-julia@v2
-        with:
-          version: "1.11"
-
-      - name: Set up R
-        uses: r-lib/actions/setup-r@v2
-
       - name: Set cache ID
-        id: cache-id
-        run: echo "cache_id=$(date --utc '+%V')" >> "$GITHUB_OUTPUT"
+        run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV 
       
       - name: Cache dependencies
         uses: actions/cache@v4
         with:
-          key: mkdocs-material-${{ steps.cache-id.outputs.cache_id }}
+          key: mkdocs-material-${{ env.cache_id }}
           path: ~/.cache 
           restore-keys: |
             mkdocs-material-
 
-      - name: Cache benchmark toolchains
-        uses: actions/cache@v4
-        with:
-          key: benchmark-toolchains-${{ runner.os }}-${{ hashFiles('benchmark/install_external_tools.sh', 'benchmark/external/install_r_packages.R', 'benchmark/julia/Project.toml') }}
-          path: |
-            benchmark/.julia
-            benchmark/.r-lib
-          restore-keys: |
-            benchmark-toolchains-${{ runner.os }}-
-
-      - name: Install system libraries for benchmark R packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gfortran libgdal-dev libgeos-dev libproj-dev libudunits2-dev libcurl4-openssl-dev libssl-dev libxml2-dev
-
       - name: Install the project
-        run: uv sync --extra docs --extra benchmark
-
-      - name: Install external benchmark toolchains
-        run: ./benchmark/install_external_tools.sh
-
-      - name: Run benchmark suite
-        run: ./benchmark/run_benchmarks.sh --device cpu --require-complete
-
-      - name: Upload benchmark artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: benchmark-artifacts
-          path: |
-            benchmark/results/benchmark_results.json
-            benchmark/results/benchmark_results.csv
-            docs/assets/benchmark_*.png
+        run: uv sync --extra docs
         
       - name: Build and deploy documentation
         run: |

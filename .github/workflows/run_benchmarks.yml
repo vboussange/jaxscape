@@ -5,7 +5,6 @@ on:
 
 jobs:
   benchmark:
-    if: ${{ false }}
     runs-on: ubuntu-latest
     env:
       BENCHMARK_THREADS: "4"
@@ -44,19 +43,21 @@ jobs:
           sudo apt-get install -y gfortran libgdal-dev libgeos-dev libproj-dev libudunits2-dev libcurl4-openssl-dev libssl-dev libxml2-dev
 
       - name: Install the project
-        run: uv sync --extra benchmark
+        run: uv sync --extra benchmark --extra amjax --extra cholespy
 
       - name: Install external benchmark toolchains
         run: ./benchmark/install_external_tools.sh
 
-      - name: Run benchmark suite
-        run: ./benchmark/run_benchmarks.sh --device cpu --require-complete
+      - name: Run full CPU benchmark
+        run: ./benchmark/run_benchmarks.sh --device cpu
 
-      - name: Upload benchmark artifacts
+      - name: Upload full benchmark artifacts
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: benchmark-artifacts
+          name: benchmark-full-cpu-artifacts
           path: |
             benchmark/results/benchmark_results.json
             benchmark/results/benchmark_results.csv
+            docs/benchmark.md
             docs/assets/benchmark_*.png
