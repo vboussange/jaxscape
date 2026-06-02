@@ -26,7 +26,7 @@ Published benchmark coverage:
 
 {{RESISTANCE_PROFILES}}
 
-<div align="center"><img src="assets/benchmark_resistance_distance.png" alt="Resistance distance benchmark scorecard" width="900"></div>
+<div align="center"><img src="../assets/benchmark_resistance_distance.png" alt="Resistance distance benchmark scorecard" width="900"></div>
 
 ## Least-cost path
 
@@ -36,7 +36,7 @@ Published benchmark coverage:
 
 {{LCP_PROFILES}}
 
-<div align="center"><img src="assets/benchmark_least_cost_path.png" alt="Least-cost path benchmark scorecard" width="900"></div>
+<div align="center"><img src="../assets/benchmark_least_cost_path.png" alt="Least-cost path benchmark scorecard" width="900"></div>
 
 ## Sensitivity analysis
 
@@ -46,7 +46,7 @@ Published benchmark coverage:
 
 {{SENSITIVITY_PROFILES}}
 
-<div align="center"><img src="assets/benchmark_sensitivity_analysis.png" alt="Sensitivity analysis benchmark scorecard" width="900"></div>
+<div align="center"><img src="../assets/benchmark_sensitivity_analysis.png" alt="Sensitivity analysis benchmark scorecard" width="900"></div>
 
 ## Inverse landscape genetics
 
@@ -62,7 +62,7 @@ Published benchmark coverage:
 
 The published inverse benchmark aligns JAXScape and ResistanceGA around the same base-surface task. JAXScape optimizes a differentiable monomolecular transform of the base resistance surface derived from the synthetic raster, using two learnable parameters that mirror ResistanceGA's `select.trans = list("M")` setup. AMJax profiles build one preconditioner from that initial transformed graph and then reuse it while JAXScape refreshes CG state against each current operator.
 
-<div align="center"><img src="assets/benchmark_inverse_landscape_genetics.png" alt="Inverse landscape genetics benchmark scorecard" width="900"></div>
+<div align="center"><img src="../assets/benchmark_inverse_landscape_genetics.png" alt="Inverse landscape genetics benchmark scorecard" width="900"></div>
 
 ## Regenerate locally
 
