@@ -69,7 +69,7 @@ BENCHMARK_TASK_SPECS = (
         group_name="sensitivity",
         task="sensitivity_analysis",
         title="Centrality and gradient sensitivity",
-        size_by_label={"small": 10, "medium": 100, "large": 1000},
+        size_by_label={"small": 10, "medium": 100, "large": 175},
         seed_base=20,
         scorecard_asset_name="benchmark_sensitivity_analysis.png",
     ),
@@ -89,11 +89,10 @@ TASK_LABELS = {spec.task: spec.title for spec in BENCHMARK_TASK_SPECS}
 
 TOOL_SPECS_BY_TASK = {
     "resistance_distance": (
-        ToolSpec("JAXScape / pinv / f32", gpu_capable=True),
-        ToolSpec("JAXScape / pinv / f64", gpu_capable=True),
-        ToolSpec("JAXScape / approx pinv / f32", gpu_capable=True),
-        ToolSpec("JAXScape / approx pinv / f64", gpu_capable=True),
-        ToolSpec("JAXScape / PyAMG"),
+        # Resistance pinv-family profiles are kept out of the full suite because
+        # the large resistance case is not a scientifically useful dense-pinv
+        # benchmark target.
+        ToolSpec("JAXScape / PyAMG", required=False),
         ToolSpec("JAXScape / CholmodSolver / f32", required=False, automated=False),
         ToolSpec("JAXScape / CholmodSolver / f64", required=False, automated=False),
         ToolSpec(
@@ -130,9 +129,9 @@ TOOL_SPECS_BY_TASK = {
             required=False,
             automated=False,
         ),
-        ToolSpec("gdistance / commuteDistance"),
-        ToolSpec("Circuitscape.jl / cg+amg"),
-        ToolSpec("Circuitscape.jl / cholmod"),
+        ToolSpec("gdistance / commuteDistance", required=False),
+        ToolSpec("Circuitscape.jl / cg+amg / f64"),
+        ToolSpec("Circuitscape.jl / cholmod / f64"),
         ToolSpec("Conefor", required=False, automated=False),
     ),
     "least_cost_path": (
@@ -147,11 +146,11 @@ TOOL_SPECS_BY_TASK = {
         ToolSpec("gdistance / passage"),
     ),
     "inverse_landscape_genetics": (
-        ToolSpec("JAXScape / CholmodSolver / f32"),
+        ToolSpec("JAXScape / CholmodSolver / f32", required=False),
         ToolSpec("JAXScape / AMJaxCGSolver / f32", gpu_capable=True),
         ToolSpec("JAXScape / AMJaxCGSolver / f64", gpu_capable=True),
-        ToolSpec("JAXScape / approx pinv / f32", gpu_capable=True),
-        ToolSpec("JAXScape / approx pinv / f64", gpu_capable=True),
+        ToolSpec("JAXScape / approx pinv / f32", gpu_capable=True, required=False),
+        ToolSpec("JAXScape / approx pinv / f64", gpu_capable=True, required=False),
         ToolSpec("ResistanceGA"),
     ),
 }

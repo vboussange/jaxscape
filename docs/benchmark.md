@@ -5,16 +5,16 @@
 JAXScape ships with a benchmark workspace that keeps benchmark inputs synthetic and reproducible, records the exact runtime context used for each published artifact, and renders the benchmark page from shared metadata plus the latest benchmark result JSON.
 
 !!! tip "Observed Best JAXScape Configurations"
-    - Resistance distance: no successful JAXScape run is available for `synthetic_resistance_large` in the current artifact.
+    - Resistance distance: `JAXScape / AMJaxCGSolver / f64 (GPU)` is the fastest successful JAXScape configuration on `synthetic_resistance_large` at 0.331 s, about 42.24x faster than the matching CPU run.
     - Least-cost path: no successful JAXScape run is available for `synthetic_lcp_large` in the current artifact.
-    - Centrality and gradient sensitivity: no successful JAXScape run is available for `synthetic_sensitivity_large` in the current artifact.
-    - Inverse landscape genetics: `JAXScape / AMJaxCGSolver / f32 (GPU)` is the fastest successful JAXScape configuration on `synthetic_inverse_medium` at 0.033 s, final MSE 1.4, converged=False, about 9.28x faster than the matching CPU run.
+    - Centrality and gradient sensitivity: `JAXScape / shortest-path gradient (GPU)` is the fastest successful JAXScape configuration on `synthetic_sensitivity_large` at 1.305 s, about 52.76x faster than the matching CPU run.
+    - Inverse landscape genetics: `JAXScape / AMJaxCGSolver / f32 (GPU)` is the fastest successful JAXScape configuration on `synthetic_inverse_medium` at 0.231 s, final MSE 4.96e+05, converged=True, about 50.52x faster than the matching CPU run.
 
 ## Environment snapshot
 
 | Setting | Value |
 | --- | --- |
-| Requested device | `default` |
+| Requested device | `gpu` |
 | Available JAX platforms | `gpu` |
 | Repeats | `3` |
 | Benchmark threads | `4` |
@@ -28,12 +28,12 @@ JAXScape ships with a benchmark workspace that keeps benchmark inputs synthetic 
 | --- | --- | --- |
 | Resistance distance | `JAXScape`, `gdistance`, `Circuitscape.jl` | The published `gdistance` series is rescaled from commute time to effective resistance by dividing by graph volume. |
 | Least-cost path | `JAXScape`, `gdistance` | The published comparison uses the same grid-graph least-cost task in JAXScape and `gdistance`. |
-| Centrality and gradient sensitivity | `JAXScape`, `gdistance` | The chart compares JAXScape gradients against the closest path-incidence or passage-centrality reference available in `gdistance`. |
-| Inverse landscape genetics | `JAXScape`, `ResistanceGA` | Runtime, convergence status, and final fit quality are reported together for the optimization benchmark. |
+| Centrality and gradient sensitivity | `JAXScape`, `gdistance` | The chart compares single-origin JAXScape gradients against the matching single-origin `gdistance::shortestPath` incidence and `gdistance::passage(..., totalNet = "total")` references on the same origin/destination set. |
+| Inverse landscape genetics | `JAXScape`, `ResistanceGA` | Runtime, convergence status, and final fit quality are reported together; the published fit-quality chart uses relative RMSE because raw inverse MSE is not directly comparable across the current tool-specific objective scales. |
 
 ## Fairness policy
 
-All automated runs use deterministic synthetic landscapes on 4-neighbour grid graphs and report the median of three repeats per case. Resistance, least-cost, and sensitivity tasks share the same raster-to-graph parameterization, the same site-sampling policy, and the same published thread budget across Python, Julia, and R. The environment snapshot above is rendered directly from the benchmark artifact so the documented runtime context tracks the actual run rather than a hand-maintained description.
+All automated runs use deterministic synthetic landscapes on 4-neighbour grid graphs and report median runtimes from the repeat count recorded in each benchmark artifact. Resistance, least-cost, and sensitivity tasks share the same raster-to-graph parameterization, the same site-sampling policy, and the same published thread budget across Python, Julia, and R. The sensitivity benchmark uses a task-specific large grid because exact reverse-mode centrality objectives have much higher memory growth than distance-matrix queries; the large sensitivity case records one timed repeat, while smaller cases use the suite repeat count. The environment snapshot above is rendered directly from the benchmark artifact so the documented runtime context tracks the actual run rather than a hand-maintained description.
 
 Cross-software comparisons are only published when the task definition is close enough to interpret. For resistance distance, the `gdistance` series is rescaled from commute time to effective resistance by dividing by graph volume. For inverse landscape genetics, runtime and fit quality are reported together so budget-limited or non-converged runs remain visible.
 
@@ -59,7 +59,7 @@ Published benchmark coverage:
 
 ## Sensitivity analysis
 
-The sensitivity benchmark differentiates scalar connectivity objectives with respect to raster entries, then compares the resulting JAXScape gradient surfaces to the closest available `gdistance` references. The scorecard reports runtime together with cosine similarity against the reference surface.
+The sensitivity benchmark differentiates scalar connectivity objectives with respect to raster entries, then compares the resulting JAXScape gradient surfaces to matched single-origin `gdistance` references on the same origin/destination set and shared cost surface. The shortest-path side uses summed `gdistance::shortestPath` incidence rasters, while the resistance side uses summed `gdistance::passage(..., totalNet = "total")` rasters. The scorecard reports runtime together with cosine similarity against the reference surface.
 
 Published benchmark coverage:
 

@@ -14,6 +14,7 @@ RESULTS_JSON="${RUN_DIR}/benchmark_results.json"
 RESULTS_CSV="${RUN_DIR}/benchmark_results.csv"
 STDOUT_LOG="${LOG_DIR}/stdout.log"
 STDERR_LOG="${LOG_DIR}/stderr.log"
+STATUS_LOG="${RUN_DIR}/run_status.txt"
 
 mkdir -p "${LOG_DIR}" "${ASSET_DIR}"
 
@@ -68,9 +69,10 @@ echo "  CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES}"
 echo "  results=${RESULTS_JSON}"
 echo "  stdout=${STDOUT_LOG}"
 echo "  stderr=${STDERR_LOG}"
+echo "  status=${STATUS_LOG}"
 
 nohup bash -lc '
-set -euo pipefail
+set -uo pipefail
 cd "'$PWD'"
 export BENCHMARK_THREADS="'"${BENCHMARK_THREADS}"'"
 export OMP_NUM_THREADS="'"${OMP_NUM_THREADS}"'"
@@ -83,9 +85,26 @@ export RCPP_PARALLEL_NUM_THREADS="'"${RCPP_PARALLEL_NUM_THREADS}"'"
 export RCPPTHREAD_NUM_THREADS="'"${RCPPTHREAD_NUM_THREADS}"'"
 export XLA_FLAGS="'"${XLA_FLAGS}"'"
 export CUDA_VISIBLE_DEVICES="'"${CUDA_VISIBLE_DEVICES}"'"
-'"${PYTHON_RUNNER[*]}"' benchmark/benchmark_distances.py --device gpu --require-complete --results-json "'"${RESULTS_JSON}"'" --results-csv "'"${RESULTS_CSV}"'"
-'"${PYTHON_RUNNER[*]}"' benchmark/render_scorecard.py --results-json "'"${RESULTS_JSON}"'" --output-dir "'"${ASSET_DIR}"'"
-'"${PYTHON_RUNNER[*]}"' benchmark/generate_benchmark_docs.py --results-json "'"${RESULTS_JSON}"'" --output "'"${RUN_DIR}"'"/benchmark.md
+benchmark_exit=0
+render_exit=0
+docs_exit=0
+'"${PYTHON_RUNNER[*]}"' benchmark/benchmark_distances.py --device gpu --require-complete --results-json "'"${RESULTS_JSON}"'" --results-csv "'"${RESULTS_CSV}"'" || benchmark_exit=$?
+if [[ -f "'"${RESULTS_JSON}"'" ]]; then
+	'"${PYTHON_RUNNER[*]}"' benchmark/render_scorecard.py --results-json "'"${RESULTS_JSON}"'" --output-dir "'"${ASSET_DIR}"'" || render_exit=$?
+	'"${PYTHON_RUNNER[*]}"' benchmark/generate_benchmark_docs.py --results-json "'"${RESULTS_JSON}"'" --output "'"${RUN_DIR}"'"/benchmark.md || docs_exit=$?
+fi
+{
+	echo "benchmark_exit=${benchmark_exit}"
+	echo "render_exit=${render_exit}"
+	echo "docs_exit=${docs_exit}"
+} > "'"${STATUS_LOG}"'"
+if [[ ${benchmark_exit} -ne 0 ]]; then
+	exit ${benchmark_exit}
+fi
+if [[ ${render_exit} -ne 0 ]]; then
+	exit ${render_exit}
+fi
+exit ${docs_exit}
 ' >"${STDOUT_LOG}" 2>"${STDERR_LOG}" &
 
 echo $! > "${RUN_DIR}/pid"

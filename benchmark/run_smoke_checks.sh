@@ -50,4 +50,35 @@ elif ! command -v python >/dev/null 2>&1; then
 	exit 1
 fi
 
-"${PYTHON_RUNNER[@]}" benchmark/smoke_check.py "$@"
+SMOKE_RESULTS_JSON="${SMOKE_RESULTS_JSON:-benchmark/results/smoke/benchmark_smoke_results.json}"
+SMOKE_RESULTS_CSV="${SMOKE_RESULTS_CSV:-benchmark/results/smoke/benchmark_smoke_results.csv}"
+SMOKE_OUTPUT_DIR="${SMOKE_OUTPUT_DIR:-benchmark/results/smoke/assets}"
+SMOKE_DOC_PATH="${SMOKE_DOC_PATH:-benchmark/results/smoke/benchmark.md}"
+
+"${PYTHON_RUNNER[@]}" benchmark/smoke_check.py \
+	--results-json "${SMOKE_RESULTS_JSON}" \
+	--results-csv "${SMOKE_RESULTS_CSV}" \
+	"$@"
+
+"${PYTHON_RUNNER[@]}" benchmark/render_scorecard.py \
+	--results-json "${SMOKE_RESULTS_JSON}" \
+	--output-dir "${SMOKE_OUTPUT_DIR}"
+
+"${PYTHON_RUNNER[@]}" benchmark/generate_benchmark_docs.py \
+	--results-json "${SMOKE_RESULTS_JSON}" \
+	--output "${SMOKE_DOC_PATH}"
+
+if [[ ! -f "${SMOKE_RESULTS_JSON}" || ! -f "${SMOKE_RESULTS_CSV}" || ! -f "${SMOKE_DOC_PATH}" ]]; then
+	echo "Smoke pipeline did not produce the expected result artifacts." >&2
+	exit 1
+fi
+
+if [[ $(find "${SMOKE_OUTPUT_DIR}" -maxdepth 1 -name 'benchmark_*.png' | wc -l) -lt 4 ]]; then
+	echo "Smoke pipeline did not produce the expected scorecard assets." >&2
+	exit 1
+fi
+
+if [[ $(find "${SMOKE_OUTPUT_DIR}" -maxdepth 1 -name 'benchmark_*.pdf' | wc -l) -lt 4 ]]; then
+	echo "Smoke pipeline did not produce the expected PDF scorecard assets." >&2
+	exit 1
+fi

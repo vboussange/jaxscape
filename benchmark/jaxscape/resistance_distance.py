@@ -62,18 +62,9 @@ from benchmark.jaxscape.resistance_profile_support import (
 
 
 JAXSCAPE_RESISTANCE_PROFILES = (
-    ResistanceProfile(
-        "pinv_f32",
-        "JAXScape / pinv / f32",
-        gpu_capable=True,
-        dtype=jnp.float32,
-    ),
-    ResistanceProfile(
-        "pinv_f64",
-        "JAXScape / pinv / f64",
-        gpu_capable=True,
-        dtype=jnp.float64,
-    ),
+    # Resistance pinv profiles are intentionally excluded from the full
+    # benchmark suite because the large resistance case is structurally
+    # infeasible for dense pseudoinverse evaluation.
     ResistanceProfile("pyamg", "JAXScape / PyAMG", solver_factory=make_pyamg_solver),
     ResistanceProfile(
         "cholmod_f32",
@@ -103,20 +94,7 @@ JAXSCAPE_RESISTANCE_PROFILES = (
         requires_preparation=True,
         dtype=jnp.float64,
     ),
-    ResistanceProfile(
-        "approx_pinv_f32",
-        "JAXScape / approx pinv / f32",
-        method_factory=make_spielman_method,
-        gpu_capable=True,
-        dtype=jnp.float32,
-    ),
-    ResistanceProfile(
-        "approx_pinv_f64",
-        "JAXScape / approx pinv / f64",
-        method_factory=make_spielman_method,
-        gpu_capable=True,
-        dtype=jnp.float64,
-    ),
+    # Approximate pinv variants are also excluded here for the same reason.
     ResistanceProfile(
         "approx_amjaxcg_f32",
         "JAXScape / approx AMJaxCGSolver / f32",

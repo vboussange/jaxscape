@@ -110,12 +110,6 @@ Published results and task definitions are available in the
 To reproduce the suite or run it on a local CPU/GPU device, follow the
 instructions in [`benchmark/README.md`](benchmark/README.md).
 
-## Features and roadmap 🚀
-See issues; most notably:
-
-- [ ] Support for direct and iterative linear sparse solvers on GPU (cf [spineax](https://github.com/johnviljoen/spineax))
-- [ ] Benchmark against `CircuitScape`, `ConScape.jl` and [`radish`](https://github.com/nspope/radish).
-
 ## License
 
 `jaxscape` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.

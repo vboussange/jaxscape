@@ -51,7 +51,7 @@ if (is.na(benchmark_threads) || benchmark_threads < 1) {
 seed_inputs <- ResistanceGA::gdist.prep(
   n.Pops = n_samples,
   samples = sample_locales,
-  method = "costDistance"
+  method = "commuteDistance"
 )
 response_vector <- as.vector(ResistanceGA::Run_gdistance(gdist.inputs = seed_inputs, r = resistance_raster, scl = FALSE))
 
@@ -71,6 +71,7 @@ fit_error_metrics <- function(result, target_vector) {
   converged <- !is.null(ga_result) && ga_result@iter < ga_result@maxiter
 
   list(
+    final_mse = unname(mean(residual ^ 2)),
     rmse = unname(rmse),
     relative_rmse = unname(if (reference_scale > 0) rmse / reference_scale else rmse),
     aicc = if (!is.null(result$AICc) && nrow(result$AICc) > 0) unname(result$AICc$AICc[[1]]) else NULL,
@@ -84,6 +85,7 @@ fit_error_metrics <- function(result, target_vector) {
     ga_run = ga_run,
     ga_max_cont = ga_max_cont,
     ga_seed = ga_seed,
+    objective_distance_family = "commuteDistance",
     budget_policy = "fixed_ga_iterations"
   )
 }
@@ -95,7 +97,7 @@ run_once <- function() {
     n.Pops = n_samples,
     response = response_vector,
     samples = sample_locales,
-    method = "costDistance"
+    method = "commuteDistance"
   )
   ga_inputs <- ResistanceGA::GA.prep(
     ASCII.dir = resistance_raster,
@@ -136,6 +138,6 @@ payload <- list(
   timings_seconds = as.list(unname(timings)),
   median_seconds = stats::median(timings),
   metrics = last_run$metrics,
-  note = "Fixed-budget ResistanceGA calibration against the synthetic least-cost response generated from the benchmark raster."
+  note = "Fixed-budget ResistanceGA calibration against the synthetic commute-distance response generated from the benchmark raster."
 )
 jsonlite::write_json(payload, output_path, auto_unbox = TRUE, pretty = TRUE, null = "null")

@@ -68,7 +68,7 @@ pyamg = [
   "pyamg>=5.1.0"
 ]
 amjax = [
-  "amjax"
+  "amjax>= 0.0.1"
 ]
 tests = [
   "networkx>=3.4",
@@ -87,9 +87,6 @@ reportIncompatibleMethodOverride = true
 # TODO: currently not testing with jaxtyping and beartype
 # [tool.pytest.ini_options]
 # addopts = "--jaxtyping-packages=jaxscape,beartype.beartype(conf=beartype.BeartypeConf(strategy=beartype.BeartypeStrategy.On))"
-
-[tool.uv.sources]
-amjax = { git = "https://github.com/vboussange/AMJax" }
 
 [tool.ruff]
 extend-include = ["*.ipynb"]

@@ -39,6 +39,7 @@ from jaxscape import GridGraph, ResistanceDistance
 from benchmark.benchmark_distances import (
     as_point_array,
     backend_tool_label,
+    benchmark_graph_volume,
     BenchmarkCase,
     BenchmarkConfig,
     BenchmarkRecord,
@@ -73,7 +74,7 @@ else:
 
 
 INVERSE_TARGET_DTYPE = jnp.dtype(jnp.float64)
-INVERSE_TARGET_TOOL = "JAXScape / CholmodSolver"
+INVERSE_TARGET_TOOL = "JAXScape / CholmodSolver / commuteDistance"
 LOGGER = logging.getLogger(__name__)
 MONOMOLECULAR_SCALE_MIN = 0.0
 MONOMOLECULAR_SCALE_MAX = 10.0
@@ -210,7 +211,14 @@ def _distance_for_profile(
     return ResistanceDistance(solver=solver, method=method)
 
 
-def _target_distances(case: BenchmarkCase, dtype: Any) -> jax.Array:
+def _commute_distance_matrix(
+    effective_resistance: jax.Array, permeability: jax.Array
+) -> jax.Array:
+    graph_volume = benchmark_graph_volume(permeability)
+    return effective_resistance * graph_volume
+
+
+def _target_effective_resistance(case: BenchmarkCase, dtype: Any) -> jax.Array:
     target_distance = _distance_for_profile(solver_factory=make_cholmod_solver)
     with jax.enable_x64():
         target_landscape = jnp.asarray(case.raster, dtype=INVERSE_TARGET_DTYPE)
@@ -219,6 +227,14 @@ def _target_distances(case: BenchmarkCase, dtype: Any) -> jax.Array:
             _inverse_grid(target_landscape), nodes=target_nodes
         )
     return jnp.asarray(target_matrix, dtype=dtype)
+
+
+def _target_commute_distance(case: BenchmarkCase, dtype: Any) -> jax.Array:
+    with jax.enable_x64():
+        target_landscape = jnp.asarray(case.raster, dtype=INVERSE_TARGET_DTYPE)
+        target_effective = _target_effective_resistance(case, INVERSE_TARGET_DTYPE)
+        target_commute = _commute_distance_matrix(target_effective, target_landscape)
+    return jnp.asarray(target_commute, dtype=dtype)
 
 
 def _distance_state(
@@ -290,10 +306,13 @@ def _run_inverse_profile_direct(
             )
             base_resistance = _base_resistance(landscape)
             sample_coords = jax.device_put(as_point_array(case.points), device)
-            target_distances = jax.device_put(
-                _target_distances(case, profile.dtype), device
+            target_effective_distances = jax.device_put(
+                _target_effective_resistance(case, profile.dtype), device
             )
-            target_values = lower_triangle_values(target_distances)
+            target_commute_distances = jax.device_put(
+                _target_commute_distance(case, profile.dtype), device
+            )
+            target_values = lower_triangle_values(target_commute_distances)
             if inverse_settings.optimizer.lower() != "lbfgs":
                 raise ValueError(
                     "Only the LBFGS inverse optimizer is currently supported, "
@@ -334,7 +353,7 @@ def _run_inverse_profile_direct(
                     objective,
                     solver,
                     start_params,
-                    args=(base_resistance, sample_coords, target_distances),
+                    args=(base_resistance, sample_coords, target_effective_distances),
                     max_steps=inverse_settings.max_steps,
                     throw=False,
                 )
@@ -354,13 +373,24 @@ def _run_inverse_profile_direct(
                 nodes=sample_coords,
                 state=_distance_state(distance, final_grid, state=final_state),
             )
-            final_mse = jnp.mean((predicted_distances - target_distances) ** 2)
+            predicted_commute_distances = _commute_distance_matrix(
+                predicted_distances,
+                fitted_permeability,
+            )
+            final_mse = jnp.mean(
+                (predicted_commute_distances - target_commute_distances) ** 2
+            )
             metrics: dict[str, Any] = fit_error_metrics(
-                lower_triangle_values(predicted_distances), target_values
+                lower_triangle_values(predicted_commute_distances), target_values
             )
             metrics.update(
                 {
                     "final_mse": float(final_mse),
+                    "optimizer_final_mse": float(
+                        jnp.mean(
+                            (predicted_distances - target_effective_distances) ** 2
+                        )
+                    ),
                     "converged": bool(
                         solution.result == optimistix.RESULTS.successful
                     ),
@@ -388,6 +418,8 @@ def _run_inverse_profile_direct(
                     "dtype": str(jnp.dtype(profile.dtype)),
                     "backend": device.platform,
                     "target_distance_tool": INVERSE_TARGET_TOOL,
+                    "objective_distance_family": "effective_resistance",
+                    "reported_distance_family": "commuteDistance",
                     "optimizer": inverse_settings.optimizer,
                     "optimizer_rtol": inverse_settings.rtol,
                     "optimizer_atol": inverse_settings.atol,

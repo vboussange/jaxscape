@@ -36,12 +36,16 @@ COMPATIBILITY_NOTES = {
         "JAXScape and `gdistance`."
     ),
     "sensitivity_analysis": (
-        "The chart compares JAXScape gradients against the closest path-"
-        "incidence or passage-centrality reference available in `gdistance`."
+        "The chart compares single-origin JAXScape gradients against the "
+        "matching single-origin `gdistance::shortestPath` incidence and "
+        "`gdistance::passage(..., totalNet = \"total\")` references on the "
+        "same origin/destination set."
     ),
     "inverse_landscape_genetics": (
         "Runtime, convergence status, and final fit quality are reported "
-        "together for the optimization benchmark."
+        "together; the published fit-quality chart uses relative RMSE because "
+        "raw inverse MSE is not directly comparable across the current tool-"
+        "specific objective scales."
     ),
 }
 

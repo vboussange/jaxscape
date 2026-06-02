@@ -15,4 +15,5 @@ uv.lock
 benchmark/.julia/
 benchmark/.r-lib/
 benchmark/r-lib/
+benchmark/results/
 .agents/*

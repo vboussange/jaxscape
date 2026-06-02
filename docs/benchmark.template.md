@@ -14,7 +14,7 @@ JAXScape ships with a benchmark workspace that keeps benchmark inputs synthetic 
 
 ## Fairness policy
 
-All automated runs use deterministic synthetic landscapes on 4-neighbour grid graphs and report the median of three repeats per case. Resistance, least-cost, and sensitivity tasks share the same raster-to-graph parameterization, the same site-sampling policy, and the same published thread budget across Python, Julia, and R. The environment snapshot above is rendered directly from the benchmark artifact so the documented runtime context tracks the actual run rather than a hand-maintained description.
+All automated runs use deterministic synthetic landscapes on 4-neighbour grid graphs and report median runtimes from the repeat count recorded in each benchmark artifact. Resistance, least-cost, and sensitivity tasks share the same raster-to-graph parameterization, the same site-sampling policy, and the same published thread budget across Python, Julia, and R. The sensitivity benchmark uses a task-specific large grid because exact reverse-mode centrality objectives have much higher memory growth than distance-matrix queries; the large sensitivity case records one timed repeat, while smaller cases use the suite repeat count. The environment snapshot above is rendered directly from the benchmark artifact so the documented runtime context tracks the actual run rather than a hand-maintained description.
 
 Cross-software comparisons are only published when the task definition is close enough to interpret. For resistance distance, the `gdistance` series is rescaled from commute time to effective resistance by dividing by graph volume. For inverse landscape genetics, runtime and fit quality are reported together so budget-limited or non-converged runs remain visible.
 
@@ -40,7 +40,7 @@ Published benchmark coverage:
 
 ## Sensitivity analysis
 
-The sensitivity benchmark differentiates scalar connectivity objectives with respect to raster entries, then compares the resulting JAXScape gradient surfaces to the closest available `gdistance` references. The scorecard reports runtime together with cosine similarity against the reference surface.
+The sensitivity benchmark differentiates scalar connectivity objectives with respect to raster entries, then compares the resulting JAXScape gradient surfaces to matched single-origin `gdistance` references on the same origin/destination set and shared cost surface. The shortest-path side uses summed `gdistance::shortestPath` incidence rasters, while the resistance side uses summed `gdistance::passage(..., totalNet = "total")` rasters. The scorecard reports runtime together with cosine similarity against the reference surface.
 
 Published benchmark coverage:
 

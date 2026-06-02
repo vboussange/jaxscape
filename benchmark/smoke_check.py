@@ -78,7 +78,7 @@ def collect_resistance_smoke_records(case, config):
     records = resistance_distance.collect_jaxscape_resistance_results(
         case,
         config,
-        profile_keys=["pinv_f32"],
+        profile_keys=["pyamg"],
     )
     gdistance_payload = run_gdistance_payload(case, config, "resistance_distance")
     graph_volume = float(jax.device_get(benchmark_graph_volume(as_array(case.raster))))
@@ -110,7 +110,7 @@ def collect_resistance_smoke_records(case, config):
             case,
             config,
             "cg+amg",
-            "Circuitscape.jl / cg+amg",
+            "Circuitscape.jl / cg+amg / f64",
         )
     )
     return records

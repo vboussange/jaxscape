@@ -81,7 +81,7 @@ DEFAULT_BENCHMARK_THREADS = 4
 REPEATS = 3
 MIN_PERMEABILITY = 1e-3
 DEFAULT_BENCHMARK_POINT_COUNT = 20
-DEFAULT_EXTERNAL_WALLTIME_SECONDS = 900.0
+DEFAULT_EXTERNAL_WALLTIME_SECONDS = 1800.0
 EXTERNAL_WALLTIME_ENV = "JAXSCAPE_BENCHMARK_EXTERNAL_WALLTIME_SECONDS"
 EXTERNAL_WALLTIME_ENV_BY_SOFTWARE = {
     "Circuitscape.jl": "JAXSCAPE_BENCHMARK_CIRCUITSCAPE_WALLTIME_SECONDS",
@@ -1212,8 +1212,23 @@ def write_results(
         "cases": case_payload(result_cases),
         "records": [asdict(record) for record in records],
     }
-    config.results_json.write_text(json.dumps(payload, indent=2))
-    with config.results_csv.open("w", newline="") as handle:
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=config.results_json.parent,
+        delete=False,
+    ) as handle:
+        handle.write(json.dumps(payload, indent=2))
+        json_tmp_path = Path(handle.name)
+    json_tmp_path.replace(config.results_json)
+
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        newline="",
+        dir=config.results_csv.parent,
+        delete=False,
+    ) as handle:
         writer = csv.DictWriter(
             handle,
             fieldnames=[
@@ -1234,57 +1249,100 @@ def write_results(
             row["timings_seconds"] = json.dumps(row["timings_seconds"])
             row["metrics"] = json.dumps(row["metrics"])
             writer.writerow(row)
+        csv_tmp_path = Path(handle.name)
+    csv_tmp_path.replace(config.results_csv)
 
 
-def required_records(config: BenchmarkConfig) -> dict[tuple[str, str, str], set[str]]:
-    required: dict[tuple[str, str, str], set[str]] = {}
-    for task, labels in REQUIRED_BASE_TOOL_LABELS_BY_TASK.items():
-        gpu_capable_labels = GPU_CAPABLE_TOOL_LABELS_BY_TASK.get(task, set())
-        for case in CASES_BY_TASK[task]:
-            for tool in labels:
-                if tool in gpu_capable_labels:
-                    required[(task, case.name, backend_tool_label(tool, "cpu"))] = {
-                        "ok"
-                    }
-                    required[(task, case.name, backend_tool_label(tool, "gpu"))] = (
-                        {"ok"} if config.gpu_device is not None else {"skipped"}
-                    )
-                else:
-                    required[(task, case.name, tool)] = {"ok"}
-    return required
+def benchmark_software_label(task: str, tool_label: str) -> str:
+    if tool_label.startswith("JAXScape"):
+        return "JAXScape + Optimistix" if task == "inverse_landscape_genetics" else "JAXScape"
+    if tool_label.startswith("gdistance"):
+        return "gdistance"
+    if tool_label.startswith("Circuitscape.jl"):
+        return "Circuitscape.jl"
+    if tool_label.startswith("ResistanceGA"):
+        return "ResistanceGA"
+    if tool_label.startswith("Conefor"):
+        return "Conefor"
+    return tool_label
+
+
+def unexpected_case_failure_records(
+    case: BenchmarkCase,
+    config: BenchmarkConfig,
+    error: Exception,
+) -> list[BenchmarkRecord]:
+    note = f"Unexpected case-level failure: {error}"
+    gpu_capable_labels = GPU_CAPABLE_TOOL_LABELS_BY_TASK.get(case.task, set())
+    records: list[BenchmarkRecord] = []
+    for tool in sorted(REQUIRED_BASE_TOOL_LABELS_BY_TASK.get(case.task, set())):
+        software = benchmark_software_label(case.task, tool)
+        if tool in gpu_capable_labels:
+            records.append(failed_record(case.task, backend_tool_label(tool, "cpu"), software, case.name, note))
+            if config.gpu_device is None:
+                records.append(gpu_placeholder_record(case, tool, software))
+            else:
+                records.append(failed_record(case.task, backend_tool_label(tool, "gpu"), software, case.name, note))
+        else:
+            records.append(failed_record(case.task, tool, software, case.name, note))
+    return records
+
+
+def maybe_checkpoint_results(
+    records: list[BenchmarkRecord],
+    config: BenchmarkConfig,
+) -> None:
+    write_results(records, config)
 
 
 def validate_records(records: list[BenchmarkRecord], config: BenchmarkConfig) -> None:
     if not config.require_complete:
         return
 
-    required = required_records(config)
     observed = {
         (record.task, record.scenario, record.tool): record for record in records
     }
-    missing = sorted(set(required) - set(observed))
-    if missing:
-        summary = ", ".join(
-            f"{tool}/{task}/{scenario}" for task, scenario, tool in missing
-        )
-        raise RuntimeError(
-            f"Benchmark suite is incomplete: missing records for {summary}"
-        )
+    incomplete_messages: list[str] = []
+    for task, labels in REQUIRED_BASE_TOOL_LABELS_BY_TASK.items():
+        gpu_capable_labels = GPU_CAPABLE_TOOL_LABELS_BY_TASK.get(task, set())
+        for case in CASES_BY_TASK[task]:
+            for tool in sorted(labels):
+                if tool in gpu_capable_labels:
+                    candidate_labels = [backend_tool_label(tool, "cpu")]
+                    if config.gpu_device is not None:
+                        candidate_labels.append(backend_tool_label(tool, "gpu"))
+                    candidate_records = [
+                        observed.get((task, case.name, candidate_label))
+                        for candidate_label in candidate_labels
+                    ]
+                    if any(
+                        record is not None and record.status == "ok"
+                        for record in candidate_records
+                    ):
+                        continue
+                    detail = "; ".join(
+                        f"{candidate_label}: "
+                        f"{(record.note or record.status) if record is not None else 'missing'}"
+                        for candidate_label, record in zip(candidate_labels, candidate_records, strict=False)
+                    )
+                    incomplete_messages.append(f"{tool}/{task}/{case.name}: {detail}")
+                    continue
 
-    incomplete = [
-        record
-        for key, record in observed.items()
-        if key in required and record.status not in required[key]
-    ]
-    if incomplete:
-        summary = "; ".join(
-            (
-                f"{record.tool}/{record.task}/{record.scenario}: "
-                f"{record.note or record.status}"
-            )
-            for record in incomplete
+                record = observed.get((task, case.name, tool))
+                if record is None:
+                    incomplete_messages.append(
+                        f"{tool}/{task}/{case.name}: missing"
+                    )
+                    continue
+                if record.status != "ok":
+                    incomplete_messages.append(
+                        f"{record.tool}/{record.task}/{record.scenario}: {record.note or record.status}"
+                    )
+
+    if incomplete_messages:
+        raise RuntimeError(
+            f"Benchmark suite is incomplete: {'; '.join(incomplete_messages)}"
         )
-        raise RuntimeError(f"Benchmark suite is incomplete: {summary}")
 
 
 def collect_resistance_results(
@@ -1318,9 +1376,17 @@ def collect_resistance_results(
                 "resistance by dividing by the graph volume."
             ),
         ),
-        run_circuitscape_resistance(case, config, "cg+amg", "Circuitscape.jl / cg+amg"),
         run_circuitscape_resistance(
-            case, config, "cholmod", "Circuitscape.jl / cholmod"
+            case,
+            config,
+            "cg+amg",
+            "Circuitscape.jl / cg+amg / f64",
+        ),
+        run_circuitscape_resistance(
+            case,
+            config,
+            "cholmod",
+            "Circuitscape.jl / cholmod / f64",
         ),
     ]
     if config.include_conefor:
@@ -1392,29 +1458,41 @@ def collect_inverse_results(
     ]
 
 
-def collect_results(config: BenchmarkConfig) -> list[BenchmarkRecord]:
+def collect_results(
+    config: BenchmarkConfig,
+    *,
+    checkpoint_callback: Callable[[list[BenchmarkRecord], BenchmarkConfig], None] | None = None,
+) -> list[BenchmarkRecord]:
     configure_logging()
     records: list[BenchmarkRecord] = []
+
+    def collect_case(
+        case: BenchmarkCase,
+        collector: Callable[[BenchmarkCase, BenchmarkConfig], list[BenchmarkRecord]],
+    ) -> None:
+        log_case_start(case)
+        try:
+            case_records = collector(case, config)
+        except Exception as error:
+            LOGGER.exception(
+                "Unexpected benchmark case failure for task=%s scenario=%s",
+                case.task,
+                case.name,
+            )
+            case_records = unexpected_case_failure_records(case, config, error)
+        records.extend(case_records)
+        if checkpoint_callback is not None:
+            checkpoint_callback(records, config)
+        log_case_completion(case, case_records)
+
     for case in CASES["resistance"]:
-        log_case_start(case)
-        case_records = collect_resistance_results(case, config)
-        records.extend(case_records)
-        log_case_completion(case, case_records)
+        collect_case(case, collect_resistance_results)
     for case in CASES["lcp"]:
-        log_case_start(case)
-        case_records = collect_least_cost_results(case, config)
-        records.extend(case_records)
-        log_case_completion(case, case_records)
+        collect_case(case, collect_least_cost_results)
     for case in CASES["sensitivity"]:
-        log_case_start(case)
-        case_records = collect_sensitivity_results(case, config)
-        records.extend(case_records)
-        log_case_completion(case, case_records)
+        collect_case(case, collect_sensitivity_results)
     for case in CASES["inverse"]:
-        log_case_start(case)
-        case_records = collect_inverse_results(case, config)
-        records.extend(case_records)
-        log_case_completion(case, case_records)
+        collect_case(case, collect_inverse_results)
     return records
 
 
@@ -1428,9 +1506,9 @@ def main() -> None:
     configure_logging()
     args = parse_args()
     config = config_from_args(args)
-    records = collect_results(config)
-    validate_records(records, config)
+    records = collect_results(config, checkpoint_callback=maybe_checkpoint_results)
     write_results(records, config)
+    validate_records(records, config)
     print(json.dumps({"records": [asdict(record) for record in records]}, indent=2))
 
 
