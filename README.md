@@ -18,6 +18,26 @@ JAXScape is a minimal JAX library for connectivity analysis at scales. It provid
 
 JAXScape implements custom methods and leverages JAX's capabilities to accelerate distance computations on CPUs/GPUs/TPUs, while ensuring differentiability across the codebase for awesome sensitivity analysis and optimization.
 
+## Why JAXScape?
+
+We report below some key numbers from the [comprehensive benchmark](https://vboussange.github.io/jaxscape/benchmark/) testing JAXScape with GPU acceleration against other related CPU-based software in Python, R, and Julia backends. 
+See the [benchmark documentation](https://vboussange.github.io/jaxscape/benchmark/)
+for the full setup, raw scorecards, convergence status, and fit-quality metrics.
+
+### Resistance distance calculation
+On a `1000 x 1000` spatial grid, JAXScape is `74x` faster than [`Circuitscape.jl`](https://github.com/Circuitscape/Circuitscape.jl) with `cg+amg` solver and `17x` faster than [`Circuitscape.jl`](https://github.com/Circuitscape/Circuitscape.jl) with `cholmod` solver. 
+<!-- TODO: [`gdistance`](https://cran.r-project.org/package=gdistance) `commuteDistance` result. -->
+
+<!-- ### Least-cost path
+On a `1000 x 1000` spatial grid, the current scorecard does not report a successful JAXScape GPU run, so no GPU speed-up against [`gdistance`](https://cran.r-project.org/package=gdistance) `costDistance` is reported there. -->
+
+### Sensitivity analysis
+On a `175 x 175` spatial grid, JAXScape is `12x` faster than [`gdistance`](https://cran.r-project.org/package=gdistance) `shortestPath` for shortest-path sensitivity and `5.0x` faster than [`gdistance`](https://cran.r-project.org/package=gdistance) `passage` for resistance sensitivity. 
+<!-- Cosine similarity to the `gdistance` reference surfaces is `0.130` and `0.173`, respectively. -->
+
+### Inverse landscape genetics 
+On a `100 x 100` spatial grid, JAXScape is `32x` faster than [`ResistanceGA`](https://github.com/wpeterman/ResistanceGA) and reaches a final relative RMSE about `16x` lower.
+
 
 ## Installation
 
@@ -113,16 +133,6 @@ instructions in [`benchmark/README.md`](benchmark/README.md).
 ## License
 
 `jaxscape` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.
-
-## Related packages
-- gdistance
-- ConScape
-- Circuitscape
-- graphhab
-- conefor
-- resistanceGA
-- landscapemetrics
-- radish
 
 ## Citation
 
