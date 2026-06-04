@@ -20,7 +20,7 @@ JAXScape implements custom methods and leverages JAX's capabilities to accelerat
 
 ## Why JAXScape?
 
-We report below some key numbers from the [comprehensive benchmark](https://vboussange.github.io/jaxscape/benchmark/) testing JAXScape with GPU acceleration against other related CPU-based software in Python, R, and Julia backends. 
+We report below some key runtimes from a comprehensive benchmark testing JAXScape on a RTX 3090 GPU against other related CPU-based software in Python, R, and Julia backends. 
 See the [benchmark documentation](https://vboussange.github.io/jaxscape/benchmark/)
 for the full setup, raw scorecards, convergence status, and fit-quality metrics.
 
