@@ -36,11 +36,20 @@ uv add jaxscape --extra amjax      # Lineax CG + AMJax preconditioner
 ```
 
 !!! info "CI/CD coverage"
-    These optional solvers are not included in the standard CI test suite.
+    These optional solvers are exercised in the standard CI test suite.
 
 ## Algebraic multigrid solver
 
 `AMJaxCGSolver` separates hierarchy construction from the actual iterative solve. This matters when you want the solve itself to remain JIT-compatible and differentiable.
+
+The `amjax` extra installs AMJax 0.0.3 or newer and PyAMG. JAXScape delegates
+multigrid construction and cycles to AMJax's `MultilevelSolver`, and iteration
+and convergence checks to Lineax CG. Hierarchy arrays retain the input matrix's
+dtype. For ill-conditioned graph Laplacians, enable `JAX_ENABLE_X64=true` and
+explicitly construct the matrix and right-hand sides in `float64`; enabling
+x64 alone does not promote existing `float32` arrays. Single-level hierarchies
+(typically tiny graphs) fall back to ordinary CG because AMJax 0.0.3 requires
+at least two levels for a multigrid cycle.
 
 In algebraic multigrid, the preconditioner is built as a hierarchy of progressively coarser linear systems derived from the original sparse operator. This hierarchy consists of coarse operators together with prolongation and restriction maps between levels; one multigrid cycle smooths the error on the fine level, transfers the residual to coarser levels, approximately solves there, and interpolates the correction back to the fine level.
 

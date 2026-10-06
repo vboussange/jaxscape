@@ -74,9 +74,10 @@ uv sync --extra benchmark --extra amjax --extra cholespy
 
 The wrapper keeps the aggregate suite in the canonical benchmark artifact path, regenerates the scorecards, and refreshes this markdown page from the shared registry and the current result JSON.
 
-For local GPU profiling, keep the same workflow and switch the device hint:
+For local GPU profiling, install CUDA support and switch the device hint:
 
 ```bash
+uv sync --extra benchmark --extra amjax --extra cholespy --extra cuda
 ./benchmark/run_benchmarks.sh --device gpu
 ```
 

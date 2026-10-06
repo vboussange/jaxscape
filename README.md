@@ -45,7 +45,7 @@ On a `100 x 100` spatial grid, JAXScape is `32x` faster than [`ResistanceGA`](ht
 uv add jaxscape
 ```
 
-For GPU compatibility, install JAX following the [official JAX installation guide](https://jax.readthedocs.io/en/latest/installation.html). JAXScape will automatically use the JAX backend you have configured.
+The default installation is CPU-only. For NVIDIA GPUs, use `uv add 'jaxscape[cuda]'`, or install JAX following the [official JAX installation guide](https://jax.readthedocs.io/en/latest/installation.html). JAXScape will automatically use the JAX backend you have configured.
 
 You may be required to install optional linear solvers for large-scale resistance distance computations. `CholmodSolver`, `PyAMGSolver`, and `AMJaxCGSolver` are documented on the [linear solver page](https://vboussange.github.io/jaxscape/api/linear_solvers).
 

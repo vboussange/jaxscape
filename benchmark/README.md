@@ -49,9 +49,10 @@ uv sync --extra benchmark --extra amjax --extra cholespy
 ./benchmark/run_benchmarks.sh --device cpu --require-complete
 ```
 
-For local GPU profiling, keep the same workflow and switch the device flag:
+For local GPU profiling, install CUDA support and switch the device flag:
 
 ```bash
+uv sync --extra benchmark --extra amjax --extra cholespy --extra cuda
 ./benchmark/run_benchmarks.sh --device gpu
 ```
 

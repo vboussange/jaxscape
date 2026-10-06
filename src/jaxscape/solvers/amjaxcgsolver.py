@@ -12,12 +12,12 @@ from jaxscape.utils import zero_copy_jax_csr_to_scipy_csr
 
 try:
     import pyamg as _pyamg
-    from amjax import AMJAXSolver as _AMJAXSolver
+    from amjax import MultilevelSolver as _MultilevelSolver
 
     AMJAX_AVAILABLE = True
 except ImportError:
     _pyamg = None
-    _AMJAXSolver = None
+    _MultilevelSolver = None
     AMJAX_AVAILABLE = False
 
 
@@ -50,8 +50,14 @@ def amjax_preconditioner_operator(
     input_structure: PyTree[Any],
     *,
     cycle: str = "V",
-) -> lx.FunctionLinearOperator:
-    """Wrap an AMJax preconditioner as a Lineax linear operator."""
+) -> AbstractLinearOperator:
+    """Wrap an AMJax preconditioner as a Lineax linear operator.
+
+    A single-level hierarchy uses unpreconditioned CG: AMJax 0.0.3's cycle
+    requires at least two levels, and tiny systems do not need multigrid.
+    """
+    if len(amjax_solver.levels) == 1:
+        return lx.IdentityLinearOperator(input_structure)
     preconditioner = amjax_solver.aspreconditioner(cycle=cycle)
     tags = (lx.positive_semidefinite_tag,)
     if getattr(amjax_solver, "symmetric_smoothing", False):
@@ -86,8 +92,7 @@ def build_amjax_solver(
     if not AMJAX_AVAILABLE:
         raise ImportError(
             "AMJaxCGSolver requires amjax and pyamg. "
-            "Run with the optional extras enabled, for example: "
-            "uv run --extra pyamg --extra amjax ..."
+            "Install the optional dependency with `pip install 'jaxscape[amjax]'`."
         )
 
     if pyamg_method is None:
@@ -100,6 +105,7 @@ def build_amjax_solver(
 
     from_pyamg_kwargs: dict[str, Any] = {
         "coarse_solver": coarse_solver,
+        "dtype": matrix.dtype,
     }
     if presmoother is not None:
         from_pyamg_kwargs["presmoother"] = presmoother
@@ -108,8 +114,8 @@ def build_amjax_solver(
     if coarse_solver_kwargs is not None:
         from_pyamg_kwargs["coarse_solver_kwargs"] = coarse_solver_kwargs
 
-    assert _AMJAXSolver is not None
-    return _AMJAXSolver.from_pyamg(pyamg_hierarchy, **from_pyamg_kwargs)
+    assert _MultilevelSolver is not None
+    return _MultilevelSolver.from_pyamg(pyamg_hierarchy, **from_pyamg_kwargs)
 
 
 class AMJaxCGSolver(AbstractLinearSolver):
@@ -157,8 +163,7 @@ class AMJaxCGSolver(AbstractLinearSolver):
         if not AMJAX_AVAILABLE:
             raise ImportError(
                 "AMJaxCGSolver requires amjax and pyamg. "
-                "Run with the optional extras enabled, for example: "
-                "uv run --extra pyamg --extra amjax ..."
+                "Install the optional dependency with `pip install 'jaxscape[amjax]'`."
             )
 
         if isinstance(self.rtol, (int, float)) and self.rtol < 0:
@@ -169,7 +174,7 @@ class AMJaxCGSolver(AbstractLinearSolver):
             raise ValueError("max_steps must be positive or None.")
         if self.cycle != "V":
             raise NotImplementedError(
-                "AMJax currently supports only V-cycle preconditioning."
+                "AMJaxCGSolver currently supports only V-cycle preconditioning."
             )
 
         if self.pyamg_method is None:
