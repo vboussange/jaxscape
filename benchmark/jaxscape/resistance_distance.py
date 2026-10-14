@@ -47,16 +47,21 @@ from benchmark.benchmark_distances import (
     cost_conductance,
     default_jaxscape_config,
     failed_record,
+    fit_error_metrics,
     gpu_placeholder_record,
+    lower_triangle_values,
     measure_runtime,
-    ok_record,
+    ok_record_with_metrics,
     skip_record,
 )
 from benchmark.jaxscape.resistance_profile_support import (
+    JAXAMG_RESISTANCE_PROFILES,
     make_amjaxcg_solver,
     make_cholmod_solver,
     make_pyamg_solver,
     make_spielman_method,
+    profile_metadata,
+    profile_unavailable_reason,
     ResistanceProfile,
 )
 
@@ -78,6 +83,7 @@ JAXSCAPE_RESISTANCE_PROFILES = (
         solver_factory=make_cholmod_solver,
         dtype=jnp.float64,
     ),
+    *JAXAMG_RESISTANCE_PROFILES,
     ResistanceProfile(
         "amjaxcg_f32",
         "JAXScape / AMJaxCGSolver / f32",
@@ -182,7 +188,7 @@ def _run_resistance_profile_direct(
             if requires_preparation:
                 grid = GridGraph(permeability, fun=cost_conductance)
                 state = distance.init(grid)
-                timings, _ = measure_runtime(
+                timings, result = measure_runtime(
                     _jaxscape_prepared_resistance,
                     distance,
                     grid,
@@ -191,13 +197,15 @@ def _run_resistance_profile_direct(
                     repeats=repeats,
                 )
             else:
-                timings, _ = measure_runtime(
+                timings, result = measure_runtime(
                     _jaxscape_resistance_with_distance,
                     distance,
                     permeability,
                     nodes,
                     repeats=repeats,
                 )
+    except (ImportError, OSError) as error:
+        return skip_record(case.task, tool_label, "JAXScape", case.name, str(error))
     except MemoryError as error:
         note = f"Out-of-memory while running resistance benchmark: {error}"
         LOGGER.exception(
@@ -217,7 +225,34 @@ def _run_resistance_profile_direct(
         )
         return failed_record(case.task, tool_label, "JAXScape", case.name, note)
 
-    record = ok_record(case.task, tool_label, "JAXScape", case.name, timings)
+    profile = profile_for_tool_label(tool_label)
+    metrics = profile_metadata(profile, device.platform)
+    if profile.gpu_only:
+        # Accuracy inspection is outside all measured calls. The same graph and
+        # sites use a float64 direct reference, without changing solve tolerances.
+        try:
+            with jax.enable_x64():
+                reference = _jaxscape_resistance_with_distance(
+                    ResistanceDistance(solver=make_cholmod_solver()),
+                    jnp.asarray(case.raster, dtype=jnp.float64),
+                    as_point_array(case.points),
+                )
+                jax.block_until_ready(reference)
+                quality = fit_error_metrics(
+                    lower_triangle_values(result), lower_triangle_values(reference)
+                )
+                metrics.update(
+                    {f"reference_{key}": value for key, value in quality.items()}
+                )
+                metrics["reference_max_abs_error"] = float(
+                    jnp.max(jnp.abs(result - reference))
+                )
+                metrics["reference_tool"] = "CholmodSolver / float64 (untimed)"
+        except (ImportError, RuntimeError) as error:
+            metrics["reference_unavailable"] = str(error)
+    record = ok_record_with_metrics(
+        case.task, tool_label, "JAXScape", case.name, timings, metrics=metrics
+    )
     LOGGER.info(
         "Completed resistance benchmark for case=%s tool=%s median=%.6fs",
         case.name,
@@ -260,6 +295,9 @@ def run_worker(payload: dict[str, Any]) -> BenchmarkRecord:
         if backend == "cpu" and not profile.gpu_capable
         else backend_tool_label(profile.tool, backend)
     )
+    unavailable = profile_unavailable_reason(profile, backend)
+    if unavailable is not None:
+        return skip_record(case.task, tool_label, "JAXScape", case.name, unavailable)
     device = device_for_backend(backend)
     return _run_resistance_profile_direct(
         case,
@@ -329,16 +367,17 @@ def collect_jaxscape_resistance_results(
     records: list[BenchmarkRecord] = []
     for profile in selected_profiles(profile_keys):
         if profile.gpu_capable:
-            records.append(
-                run_jaxscape_resistance_profile(
-                    case,
-                    config,
-                    backend_tool_label(profile.tool, "cpu"),
-                    device=config.cpu_device,
-                    solver_factory=profile.solver_factory,
-                    requires_preparation=profile.requires_preparation,
+            if not profile.gpu_only:
+                records.append(
+                    run_jaxscape_resistance_profile(
+                        case,
+                        config,
+                        backend_tool_label(profile.tool, "cpu"),
+                        device=config.cpu_device,
+                        solver_factory=profile.solver_factory,
+                        requires_preparation=profile.requires_preparation,
+                    )
                 )
-            )
             if config.gpu_device is None:
                 records.append(gpu_placeholder_record(case, profile.tool, "JAXScape"))
             else:

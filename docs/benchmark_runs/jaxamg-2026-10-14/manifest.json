@@ -1,0 +1,291 @@
+{
+  "kind": "joined_report",
+  "source_runs": {
+    "original": {
+      "manifest": "original/manifest.json",
+      "source_commit": "9b5a7cbf282a670987c92e9d83d072d331001d46",
+      "sha256": {
+        "benchmark_results.json": "bd34fa1c7bc0c3a27a3dc0601dce97d9b72c00d4827c22629ce466d8f0c3a6f7",
+        "benchmark_results.csv": "9121b3238dbb7416b83574e36f2398df985cb6fab56137b807c8b679056a8c33",
+        "manifest.json": "6e4fec3b95ecc1b0150a5edd9e89336ef96b2163fd5afa6ac374735b4e39a844",
+        "run.log": "f3f4c28a476ae596f5e2620ae70cc0e857928b82adc68d7c09c8b12c5e0a066d"
+      }
+    },
+    "inverse-correction": {
+      "manifest": "inverse-correction/manifest.json",
+      "source_commit": "85c299145148540aabbaaf92cd535e6be9fc3a66",
+      "sha256": {
+        "benchmark_results.json": "55f0c3c8af6cd8cd0ac07f2ac8d6fadb9ef4862a5e78737b30742e7be86348bc",
+        "benchmark_results.csv": "30654f6fcd4079341f9c70006925544b896b8baaba5341454cc19c4787689260",
+        "manifest.json": "aab49d5201294c983bdf4a49a55c41f0d1db15d96711d105a691f11d38e692bc",
+        "run.log": "3214d6541a7cfade81ad224a6998469b23bce9f08e7e50ae5cffa93fd60307e5"
+      }
+    }
+  },
+  "record_sources": [
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_small",
+      "tool": "JAXScape / PyAMG",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_small",
+      "tool": "JAXScape / CholmodSolver / f32",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_small",
+      "tool": "JAXScape / CholmodSolver / f64",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_small",
+      "tool": "JAXScape / AMJaxCGSolver / f32 (CPU)",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_small",
+      "tool": "JAXScape / AMJaxCGSolver / f32 (GPU)",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_small",
+      "tool": "JAXScape / AMJaxCGSolver / f64 (CPU)",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_small",
+      "tool": "JAXScape / AMJaxCGSolver / f64 (GPU)",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_small",
+      "tool": "JAXScape / JAXAMGCGSolver / f32 (GPU)",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_small",
+      "tool": "JAXScape / JAXAMGCGSolver / f64 (GPU)",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_small",
+      "tool": "gdistance / commuteDistance",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_small",
+      "tool": "Circuitscape.jl / cg+amg / f64",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_small",
+      "tool": "Circuitscape.jl / cholmod / f64",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_medium",
+      "tool": "JAXScape / PyAMG",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_medium",
+      "tool": "JAXScape / CholmodSolver / f32",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_medium",
+      "tool": "JAXScape / CholmodSolver / f64",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_medium",
+      "tool": "JAXScape / AMJaxCGSolver / f32 (CPU)",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_medium",
+      "tool": "JAXScape / AMJaxCGSolver / f32 (GPU)",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_medium",
+      "tool": "JAXScape / AMJaxCGSolver / f64 (CPU)",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_medium",
+      "tool": "JAXScape / AMJaxCGSolver / f64 (GPU)",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_medium",
+      "tool": "JAXScape / JAXAMGCGSolver / f32 (GPU)",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_medium",
+      "tool": "JAXScape / JAXAMGCGSolver / f64 (GPU)",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_medium",
+      "tool": "gdistance / commuteDistance",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_medium",
+      "tool": "Circuitscape.jl / cg+amg / f64",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_medium",
+      "tool": "Circuitscape.jl / cholmod / f64",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_large",
+      "tool": "JAXScape / PyAMG",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_large",
+      "tool": "JAXScape / CholmodSolver / f32",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_large",
+      "tool": "JAXScape / CholmodSolver / f64",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_large",
+      "tool": "JAXScape / AMJaxCGSolver / f32 (CPU)",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_large",
+      "tool": "JAXScape / AMJaxCGSolver / f32 (GPU)",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_large",
+      "tool": "JAXScape / AMJaxCGSolver / f64 (CPU)",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_large",
+      "tool": "JAXScape / AMJaxCGSolver / f64 (GPU)",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_large",
+      "tool": "JAXScape / JAXAMGCGSolver / f32 (GPU)",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_large",
+      "tool": "JAXScape / JAXAMGCGSolver / f64 (GPU)",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_large",
+      "tool": "gdistance / commuteDistance",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_large",
+      "tool": "Circuitscape.jl / cg+amg / f64",
+      "run": "original"
+    },
+    {
+      "task": "resistance_distance",
+      "scenario": "synthetic_resistance_large",
+      "tool": "Circuitscape.jl / cholmod / f64",
+      "run": "original"
+    },
+    {
+      "task": "inverse_landscape_genetics",
+      "scenario": "synthetic_inverse_medium",
+      "tool": "JAXScape / CholmodSolver / f32",
+      "run": "original"
+    },
+    {
+      "task": "inverse_landscape_genetics",
+      "scenario": "synthetic_inverse_medium",
+      "tool": "JAXScape / AMJaxCGSolver / f32 (CPU)",
+      "run": "original"
+    },
+    {
+      "task": "inverse_landscape_genetics",
+      "scenario": "synthetic_inverse_medium",
+      "tool": "JAXScape / AMJaxCGSolver / f32 (GPU)",
+      "run": "original"
+    },
+    {
+      "task": "inverse_landscape_genetics",
+      "scenario": "synthetic_inverse_medium",
+      "tool": "JAXScape / AMJaxCGSolver / f64 (CPU)",
+      "run": "original"
+    },
+    {
+      "task": "inverse_landscape_genetics",
+      "scenario": "synthetic_inverse_medium",
+      "tool": "JAXScape / AMJaxCGSolver / f64 (GPU)",
+      "run": "original"
+    },
+    {
+      "task": "inverse_landscape_genetics",
+      "scenario": "synthetic_inverse_medium",
+      "tool": "JAXScape / JAXAMGCGSolver / f32 (GPU)",
+      "run": "inverse-correction"
+    },
+    {
+      "task": "inverse_landscape_genetics",
+      "scenario": "synthetic_inverse_medium",
+      "tool": "JAXScape / JAXAMGCGSolver / f64 (GPU)",
+      "run": "inverse-correction"
+    },
+    {
+      "task": "inverse_landscape_genetics",
+      "scenario": "synthetic_inverse_medium",
+      "tool": "ResistanceGA",
+      "run": "original"
+    }
+  ]
+}

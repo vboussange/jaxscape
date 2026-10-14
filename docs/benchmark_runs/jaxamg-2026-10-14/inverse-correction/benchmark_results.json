@@ -1,0 +1,162 @@
+{
+  "environment": {
+    "python": "/home/boussang/jaxscape/.venv/bin/python",
+    "julia": "/home/boussang/.juliaup/bin/julia",
+    "rscript": "/usr/bin/Rscript",
+    "platform": "linux",
+    "dependency_versions": {
+      "jax": "0.10.0",
+      "jaxlib": "0.10.0",
+      "lineax": "0.1.0",
+      "equinox": "0.13.6",
+      "optimistix": "0.1.0",
+      "jaxamg": "0.1.4",
+      "amjax": "0.0.3",
+      "pyamg": "5.3.0",
+      "cholespy": "2.2.0"
+    },
+    "cuda_visible_devices": "0",
+    "jax_backend": "gpu",
+    "requested_device_platform": "default",
+    "available_jax_platforms": [
+      "gpu"
+    ],
+    "cpu_device": "CpuDevice(id=0)",
+    "gpu_device": "CudaDevice(id=0)",
+    "gpu_backend_available": true,
+    "gpu_device_kind": "NVIDIA GeForce RTX 3090",
+    "julia_project": "/tmp/jaxscape-issue22/benchmark/julia",
+    "julia_depot": "/tmp/jaxscape-issue22/benchmark/.julia",
+    "r_libs_user": "/tmp/jaxscape-issue22/benchmark/.r-lib",
+    "repeats": 3,
+    "benchmark_threads": 4,
+    "thread_environment": {
+      "BENCHMARK_THREADS": "4",
+      "OMP_NUM_THREADS": "4",
+      "OPENBLAS_NUM_THREADS": "4",
+      "MKL_NUM_THREADS": "4",
+      "VECLIB_MAXIMUM_THREADS": "4",
+      "NUMEXPR_NUM_THREADS": "4",
+      "JULIA_NUM_THREADS": "4",
+      "RCPP_PARALLEL_NUM_THREADS": "4",
+      "RCPPTHREAD_NUM_THREADS": "4",
+      "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=true intra_op_parallelism_threads=4"
+    }
+  },
+  "cases": [
+    {
+      "name": "synthetic_inverse_medium",
+      "task": "inverse_landscape_genetics",
+      "size_label": "medium",
+      "grid_size": 100,
+      "seed": 30,
+      "point_count": 20,
+      "points": [
+        [
+          77,
+          5
+        ],
+        [
+          74,
+          79
+        ],
+        [
+          59,
+          1
+        ],
+        [
+          11,
+          34
+        ],
+        [
+          11,
+          72
+        ],
+        [
+          24,
+          7
+        ],
+        [
+          77,
+          62
+        ],
+        [
+          16,
+          28
+        ],
+        [
+          63,
+          62
+        ],
+        [
+          70,
+          76
+        ],
+        [
+          2,
+          3
+        ],
+        [
+          58,
+          96
+        ],
+        [
+          40,
+          8
+        ],
+        [
+          24,
+          73
+        ],
+        [
+          32,
+          96
+        ],
+        [
+          85,
+          94
+        ],
+        [
+          19,
+          85
+        ],
+        [
+          10,
+          3
+        ],
+        [
+          40,
+          11
+        ],
+        [
+          42,
+          97
+        ]
+      ]
+    }
+  ],
+  "records": [
+    {
+      "task": "inverse_landscape_genetics",
+      "tool": "JAXScape / JAXAMGCGSolver / f32 (GPU)",
+      "software": "JAXScape + Optimistix",
+      "scenario": "synthetic_inverse_medium",
+      "status": "failed",
+      "median_seconds": null,
+      "timings_seconds": [],
+      "metrics": {},
+      "note": "Exceeded walltime of 180s while running JAXScape / JAXAMGCGSolver / f32 (GPU)."
+    },
+    {
+      "task": "inverse_landscape_genetics",
+      "tool": "JAXScape / JAXAMGCGSolver / f64 (GPU)",
+      "software": "JAXScape + Optimistix",
+      "scenario": "synthetic_inverse_medium",
+      "status": "failed",
+      "median_seconds": null,
+      "timings_seconds": [],
+      "metrics": {},
+      "note": "Exceeded walltime of 180s while running JAXScape / JAXAMGCGSolver / f64 (GPU)."
+    }
+  ]
+}

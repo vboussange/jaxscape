@@ -21,15 +21,8 @@ except ImportError:
     AMJAX_AVAILABLE = False
 
 
-class AbstractAMJaxCGSolverState(eqx.Module):
-    """Abstract state for `AMJaxCGSolver`."""
-
-    cg_state: eqx.AbstractVar[PyTree[Any] | None]
-    preconditioner: eqx.AbstractVar[AbstractLinearOperator]
-
-
 @final
-class AMJaxCGSolverState(AbstractAMJaxCGSolverState):
+class AMJaxCGSolverState(eqx.Module):
     """State for `AMJaxCGSolver`.
 
     `cg_state=None` means that only the AMJax preconditioner has been initialized.

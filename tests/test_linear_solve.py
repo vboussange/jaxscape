@@ -2,6 +2,7 @@ from importlib.util import find_spec
 
 import jax
 import jax.numpy as jnp
+import lineax as lx
 import pytest
 from jax.experimental.sparse import BCOO
 from jaxscape.solvers import (
@@ -78,7 +79,7 @@ def solver_tolerances(solver):
 def test_solver(solver):
     A_scipy = poisson((10, 10), format="coo", dtype="float32")
     A_jax = BCOO.from_scipy_sparse(A_scipy)
-    b = jnp.ones(A_jax.shape[0])
+    b = jnp.ones(A_jax.shape[0], dtype=A_jax.dtype)
     state = solver_state(solver, A_jax)
     x = linear_solve(A_jax, b, solver, state=state)
     residual = A_jax @ x - b
@@ -193,3 +194,20 @@ def test_amjax_preconditioner_operator():
     assert preconditioner.in_structure().shape == b.shape
     assert preconditioner.out_structure().shape == b.shape
     assert jnp.all(jnp.isfinite(preconditioner.mv(b)))
+
+
+def test_batched_padded_sparse_matrix_has_zero_padding_gradient():
+    """Out-of-bounds BCOO capacity is not part of the mathematical matrix."""
+    indices = jnp.array([[0, 0], [1, 1], [2, 2], [2, 2]], dtype=jnp.int32)
+    values = jnp.array([2.0, 4.0, 0.0, 0.0])
+    rhs = jnp.array([[1.0, 2.0], [3.0, 4.0]])
+    solver = lx.CG(rtol=1e-6, atol=1e-6)
+
+    def objective(data):
+        matrix = BCOO((data, indices), shape=(2, 2))
+        return jnp.sum(batched_linear_solve(matrix, rhs, solver) ** 2)
+
+    gradient = jax.jit(jax.grad(objective))(values)
+    # Sum_j (rhs_ij / diagonal_i)^2 has derivative
+    # -2 * sum_j(rhs_ij^2) / diagonal_i^3; padding has no effect.
+    assert jnp.allclose(gradient, jnp.array([-1.25, -0.78125, 0.0, 0.0]))

@@ -74,6 +74,9 @@ amjax = [
   "amjax>=0.0.3,<0.1",
   "pyamg>=5.1.0"
 ]
+jaxamg = [
+  "jaxamg>=0.1.4,<0.2"
+]
 tests = [
   "networkx>=3.4",
   "pytest>=8.3.5"
@@ -88,8 +91,11 @@ Source = "https://github.com/vboussange/jaxscape"
 include = ["src", "tests"]
 reportIncompatibleMethodOverride = true
 
+[tool.pytest.ini_options]
+# Benchmark correctness tests import the repository-local benchmark package.
+pythonpath = ["."]
+
 # TODO: currently not testing with jaxtyping and beartype
-# [tool.pytest.ini_options]
 # addopts = "--jaxtyping-packages=jaxscape,beartype.beartype(conf=beartype.BeartypeConf(strategy=beartype.BeartypeStrategy.On))"
 
 [tool.ruff]
