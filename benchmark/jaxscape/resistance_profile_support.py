@@ -86,6 +86,26 @@ def make_jaxamgcg_solver() -> Any:
         ) from error
 
 
+JAXAMG_RESISTANCE_PROFILES = (
+    ResistanceProfile(
+        "jaxamgcg_f32",
+        "JAXScape / JAXAMGCGSolver / f32",
+        solver_factory=make_jaxamgcg_solver,
+        gpu_capable=True,
+        gpu_only=True,
+        dtype=jnp.float32,
+    ),
+    ResistanceProfile(
+        "jaxamgcg_f64",
+        "JAXScape / JAXAMGCGSolver / f64",
+        solver_factory=make_jaxamgcg_solver,
+        gpu_capable=True,
+        gpu_only=True,
+        dtype=jnp.float64,
+    ),
+)
+
+
 def profile_unavailable_reason(profile: ResistanceProfile, backend: str) -> str | None:
     """Check GPU-only hardware without launching any numerical workload."""
     if not profile.gpu_only:

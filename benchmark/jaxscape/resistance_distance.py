@@ -55,9 +55,9 @@ from benchmark.benchmark_distances import (
     skip_record,
 )
 from benchmark.jaxscape.resistance_profile_support import (
+    JAXAMG_RESISTANCE_PROFILES,
     make_amjaxcg_solver,
     make_cholmod_solver,
-    make_jaxamgcg_solver,
     make_pyamg_solver,
     make_spielman_method,
     profile_metadata,
@@ -83,22 +83,7 @@ JAXSCAPE_RESISTANCE_PROFILES = (
         solver_factory=make_cholmod_solver,
         dtype=jnp.float64,
     ),
-    ResistanceProfile(
-        "jaxamgcg_f32",
-        "JAXScape / JAXAMGCGSolver / f32",
-        solver_factory=make_jaxamgcg_solver,
-        gpu_capable=True,
-        gpu_only=True,
-        dtype=jnp.float32,
-    ),
-    ResistanceProfile(
-        "jaxamgcg_f64",
-        "JAXScape / JAXAMGCGSolver / f64",
-        solver_factory=make_jaxamgcg_solver,
-        gpu_capable=True,
-        gpu_only=True,
-        dtype=jnp.float64,
-    ),
+    *JAXAMG_RESISTANCE_PROFILES,
     ResistanceProfile(
         "amjaxcg_f32",
         "JAXScape / AMJaxCGSolver / f32",
