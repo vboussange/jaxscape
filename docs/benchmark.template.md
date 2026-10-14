@@ -92,3 +92,13 @@ To run a representative smoke check before a long benchmark launch:
 ```bash
 ./benchmark/run_smoke_checks.sh
 ```
+
+## JAX-AMG comparison
+
+The optional `JAXAMGCGSolver` profiles cover float32 and float64 exact resistance
+and inverse landscape genetics on NVIDIA GPUs. AMJax's inverse hierarchy is
+frozen outside timing; JAX-AMG follows upstream-managed refresh inside timed
+applications. Both retain the warmed benchmark methodology. See the
+[benchmark workspace](https://github.com/vboussange/jaxscape/blob/main/benchmark/README.md#jax-amg-exact-and-inverse-comparisons)
+for the isolated comparison command, native installation requirements, and
+provenance conventions. Approximate and sensitivity profiles are unchanged.

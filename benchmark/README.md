@@ -102,3 +102,61 @@ JAXScape-specific benchmark code separate from the cross-software orchestration.
 Benchmark entry points set `XLA_PYTHON_CLIENT_PREALLOCATE=false` by default,
 unless the environment already defines a different value, so the coordinator
 does not reserve most GPU memory before the worker subprocesses start.
+
+## JAX-AMG exact and inverse comparisons
+
+`jaxamgcg_f32` and `jaxamgcg_f64` select `JAXAMGCGSolver` only on NVIDIA
+GPUs, for exact resistance and inverse landscape genetics. They never fall
+back to CPU, approximate resistance, or another solver. Missing packages,
+CUDA backends, or native shared libraries produce skipped records. See
+[solver installation guidance](../docs/api/linear_solvers.md) for the optional
+`jaxamg` extra and native AmgX prerequisites. The tested stack is JAX-AMG
+0.1.4, AmgX 2.5.0, CUDA 12.9, JAX/JAXlib 0.10.0, and AMJax 0.0.3.
+
+Timings retain one warm-up followed by three synchronized repeats. Tolerances
+remain `rtol=atol=1e-3`; the existing exact grids (10, 100, and 1000 cells per
+side), 20 sites, and inverse 100-by-100 case with LBFGS's 50-step budget remain
+unchanged. No compilation, setup, or separate gradient timing is added.
+AMJax builds its hierarchy outside timing and freezes it during inverse
+optimization, while rebinding CG to each current matrix. JAX-AMG follows
+upstream-managed native refresh, which may rebuild on each preconditioner
+application inside the measured calls. Its refresh count is unknown, not zero
+or one. No custom cache policy or setup-cost equivalence is implied.
+
+Finish implementation, documentation, and correctness validation **before**
+launching benchmarks, including smoke runs. To inspect the intended coverage
+without executing workloads:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src python benchmark/jaxamg_comparison.py \
+  --output-dir benchmark/results/runs/jaxamg-comparison --plan
+```
+
+Then run the same command without `--plan`. The directory must be new and
+cannot be the canonical results directory. It includes exact JAXScape profiles,
+AMJax CPU/GPU, Cholmod, PyAMG, Circuitscape, gdistance, and ResistanceGA where
+installed; approximate and sensitivity profiles are excluded from this run.
+Native CUDA/AmgX paths must already be configured as documented by upstream.
+Use the Python environment containing that native installation.
+
+The worker timeout is 180 seconds by default (including compilation, warm-up,
+and all repeats); external tools default to 1800 seconds. These are watchdog
+limits, not reported timing columns. Override with
+`JAXSCAPE_BENCHMARK_WALLTIME_SECONDS` and
+`JAXSCAPE_BENCHMARK_EXTERNAL_WALLTIME_SECONDS` and retain the manifest.
+Failures and timeouts remain in the artifacts. JSON/CSV preserve individual
+warm timings, inverse convergence/fit metrics, and JAX-AMG exact accuracy
+against an untimed float64 Cholmod reference. Dependency versions, GPU kind,
+visible-device selection, hierarchy behavior, invocation, and source commit
+make the run traceable. Render scorecards with the existing renderer into the
+same isolated directory:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src python benchmark/render_scorecard.py \
+  --results-json benchmark/results/runs/jaxamg-comparison/benchmark_results.json \
+  --output-dir benchmark/results/runs/jaxamg-comparison/assets
+```
+
+Keep these scoped results separate from the full published comparison. Do not
+promote a partial run through `publish_benchmark_artifacts.py`; link its report
+and raw artifacts from the benchmark documentation instead.

@@ -33,10 +33,13 @@ class BenchmarkTaskSpec:
 class ToolSpec:
     label: str
     gpu_capable: bool = False
+    gpu_only: bool = False
     required: bool = True
     automated: bool = True
 
     def display_labels(self) -> tuple[str, ...]:
+        if self.gpu_only:
+            return (backend_tool_label(self.label, "gpu"),)
         if self.gpu_capable:
             return (
                 backend_tool_label(self.label, "cpu"),
@@ -96,6 +99,18 @@ TOOL_SPECS_BY_TASK = {
         ToolSpec("JAXScape / CholmodSolver / f32", required=False, automated=False),
         ToolSpec("JAXScape / CholmodSolver / f64", required=False, automated=False),
         ToolSpec(
+            "JAXScape / JAXAMGCGSolver / f32",
+            gpu_capable=True,
+            gpu_only=True,
+            required=False,
+        ),
+        ToolSpec(
+            "JAXScape / JAXAMGCGSolver / f64",
+            gpu_capable=True,
+            gpu_only=True,
+            required=False,
+        ),
+        ToolSpec(
             "JAXScape / AMJaxCGSolver / f32",
             gpu_capable=True,
             required=False,
@@ -147,6 +162,18 @@ TOOL_SPECS_BY_TASK = {
     ),
     "inverse_landscape_genetics": (
         ToolSpec("JAXScape / CholmodSolver / f32", required=False),
+        ToolSpec(
+            "JAXScape / JAXAMGCGSolver / f32",
+            gpu_capable=True,
+            gpu_only=True,
+            required=False,
+        ),
+        ToolSpec(
+            "JAXScape / JAXAMGCGSolver / f64",
+            gpu_capable=True,
+            gpu_only=True,
+            required=False,
+        ),
         ToolSpec("JAXScape / AMJaxCGSolver / f32", gpu_capable=True),
         ToolSpec("JAXScape / AMJaxCGSolver / f64", gpu_capable=True),
         ToolSpec("JAXScape / approx pinv / f32", gpu_capable=True, required=False),
@@ -187,6 +214,7 @@ TOOL_FAMILY_COLORS = {
     "JAXScape / PyAMG": "#17BECF",
     "JAXScape / CholmodSolver": "#9467BD",
     "JAXScape / AMJaxCGSolver": "#4C78A8",
+    "JAXScape / JAXAMGCGSolver": "#E45756",
     "JAXScape / approx AMJaxCGSolver": "#72B7B2",
     "JAXScape / approx CholmodSolver": "#B279A2",
     "JAXScape / shortest-path gradient": "#1F77B4",
