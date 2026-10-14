@@ -198,3 +198,82 @@ def test_direct_lineax_state_and_initial_guess(native_jaxamg, dtype):
                     "preconditioner": lx.IdentityLinearOperator(operator.in_structure())
                 },
             )
+
+
+@pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
+def test_compiled_inverse_objective_uses_current_landscape_and_optimizes(
+    native_jaxamg, dtype
+):
+    """Fit changing land-cover permeabilities through sampled-site distances."""
+    features = jax.nn.one_hot(
+        jnp.array([[0, 0, 1, 1], [0, 2, 2, 1], [2, 2, 1, 0]]),
+        num_classes=3,
+        dtype=dtype,
+    )
+    nodes = jnp.array([0, 2, 5, 8, 11], dtype=jnp.int32)
+    pairs = jnp.triu_indices(nodes.size, k=1)
+    distance = ResistanceDistance(
+        solver=JAXAMGCGSolver(
+            rtol=1e-6 if dtype == jnp.float32 else 1e-11,
+            atol=1e-7 if dtype == jnp.float32 else 1e-12,
+            max_steps=200,
+        )
+    )
+    reference = ResistanceDistance()  # Independent dense pseudoinverse path.
+
+    def predict(params, nodes, metric):
+        permeability = jnp.exp(features @ params)
+        graph = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
+        # No matrix-bound state is retained across changing landscapes.
+        return metric(graph, nodes=nodes)
+
+    target_params = jnp.array([0.3, -0.35, 0.2], dtype=dtype)
+    target = predict(target_params, nodes, reference)[pairs]
+
+    def objective(params, nodes, metric):
+        predicted = predict(params, nodes, metric)
+        loss = jnp.mean((predicted[pairs] - target) ** 2)
+        return loss, predicted
+
+    evaluate = jax.jit(
+        jax.value_and_grad(
+            lambda params, nodes: objective(params, nodes, distance), has_aux=True
+        )
+    )
+    reference_evaluate = jax.jit(
+        jax.value_and_grad(
+            lambda params, nodes: objective(params, nodes, reference), has_aux=True
+        )
+    )
+    tolerance = 2e-4 if dtype == jnp.float32 else 2e-8
+    initial_params = jnp.array([-0.2, 0.25, -0.1], dtype=dtype)
+    for params in (initial_params, target_params / 2, initial_params):
+        (loss, predicted), gradient = evaluate(params, nodes)
+        (expected_loss, expected), expected_gradient = reference_evaluate(
+            params, nodes
+        )
+        assert predicted.dtype == dtype
+        assert gradient.dtype == dtype
+        assert jnp.all(jnp.isfinite(gradient))
+        np.testing.assert_allclose(predicted, expected, rtol=tolerance, atol=tolerance)
+        np.testing.assert_allclose(loss, expected_loss, rtol=tolerance, atol=tolerance)
+        np.testing.assert_allclose(
+            gradient, expected_gradient, rtol=tolerance, atol=tolerance
+        )
+
+    @jax.jit
+    def optimize(params, nodes):
+        def step(params, _):
+            (_, _), gradient = evaluate(params, nodes)
+            return params - 0.5 * gradient, None
+
+        return jax.lax.scan(step, params, xs=None, length=100)[0]
+
+    fitted = optimize(initial_params, nodes)
+    (initial_loss, _), _ = evaluate(initial_params, nodes)
+    (final_loss, predicted), gradient = evaluate(fitted, nodes)
+    assert jnp.all(jnp.isfinite(fitted))
+    assert jnp.all(jnp.isfinite(gradient))
+    assert final_loss < initial_loss * 0.01
+    np.testing.assert_allclose(fitted, target_params, atol=0.05)
+    np.testing.assert_allclose(predicted[pairs], target, rtol=0.02, atol=0.01)

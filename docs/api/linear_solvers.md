@@ -179,6 +179,15 @@ CPU-built hierarchy before optimization and bind CG to each current matrix.
 Implicit matrix/RHS gradients remain in Lineax and JAXScape's existing solve
 machinery; they do not differentiate through native hierarchy construction.
 
+The [inverse landscape genetics example](../examples/inverse_landscape_genetics/inverse_landscape_genetics.ipynb)
+selects this workflow with `SOLVER_BACKEND = "jaxamg"`; its default remains
+`"amjax"`. The notebook retains float32 model inputs and float64 resistance
+calculations. It passes `state=None` for JAX-AMG inside the compiled objective
+and reuses only preconditioner state for AMJax. This lets both solvers follow
+changing permeability values while preserving their distinct hierarchy behavior.
+For either solver, keep the graph dimensions and sparse storage shapes stable
+across compiled calls and choose CG tolerances appropriate to your dtype.
+
 ::: jaxscape.solvers.cholmodsolver.CholmodSolver
     options:
       members: false
