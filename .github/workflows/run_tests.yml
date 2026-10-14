@@ -30,8 +30,6 @@ jobs:
         run: uv sync --extra tests --extra pyamg --extra amjax --extra cholespy
 
       - name: Run tests
-        env:
-          JAX_ENABLE_X64: '1'
         run: uv run pytest tests
             
       - name: Upload coverage to Codecov
