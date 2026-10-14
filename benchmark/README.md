@@ -167,3 +167,7 @@ exact cases). Each invocation still writes a fresh manifest with its source
 commit. Preserve the original run and identify any joined report records by
 which run produced them; never silently replace the evidence of an earlier
 failure.
+
+The [14 October 2026 scoped report](../docs/benchmark_runs/jaxamg-2026-10-14/index.md)
+contains the completed GPU 0 measurements, raw data, correction-run provenance,
+and failed/unavailable cases. The existing full comparison assets were preserved.
