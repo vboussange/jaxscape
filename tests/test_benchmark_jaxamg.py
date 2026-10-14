@@ -1,4 +1,4 @@
-"""Profile/availability checks: deliberately no performance workloads."""
+"""Benchmark wiring correctness, without running performance workloads."""
 
 import jax.numpy as jnp
 import pytest
@@ -105,3 +105,44 @@ def test_report_environment_includes_dependency_versions():
     rendered = environment_table({"environment": environment})
     assert "Dependency versions" in rendered
     assert "jaxamg" in rendered
+
+
+@pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
+def test_compiled_inverse_benchmark_uses_current_values_and_gradients(dtype):
+    import equinox as eqx
+    import jax
+    import numpy as np
+    from benchmark.jaxscape.resistance_profile_support import make_jaxamgcg_solver
+    from jaxscape import ResistanceDistance
+
+    if jax.default_backend() != "gpu":
+        pytest.skip("JAX-AMG benchmark objective requires an NVIDIA GPU")
+    pytest.importorskip("jaxamg")
+    if "cuda" not in jax.devices()[0].client.platform_version.lower():
+        pytest.skip("JAX-AMG requires CUDA")
+
+    runner = inverse_landscape_genetics
+    base = jnp.asarray([[1.1, 1.4, 2.2], [2.6, 1.8, 1.3], [1.5, 2.1, 2.8]], dtype=dtype)
+    coords = jnp.asarray([[0, 0], [1, 2], [2, 1]], dtype=jnp.int32)
+    reference = ResistanceDistance()
+    initial = runner._initial_inverse_params(base)
+    targets = reference(
+        runner._inverse_grid(runner._permeability_from_inverse_params(initial, base)),
+        nodes=coords,
+    )
+
+    def loss(params, distance):
+        return runner._inverse_loss(params, base, coords, targets, distance=distance)
+
+    compiled = eqx.filter_jit(eqx.filter_value_and_grad(loss))
+    distance = ResistanceDistance(solver=make_jaxamgcg_solver())
+    losses = []
+    for offset in [(0.8, -0.6), (-0.4, 0.7)]:
+        params = initial + jnp.asarray(offset, dtype=dtype)
+        expected = compiled(params, reference)
+        actual = compiled(params, distance)
+        for got, want in zip(actual, expected, strict=True):
+            assert bool(jnp.all(jnp.isfinite(got)))
+            np.testing.assert_allclose(got, want, rtol=2e-2, atol=2e-5)
+        losses.append(float(actual[0]))
+    assert not np.isclose(*losses)

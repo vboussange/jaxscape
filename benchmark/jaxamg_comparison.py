@@ -54,10 +54,25 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--plan", action="store_true")
+    parser.add_argument(
+        "--task", choices=["all", "resistance", "inverse"], default="all"
+    )
+    parser.add_argument(
+        "--jaxamg-only",
+        action="store_true",
+        help="Select only JAX-AMG profiles and omit external comparisons.",
+    )
     args = parser.parse_args()
+    selected_keys = {
+        group: [
+            key for key in keys if not args.jaxamg_only or key.startswith("jaxamgcg_")
+        ]
+        for group, keys in PROFILE_KEYS.items()
+        if args.task == "all" or args.task == group
+    }
     plan = {
         group: {"profiles": keys, "cases": [case.name for case in CASES[group]]}
-        for group, keys in PROFILE_KEYS.items()
+        for group, keys in selected_keys.items()
     }
     if args.plan:
         print(json.dumps(plan, indent=2))
@@ -93,13 +108,21 @@ def main() -> None:
     }
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     records = []
-    cases = CASES["resistance"] + CASES["inverse"]
-    for group, collector in [
-        ("resistance", collect_resistance_results),
-        ("inverse", collect_inverse_results),
-    ]:
+    collectors = {
+        "resistance": collect_resistance_results,
+        "inverse": collect_inverse_results,
+    }
+    if args.jaxamg_only:
+        from benchmark.jaxscape import inverse_landscape_genetics, resistance_distance
+
+        collectors = {
+            "resistance": resistance_distance.collect_jaxscape_resistance_results,
+            "inverse": inverse_landscape_genetics.collect_jaxscape_inverse_results,
+        }
+    cases = [case for group in selected_keys for case in CASES[group]]
+    for group, keys in selected_keys.items():
         for case in CASES[group]:
-            records.extend(collector(case, config, profile_keys=PROFILE_KEYS[group]))
+            records.extend(collectors[group](case, config, profile_keys=keys))
             write_results(records, config, cases=cases)
 
 

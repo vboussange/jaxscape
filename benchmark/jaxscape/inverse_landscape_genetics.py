@@ -35,6 +35,7 @@ import jax
 import jax.nn as jnn
 import jax.numpy as jnp
 from jaxscape import GridGraph, ResistanceDistance
+from jaxscape.solvers import JAXAMGCGSolver
 
 from benchmark.benchmark_distances import (
     as_point_array,
@@ -262,7 +263,14 @@ def _distance_state(
     *,
     state: Any = None,
 ) -> Any:
-    if state is not None or distance.solver is None:
+    if (
+        state is not None
+        or distance.solver is None
+        or isinstance(distance.solver, JAXAMGCGSolver)
+    ):
+        # JAX-AMG binds to current matrix values inside the compiled solve.
+        # Its function-operator state contains static Jaxprs, which are not
+        # arrays and must not be passed through a blanket stop_gradient map.
         return state
     return jax.tree.map(jax.lax.stop_gradient, distance.init(grid))
 

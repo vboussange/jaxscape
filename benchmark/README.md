@@ -160,3 +160,10 @@ CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src python benchmark/render_scorecard.py \
 Keep these scoped results separate from the full published comparison. Do not
 promote a partial run through `publish_benchmark_artifacts.py`; link its report
 and raw artifacts from the benchmark documentation instead.
+
+For a focused rerun after a correctness fix, add `--task inverse --jaxamg-only`
+to select just the two JAX-AMG inverse profiles (or `--task resistance` for the
+exact cases). Each invocation still writes a fresh manifest with its source
+commit. Preserve the original run and identify any joined report records by
+which run produced them; never silently replace the evidence of an earlier
+failure.
