@@ -118,6 +118,7 @@ def test_compiled_inverse_benchmark_uses_current_values_and_gradients(dtype):
     if jax.default_backend() != "gpu":
         pytest.skip("JAX-AMG benchmark objective requires an NVIDIA GPU")
     pytest.importorskip("jaxamg")
+    pytest.importorskip("jaxamg._amgx", reason="JAX-AMG native AmgX backend missing")
     if "cuda" not in jax.devices()[0].client.platform_version.lower():
         pytest.skip("JAX-AMG requires CUDA")
 
