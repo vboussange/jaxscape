@@ -115,5 +115,7 @@ def profile_metadata(profile: ResistanceProfile, backend: str) -> dict[str, Any]
             hierarchy_behavior="upstream-managed refresh; may refresh each application",
         )
     elif profile.requires_preparation:
-        metadata["hierarchy_behavior"] = "AMJax hierarchy prepared outside timing and frozen"
+        metadata["hierarchy_behavior"] = (
+            "AMJax hierarchy prepared outside timing and frozen"
+        )
     return metadata
