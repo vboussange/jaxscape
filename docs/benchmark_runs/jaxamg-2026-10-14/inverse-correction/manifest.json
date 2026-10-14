@@ -1,0 +1,50 @@
+{
+  "command": [
+    "/home/boussang/jaxscape/.venv/bin/python",
+    "benchmark/jaxamg_comparison.py",
+    "--output-dir",
+    "benchmark/results/runs/jaxamg-2026-10-14-inverse-correction",
+    "--task",
+    "inverse",
+    "--jaxamg-only"
+  ],
+  "source_commit": "85c299145148540aabbaaf92cd535e6be9fc3a66",
+  "source_status": "",
+  "profiles": {
+    "inverse": {
+      "profiles": [
+        "jaxamgcg_f32",
+        "jaxamgcg_f64"
+      ],
+      "cases": [
+        "synthetic_inverse_medium"
+      ]
+    }
+  },
+  "inverse_settings": {
+    "jaxscape": {
+      "optimizer": "lbfgs",
+      "max_steps": 50,
+      "rtol": 1e-05,
+      "atol": 1e-05
+    },
+    "resistancega": {
+      "method": "LL",
+      "transformation": "M",
+      "pop_size": 12,
+      "maxiter": 3,
+      "run": 1,
+      "max_cont": 25,
+      "seed": 7
+    }
+  },
+  "environment_overrides": {
+    "BENCHMARK_THREADS": "4",
+    "JAXSCAPE_BENCHMARK_EXTERNAL_WALLTIME_SECONDS": "180",
+    "CUDA_VISIBLE_DEVICES": "0",
+    "AMGX_ROOT": "/tmp/jaxscape-AMGX",
+    "AMGX_BUILD": "/tmp/jaxscape-AMGX/build",
+    "CUDA_HOME": "/tmp/jaxscape-cuda-12.9"
+  },
+  "timing": "one untimed warm-up, then three synchronized repeats (default)"
+}
