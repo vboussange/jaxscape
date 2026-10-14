@@ -90,6 +90,21 @@ TASK_SPECS_BY_GROUP = {spec.group_name: spec for spec in BENCHMARK_TASK_SPECS}
 TASK_SPECS_BY_TASK = {spec.task: spec for spec in BENCHMARK_TASK_SPECS}
 TASK_LABELS = {spec.task: spec.title for spec in BENCHMARK_TASK_SPECS}
 
+JAXAMG_TOOL_SPECS = (
+    ToolSpec(
+        "JAXScape / JAXAMGCGSolver / f32",
+        gpu_capable=True,
+        gpu_only=True,
+        required=False,
+    ),
+    ToolSpec(
+        "JAXScape / JAXAMGCGSolver / f64",
+        gpu_capable=True,
+        gpu_only=True,
+        required=False,
+    ),
+)
+
 TOOL_SPECS_BY_TASK = {
     "resistance_distance": (
         # Resistance pinv-family profiles are kept out of the full suite because
@@ -98,18 +113,7 @@ TOOL_SPECS_BY_TASK = {
         ToolSpec("JAXScape / PyAMG", required=False),
         ToolSpec("JAXScape / CholmodSolver / f32", required=False, automated=False),
         ToolSpec("JAXScape / CholmodSolver / f64", required=False, automated=False),
-        ToolSpec(
-            "JAXScape / JAXAMGCGSolver / f32",
-            gpu_capable=True,
-            gpu_only=True,
-            required=False,
-        ),
-        ToolSpec(
-            "JAXScape / JAXAMGCGSolver / f64",
-            gpu_capable=True,
-            gpu_only=True,
-            required=False,
-        ),
+        *JAXAMG_TOOL_SPECS,
         ToolSpec(
             "JAXScape / AMJaxCGSolver / f32",
             gpu_capable=True,
@@ -162,18 +166,7 @@ TOOL_SPECS_BY_TASK = {
     ),
     "inverse_landscape_genetics": (
         ToolSpec("JAXScape / CholmodSolver / f32", required=False),
-        ToolSpec(
-            "JAXScape / JAXAMGCGSolver / f32",
-            gpu_capable=True,
-            gpu_only=True,
-            required=False,
-        ),
-        ToolSpec(
-            "JAXScape / JAXAMGCGSolver / f64",
-            gpu_capable=True,
-            gpu_only=True,
-            required=False,
-        ),
+        *JAXAMG_TOOL_SPECS,
         ToolSpec("JAXScape / AMJaxCGSolver / f32", gpu_capable=True),
         ToolSpec("JAXScape / AMJaxCGSolver / f64", gpu_capable=True),
         ToolSpec("JAXScape / approx pinv / f32", gpu_capable=True, required=False),
