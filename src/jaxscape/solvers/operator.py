@@ -174,6 +174,10 @@ def _batched_linear_solve_bwd(
         rows = A.indices[:, 0]
         cols = A.indices[:, 1]
         grad_A_data = -jnp.sum(adjoint[rows] * X[cols], axis=1)
+        # BCOO ignores sentinel entries outside the matrix. JAX gathers clamp
+        # these indices, so explicitly remove their spurious cotangents.
+        valid = (rows < A.shape[0]) & (cols < A.shape[1])
+        grad_A_data = jnp.where(valid, grad_A_data, 0)
 
     grad_B = adjoint if B_perturbed else None
     return grad_A_data, grad_B
