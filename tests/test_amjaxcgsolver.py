@@ -33,7 +33,10 @@ def test_hierarchy_preserves_matrix_dtype(amjax_dependencies, dtype):
                 assert leaf.dtype == dtype
 
 
-def test_frozen_preconditioner_jitted_values_and_gradients(amjax_dependencies):
+@pytest.mark.parametrize("legacy_tuple", [False, True])
+def test_frozen_preconditioner_jitted_values_and_gradients(
+    amjax_dependencies, legacy_tuple
+):
     """Current matrix and RHS derivatives must not use the reference operator."""
     with jax.enable_x64():
         scipy_matrix = amjax_dependencies.gallery.poisson(
@@ -48,6 +51,8 @@ def test_frozen_preconditioner_jitted_values_and_gradients(amjax_dependencies):
         )
         state = solver.init_preconditioner(BCOOLinearOperator(reference))
         assert not state.has_cg_state
+        if legacy_tuple:
+            state = (state.cg_state, state.preconditioner)
 
         def solve(data, rhs):
             matrix = BCOO((data, current.indices), shape=current.shape)
