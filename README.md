@@ -123,8 +123,8 @@ Comprehensive documentation is available at [https://vboussange.github.io/jaxsca
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for documentation style, mathematical
-derivations, and review checks.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, code contributions,
+and documentation previews.
 
 ## Benchmarking
 
