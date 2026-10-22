@@ -550,16 +550,21 @@ def _spielman_project_potentials(
 
     if k * data.shape[0] <= SPIELMAN_DENSE_PROJECTION_MAX_SIGN_ENTRIES:
         signs = _rademacher_projection_signs(k, data.shape[0], seed, data.dtype)
-        return (signs * scaled_weights[None, :]) @ edge_deltas
+        # Scale the (edges, sites) differences once instead of weighting every
+        # entry of the (projections, edges) sign matrix before the contraction.
+        return signs @ (scaled_weights[:, None] * edge_deltas)
 
     key = jax.random.PRNGKey(seed)
 
-    # Budget 8 GiB for row-dependent forward/backward working arrays, estimating
-    # three edge-sized floating arrays plus two int32 sign buffers. This excludes
-    # fixed potentials/edge deltas, returned embeddings, and allocator reserves.
-    # This selects 64 rows for four million float64 entries. Larger problems
-    # reduce to one row through the same map; one row is the unavoidable floor.
-    bytes_per_row = data.shape[0] * (3 * data.dtype.itemsize + 2 * 4)
+    # Use an 8 GiB static estimate for batch-dependent forward/backward storage:
+    # two floating and two native-width integer work arrays per edge and row.
+    # Rademacher intermediates follow JAX's default integer width, including x64.
+    # This excludes fixed solve/edge-delta/output buffers; it is not a bound on
+    # total compiled temporaries or device memory. It selects 64 rows for four
+    # million float64 entries and reduces to one row for larger working sets.
+    # One row remains the unavoidable floor even if it exceeds the estimate.
+    sign_itemsize = jax.dtypes.canonicalize_dtype(int).itemsize
+    bytes_per_row = data.shape[0] * 2 * (data.dtype.itemsize + sign_itemsize)
     batch_size = max(1, min(64, (8 * 1024**3) // max(1, bytes_per_row)))
 
     @jax.checkpoint
