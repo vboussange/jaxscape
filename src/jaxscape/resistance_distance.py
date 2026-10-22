@@ -196,13 +196,9 @@ class SpielmanApproximation(AbstractResistanceMethod):
       projections: `ceil(log(n_vertices) / epsilon**2)`, which increases memory
       use.
     - `seed`: Random seed for the Rademacher edge projections.
-    - `projection_batch_size`: Positive Python integer, defaults to 64. Number
-      of projection rows evaluated together in the streamed sampled-site and
-      source-to-target paths, including backward recomputation. Larger batches
+    - `projection_batch_size`: Number of projection rows evaluated together. Larger batches
       can improve throughput at the cost of more working memory; choose a size
-      that fits your device. It is used directly, without automatic reduction.
-      Dense projections and all-pairs queries do not use this setting. Changing
-      it recompiles JIT-compiled calls; it does not change the random sketch.
+      that fits your device.
     """
 
     epsilon: float = 0.1
