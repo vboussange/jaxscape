@@ -39,6 +39,25 @@ git push
 
 ### Documentation changes
 
+Use Markdown docstrings with a short summary, `**Arguments:**` (or
+`**Attributes:**` for class configuration), and `**Returns:**` where applicable.
+List parameter names in backticks and describe shapes, constraints, and useful
+defaults. Use fenced `python` examples and lowercase MkDocs admonitions such as
+`!!! note`.
+
+```python
+"""Compute pairwise distances.
+
+**Arguments:**
+
+- `nodes`: Vertex indices with shape `(m,)`.
+
+**Returns:**
+
+Distance matrix with shape `(m, m)`.
+"""
+```
+
 Edit the documentation, then start the local preview:
 
 ```bash
@@ -46,4 +65,8 @@ uv run mkdocs serve
 ```
 
 Open <http://localhost:8000> to check the rendered pages before submitting your
-pull request.
+pull request. Run the same strict build as CI; warnings fail the build:
+
+```bash
+uv run mkdocs build --strict
+```
