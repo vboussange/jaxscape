@@ -10,13 +10,12 @@ import lineax as lx
 import numpy as np
 import pytest
 from jax.experimental.sparse import BCOO
-from jaxscape import GridGraph, ResistanceDistance
+from jaxscape import Graph, GridGraph, ResistanceDistance
 from jaxscape.solvers import (
-    batched_linear_solve,
     BCOOLinearOperator,
     JAXAMGCGSolver,
-    linear_solve,
 )
+from jaxscape.solvers.operator import _batched_linear_solve, _linear_solve
 
 
 def test_missing_dependency_keeps_imports_working_and_reports_installation():
@@ -118,7 +117,9 @@ def test_exact_resistance_eager_and_jit(native_jaxamg, dtype, shape):
 
 @pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
 @pytest.mark.parametrize("batched", [False, True])
-def test_sparse_values_residuals_and_implicit_gradients(native_jaxamg, dtype, batched):
+def test_sparse_values_residuals_and_resistance_gradients(
+    native_jaxamg, dtype, batched
+):
     """Duplicates and excess capacity remain correct across compiled calls."""
     with jax.enable_x64():
         n = 17
@@ -140,7 +141,7 @@ def test_sparse_values_residuals_and_implicit_gradients(native_jaxamg, dtype, ba
             atol=1e-7 if dtype == jnp.float32 else 1e-12,
             max_steps=300,
         )
-        solve_impl = batched_linear_solve if batched else linear_solve
+        solve_impl = _batched_linear_solve if batched else _linear_solve
 
         def solve(data, rhs):
             return solve_impl(BCOO((data, indices), shape=(n, n)), rhs, solver)
@@ -150,11 +151,39 @@ def test_sparse_values_residuals_and_implicit_gradients(native_jaxamg, dtype, ba
             return jnp.linalg.solve(matrix, rhs)
 
         compiled = jax.jit(solve)
+        # Tie reciprocal entries to keep the undirected graph contract while
+        # preserving duplicate storage and out-of-bounds capacity in gradients.
+        edge_nodes = jnp.arange(n - 1, dtype=jnp.int32)
+        edges = jnp.concatenate([
+            jnp.stack([edge_nodes, edge_nodes + 1], axis=1),
+            jnp.stack([edge_nodes, jnp.full_like(edge_nodes, n - 1)], axis=1),
+        ])
+        graph_indices = jnp.concatenate(
+            [
+                edges, edges[:, ::-1], edges, edges[:, ::-1],
+                jnp.full((7, 2), n, dtype=jnp.int32),
+            ]
+        )
+        coefficients = jnp.concatenate(
+            [jnp.linspace(0.8, 1.3, edges.shape[0], dtype=dtype), jnp.zeros(7, dtype)]
+        )
+        distance = ResistanceDistance(solver=solver)
+        nodes = jnp.array([0, 5, n - 1, 5], dtype=jnp.int32)
+        query = {"nodes": nodes} if batched else {}
+
+        def objective(coefficients, distance):
+            weights = coefficients[:-7] / 2
+            data = jnp.concatenate(
+                [weights, weights, weights, weights, coefficients[-7:]]
+            )
+            graph = Graph(BCOO((data, graph_indices), shape=(n, n)))
+            return jnp.sum(distance(graph, **query) ** 2)
+
         differentiated = jax.jit(
-            jax.value_and_grad(lambda data, b: jnp.sum(solve(data, b) ** 2), (0, 1))
+            jax.value_and_grad(lambda coefficients: objective(coefficients, distance))
         )
         reference_grad = jax.value_and_grad(
-            lambda data, b: jnp.sum(dense_solve(data, b) ** 2), (0, 1)
+            lambda coefficients: objective(coefficients, ResistanceDistance())
         )
         tolerance = 5e-5 if dtype == jnp.float32 else 2e-9
         for scale in (1.0, 1.3):
@@ -164,14 +193,14 @@ def test_sparse_values_residuals_and_implicit_gradients(native_jaxamg, dtype, ba
             np.testing.assert_allclose(actual, expected, rtol=tolerance, atol=tolerance)
             residual = BCOO((data, indices), shape=(n, n)) @ actual - rhs
             np.testing.assert_allclose(residual, 0, atol=tolerance)
-            value, gradients = differentiated(data, rhs)
-            expected_value, expected_gradients = reference_grad(data, rhs)
+            value, gradient = differentiated(coefficients * scale)
+            expected_value, expected_gradient = reference_grad(coefficients * scale)
             np.testing.assert_allclose(value, expected_value, rtol=tolerance)
-            for gradient, expected_gradient in zip(gradients, expected_gradients):
-                assert jnp.all(jnp.isfinite(gradient))
-                np.testing.assert_allclose(
-                    gradient, expected_gradient, rtol=tolerance, atol=tolerance
-                )
+            assert jnp.all(jnp.isfinite(gradient))
+            np.testing.assert_allclose(
+                gradient, expected_gradient, rtol=tolerance, atol=tolerance
+            )
+            np.testing.assert_array_equal(gradient[-7:], 0)
 
 
 @pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
@@ -190,7 +219,7 @@ def test_direct_lineax_state_and_initial_guess(native_jaxamg, dtype):
         np.testing.assert_allclose(solution.value, expected, rtol=1e-6, atol=1e-7)
         assert solution.result == lx.RESULTS.successful
         with pytest.raises(ValueError, match="own CG-compatible preconditioner"):
-            linear_solve(
+            _linear_solve(
                 matrix,
                 rhs,
                 solver,
