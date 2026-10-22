@@ -62,24 +62,27 @@ For direct sparse solves against an unchanged matrix, initialize the full solver
 
 ```python
 import jax.numpy as jnp
+import lineax as lx
 from jax.experimental.sparse import BCOO
-from jaxscape.solvers import AMJaxCGSolver, BCOOLinearOperator, linear_solve
+from jaxscape.solvers import AMJaxCGSolver, BCOOLinearOperator
 
 A = BCOO.from_scipy_sparse(...)
 b = jnp.ones(A.shape[0], dtype=A.data.dtype)
 
 solver = AMJaxCGSolver(rtol=1e-6, atol=1e-6, max_steps=1_000)
 state = solver.init(BCOOLinearOperator(A), {})
-x = linear_solve(A, b, solver, state=state)
+x = lx.linear_solve(BCOOLinearOperator(A), b, solver, state=state).value
 ```
 
-For related matrices whose values change but whose geometry is stable, initialize only the preconditioner and let JAXScape materialize fresh CG state for each current operator:
+For related matrices whose values change but whose geometry is stable, initialize only the preconditioner and materialize fresh CG state for each current operator:
 
 ```python
 solver = AMJaxCGSolver(rtol=1e-6, atol=1e-6, max_steps=1_000)
 preconditioner_state = solver.init_preconditioner(BCOOLinearOperator(A0), {})
 
-x = linear_solve(A1, b, solver, state=preconditioner_state)
+operator = BCOOLinearOperator(A1)
+state = solver.materialize_state(operator, {}, preconditioner_state)
+x = lx.linear_solve(operator, b, solver, state=state).value
 ```
 
 For resistance distance, initialize preconditioner state against a reference graph so the AMJax hierarchy is built on the grounded Laplacian used internally:
