@@ -389,8 +389,18 @@ def _grounded_values(potentials: Array, nodes: Array) -> Array:
 def _laplacian_data_pullback(
     adjoint: Array, potentials: Array, indices: Array, shape: tuple[int, ...]
 ) -> Array:
-    # L = diag(row sums) - adjacency: each original stored coefficient (u, v)
-    # receives -<Lambda_u, V_u - V_v>. Do not merge duplicates or double edges.
+    # The kernel VJPs below give the grounded-Laplacian cotangent
+    # K = -Lambda V.T, where Lambda = adjoint and V = potentials. To pull this
+    # back to one stored adjacency coefficient a_uv, use L = diag(row sums) - a:
+    #   dL = e_u (e_u - e_v).T da_uv
+    #   dloss/da_uv = K_uu - K_uv
+    #              = -sum_j Lambda[u, j] * (V[u, j] - V[v, j]).
+    # Grounding is equivalent to setting the ground row of Lambda and V to zero.
+    # Thus we can evaluate the last line without ever constructing dense K.
+    # Each duplicate storage position gets its own contribution; upstream AD
+    # sums contributions if one parameter controls both directed entries of an
+    # undirected edge. No factor of two is needed here. Self-loops give zero
+    # because V_u - V_u = 0; padding is masked out below.
     # Keep gather/multiply/reduce fused; explicit edge vmap/chunking is slower.
     values = -jnp.sum(
         _grounded_values(adjoint, indices[:, 0])
@@ -431,10 +441,20 @@ def _exact_selected_inverse_bwd(
     del data, nodes, solver, state
     if cotangent is None or not perturbed:
         return None
-    # For undirected graphs A is symmetric: S = E.T A^-1 E, X = A^-1 E.
-    # An arbitrary (possibly nonsymmetric) cotangent G gives Lambda = X G.
-    # Selecting S avoids a vertex-by-site-by-site broadcast; the backward pass
-    # reuses X and performs no additional linear solves.
+    # Let q = n - 1 be the number of ungrounded vertices and m the site count.
+    # A is the (q, q) grounded Laplacian; E is the fixed (q, m) site basis.
+    # Forward: A X = E, S = E.T X. Here potentials = X and cotangent = G,
+    # where G = dloss/dS has shape (m, m). With <U, V> = sum(U * V), a VJP
+    # finds the coefficient of dA in dloss = <G, dS>:
+    #   A dX = -(dA) X                    (differentiate A X = E)
+    #   dloss = <G, E.T dX> = <E G, dX>  (differentiate S = E.T X)
+    # Define the adjoint by A.T Lambda = E G. Then
+    #   dloss = <Lambda, A dX>
+    #         = -<Lambda, (dA) X> = <-Lambda X.T, dA>.
+    # The graph is undirected, so A.T = A and Lambda = A^-1 E G = X G.
+    # This uses the saved forward solutions: no backward solve is needed.
+    # G need not be symmetric; the formula uses X G, not X G.T. The shared
+    # helper applies the remaining chain rule from A to the stored edge data.
     adjoint = potentials @ cotangent
     return _laplacian_data_pullback(adjoint, potentials, indices, shape)
 
@@ -509,13 +529,27 @@ def _spielman_features_reduced_bwd(
     if cotangent is None or not perturbed:
         return None
     potentials, reduced, solve_state = residuals
-    # A Y = P.T, F = Y.T: A.T Lambda = H.T. Contract -Lambda Y.T
-    # directly in adjacency storage rather than constructing an n-by-n matrix.
+    # Let A be the (q, q) grounded Laplacian, q = n - 1, and P the (k, q)
+    # weighted projection with its ground column removed. Its signs are fixed,
+    # but its weights depend on data. Forward: A Y = P.T, F = Y.T.
+    # Here potentials = Y and cotangent = H = dloss/dF, with shape (k, q).
+    # Using the Frobenius inner product <U, V> = sum(U * V):
+    #   A dY = dP.T - (dA) Y               (differentiate the solve)
+    #   dloss = <H, dF> = <H.T, dY>        (differentiate F = Y.T)
+    # Solve A.T Lambda = H.T to eliminate dY:
+    #   dloss = <Lambda, A dY>
+    #         = <Lambda, dP.T - (dA) Y>
+    #         = <Lambda.T, dP> + <-Lambda Y.T, dA>.
+    # Both P and A depend on the same edge data, so their pullbacks must be
+    # added. The helper contracts -Lambda Y.T directly into sparse storage;
+    # ordinary AD pulls Lambda.T through the actual weighted projection.
     adjoint = _solve_adjoint(reduced, cotangent.T, solver, solve_state)
     _, projection_pullback = jax.vjp(
         lambda weights: _spielman_projection(weights, indices, shape, epsilon, seed),
         data,
     )
+    # The projection helper returns all n columns; the removed ground column
+    # did not affect F, so its cotangent must be zero.
     (projection_gradient,) = projection_pullback(
         jnp.pad(adjoint.T, ((0, 0), (0, 1)))
     )
@@ -628,9 +662,24 @@ def _spielman_selected_features_bwd(
     if cotangent is None or not perturbed:
         return None
     potentials, reduced, solve_state = residuals
-    # Differentiate only P X, holding the solve X fixed. This returns both the
-    # weight contribution and P.T H without ever forming H X.T. Streamed rows
-    # regenerate their signs during this pullback, so no k-by-edge tape survives.
+    # Let A be the (q, q) grounded Laplacian, q = n - 1, E the fixed (q, m)
+    # site basis, and P the (k, q) weighted projection with fixed random signs.
+    # Forward: A X = E, Z = P X. Here potentials = X and the incoming cotangent
+    # is H = dloss/dZ of shape (k, m). With <U, V> = sum(U * V):
+    #   A dX = -(dA) X                       (E is fixed)
+    #   dZ = (dP) X + P dX                   (both P and X depend on data)
+    #   dloss = <H, dZ> = <H X.T, dP> + <P.T H, dX>.
+    # Define Lambda by A.T Lambda = P.T H. Substituting for A dX gives
+    #   dloss = <H X.T, dP> + <Lambda, A dX>
+    #         = <H X.T, dP> + <-Lambda X.T, dA>.
+    # To evaluate the first term without forming the dense H X.T, take the VJP
+    # of (data, X) -> P(data) X, treating these as independent arguments. It
+    # returns the projection's data gradient with X held fixed, and P.T H as
+    # the X cotangent. The latter is the RHS for the adjoint solve; the sparse
+    # helper then evaluates the second term. Add both data gradients below.
+    # Unlike the exact kernel, a realized finite sketch does not give P.T P = A,
+    # so it cannot eliminate this adjoint solve. Streamed projection rows
+    # regenerate the same signs in this VJP, avoiding a k-by-edge saved tape.
     _, projection_pullback = jax.vjp(
         lambda weights, values: _spielman_project_potentials(
             weights, indices, shape, values, epsilon, seed
