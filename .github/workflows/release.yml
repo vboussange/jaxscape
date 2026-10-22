@@ -15,6 +15,7 @@ jobs:
             python-version: "3.11"
             test-script: |
                 cp -r ${{ github.workspace }}/tests ./tests
+                cp -r ${{ github.workspace }}/benchmark ./benchmark
                 cp ${{ github.workspace }}/pyproject.toml ./pyproject.toml
                 uv sync --extra tests --extra amjax --no-install-project --inexact
                 uv run --no-sync pytest
