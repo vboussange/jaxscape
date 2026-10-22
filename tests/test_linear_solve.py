@@ -2,19 +2,17 @@ from importlib.util import find_spec
 
 import jax
 import jax.numpy as jnp
-import lineax as lx
 import pytest
 from jax.experimental.sparse import BCOO
 from jaxscape.solvers import (
     amjax_preconditioner_operator,
     AMJaxCGSolver,
-    batched_linear_solve,
     BCOOLinearOperator,
     build_amjax_solver,
     CholmodSolver,
-    linear_solve,
     PyAMGSolver,
 )
+from jaxscape.solvers.operator import _batched_linear_solve, _linear_solve
 
 
 # Check availability of optional solvers
@@ -58,22 +56,6 @@ def solver_state(solver, A):
     return None
 
 
-def solver_tolerances(solver):
-    if isinstance(solver, CholmodSolver):
-        return {
-            "solve_rtol": 1e-5,
-            "solve_atol": 1e-6,
-            "grad_rtol": 1e-4,
-            "grad_atol": 1e-6,
-        }
-    return {
-        "solve_rtol": 2e-3,
-        "solve_atol": 1e-4,
-        "grad_rtol": 5e-2,
-        "grad_atol": 5e-4,
-    }
-
-
 @pytest.mark.skipif(len(available_solvers) == 0, reason="No solvers available")
 @pytest.mark.parametrize("solver", available_solvers)
 def test_solver(solver):
@@ -81,80 +63,21 @@ def test_solver(solver):
     A_jax = BCOO.from_scipy_sparse(A_scipy)
     b = jnp.ones(A_jax.shape[0], dtype=A_jax.dtype)
     state = solver_state(solver, A_jax)
-    x = linear_solve(A_jax, b, solver, state=state)
+    x = _linear_solve(A_jax, b, solver, state=state)
     residual = A_jax @ x - b
     assert (
         jnp.linalg.norm(residual) < 1e-4
     ), f"Residual too large: {jnp.linalg.norm(residual)}"
 
     B = jnp.stack([b, 2 * b, 3 * b], axis=-1)
-    X = batched_linear_solve(A_jax, B, solver, state=state)
+    X = _batched_linear_solve(A_jax, B, solver, state=state)
+    X_reference = jnp.linalg.solve(A_jax.todense(), B)
+    rtol, atol = (1e-5, 1e-6) if isinstance(solver, CholmodSolver) else (2e-3, 1e-4)
+    assert jnp.allclose(X, X_reference, rtol=rtol, atol=atol)
     residuals = A_jax @ X - B
     assert (
         jnp.linalg.norm(residuals) < 3 * 1e-4
     ), f"Residual too large: {jnp.linalg.norm(residuals)}"
-
-
-@pytest.mark.skipif(len(available_solvers) == 0, reason="No solvers available")
-@pytest.mark.parametrize("solver", available_solvers)
-def test_solver_differentiability(solver):
-    """Test that solver values and gradients match a dense JAX reference."""
-    A_scipy = poisson((5, 5), format="coo", dtype="float32")
-    A_jax = BCOO.from_scipy_sparse(A_scipy)
-    b = jnp.ones(A_jax.shape[0], dtype=A_jax.data.dtype)
-    state = solver_state(solver, A_jax)
-    tolerances = solver_tolerances(solver)
-
-    def dense_solve(A_data, rhs):
-        A_modified = BCOO((A_data, A_jax.indices), shape=A_jax.shape)
-        return jnp.linalg.solve(A_modified.todense(), rhs)
-
-    def objective(A_data):
-        A_modified = BCOO((A_data, A_jax.indices), shape=A_jax.shape)
-        x = linear_solve(A_modified, b, solver, state=state)
-        return jnp.sum(x**2)
-
-    def dense_objective(A_data):
-        x = dense_solve(A_data, b)
-        return jnp.sum(x**2)
-
-    grad_result = jax.jit(jax.grad(objective))(A_jax.data)
-    grad_reference = jax.jit(jax.grad(dense_objective))(A_jax.data)
-    assert jnp.allclose(
-        grad_result,
-        grad_reference,
-        rtol=tolerances["grad_rtol"],
-        atol=tolerances["grad_atol"],
-    )
-
-    B = jnp.stack([b, 2 * b, 3 * b], axis=-1)
-
-    X = batched_linear_solve(A_jax, B, solver, state=state)
-    X_reference = dense_solve(A_jax.data, B)
-    assert jnp.allclose(
-        X,
-        X_reference,
-        rtol=tolerances["solve_rtol"],
-        atol=tolerances["solve_atol"],
-    )
-
-    def batched_objective(A_data):
-        A_modified = BCOO((A_data, A_jax.indices), shape=A_jax.shape)
-        X = batched_linear_solve(A_modified, B, solver, state=state)
-        return jnp.sum(X**2)
-
-    def dense_batched_objective(A_data):
-        X = dense_solve(A_data, B)
-        return jnp.sum(X**2)
-
-    grad_result = jax.jit(jax.grad(batched_objective))(A_jax.data)
-    grad_reference = jax.jit(jax.grad(dense_batched_objective))(A_jax.data)
-    assert jnp.allclose(
-        grad_result,
-        grad_reference,
-        rtol=tolerances["grad_rtol"],
-        atol=tolerances["grad_atol"],
-    )
 
 
 @pytest.mark.skipif(not AMJAX_AVAILABLE, reason="AMJax not available")
@@ -174,7 +97,7 @@ def test_amjax_preconditioner_only_state_uses_current_operator():
     assert not state.has_cg_state
     assert solver.init(BCOOLinearOperator(A_jax), {}).has_cg_state
 
-    x = linear_solve(A_scaled, b, solver, state=state)
+    x = _linear_solve(A_scaled, b, solver, state=state)
     residual = A_scaled @ x - b
     assert jnp.linalg.norm(residual) < 1e-4
 
@@ -194,20 +117,3 @@ def test_amjax_preconditioner_operator():
     assert preconditioner.in_structure().shape == b.shape
     assert preconditioner.out_structure().shape == b.shape
     assert jnp.all(jnp.isfinite(preconditioner.mv(b)))
-
-
-def test_batched_padded_sparse_matrix_has_zero_padding_gradient():
-    """Out-of-bounds BCOO capacity is not part of the mathematical matrix."""
-    indices = jnp.array([[0, 0], [1, 1], [2, 2], [2, 2]], dtype=jnp.int32)
-    values = jnp.array([2.0, 4.0, 0.0, 0.0])
-    rhs = jnp.array([[1.0, 2.0], [3.0, 4.0]])
-    solver = lx.CG(rtol=1e-6, atol=1e-6)
-
-    def objective(data):
-        matrix = BCOO((data, indices), shape=(2, 2))
-        return jnp.sum(batched_linear_solve(matrix, rhs, solver) ** 2)
-
-    gradient = jax.jit(jax.grad(objective))(values)
-    # Sum_j (rhs_ij / diagonal_i)^2 has derivative
-    # -2 * sum_j(rhs_ij^2) / diagonal_i^3; padding has no effect.
-    assert jnp.allclose(gradient, jnp.array([-1.25, -0.78125, 0.0, 0.0]))

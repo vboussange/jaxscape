@@ -102,12 +102,14 @@ class CholmodSolver(AbstractLinearSolver):
         """
         Solve the linear system using CHOLMOD via cholespy.
 
-        Args:
-            A_bcoo: Sparse matrix in BCOO format
-            b_jax: Right-hand side vector(s)
+        **Arguments:**
 
-        Returns:
-            Solution vector(s)
+        - `A_bcoo`: Sparse matrix in BCOO format.
+        - `b_jax`: Right-hand side vector(s).
+
+        **Returns:**
+
+        Solution vector(s).
         """
         solve_dtype = _solve_dtype_from_rhs(b_jax)
         factor = _factorize_host(A_bcoo, solve_dtype)

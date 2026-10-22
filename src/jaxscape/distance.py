@@ -18,12 +18,13 @@ class AbstractDistance(eqx.Module):
     **Arguments:**
 
     - `graph`: Graph on which to compute distances.
-        - `sources`: Source nodes as vertex indices (1D array) or coordinates
-            (Nx2 array for `GridGraph`).
-        - `targets`: Target nodes as vertex indices (1D array) or coordinates
-            (Nx2 array for `GridGraph`).
-        - `nodes`: Nodes for pairwise distances as vertex indices (1D) or
-            coordinates (Nx2).
+    - `sources`: Source nodes as vertex indices (1D array) or coordinates
+      (Nx2 array for `GridGraph`).
+    - `targets`: Target nodes as vertex indices (1D array) or coordinates
+      (Nx2 array for `GridGraph`).
+    - `nodes`: Nodes for pairwise distances as vertex indices (1D) or
+      coordinates (Nx2).
+    - `state`: Optional solver setup state. Defaults to automatic initialization.
 
     Specify either: `nodes` alone, `sources` and/or `targets`, or neither
     (for all-pairs).
@@ -39,6 +40,7 @@ class AbstractDistance(eqx.Module):
         import jax.numpy as jnp
 
         distance = LCPDistance()
+        permeability = jnp.ones((12, 12))
         grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
 
         # All-pairs distance

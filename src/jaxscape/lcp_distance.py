@@ -20,10 +20,10 @@ class LCPDistance(AbstractDistance):
     - **Floyd-Warshall**: Efficient for all-pairs on small dense graphs.
       Complexity O(V³), converts to dense matrix.
 
-    **Parameters:**
+    **Attributes:**
 
-        - `algorithm`: Algorithm choice: `"bellman-ford"` (default) or
-            `"floyd-warshall"`.
+    - `algorithm`: Algorithm choice: `"bellman-ford"` (default) or
+      `"floyd-warshall"`.
 
     !!! example
 
@@ -31,6 +31,7 @@ class LCPDistance(AbstractDistance):
         from jaxscape import LCPDistance, GridGraph
         import jax.numpy as jnp
 
+        permeability = jnp.ones((5, 5))
         grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
 
         # Default: Bellman-Ford (efficient for sparse graphs)
