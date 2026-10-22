@@ -29,7 +29,8 @@ See the [Lineax documentation](https://docs.kidger.site/lineax/) for the full li
 | `AMJaxCGSolver` | Yes after initialization. The one-time hierarchy build uses PyAMG on CPU, but the initialized CG + AMJax preconditioner solve runs in JAX and can execute on CPU or GPU. | Moderate | Best choice for repeated, JIT-compiled, differentiable solves. Reuses initialized preconditioner state across vmapped batched solves without a per-solve host callback. The preconditioner can be reused while CG state is refreshed for related operators with the same structure. |
 | `JAXAMGCGSolver` | NVIDIA GPU only, with CUDA and native AmgX. | Moderate | Lineax CG with a native AMG V-cycle whose setup can refresh inside compiled execution. Supports implicit gradients and changing sparse matrix values. Refresh/reuse follows JAX-AMG; setup may occur on every preconditioner application and is not guaranteed to improve runtime. |
 
-**Installation**:
+**Installation:**
+
 ```console
 uv add jaxscape --extra cholespy   # Cholesky solver
 uv add jaxscape --extra pyamg      # PyAMG solver

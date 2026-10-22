@@ -16,7 +16,7 @@ class WindowedAnalysis(ABC):
     Processes landscapes through hierarchical decomposition: batches (processed sequentially)
     contain windows (processed in parallel) with buffer zones for spatial dependencies.
 
-    **Parameters:**
+    **Arguments:**
 
     - `quality_raster`: Habitat quality values.
     - `permeability_raster`: Movement permeability, or function `quality -> permeability`.
@@ -31,6 +31,7 @@ class WindowedAnalysis(ABC):
         ```python
         from jaxscape.connectivity_analysis import WindowedAnalysis
 
+        # process_batch is an application-supplied callback returning a scalar.
         class CustomConnectivity(WindowedAnalysis):
             def run(self, **kwargs):
                 result = 0.0

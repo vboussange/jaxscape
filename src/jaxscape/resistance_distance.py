@@ -27,23 +27,28 @@ class ResistanceDistance(AbstractDistance):
     """
     Compute the resistance distances.
 
-    **Attributes**:
+    **Attributes:**
 
     - `solver`: Optional `lineax.AbstractLinearSolver`. Must be compatible with
-    BCOO matrices. We currently support `jaxscape.solvers.CholmodSolver`,
-    `jaxscape.solvers.PyAMGSolver`, and `jaxscape.solvers.AMJaxCGSolver`.
-    If None, uses pseudo-inverse method, which is very memory intensive for
-    exact all-pairs distances (densifies the Laplacian matrix), or dense solves
-    for approximate distances.
+      BCOO matrices. We currently support `jaxscape.solvers.CholmodSolver`,
+      `jaxscape.solvers.PyAMGSolver`, `jaxscape.solvers.AMJaxCGSolver`, and
+      `jaxscape.solvers.JAXAMGCGSolver`.
+      If None, uses the pseudo-inverse method, which is very memory intensive
+      for exact all-pairs distances (densifies the Laplacian matrix), or dense
+      solves for approximate distances.
     - `method`: A resistance distance method. Defaults to `ExactResistance()`.
-    Use `SpielmanApproximation(epsilon=..., seed=...)` for the randomized
-    Spielman-Srivastava approximation.
+      Use `SpielmanApproximation(epsilon=..., seed=...)` for the randomized
+      Spielman-Srivastava approximation.
 
     !!! example
 
         ```python
-        from jaxscape import ResistanceDistance, SpielmanApproximation
+        import jax.numpy as jnp
+        from jaxscape import GridGraph, ResistanceDistance, SpielmanApproximation
         from jaxscape.solvers import AMJaxCGSolver, PyAMGSolver
+
+        permeability = jnp.ones((3, 3))
+        grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
 
         # Default: pseudo-inverse (small graphs)
         distance = ResistanceDistance()
@@ -74,7 +79,7 @@ class ResistanceDistance(AbstractDistance):
         dist = distance(grid)
         ```
 
-    !!! Warning
+    !!! warning
 
         The graph must be undirected for resistance distance to be well-defined.
     """
@@ -190,15 +195,15 @@ class SpielmanApproximation(AbstractResistanceMethod):
     """
     Spielman-Srivastava randomized resistance distance approximation.
 
-    **Attributes**:
+    **Attributes:**
 
     - `epsilon`: Accuracy parameter. Smaller values use more random
       projections: `ceil(log(n_vertices) / epsilon**2)`, which increases memory
       use.
     - `seed`: Random seed for the Rademacher edge projections.
-    - `projection_batch_size`: Number of projection rows evaluated together. Larger batches
-      can improve throughput at the cost of more working memory; choose a size
-      that fits your device.
+    - `projection_batch_size`: Number of projection rows evaluated together.
+      Larger batches can improve throughput at the cost of more working memory;
+      choose a size that fits your device.
     """
 
     epsilon: float = 0.1
@@ -222,11 +227,15 @@ class SpielmanApproximation(AbstractResistanceMethod):
 def p_inv_resistance_distance(A: BCOO) -> Array:
     # See NetworkX's [resistance_distance implementation for the same formula](https://networkx.org/documentation/stable/_modules/networkx/algorithms/distance_measures.html#resistance_distance)
     """
-    Computes the resistance distance matrix.
-    Args:
-        A: Adjacency matrix (sparse BCOO).
-    Returns:
-        Resistance distance matrix.
+    Compute the resistance distance matrix.
+
+    **Arguments:**
+
+    - `A`: Sparse BCOO adjacency matrix with shape `(n, n)`.
+
+    **Returns:**
+
+    Resistance distance matrix with shape `(n, n)`.
     """
     L = graph_laplacian(A)
     # TODO: once graphs expose symmetry, use pinv(..., hermitian=True) here.
@@ -250,7 +259,8 @@ def lineax_solver_nodes_to_nodes_resistance_distance(
     Computes pairwise resistance distance from `nodes` to `nodes`, returning a
     |`nodes`| x |`nodes`| matrix, using a lineax `solver`.
     Requires |`nodes`| linear solves.
-    !!! Warning
+
+    !!! warning
         The graph must be undirected.
     """
     selected_inverse = _exact_selected_inverse(

@@ -77,10 +77,14 @@ class GridGraph(AbstractGraph):
 
     **Arguments:**
 
-    - `grid` is a 2D array of shape `(height, width)` used to define edge weights. When calculating distances, edge weights are assume to represent permeability (i.e., 1/resistance, higher values indicate easier movement).
-    - `fun` is a function applied to the source and target node values to define the edge weight. It takes two arrays and returns an
-    array of the same size. Defaults to assigning the target vertex weight (`fun = lambda x, y: y`).
-    - `neighbors` defines the contiguity pattern, and can be either `ROOK_CONTIGUITY` or `QUEEN_CONTIGUITY`.
+    - `grid`: 2D array with shape `(height, width)` used to define edge weights.
+      When calculating distances, edge weights are assumed to represent
+      permeability (1/resistance; higher values indicate easier movement).
+    - `fun`: Function applied to the source and target node values to define
+      the edge weight. Takes two arrays and returns an array of the same size.
+      Defaults to the target vertex weight (`fun = lambda x, y: y`).
+    - `neighbors`: Contiguity pattern, either `ROOK_CONTIGUITY` or
+      `QUEEN_CONTIGUITY`.
     """
 
     grid: Array
