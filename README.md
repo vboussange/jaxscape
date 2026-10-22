@@ -121,6 +121,11 @@ But what's really cool about `JAXscape` is that you can autodiff through thoses 
 
 Comprehensive documentation is available at [https://vboussange.github.io/jaxscape](https://vboussange.github.io/jaxscape/)
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, code contributions,
+and documentation previews.
+
 ## Benchmarking
 
 JAXScape includes a benchmark workspace that profiles internal JAXScape

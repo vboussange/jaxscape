@@ -2,7 +2,6 @@ from typing import Any
 
 import equinox as eqx
 import jax
-import jax.numpy as jnp
 import lineax as lx
 from jax import Array
 from jax.experimental.sparse import BCOO
@@ -33,7 +32,7 @@ def _(op: BCOOLinearOperator) -> bool:
     return True
 
 
-def linear_solve(
+def _linear_solve(
     A: BCOO,
     b: Array,
     solver: lx.AbstractLinearSolver,
@@ -55,7 +54,7 @@ def linear_solve(
     ).value
 
 
-def batched_linear_solve(
+def _batched_linear_solve(
     A: BCOO,
     B: Array,
     solver: lx.AbstractLinearSolver,
@@ -63,120 +62,9 @@ def batched_linear_solve(
     options: dict[str, Any] | None = None,
     state: Any = None,
 ) -> Array:
-    return _batched_linear_solve(
-        (A.data, B),
-        A.indices,
-        A.shape,
-        A.indices_sorted,
-        A.unique_indices,
-        solver,
-        options,
-        state,
-    )
-
-
-# This custom VJP is deliberately scoped to the batched helper. The tempting
-# alternative is to expose `B` as one matrix-shaped Lineax RHS and rely on
-# Lineax's own differentiation rule, but iterative solvers such as CG then use
-# one global set of scalar reductions across all RHS columns. That is a block
-# solve with shared step sizes, not the independent column solves represented by
-# `vmap(linear_solve)`. Keeping the forward pass vmapped preserves solver
-# semantics, while the backward rule below applies the standard full-rank linear
-# solve adjoint without passing through JAX's broken transpose rule for vmapped
-# `BCOO @ vector` products.
-# TODO: this could be not needed anymore thanks to fix https://github.com/jax-ml/jax/issues/37647#event-25863292581
-@eqx.filter_custom_vjp
-def _batched_linear_solve(
-    solve_args: tuple[Array, Array],
-    indices: Array,
-    shape: tuple[int, int],
-    indices_sorted: bool,
-    unique_indices: bool,
-    solver: lx.AbstractLinearSolver,
-    options: dict[str, Any] | None,
-    state: Any,
-) -> Array:
-    A_data, B = solve_args
-    A = BCOO(
-        (A_data, indices),
-        shape=shape,
-        indices_sorted=indices_sorted,
-        unique_indices=unique_indices,
-    )
+    """Prepare the current operator once, then solve independent RHS columns."""
     solve_state = _solver_state(A, solver, options, state)
     return _batched_linear_solve_impl(A, B, solver, options=options, state=solve_state)
-
-
-@_batched_linear_solve.def_fwd
-def _batched_linear_solve_fwd(
-    perturbed,
-    solve_args: tuple[Array, Array],
-    indices: Array,
-    shape: tuple[int, int],
-    indices_sorted: bool,
-    unique_indices: bool,
-    solver: lx.AbstractLinearSolver,
-    options: dict[str, Any] | None,
-    state: Any,
-) -> tuple[Array, tuple[BCOO, Array, Any]]:
-    del perturbed
-    A_data, B = solve_args
-    A = BCOO(
-        (A_data, indices),
-        shape=shape,
-        indices_sorted=indices_sorted,
-        unique_indices=unique_indices,
-    )
-    solve_state = _solver_state(A, solver, options, state)
-    X = _batched_linear_solve_impl(A, B, solver, options=options, state=solve_state)
-    return X, (A, X, solve_state)
-
-
-@_batched_linear_solve.def_bwd
-def _batched_linear_solve_bwd(
-    residuals: tuple[BCOO, Array, Any],
-    cotangent: Array | None,
-    perturbed,
-    solve_args: tuple[Array, Array],
-    indices: Array,
-    shape: tuple[int, int],
-    indices_sorted: bool,
-    unique_indices: bool,
-    solver: lx.AbstractLinearSolver,
-    options: dict[str, Any] | None,
-    state: Any,
-) -> tuple[Array | None, Array | None]:
-    del solve_args, indices, shape, indices_sorted, unique_indices, state
-    A, X, solve_state = residuals
-    A_data_perturbed, B_perturbed = perturbed
-
-    if cotangent is None or not (A_data_perturbed or B_perturbed):
-        return None, None
-
-    options = _solver_options(options)
-    transpose_state, transpose_options = solver.transpose(solve_state, options)
-    A_transpose = A.T
-    assert isinstance(A_transpose, BCOO)
-    adjoint = _batched_linear_solve_impl(
-        A_transpose,
-        cotangent,
-        solver,
-        options=transpose_options,
-        state=transpose_state,
-    )
-
-    grad_A_data = None
-    if A_data_perturbed:
-        # For A X = B and loss cotangent G, solve A.T Lambda = G. Then
-        # dL/dA = -Lambda X.T. Gather only the stored sparse entries so the
-        # cotangent has exactly the primal BCOO data shape; this avoids the JAX
-        # sparse transpose bug that returns a broadcasted vmapped cotangent.
-        rows = A.indices[:, 0]
-        cols = A.indices[:, 1]
-        grad_A_data = -jnp.sum(adjoint[rows] * X[cols], axis=1)
-
-    grad_B = adjoint if B_perturbed else None
-    return grad_A_data, grad_B
 
 
 def _batched_linear_solve_impl(

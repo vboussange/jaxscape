@@ -1,0 +1,279 @@
+task,tool,software,scenario,status,median_seconds,timings_seconds,metrics,note
+resistance_distance,JAXScape / PyAMG,JAXScape,synthetic_resistance_small,ok,0.03397579281590879,"[0.045095913112163544, 0.03397579281590879, 0.019931848160922527]","{""dtype"": ""float32"", ""backend"": ""cpu""}",
+resistance_distance,JAXScape / CholmodSolver / f32,JAXScape,synthetic_resistance_small,ok,0.009435526095330715,"[0.01232952787540853, 0.009435526095330715, 0.00926964613609016]","{""dtype"": ""float32"", ""backend"": ""cpu""}",
+resistance_distance,JAXScape / CholmodSolver / f64,JAXScape,synthetic_resistance_small,ok,0.009309945860877633,"[0.013013865798711777, 0.009309945860877633, 0.009199267020449042]","{""dtype"": ""float64"", ""backend"": ""cpu""}",
+resistance_distance,JAXScape / AMJaxCGSolver / f32 (CPU),JAXScape,synthetic_resistance_small,ok,0.0041358498856425285,"[0.004371708957478404, 0.0041358498856425285, 0.00398228014819324]","{""dtype"": ""float32"", ""backend"": ""cpu"", ""hierarchy_behavior"": ""AMJax hierarchy prepared outside timing and frozen""}",
+resistance_distance,JAXScape / AMJaxCGSolver / f32 (GPU),JAXScape,synthetic_resistance_small,ok,0.002008954994380474,"[0.0022750438656657934, 0.002008954994380474, 0.0019956647884100676]","{""dtype"": ""float32"", ""backend"": ""gpu"", ""hierarchy_behavior"": ""AMJax hierarchy prepared outside timing and frozen""}",
+resistance_distance,JAXScape / AMJaxCGSolver / f64 (CPU),JAXScape,synthetic_resistance_small,ok,0.003694979939609766,"[0.003872169880196452, 0.0036576110869646072, 0.003694979939609766]","{""dtype"": ""float64"", ""backend"": ""cpu"", ""hierarchy_behavior"": ""AMJax hierarchy prepared outside timing and frozen""}",
+resistance_distance,JAXScape / AMJaxCGSolver / f64 (GPU),JAXScape,synthetic_resistance_small,ok,0.0021684139501303434,"[0.0022858940064907074, 0.0021684139501303434, 0.0021327438298612833]","{""dtype"": ""float64"", ""backend"": ""gpu"", ""hierarchy_behavior"": ""AMJax hierarchy prepared outside timing and frozen""}",
+resistance_distance,JAXScape / JAXAMGCGSolver / f32 (GPU),JAXScape,synthetic_resistance_small,ok,0.6431018270086497,"[0.6408300229813904, 0.6433553479146212, 0.6431018270086497]","{""dtype"": ""float32"", ""backend"": ""gpu"", ""jaxamg_version"": ""0.1.4"", ""hierarchy_behavior"": ""upstream-managed refresh; may refresh each application"", ""reference_rmse"": 7.495282629181342e-05, ""reference_relative_rmse"": 0.0001505551919559331, ""reference_max_abs_error"": 0.0002252820563501956, ""reference_tool"": ""CholmodSolver / float64 (untimed)""}",
+resistance_distance,JAXScape / JAXAMGCGSolver / f64 (GPU),JAXScape,synthetic_resistance_small,ok,0.621044514933601,"[0.6232122089713812, 0.621044514933601, 0.6195459079463035]","{""dtype"": ""float64"", ""backend"": ""gpu"", ""jaxamg_version"": ""0.1.4"", ""hierarchy_behavior"": ""upstream-managed refresh; may refresh each application"", ""reference_rmse"": 7.496498072864217e-05, ""reference_relative_rmse"": 0.00015057960615964496, ""reference_max_abs_error"": 0.00022556289559738651, ""reference_tool"": ""CholmodSolver / float64 (untimed)""}",
+resistance_distance,gdistance / commuteDistance,gdistance,synthetic_resistance_small,skipped,,[],[],"Install the local R benchmark library with gdistance, raster, sp, and jsonlite to run this adapter. Reported values are rescaled from commute time to effective resistance by dividing by the graph volume."
+resistance_distance,Circuitscape.jl / cg+amg / f64,Circuitscape.jl,synthetic_resistance_small,failed,,[],{},External tool exited with status 1 while running Circuitscape.jl / cg+amg / f64.
+resistance_distance,Circuitscape.jl / cholmod / f64,Circuitscape.jl,synthetic_resistance_small,failed,,[],{},External tool exited with status 1 while running Circuitscape.jl / cholmod / f64.
+resistance_distance,JAXScape / PyAMG,JAXScape,synthetic_resistance_medium,ok,0.21043132711201906,"[0.222218485083431, 0.21043132711201906, 0.20824562082998455]","{""dtype"": ""float32"", ""backend"": ""cpu""}",
+resistance_distance,JAXScape / CholmodSolver / f32,JAXScape,synthetic_resistance_medium,ok,0.1304263030178845,"[0.13067250209860504, 0.1300769040826708, 0.1304263030178845]","{""dtype"": ""float32"", ""backend"": ""cpu""}",
+resistance_distance,JAXScape / CholmodSolver / f64,JAXScape,synthetic_resistance_medium,ok,0.13164140889421105,"[0.13164140889421105, 0.1380128141026944, 0.13129885983653367]","{""dtype"": ""float64"", ""backend"": ""cpu""}",
+resistance_distance,JAXScape / AMJaxCGSolver / f32 (CPU),JAXScape,synthetic_resistance_medium,ok,0.19205294898711145,"[0.19562061899341643, 0.19205294898711145, 0.18594029499217868]","{""dtype"": ""float32"", ""backend"": ""cpu"", ""hierarchy_behavior"": ""AMJax hierarchy prepared outside timing and frozen""}",
+resistance_distance,JAXScape / AMJaxCGSolver / f32 (GPU),JAXScape,synthetic_resistance_medium,ok,0.004942306084558368,"[0.005352105014026165, 0.004942306084558368, 0.00493329600431025]","{""dtype"": ""float32"", ""backend"": ""gpu"", ""hierarchy_behavior"": ""AMJax hierarchy prepared outside timing and frozen""}",
+resistance_distance,JAXScape / AMJaxCGSolver / f64 (CPU),JAXScape,synthetic_resistance_medium,ok,0.23176621505990624,"[0.22707817913033068, 0.23400412895716727, 0.23176621505990624]","{""dtype"": ""float64"", ""backend"": ""cpu"", ""hierarchy_behavior"": ""AMJax hierarchy prepared outside timing and frozen""}",
+resistance_distance,JAXScape / AMJaxCGSolver / f64 (GPU),JAXScape,synthetic_resistance_medium,ok,0.006573493126779795,"[0.00679781218059361, 0.006573493126779795, 0.006553582847118378]","{""dtype"": ""float64"", ""backend"": ""gpu"", ""hierarchy_behavior"": ""AMJax hierarchy prepared outside timing and frozen""}",
+resistance_distance,JAXScape / JAXAMGCGSolver / f32 (GPU),JAXScape,synthetic_resistance_medium,ok,1.5632161130197346,"[1.5591181239578873, 1.5632161130197346, 1.5693669070024043]","{""dtype"": ""float32"", ""backend"": ""gpu"", ""jaxamg_version"": ""0.1.4"", ""hierarchy_behavior"": ""upstream-managed refresh; may refresh each application"", ""reference_rmse"": 0.00035857327219511676, ""reference_relative_rmse"": 0.00036633675765382383, ""reference_max_abs_error"": 0.0008031334714997396, ""reference_tool"": ""CholmodSolver / float64 (untimed)""}",
+resistance_distance,JAXScape / JAXAMGCGSolver / f64 (GPU),JAXScape,synthetic_resistance_medium,ok,1.6005921449977905,"[1.5921306870877743, 1.6005921449977905, 1.6051749419420958]","{""dtype"": ""float64"", ""backend"": ""gpu"", ""jaxamg_version"": ""0.1.4"", ""hierarchy_behavior"": ""upstream-managed refresh; may refresh each application"", ""reference_rmse"": 0.0003455729161352564, ""reference_relative_rmse"": 0.0003530549303214091, ""reference_max_abs_error"": 0.0007395701541326183, ""reference_tool"": ""CholmodSolver / float64 (untimed)""}",
+resistance_distance,gdistance / commuteDistance,gdistance,synthetic_resistance_medium,skipped,,[],[],"Install the local R benchmark library with gdistance, raster, sp, and jsonlite to run this adapter. Reported values are rescaled from commute time to effective resistance by dividing by the graph volume."
+resistance_distance,Circuitscape.jl / cg+amg / f64,Circuitscape.jl,synthetic_resistance_medium,failed,,[],{},External tool exited with status 1 while running Circuitscape.jl / cg+amg / f64.
+resistance_distance,Circuitscape.jl / cholmod / f64,Circuitscape.jl,synthetic_resistance_medium,failed,,[],{},External tool exited with status 1 while running Circuitscape.jl / cholmod / f64.
+resistance_distance,JAXScape / PyAMG,JAXScape,synthetic_resistance_large,ok,16.5783348090481,"[17.04310523509048, 16.5783348090481, 16.39745212602429]","{""dtype"": ""float32"", ""backend"": ""cpu""}",
+resistance_distance,JAXScape / CholmodSolver / f32,JAXScape,synthetic_resistance_large,ok,19.63619228405878,"[19.57655328582041, 19.63619228405878, 19.759725015843287]","{""dtype"": ""float32"", ""backend"": ""cpu""}",
+resistance_distance,JAXScape / CholmodSolver / f64,JAXScape,synthetic_resistance_large,ok,20.893260871991515,"[20.893260871991515, 23.265363147947937, 20.49747762386687]","{""dtype"": ""float64"", ""backend"": ""cpu""}",
+resistance_distance,JAXScape / AMJaxCGSolver / f32 (CPU),JAXScape,synthetic_resistance_large,failed,,[],{},"Above is the stack outside of JIT. Below is the stack inside of JIT:
+  File ""/tmp/jaxscape-issue22/benchmark/jaxscape/resistance_distance.py"", line 341, in _jaxscape_prepared_resistance
+    return distance(grid, nodes=nodes, state=state)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/tmp/jaxscape-issue22/src/jaxscape/distance.py"", line 94, in __call__
+    return self.nodes_to_nodes_distance(graph, nodes, state)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/_module/_prebuilt.py"", line 82, in __call__
+    return self.func(*self.args, *args, **kwargs, **self.keywords)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/tmp/jaxscape-issue22/src/jaxscape/resistance_distance.py"", line 146, in nodes_to_nodes_distance
+    return lineax_solver_nodes_to_nodes_resistance_distance(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/tmp/jaxscape-issue22/src/jaxscape/resistance_distance.py"", line 249, in lineax_solver_nodes_to_nodes_resistance_distance
+    potentials = batched_linear_solve(
+                 ^^^^^^^^^^^^^^^^^^^^^
+  File ""/tmp/jaxscape-issue22/src/jaxscape/solvers/operator.py"", line 66, in batched_linear_solve
+    return _batched_linear_solve(
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File ""/tmp/jaxscape-issue22/src/jaxscape/solvers/operator.py"", line 107, in _batched_linear_solve
+    return _batched_linear_solve_impl(A, B, solver, options=options, state=solve_state)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/tmp/jaxscape-issue22/src/jaxscape/solvers/operator.py"", line 199, in _batched_linear_solve_impl
+    return jax.vmap(
+           ^^^^^^^^^
+  File ""/tmp/jaxscape-issue22/src/jaxscape/solvers/operator.py"", line 200, in <lambda>
+    lambda b: lx.linear_solve(
+              ^^^^^^^^^^^^^^^^
+  File ""/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/internal/_primitive.py"", line 316, in batch_rule
+    out = _vprim_p.bind(
+          ^^^^^^^^^^^^^^
+  File ""/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/internal/_primitive.py"", line 368, in _vprim_abstract_eval
+    outs = abstract_eval(*inputs, **dict(params))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/internal/_primitive.py"", line 159, in _wrapper
+    out = rule(*args)
+          ^^^^^^^^^^^
+  File ""/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/lineax/_solve.py"", line 125, in _linear_solve_abstract_eval
+    out = eqx.filter_eval_shape(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File ""/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/lineax/_solve.py"", line 113, in _linear_solve_impl
+    solution, result, stats = result.error_if(
+                              ^^^^^^^^^^^^^^^^
+  File ""/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/_module/_prebuilt.py"", line 34, in __call__
+    return self.__func__(self.__self__, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+equinox.EquinoxRuntimeError: A linear solver returned non-finite (NaN or inf) output. This usually means that an
+operator was not well-posed, and that its solver does not support this.
+
+If you are trying solve a linear least-squares problem then you should pass
+`solver=AutoLinearSolver(well_posed=False)`. By default `lineax.linear_solve`
+assumes that the operator is square and nonsingular.
+
+If you *were* expecting this solver to work with this operator, then it may be because:
+
+(a) the operator is singular, and your code has a bug; or
+
+(b) the operator was nearly singular (i.e. it had a high condition number:
+    `jnp.linalg.cond(operator.as_matrix())` is large), and the solver suffered from
+    numerical instability issues; or
+
+(c) the operator is declared to exhibit a certain property (e.g. positive definiteness)
+    that is does not actually satisfy.
+
+-------------------
+
+An error occurred during the runtime of your JAX program.
+
+1) Setting the environment variable `EQX_ON_ERROR=breakpoint` is usually the most useful
+way to debug such errors. This can be interacted with using most of the usual commands
+for the Python debugger: `u` and `d` to move up and down frames, the name of a variable
+to print its value, etc.
+
+2) You may also like to try setting `JAX_DISABLE_JIT=1`. This will mean that you can
+(mostly) inspect the state of your program as if it was normal Python.
+
+3) See `https://docs.kidger.site/equinox/api/debug/` for more suggestions.
+"
+resistance_distance,JAXScape / AMJaxCGSolver / f32 (GPU),JAXScape,synthetic_resistance_large,failed,,[],{},"Above is the stack outside of JIT. Below is the stack inside of JIT:
+  File ""/tmp/jaxscape-issue22/benchmark/jaxscape/resistance_distance.py"", line 341, in _jaxscape_prepared_resistance
+    return distance(grid, nodes=nodes, state=state)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/tmp/jaxscape-issue22/src/jaxscape/distance.py"", line 94, in __call__
+    return self.nodes_to_nodes_distance(graph, nodes, state)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/_module/_prebuilt.py"", line 82, in __call__
+    return self.func(*self.args, *args, **kwargs, **self.keywords)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/tmp/jaxscape-issue22/src/jaxscape/resistance_distance.py"", line 146, in nodes_to_nodes_distance
+    return lineax_solver_nodes_to_nodes_resistance_distance(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/tmp/jaxscape-issue22/src/jaxscape/resistance_distance.py"", line 249, in lineax_solver_nodes_to_nodes_resistance_distance
+    potentials = batched_linear_solve(
+                 ^^^^^^^^^^^^^^^^^^^^^
+  File ""/tmp/jaxscape-issue22/src/jaxscape/solvers/operator.py"", line 66, in batched_linear_solve
+    return _batched_linear_solve(
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File ""/tmp/jaxscape-issue22/src/jaxscape/solvers/operator.py"", line 107, in _batched_linear_solve
+    return _batched_linear_solve_impl(A, B, solver, options=options, state=solve_state)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/tmp/jaxscape-issue22/src/jaxscape/solvers/operator.py"", line 199, in _batched_linear_solve_impl
+    return jax.vmap(
+           ^^^^^^^^^
+  File ""/tmp/jaxscape-issue22/src/jaxscape/solvers/operator.py"", line 200, in <lambda>
+    lambda b: lx.linear_solve(
+              ^^^^^^^^^^^^^^^^
+  File ""/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/internal/_primitive.py"", line 316, in batch_rule
+    out = _vprim_p.bind(
+          ^^^^^^^^^^^^^^
+  File ""/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/internal/_primitive.py"", line 368, in _vprim_abstract_eval
+    outs = abstract_eval(*inputs, **dict(params))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/internal/_primitive.py"", line 159, in _wrapper
+    out = rule(*args)
+          ^^^^^^^^^^^
+  File ""/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/lineax/_solve.py"", line 125, in _linear_solve_abstract_eval
+    out = eqx.filter_eval_shape(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File ""/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/lineax/_solve.py"", line 113, in _linear_solve_impl
+    solution, result, stats = result.error_if(
+                              ^^^^^^^^^^^^^^^^
+  File ""/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/_module/_prebuilt.py"", line 34, in __call__
+    return self.__func__(self.__self__, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+equinox.EquinoxRuntimeError: A linear solver returned non-finite (NaN or inf) output. This usually means that an
+operator was not well-posed, and that its solver does not support this.
+
+If you are trying solve a linear least-squares problem then you should pass
+`solver=AutoLinearSolver(well_posed=False)`. By default `lineax.linear_solve`
+assumes that the operator is square and nonsingular.
+
+If you *were* expecting this solver to work with this operator, then it may be because:
+
+(a) the operator is singular, and your code has a bug; or
+
+(b) the operator was nearly singular (i.e. it had a high condition number:
+    `jnp.linalg.cond(operator.as_matrix())` is large), and the solver suffered from
+    numerical instability issues; or
+
+(c) the operator is declared to exhibit a certain property (e.g. positive definiteness)
+    that is does not actually satisfy.
+
+-------------------
+
+An error occurred during the runtime of your JAX program.
+
+1) Setting the environment variable `EQX_ON_ERROR=breakpoint` is usually the most useful
+way to debug such errors. This can be interacted with using most of the usual commands
+for the Python debugger: `u` and `d` to move up and down frames, the name of a variable
+to print its value, etc.
+
+2) You may also like to try setting `JAX_DISABLE_JIT=1`. This will mean that you can
+(mostly) inspect the state of your program as if it was normal Python.
+
+3) See `https://docs.kidger.site/equinox/api/debug/` for more suggestions.
+"
+resistance_distance,JAXScape / AMJaxCGSolver / f64 (CPU),JAXScape,synthetic_resistance_large,ok,13.310745727038011,"[14.14499801513739, 13.310745727038011, 12.99459248688072]","{""dtype"": ""float64"", ""backend"": ""cpu"", ""hierarchy_behavior"": ""AMJax hierarchy prepared outside timing and frozen""}",
+resistance_distance,JAXScape / AMJaxCGSolver / f64 (GPU),JAXScape,synthetic_resistance_large,ok,0.32892621005885303,"[0.3289080609101802, 0.32892621005885303, 0.33180092298425734]","{""dtype"": ""float64"", ""backend"": ""gpu"", ""hierarchy_behavior"": ""AMJax hierarchy prepared outside timing and frozen""}",
+resistance_distance,JAXScape / JAXAMGCGSolver / f32 (GPU),JAXScape,synthetic_resistance_large,failed,,[],{},"Above is the stack outside of JIT. Below is the stack inside of JIT:
+  File ""/tmp/jaxscape-issue22/benchmark/jaxscape/resistance_distance.py"", line 334, in _jaxscape_resistance_with_distance
+    return distance(grid, nodes=nodes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/tmp/jaxscape-issue22/src/jaxscape/distance.py"", line 94, in __call__
+    return self.nodes_to_nodes_distance(graph, nodes, state)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/_module/_prebuilt.py"", line 82, in __call__
+    return self.func(*self.args, *args, **kwargs, **self.keywords)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/tmp/jaxscape-issue22/src/jaxscape/resistance_distance.py"", line 146, in nodes_to_nodes_distance
+    return lineax_solver_nodes_to_nodes_resistance_distance(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/tmp/jaxscape-issue22/src/jaxscape/resistance_distance.py"", line 249, in lineax_solver_nodes_to_nodes_resistance_distance
+    potentials = batched_linear_solve(
+                 ^^^^^^^^^^^^^^^^^^^^^
+  File ""/tmp/jaxscape-issue22/src/jaxscape/solvers/operator.py"", line 66, in batched_linear_solve
+    return _batched_linear_solve(
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File ""/tmp/jaxscape-issue22/src/jaxscape/solvers/operator.py"", line 107, in _batched_linear_solve
+    return _batched_linear_solve_impl(A, B, solver, options=options, state=solve_state)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/tmp/jaxscape-issue22/src/jaxscape/solvers/operator.py"", line 199, in _batched_linear_solve_impl
+    return jax.vmap(
+           ^^^^^^^^^
+  File ""/tmp/jaxscape-issue22/src/jaxscape/solvers/operator.py"", line 200, in <lambda>
+    lambda b: lx.linear_solve(
+              ^^^^^^^^^^^^^^^^
+  File ""/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/internal/_primitive.py"", line 316, in batch_rule
+    out = _vprim_p.bind(
+          ^^^^^^^^^^^^^^
+  File ""/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/internal/_primitive.py"", line 368, in _vprim_abstract_eval
+    outs = abstract_eval(*inputs, **dict(params))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/internal/_primitive.py"", line 159, in _wrapper
+    out = rule(*args)
+          ^^^^^^^^^^^
+  File ""/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/lineax/_solve.py"", line 125, in _linear_solve_abstract_eval
+    out = eqx.filter_eval_shape(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File ""/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/lineax/_solve.py"", line 113, in _linear_solve_impl
+    solution, result, stats = result.error_if(
+                              ^^^^^^^^^^^^^^^^
+  File ""/home/boussang/jaxscape/.venv/lib/python3.12/site-packages/equinox/_module/_prebuilt.py"", line 34, in __call__
+    return self.__func__(self.__self__, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+equinox.EquinoxRuntimeError: A linear solver returned non-finite (NaN or inf) output. This usually means that an
+operator was not well-posed, and that its solver does not support this.
+
+If you are trying solve a linear least-squares problem then you should pass
+`solver=AutoLinearSolver(well_posed=False)`. By default `lineax.linear_solve`
+assumes that the operator is square and nonsingular.
+
+If you *were* expecting this solver to work with this operator, then it may be because:
+
+(a) the operator is singular, and your code has a bug; or
+
+(b) the operator was nearly singular (i.e. it had a high condition number:
+    `jnp.linalg.cond(operator.as_matrix())` is large), and the solver suffered from
+    numerical instability issues; or
+
+(c) the operator is declared to exhibit a certain property (e.g. positive definiteness)
+    that is does not actually satisfy.
+
+-------------------
+
+An error occurred during the runtime of your JAX program.
+
+1) Setting the environment variable `EQX_ON_ERROR=breakpoint` is usually the most useful
+way to debug such errors. This can be interacted with using most of the usual commands
+for the Python debugger: `u` and `d` to move up and down frames, the name of a variable
+to print its value, etc.
+
+2) You may also like to try setting `JAX_DISABLE_JIT=1`. This will mean that you can
+(mostly) inspect the state of your program as if it was normal Python.
+
+3) See `https://docs.kidger.site/equinox/api/debug/` for more suggestions.
+"
+resistance_distance,JAXScape / JAXAMGCGSolver / f64 (GPU),JAXScape,synthetic_resistance_large,ok,9.033759991871193,"[9.0033867189195, 9.033759991871193, 9.039790209149942]","{""dtype"": ""float64"", ""backend"": ""gpu"", ""jaxamg_version"": ""0.1.4"", ""hierarchy_behavior"": ""upstream-managed refresh; may refresh each application"", ""reference_rmse"": 0.0005819503604755069, ""reference_relative_rmse"": 0.0004479439628855309, ""reference_max_abs_error"": 0.0009725113274683395, ""reference_tool"": ""CholmodSolver / float64 (untimed)""}",
+resistance_distance,gdistance / commuteDistance,gdistance,synthetic_resistance_large,skipped,,[],[],"Install the local R benchmark library with gdistance, raster, sp, and jsonlite to run this adapter. Reported values are rescaled from commute time to effective resistance by dividing by the graph volume."
+resistance_distance,Circuitscape.jl / cg+amg / f64,Circuitscape.jl,synthetic_resistance_large,failed,,[],{},External tool exited with status 1 while running Circuitscape.jl / cg+amg / f64.
+resistance_distance,Circuitscape.jl / cholmod / f64,Circuitscape.jl,synthetic_resistance_large,failed,,[],{},External tool exited with status 1 while running Circuitscape.jl / cholmod / f64.
+inverse_landscape_genetics,JAXScape / CholmodSolver / f32,JAXScape + Optimistix,synthetic_inverse_medium,ok,10.463356994092464,"[10.463356994092464, 10.53276974381879, 10.444092290941626]","{""rmse"": 719.769775390625, ""relative_rmse"": 0.0012131942203268409, ""final_mse"": 492165.09375, ""optimizer_final_mse"": 4.615770376403816e-05, ""converged"": false, ""iteration_count"": 50, ""iteration_limit"": 50, ""solver_preconditioner_reused"": false, ""solver_cg_state_refreshed"": false, ""solver_preconditioner_refresh_count"": 0, ""parameterization"": ""monomolecular_base_resistance"", ""parameter_count"": 2, ""final_shape_parameter"": 76.8409652709961, ""final_max_parameter"": 45.68643569946289, ""dtype"": ""float32"", ""backend"": ""cpu"", ""target_distance_tool"": ""JAXScape / CholmodSolver / commuteDistance"", ""objective_distance_family"": ""effective_resistance"", ""reported_distance_family"": ""commuteDistance"", ""optimizer"": ""lbfgs"", ""optimizer_rtol"": 1e-05, ""optimizer_atol"": 1e-05, ""budget_policy"": ""fixed_max_steps""}",
+inverse_landscape_genetics,JAXScape / AMJaxCGSolver / f32 (CPU),JAXScape + Optimistix,synthetic_inverse_medium,ok,10.254140425939113,"[10.921539406990632, 10.254140425939113, 9.818765398813412]","{""rmse"": 720.7156372070312, ""relative_rmse"": 0.0012147885281592607, ""final_mse"": 493459.4375, ""optimizer_final_mse"": 4.551600432023406e-05, ""converged"": false, ""iteration_count"": 50, ""iteration_limit"": 50, ""solver_preconditioner_reused"": true, ""solver_cg_state_refreshed"": true, ""solver_preconditioner_refresh_count"": 1, ""parameterization"": ""monomolecular_base_resistance"", ""parameter_count"": 2, ""final_shape_parameter"": 76.43159484863281, ""final_max_parameter"": 45.44408416748047, ""dtype"": ""float32"", ""backend"": ""cpu"", ""target_distance_tool"": ""JAXScape / CholmodSolver / commuteDistance"", ""objective_distance_family"": ""effective_resistance"", ""reported_distance_family"": ""commuteDistance"", ""optimizer"": ""lbfgs"", ""optimizer_rtol"": 1e-05, ""optimizer_atol"": 1e-05, ""budget_policy"": ""fixed_max_steps"", ""hierarchy_behavior"": ""AMJax hierarchy prepared outside timing and frozen""}",
+inverse_landscape_genetics,JAXScape / AMJaxCGSolver / f32 (GPU),JAXScape + Optimistix,synthetic_inverse_medium,ok,0.22263459698297083,"[0.23011177778244019, 0.20374046708457172, 0.22263459698297083]","{""rmse"": 715.7520751953125, ""relative_rmse"": 0.0012064222246408463, ""final_mse"": 486686.0, ""optimizer_final_mse"": 4.511381484917365e-05, ""converged"": true, ""iteration_count"": 48, ""iteration_limit"": 50, ""solver_preconditioner_reused"": true, ""solver_cg_state_refreshed"": true, ""solver_preconditioner_refresh_count"": 1, ""parameterization"": ""monomolecular_base_resistance"", ""parameter_count"": 2, ""final_shape_parameter"": 76.03838348388672, ""final_max_parameter"": 45.21878433227539, ""dtype"": ""float32"", ""backend"": ""gpu"", ""target_distance_tool"": ""JAXScape / CholmodSolver / commuteDistance"", ""objective_distance_family"": ""effective_resistance"", ""reported_distance_family"": ""commuteDistance"", ""optimizer"": ""lbfgs"", ""optimizer_rtol"": 1e-05, ""optimizer_atol"": 1e-05, ""budget_policy"": ""fixed_max_steps"", ""hierarchy_behavior"": ""AMJax hierarchy prepared outside timing and frozen""}",
+inverse_landscape_genetics,JAXScape / AMJaxCGSolver / f64 (CPU),JAXScape + Optimistix,synthetic_inverse_medium,ok,12.940361412009224,"[12.763656528899446, 13.073599853785709, 12.940361412009224]","{""rmse"": 718.3634009427747, ""relative_rmse"": 0.0012108237532492208, ""final_mse"": 490243.6770233661, ""optimizer_final_mse"": 4.534070405263187e-05, ""converged"": true, ""iteration_count"": 46, ""iteration_limit"": 50, ""solver_preconditioner_reused"": true, ""solver_cg_state_refreshed"": true, ""solver_preconditioner_refresh_count"": 1, ""parameterization"": ""monomolecular_base_resistance"", ""parameter_count"": 2, ""final_shape_parameter"": 77.08133174756425, ""final_max_parameter"": 45.8191052523894, ""dtype"": ""float64"", ""backend"": ""cpu"", ""target_distance_tool"": ""JAXScape / CholmodSolver / commuteDistance"", ""objective_distance_family"": ""effective_resistance"", ""reported_distance_family"": ""commuteDistance"", ""optimizer"": ""lbfgs"", ""optimizer_rtol"": 1e-05, ""optimizer_atol"": 1e-05, ""budget_policy"": ""fixed_max_steps"", ""hierarchy_behavior"": ""AMJax hierarchy prepared outside timing and frozen""}",
+inverse_landscape_genetics,JAXScape / AMJaxCGSolver / f64 (GPU),JAXScape + Optimistix,synthetic_inverse_medium,ok,0.3229243641253561,"[0.32211417495273054, 0.3231815230101347, 0.3229243641253561]","{""rmse"": 717.677395071465, ""relative_rmse"": 0.0012096674691139766, ""final_mse"": 489307.8012267354, ""optimizer_final_mse"": 4.53294867244152e-05, ""converged"": false, ""iteration_count"": 50, ""iteration_limit"": 50, ""solver_preconditioner_reused"": true, ""solver_cg_state_refreshed"": true, ""solver_preconditioner_refresh_count"": 1, ""parameterization"": ""monomolecular_base_resistance"", ""parameter_count"": 2, ""final_shape_parameter"": 76.99695296464394, ""final_max_parameter"": 45.77089841280226, ""dtype"": ""float64"", ""backend"": ""gpu"", ""target_distance_tool"": ""JAXScape / CholmodSolver / commuteDistance"", ""objective_distance_family"": ""effective_resistance"", ""reported_distance_family"": ""commuteDistance"", ""optimizer"": ""lbfgs"", ""optimizer_rtol"": 1e-05, ""optimizer_atol"": 1e-05, ""budget_policy"": ""fixed_max_steps"", ""hierarchy_behavior"": ""AMJax hierarchy prepared outside timing and frozen""}",
+inverse_landscape_genetics,JAXScape / JAXAMGCGSolver / f32 (GPU),JAXScape + Optimistix,synthetic_inverse_medium,failed,,[],{},Exceeded walltime of 180s while running JAXScape / JAXAMGCGSolver / f32 (GPU).
+inverse_landscape_genetics,JAXScape / JAXAMGCGSolver / f64 (GPU),JAXScape + Optimistix,synthetic_inverse_medium,failed,,[],{},Exceeded walltime of 180s while running JAXScape / JAXAMGCGSolver / f64 (GPU).
+inverse_landscape_genetics,ResistanceGA,ResistanceGA,synthetic_inverse_medium,skipped,,[],"{""ga_method"": ""LL"", ""ga_transformation"": ""M"", ""ga_pop_size"": 12, ""ga_maxiter"": 3, ""ga_run"": 1, ""ga_max_cont"": 25, ""ga_seed"": 7, ""budget_policy"": ""fixed_ga_iterations""}","Install the local R benchmark library with ResistanceGA, raster, and sp to run this adapter."

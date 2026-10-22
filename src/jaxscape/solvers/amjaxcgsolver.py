@@ -21,19 +21,12 @@ except ImportError:
     AMJAX_AVAILABLE = False
 
 
-class AbstractAMJaxCGSolverState(eqx.Module):
-    """Abstract state for `AMJaxCGSolver`."""
-
-    cg_state: eqx.AbstractVar[PyTree[Any] | None]
-    preconditioner: eqx.AbstractVar[AbstractLinearOperator]
-
-
 @final
-class AMJaxCGSolverState(AbstractAMJaxCGSolverState):
+class AMJaxCGSolverState(eqx.Module):
     """State for `AMJaxCGSolver`.
 
     `cg_state=None` means that only the AMJax preconditioner has been initialized.
-    JAXScape's `linear_solve` wrappers complete such a state against the current
+    `ResistanceDistance` completes such a state against the current
     operator before dispatching to Lineax.
     """
 
@@ -130,11 +123,12 @@ class AMJaxCGSolver(AbstractLinearSolver):
     !!! example
 
         ```python
-        from jaxscape.solvers import AMJaxCGSolver, BCOOLinearOperator, linear_solve
+        import lineax as lx
+        from jaxscape.solvers import AMJaxCGSolver, BCOOLinearOperator
 
         solver = AMJaxCGSolver(rtol=1e-6, atol=1e-6, max_steps=1_000)
         state = solver.init(BCOOLinearOperator(A), {})
-        x = linear_solve(A, b, solver, state=state)
+        x = lx.linear_solve(BCOOLinearOperator(A), b, solver, state=state).value
         ```
 
     !!! warning
@@ -270,8 +264,7 @@ class AMJaxCGSolver(AbstractLinearSolver):
         if state.cg_state is None:
             raise ValueError(
                 "AMJaxCGSolver received preconditioner-only state without "
-                "operator-specific CG state. Use `jaxscape.solvers.linear_solve`, "
-                "`jaxscape.solvers.batched_linear_solve`, or call "
+                "operator-specific CG state. Use `ResistanceDistance`, or call "
                 "`solver.materialize_state(operator, options, state)` before "
                 "passing the state to `lineax.linear_solve` directly."
             )

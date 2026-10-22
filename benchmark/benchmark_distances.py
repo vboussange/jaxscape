@@ -17,6 +17,7 @@ import time
 from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field, replace
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -426,12 +427,27 @@ def benchmark_environment() -> dict[str, str]:
     return environment
 
 
+def dependency_versions() -> dict[str, str | None]:
+    versions = {}
+    for package in (
+        "jax", "jaxlib", "lineax", "equinox", "optimistix",
+        "jaxamg", "amjax", "pyamg", "cholespy",
+    ):
+        try:
+            versions[package] = version(package)
+        except PackageNotFoundError:
+            versions[package] = None
+    return versions
+
+
 def environment_payload(config: BenchmarkConfig) -> dict[str, object]:
     return {
         "python": shutil.which("python") or "python",
         "julia": shutil.which("julia"),
         "rscript": shutil.which("Rscript"),
         "platform": sys.platform,
+        "dependency_versions": dependency_versions(),
+        "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
         "jax_backend": jax.default_backend(),
         "requested_device_platform": config.requested_device_platform,
         "available_jax_platforms": list(config.available_device_platforms),
@@ -440,6 +456,9 @@ def environment_payload(config: BenchmarkConfig) -> dict[str, object]:
         if config.gpu_device is not None
         else None,
         "gpu_backend_available": config.gpu_device is not None,
+        "gpu_device_kind": (
+            config.gpu_device.device_kind if config.gpu_device is not None else None
+        ),
         "julia_project": str(JULIA_PROJECT_DIR),
         "julia_depot": str(JULIA_DEPOT_DIR),
         "r_libs_user": str(R_LIBS_DIR),
@@ -1346,7 +1365,8 @@ def validate_records(records: list[BenchmarkRecord], config: BenchmarkConfig) ->
 
 
 def collect_resistance_results(
-    case: BenchmarkCase, config: BenchmarkConfig
+    case: BenchmarkCase, config: BenchmarkConfig,
+    *, profile_keys: list[str] | None = None,
 ) -> list[BenchmarkRecord]:
     from benchmark.jaxscape import resistance_distance
 
@@ -1366,7 +1386,9 @@ def collect_resistance_results(
         }
 
     records = [
-        *resistance_distance.collect_jaxscape_resistance_results(case, config),
+        *resistance_distance.collect_jaxscape_resistance_results(
+            case, config, profile_keys=profile_keys
+        ),
         gdistance_record_from_payload(
             case,
             "gdistance / commuteDistance",
@@ -1448,12 +1470,15 @@ def collect_sensitivity_results(
 
 
 def collect_inverse_results(
-    case: BenchmarkCase, config: BenchmarkConfig
+    case: BenchmarkCase, config: BenchmarkConfig,
+    *, profile_keys: list[str] | None = None,
 ) -> list[BenchmarkRecord]:
     from benchmark.jaxscape import inverse_landscape_genetics
 
     return [
-        *inverse_landscape_genetics.collect_jaxscape_inverse_results(case, config),
+        *inverse_landscape_genetics.collect_jaxscape_inverse_results(
+            case, config, profile_keys=profile_keys
+        ),
         run_resistancega_inverse(case, config),
     ]
 

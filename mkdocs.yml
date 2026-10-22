@@ -2,6 +2,7 @@ site_name: JAXScape
 site_description: A minimal JAX library for connectivity modelling at scale
 site_author: Victor Boussange
 site_url: https://vboussange.github.io/jaxscape
+strict: true
 
 repo_name: vboussange/jaxscape
 repo_url: https://github.com/vboussange/jaxscape
@@ -65,7 +66,7 @@ markdown_extensions:
         toc_depth: 4
 
 extra_javascript:
-  - _static/javascripts/mathjax.js
+  - _static/mathjax.js
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
 
 extra_css:

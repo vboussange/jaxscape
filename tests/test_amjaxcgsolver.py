@@ -4,13 +4,14 @@ import lineax as lx
 import numpy as np
 import pytest
 from jax.experimental.sparse import BCOO
+from jaxscape import GridGraph, ResistanceDistance
 from jaxscape.solvers import (
     amjax_preconditioner_operator,
     AMJaxCGSolver,
-    batched_linear_solve,
     BCOOLinearOperator,
     build_amjax_solver,
 )
+from jaxscape.solvers.operator import _batched_linear_solve
 
 
 @pytest.fixture
@@ -33,8 +34,11 @@ def test_hierarchy_preserves_matrix_dtype(amjax_dependencies, dtype):
                 assert leaf.dtype == dtype
 
 
-def test_frozen_preconditioner_jitted_values_and_gradients(amjax_dependencies):
-    """Current matrix and RHS derivatives must not use the reference operator."""
+@pytest.mark.parametrize("legacy_tuple", [False, True])
+def test_frozen_preconditioner_jitted_values_and_gradients(
+    amjax_dependencies, legacy_tuple
+):
+    """Current matrix solves and resistance gradients reuse a frozen hierarchy."""
     with jax.enable_x64():
         scipy_matrix = amjax_dependencies.gallery.poisson(
             (6, 6), format="csr", dtype=np.float64
@@ -48,10 +52,12 @@ def test_frozen_preconditioner_jitted_values_and_gradients(amjax_dependencies):
         )
         state = solver.init_preconditioner(BCOOLinearOperator(reference))
         assert not state.has_cg_state
+        if legacy_tuple:
+            state = (state.cg_state, state.preconditioner)
 
         def solve(data, rhs):
             matrix = BCOO((data, current.indices), shape=current.shape)
-            return batched_linear_solve(matrix, rhs, solver, state=state)
+            return _batched_linear_solve(matrix, rhs, solver, state=state)
 
         def dense_solve(data, rhs):
             matrix = BCOO((data, current.indices), shape=current.shape)
@@ -61,23 +67,34 @@ def test_frozen_preconditioner_jitted_values_and_gradients(amjax_dependencies):
         expected = dense_solve(current.data, rhs)
         np.testing.assert_allclose(actual, expected, rtol=1e-8, atol=1e-9)
 
-        def objective(data, rhs):
-            return jnp.sum(solve(data, rhs) ** 2)
-
-        def dense_objective(data, rhs):
-            return jnp.sum(dense_solve(data, rhs) ** 2)
-
-        value, grads = jax.jit(jax.value_and_grad(objective, argnums=(0, 1)))(
-            current.data, rhs
-        )
-        expected_value, expected_grads = jax.value_and_grad(
-            dense_objective, argnums=(0, 1)
-        )(current.data, rhs)
-        np.testing.assert_allclose(value, expected_value, rtol=1e-8)
-        for actual_grad, expected_grad in zip(grads, expected_grads):
-            np.testing.assert_allclose(
-                actual_grad, expected_grad, rtol=1e-8, atol=1e-9
+        permeability = jnp.ones((6, 6), dtype=jnp.float64)
+        distance = ResistanceDistance(solver=solver)
+        graph = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
+        resistance_state = distance.init_preconditioner(graph)
+        if legacy_tuple:
+            resistance_state = (
+                resistance_state.cg_state,
+                resistance_state.preconditioner,
             )
+        nodes = jnp.array([0, 12, 35, 12], dtype=jnp.int32)
+
+        def objective(values):
+            graph = GridGraph(values, fun=lambda x, y: (x + y) / 2)
+            return jnp.sum(distance(graph, nodes=nodes, state=resistance_state) ** 2)
+
+        def dense_objective(values):
+            graph = GridGraph(values, fun=lambda x, y: (x + y) / 2)
+            return jnp.sum(ResistanceDistance()(graph, nodes=nodes) ** 2)
+
+        current_permeability = permeability + jnp.linspace(0.1, 0.5, 36).reshape(6, 6)
+        value, gradient = jax.jit(jax.value_and_grad(objective))(current_permeability)
+        expected_value, expected_gradient = jax.value_and_grad(dense_objective)(
+            current_permeability
+        )
+        np.testing.assert_allclose(value, expected_value, rtol=1e-8)
+        np.testing.assert_allclose(
+            gradient, expected_gradient, rtol=1e-8, atol=1e-9
+        )
 
 
 @pytest.mark.parametrize("size", [1, 4, 9])
@@ -99,13 +116,26 @@ def test_single_level_hierarchy_uses_cg(amjax_dependencies, size):
 
         @jax.jit
         def solve(rhs):
-            return batched_linear_solve(matrix, rhs, solver, state=state)
+            return _batched_linear_solve(matrix, rhs, solver, state=state)
 
         np.testing.assert_allclose(
             solve(rhs), jnp.linalg.solve(matrix.todense(), rhs), rtol=1e-8, atol=1e-9
         )
-        gradient = jax.jit(jax.grad(lambda b: jnp.sum(solve(b))))(rhs)
-        expected = jnp.linalg.solve(matrix.todense().T, jnp.ones_like(rhs))
+        permeability = jnp.linspace(0.8, 1.4, size + 1).reshape(1, -1)
+        distance = ResistanceDistance(solver=solver)
+        graph = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
+        resistance_state = distance.init_preconditioner(graph)
+
+        def objective(values, distance, state=None):
+            graph = GridGraph(values, fun=lambda x, y: (x + y) / 2)
+            return jnp.sum(distance(graph, state=state))
+
+        gradient = jax.jit(jax.grad(
+            lambda values: objective(values, distance, resistance_state)
+        ))(permeability)
+        expected = jax.grad(
+            lambda values: objective(values, ResistanceDistance())
+        )(permeability)
         np.testing.assert_allclose(gradient, expected, rtol=1e-8, atol=1e-9)
 
 

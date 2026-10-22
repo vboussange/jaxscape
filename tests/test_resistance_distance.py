@@ -3,12 +3,13 @@ from importlib.util import find_spec
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+import lineax as lx
 import networkx as nx
 import numpy as np
 import pytest
 from equinox import filter_grad, filter_jit
 from jax.experimental.sparse import BCOO
-from jaxscape import GridGraph, SpielmanApproximation
+from jaxscape import Graph, GridGraph, SpielmanApproximation
 from jaxscape.resistance_distance import (
     p_inv_resistance_distance,
     ResistanceDistance,
@@ -229,3 +230,80 @@ def test_approximate_cholmod_float64_nodes_to_nodes_distance_large_graph_auto_st
     assert approx.dtype == jnp.float64
     assert approx.shape == (coords.shape[0], coords.shape[0])
     assert jnp.all(jnp.isfinite(approx))
+
+
+def solver_tolerances(solver):
+    if isinstance(solver, CholmodSolver):
+        return {
+            "solve_rtol": 1e-5,
+            "solve_atol": 1e-6,
+            "grad_rtol": 1e-4,
+            "grad_atol": 1e-6,
+        }
+    return {
+        "solve_rtol": 2e-3,
+        "solve_atol": 1e-4,
+        "grad_rtol": 5e-2,
+        "grad_atol": 5e-4,
+    }
+
+
+@pytest.mark.skipif(len(available_solvers) == 0, reason="No solvers available")
+@pytest.mark.parametrize("solver", available_solvers)
+def test_solver_resistance_differentiability(solver):
+    """Sparse solver losses and gradients agree with the dense resistance API."""
+    permeability = jnp.linspace(0.8, 1.4, 25, dtype=jnp.float32).reshape(5, 5)
+    graph = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
+    distance = ResistanceDistance(solver=solver)
+    reference = ResistanceDistance()
+    state = distance.init_preconditioner(graph)
+    tolerances = solver_tolerances(solver)
+    nodes = jnp.array([0, 7, 24, 7], dtype=jnp.int32)
+
+    for query in ({}, {"nodes": nodes}):
+
+        def objective(values):
+            current = GridGraph(values, fun=lambda x, y: (x + y) / 2)
+            return jnp.sum(distance(current, state=state, **query) ** 2)
+
+        def reference_objective(values):
+            current = GridGraph(values, fun=lambda x, y: (x + y) / 2)
+            return jnp.sum(reference(current, **query) ** 2)
+
+        actual = distance(graph, state=state, **query)
+        expected = reference(graph, **query)
+        assert jnp.allclose(
+            actual,
+            expected,
+            rtol=tolerances["solve_rtol"],
+            atol=tolerances["solve_atol"],
+        )
+        gradient = jax.jit(jax.grad(objective))(permeability)
+        expected_gradient = jax.jit(jax.grad(reference_objective))(permeability)
+        assert jnp.allclose(
+            gradient,
+            expected_gradient,
+            rtol=tolerances["grad_rtol"],
+            atol=tolerances["grad_atol"],
+        )
+
+
+def test_padded_sparse_resistance_has_zero_padding_gradient():
+    """Duplicate positions, self-loops, and unused capacity retain their meaning."""
+    edges = jnp.array([[0, 2], [2, 0], [1, 2], [2, 1]], dtype=jnp.int32)
+    indices = jnp.concatenate([edges, edges, jnp.array([[0, 0], [3, 3], [3, 3]])])
+    values = jnp.array([1.0, 1.0, 2.0, 2.0, 1.0, 1.0, 2.0, 2.0, 0.0, 0.0, 0.0])
+    distance = ResistanceDistance(solver=lx.CG(rtol=1e-6, atol=1e-6))
+
+    def objective(data):
+        graph = Graph(BCOO((data, indices), shape=(3, 3)))
+        return jnp.sum(distance(graph) ** 2)
+
+    gradient = jax.jit(jax.grad(objective))(values)
+    # On this two-edge tree, R01=1/2+1/4, R02=1/2, R12=1/4.
+    # Each duplicated outgoing coefficient has the same derivative; the ground
+    # row, self-loop and padding do not contribute to the grounded Laplacian.
+    expected = jnp.array(
+        [-1.25, 0.0, -0.25, 0.0, -1.25, 0.0, -0.25, 0.0, 0.0, 0.0, 0.0]
+    )
+    assert jnp.allclose(gradient, expected)

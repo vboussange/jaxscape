@@ -136,6 +136,11 @@ def environment_table(payload: dict[str, Any]) -> str:
     thread_environment = environment.get("thread_environment") or {}
     rows = [
         ("Requested device", environment.get("requested_device_platform", "n/a")),
+        ("Dependency versions", ", ".join(
+            f"{name}={value or 'unavailable'}"
+            for name, value in (environment.get("dependency_versions") or {}).items()
+        ) or "n/a"),
+        ("CUDA visible devices", environment.get("cuda_visible_devices", "n/a")),
         (
             "Available JAX platforms",
             ", ".join(environment.get("available_jax_platforms", [])) or "n/a",
