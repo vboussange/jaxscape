@@ -139,7 +139,13 @@ class ResistanceDistance(AbstractDistance):
         A = graph.get_adjacency_matrix()
         if isinstance(self.method, SpielmanApproximation):
             return spielman_nodes_to_nodes_resistance_distance(
-                A, nodes, self.method.epsilon, self.method.seed, self.solver, state
+                A,
+                nodes,
+                self.method.epsilon,
+                self.method.seed,
+                self.solver,
+                state,
+                projection_batch_size=self.method.projection_batch_size,
             )
         if self.solver is None:
             return p_inv_resistance_distance(A)[nodes[:, None], nodes[None, :]]
@@ -166,6 +172,7 @@ class ResistanceDistance(AbstractDistance):
                 self.method.seed,
                 self.solver,
                 state,
+                projection_batch_size=self.method.projection_batch_size,
             )
         R = self.all_pairs_distance(graph, state)
         return R[sources[:, None], targets[None, :]]
@@ -189,16 +196,30 @@ class SpielmanApproximation(AbstractResistanceMethod):
       projections: `ceil(log(n_vertices) / epsilon**2)`, which increases memory
       use.
     - `seed`: Random seed for the Rademacher edge projections.
+    - `projection_batch_size`: Positive Python integer, defaults to 64. Number
+      of projection rows evaluated together in the streamed sampled-site and
+      source-to-target paths, including backward recomputation. Larger batches
+      can improve throughput at the cost of more working memory; choose a size
+      that fits your device. It is used directly, without automatic reduction.
+      Dense projections and all-pairs queries do not use this setting. Changing
+      it recompiles JIT-compiled calls; it does not change the random sketch.
     """
 
     epsilon: float = 0.1
     seed: int = 0
+    projection_batch_size: int = 64
 
     def __check_init__(self):
         if self.epsilon <= 0:
             raise ValueError(
                 "epsilon must be positive (controls approximation accuracy)."
             )
+        if (
+            isinstance(self.projection_batch_size, bool)
+            or not isinstance(self.projection_batch_size, int)
+            or self.projection_batch_size <= 0
+        ):
+            raise ValueError("projection_batch_size must be a positive Python integer.")
 
 
 @eqx.filter_jit
@@ -281,6 +302,8 @@ def spielman_nodes_to_nodes_resistance_distance(
     seed: int = 0,
     solver: Optional[lx.AbstractLinearSolver] = None,
     state: Any = None,
+    *,
+    projection_batch_size: int = 64,
 ) -> Array:
     """Approximate pairwise resistance distances among selected nodes."""
     return _spielman_nodes_to_nodes_resistance_distance_from_data(
@@ -292,6 +315,7 @@ def spielman_nodes_to_nodes_resistance_distance(
         seed,
         solver,
         state,
+        projection_batch_size,
     )
 
 
@@ -304,6 +328,8 @@ def spielman_sources_to_targets_resistance_distance(
     seed: int = 0,
     solver: Optional[lx.AbstractLinearSolver] = None,
     state: Any = None,
+    *,
+    projection_batch_size: int = 64,
 ) -> Array:
     """Approximate resistance distances from sources to targets."""
     return _spielman_sources_to_targets_resistance_distance_from_data(
@@ -316,6 +342,7 @@ def spielman_sources_to_targets_resistance_distance(
         seed,
         solver,
         state,
+        projection_batch_size,
     )
 
 
@@ -577,6 +604,7 @@ def _spielman_project_potentials(
     potentials: Array,
     epsilon: float,
     seed: int,
+    projection_batch_size: int,
 ) -> Array:
     k = _projection_size(shape[0], epsilon)
     edge_deltas = _edge_potential_deltas(potentials, indices, shape)
@@ -590,17 +618,6 @@ def _spielman_project_potentials(
 
     key = jax.random.PRNGKey(seed)
 
-    # Use an 8 GiB static estimate for batch-dependent forward/backward storage:
-    # two floating and two native-width integer work arrays per edge and row.
-    # Rademacher intermediates follow JAX's default integer width, including x64.
-    # This excludes fixed solve/edge-delta/output buffers; it is not a bound on
-    # total compiled temporaries or device memory. It selects 64 rows for four
-    # million float64 entries and reduces to one row for larger working sets.
-    # One row remains the unavoidable floor even if it exceeds the estimate.
-    sign_itemsize = jax.dtypes.canonicalize_dtype(int).itemsize
-    bytes_per_row = data.shape[0] * 2 * (data.dtype.itemsize + sign_itemsize)
-    batch_size = max(1, min(64, (8 * 1024**3) // max(1, bytes_per_row)))
-
     @jax.checkpoint
     def project_one(projection_index):
         projection_key = jax.random.fold_in(key, projection_index)
@@ -609,8 +626,10 @@ def _spielman_project_potentials(
 
     # lax.map handles a final partial batch with the same global fold_in keys.
     # Checkpointing each row recomputes signs in reverse mode instead of saving
-    # all k rows. Dense projections retain their original whole-matrix PRNG key.
-    return lax.map(project_one, jnp.arange(k), batch_size=batch_size)
+    # all k rows. Working storage scales with the user-selected batch size;
+    # there is no automatic memory-based reduction. Dense projections retain
+    # their original whole-matrix PRNG key.
+    return lax.map(project_one, jnp.arange(k), batch_size=projection_batch_size)
 
 
 def _distances_from_selected_features(
@@ -635,19 +654,24 @@ def _spielman_selected_features(
     seed: int,
     solver: Optional[lx.AbstractLinearSolver],
     state: Any,
+    projection_batch_size: int,
 ) -> Array:
     return _spielman_selected_features_fwd(
-        None, data, indices, shape, nodes, epsilon, seed, solver, state
+        None, data, indices, shape, nodes, epsilon, seed, solver, state,
+        projection_batch_size,
     )[0]
 
 
 def _spielman_selected_features_fwd(
-    perturbed, data, indices, shape, nodes, epsilon, seed, solver, state
+    perturbed, data, indices, shape, nodes, epsilon, seed, solver, state,
+    projection_batch_size,
 ):
     del perturbed
     reduced, solve_state = _prepare_reduced_laplacian(data, indices, shape, solver, state)
     potentials = _node_potentials(reduced, nodes, solver, solve_state)
-    features = _spielman_project_potentials(data, indices, shape, potentials, epsilon, seed)
+    features = _spielman_project_potentials(
+        data, indices, shape, potentials, epsilon, seed, projection_batch_size
+    )
     return features, (potentials, reduced, solve_state)
 
 
@@ -656,7 +680,8 @@ _spielman_selected_features.def_fwd(_spielman_selected_features_fwd)
 
 @_spielman_selected_features.def_bwd
 def _spielman_selected_features_bwd(
-    residuals, cotangent, perturbed, data, indices, shape, nodes, epsilon, seed, solver, state
+    residuals, cotangent, perturbed, data, indices, shape, nodes, epsilon, seed,
+    solver, state, projection_batch_size,
 ):
     del nodes, state
     if cotangent is None or not perturbed:
@@ -682,7 +707,7 @@ def _spielman_selected_features_bwd(
     # regenerate the same signs in this VJP, avoiding a k-by-edge saved tape.
     _, projection_pullback = jax.vjp(
         lambda weights, values: _spielman_project_potentials(
-            weights, indices, shape, values, epsilon, seed
+            weights, indices, shape, values, epsilon, seed, projection_batch_size
         ),
         data,
         potentials,
@@ -704,11 +729,12 @@ def _spielman_sources_to_targets_resistance_distance_from_data(
     epsilon: float,
     seed: int,
     solver: Optional[lx.AbstractLinearSolver],
-    state: Any = None,
+    state: Any,
+    projection_batch_size: int,
 ) -> Array:
     nodes = jnp.concatenate([sources, targets])
     features = _spielman_selected_features(
-        data, indices, shape, nodes, epsilon, seed, solver, state
+        data, indices, shape, nodes, epsilon, seed, solver, state, projection_batch_size
     )
     n_sources = sources.shape[0]
     return _distances_from_selected_features(
@@ -724,10 +750,11 @@ def _spielman_nodes_to_nodes_resistance_distance_from_data(
     epsilon: float,
     seed: int,
     solver: Optional[lx.AbstractLinearSolver],
-    state: Any = None,
+    state: Any,
+    projection_batch_size: int,
 ) -> Array:
     features = _spielman_selected_features(
-        data, indices, shape, nodes, epsilon, seed, solver, state
+        data, indices, shape, nodes, epsilon, seed, solver, state, projection_batch_size
     )
     distances = _distances_from_selected_features(features, features)
     return distances.at[jnp.diag_indices(nodes.shape[0])].set(0)
