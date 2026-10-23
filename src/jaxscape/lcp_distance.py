@@ -13,29 +13,27 @@ from jaxscape.graph import AbstractGraph
 
 @final
 class LCPDistance(AbstractDistance):
-    """Compute least-cost path distances using shortest path algorithms.
+    """Compute least-cost distances with edge cost `1/a` for conductance `a`.
 
-    Supports two algorithms:
-
-    - **Bellman-Ford** (default): Sparse relaxation with exact convergence
-      stopping and a custom first-order reverse-mode derivative. At ties,
-      shares derivatives equally among optimal incoming edges at each vertex.
-    - **Floyd-Warshall**: Efficient for all-pairs on small dense graphs.
-      Complexity O(V³), converts to dense matrix.
+    For a unique shortest path, the derivative of its distance with respect to
+    `a` is `-1/a**2` on that path and zero elsewhere: increasing conductance
+    decreases the distance. At exact ties, Bellman–Ford chooses a generalized
+    gradient by splitting sensitivity equally among optimal incoming edges at
+    each vertex; complete paths need not receive equal weight. Raster gradients
+    follow by the chain rule through `GridGraph.fun`.
 
     **Attributes:**
 
-    - `algorithm`: Algorithm choice: `"bellman-ford"` (default) or
-      `"floyd-warshall"`.
+    - `algorithm`: `"bellman-ford"` (default) for sparse graphs, or
+      `"floyd-warshall"` for small dense all-pairs problems (O(V³) work).
 
     !!! note
 
-        Bellman-Ford supports float32/float64 conductances, JIT and first-order
-        reverse mode. Present conductances must be finite, positive and normal,
-        with finite positive reciprocal costs. Zero stored entries are absent;
-        positive duplicates remain distinct parallel edges. Tight edges must
-        strictly increase representable distances. Forward-mode and higher-order
-        differentiation are outside its support contract.
+        Bellman–Ford requires finite positive normal conductances with finite
+        positive reciprocal costs. Zero entries are absent; positive duplicates
+        are distinct parallel edges. Optimal edges must strictly increase
+        representable distances. Derivatives assume fixed topology; forward-mode
+        and higher-order differentiation are unsupported.
 
     !!! example
 
@@ -43,16 +41,9 @@ class LCPDistance(AbstractDistance):
         from jaxscape import LCPDistance, GridGraph
         import jax.numpy as jnp
 
-        permeability = jnp.ones((5, 5))
-        grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
-
-        # Default: Bellman-Ford (efficient for sparse graphs)
+        grid = GridGraph(jnp.ones((5, 5)), fun=lambda x, y: (x + y) / 2)
         distance = LCPDistance()
         D = distance(grid, sources=jnp.array([0, 1]), targets=jnp.array([10, 20]))
-
-        # Floyd-Warshall (efficient for small all-pairs)
-        distance_fw = LCPDistance(algorithm="floyd-warshall")
-        D_all = distance_fw(grid)  # All-pairs distance
         ```
     """
 
@@ -133,14 +124,12 @@ def floyd_warshall(A: BCOO) -> Array:
 
 @eqx.filter_jit
 def bellman_ford(A: BCOO, source: int | Array) -> Array:
-    """Compute least-cost distances from one source with a shortest-path DAG VJP.
+    """Compute least-cost distances from one source.
 
     **Arguments:**
 
-    - `A`: Unbatched scalar BCOO adjacency with shape `(n, n)` and float32/float64
-      data. Present conductances must be finite, positive and normal, with finite
-      positive reciprocal costs. Zero entries are absent; positive duplicates are
-      parallel edges. Tight edges must strictly increase representable distances.
+    - `A`: Square, unbatched scalar BCOO conductance adjacency with shape `(n, n)`.
+      See `LCPDistance` for edge constraints and gradient semantics.
     - `source`: Integer vertex index in `[0, n)`.
 
     **Returns:**
@@ -152,16 +141,13 @@ def bellman_ford(A: BCOO, source: int | Array) -> Array:
 
 @eqx.filter_jit
 def bellman_ford_multi_sources(A: BCOO, sources: Array) -> Array:
-    """Compute least-cost distances from multiple sources with a shortest-path DAG VJP.
+    """Compute least-cost distances from multiple sources.
 
     **Arguments:**
 
-    - `A`: Unbatched scalar BCOO adjacency with shape `(n, n)` and float32/float64
-      data. Present conductances must be finite, positive and normal, with finite
-      positive reciprocal costs. Zero entries are absent; positive duplicates are
-      parallel edges. Tight edges must strictly increase representable distances.
+    - `A`: Square, unbatched scalar BCOO conductance adjacency with shape `(n, n)`.
+      See `LCPDistance` for edge constraints and gradient semantics.
     - `sources`: Integer vertex indices with shape `(s,)`, each in `[0, n)`.
-      Repeated sources retain their order and accumulate gradient contributions.
 
     **Returns:**
 
