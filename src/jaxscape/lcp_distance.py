@@ -133,13 +133,40 @@ def floyd_warshall(A: BCOO) -> Array:
 
 @eqx.filter_jit
 def bellman_ford(A: BCOO, source: int | Array) -> Array:
-    """Compute least-cost distances from one source with a shortest-path DAG VJP."""
+    """Compute least-cost distances from one source with a shortest-path DAG VJP.
+
+    **Arguments:**
+
+    - `A`: Unbatched scalar BCOO adjacency with shape `(n, n)` and float32/float64
+      data. Present conductances must be finite, positive and normal, with finite
+      positive reciprocal costs. Zero entries are absent; positive duplicates are
+      parallel edges. Tight edges must strictly increase representable distances.
+    - `source`: Integer vertex index in `[0, n)`.
+
+    **Returns:**
+
+    Distances with shape `(n,)`, zero at the source and infinity if unreachable.
+    """
     return bellman_ford_multi_sources(A, jnp.asarray(source)[None])[0]
 
 
 @eqx.filter_jit
 def bellman_ford_multi_sources(A: BCOO, sources: Array) -> Array:
-    """Validate an edge list, retaining positive duplicates as parallel edges."""
+    """Compute least-cost distances from multiple sources with a shortest-path DAG VJP.
+
+    **Arguments:**
+
+    - `A`: Unbatched scalar BCOO adjacency with shape `(n, n)` and float32/float64
+      data. Present conductances must be finite, positive and normal, with finite
+      positive reciprocal costs. Zero entries are absent; positive duplicates are
+      parallel edges. Tight edges must strictly increase representable distances.
+    - `sources`: Integer vertex indices with shape `(s,)`, each in `[0, n)`.
+      Repeated sources retain their order and accumulate gradient contributions.
+
+    **Returns:**
+
+    Distances with shape `(s, n)`, zero at each source and infinity if unreachable.
+    """
     if (
         len(A.shape) != 2
         or A.shape[0] != A.shape[1]
@@ -304,10 +331,14 @@ def _bellman_ford_backward(n, residual, cotangent):
         (jnp.int32(0), cotangent, jnp.bool_(True)),
     )
     flow = jnp.sum(adjoint[:, v] * shares, axis=0)
-    safe_data = jnp.where(data > 0, data, 1)
-    # Divide sequentially: squaring a small conductance could underflow and
-    # turn a zero flow on an unused edge into 0/0. Absent entries have zero flow.
-    return (-flow / safe_data) / safe_data, None, None
+    # Zero-flow edges, including absent entries, have zero derivative. Mask
+    # their denominator before arithmetic so unused tiny conductances stay safe.
+    safe_data = jnp.where((data > 0) & (flow != 0), data, 1)
+    # Preserve the division order: XLA may otherwise form a**2, which can
+    # under/overflow even when flow/a/a is representable. Both operands of the
+    # final division cross the barrier to prevent reassociation across it.
+    scaled_flow, safe_data = lax.optimization_barrier((-flow / safe_data, safe_data))
+    return scaled_flow / safe_data, None, None
 
 
 _bellman_ford_distance.defvjp(_bellman_ford_forward, _bellman_ford_backward)
