@@ -1,130 +1,174 @@
 import jax
 import jax.numpy as jnp
-import jax.random as jr
-import scipy.sparse.csgraph as sp
-from jax import grad, jit
+import numpy as np
+import pytest
 from jax.experimental.sparse import BCOO
-from jaxscape import GridGraph
-from jaxscape.lcp_distance import (
-    bellman_ford,
-    bellman_ford_multi_sources,
-    floyd_warshall,
-    LCPDistance,
-)
-from scipy.sparse.csgraph import bellman_ford as scipy_bellman_ford
+from jaxscape import Graph, GridGraph, LCPDistance
+from jaxscape.graph import QUEEN_CONTIGUITY, ROOK_CONTIGUITY
+from numpy.testing import assert_allclose
+from scipy.sparse.csgraph import shortest_path
 
 
-def test_floyd_warshall():
-    # direct `floyd_warshall` test
-    D = jnp.array(
-        [
-            [0, 3, jnp.inf, 7],
-            [8, 0, 2, jnp.inf],
-            [5, jnp.inf, 0, 1],
-            [2, jnp.inf, jnp.inf, 0],
-        ]
-    )
-
-    A = BCOO.fromdense(1 / D)
-
-    shortest_paths_jax = floyd_warshall(A)
-    shortest_paths_scipy = sp.floyd_warshall(D, directed=True)
-    assert jnp.allclose(shortest_paths_jax, shortest_paths_scipy)
-
-
-def test_bellman_ford():
-    key = jr.PRNGKey(0)  # Random seed is explicit in JAX
-    permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
-    grid = GridGraph(grid=permeability_raster)
-
-    A = grid.get_adjacency_matrix()
-    distances_jax = bellman_ford(A, 1)
-
-    D = 1 / A.todense()
-    distances_scipy = scipy_bellman_ford(D, indices=1, return_predecessors=False)
-
-    assert jnp.allclose(distances_scipy, distances_jax, rtol=1e-5)
-
-    # many sources
-    sources = jnp.array([0, 5, 10])  # Replace with your landmark nodes
-    distance_mat_jaxscape = bellman_ford_multi_sources(A, sources)
-    distance_mat_scipy = scipy_bellman_ford(
-        D, indices=sources, return_predecessors=False
-    )
-    assert jnp.allclose(distance_mat_jaxscape, distance_mat_scipy, rtol=1e-5)
-
-
-def test_bellman_ford_floyd_warshall_differentiability():
-    key = jr.PRNGKey(0)  # Random seed is explicit in JAX
-    permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
-
-    def sum_bellman_ford(permeability_raster):
-        grid = GridGraph(permeability_raster)
-        A = grid.get_adjacency_matrix()
-        distances_jax = bellman_ford_multi_sources(
-            A, jnp.arange(permeability_raster.size)
+def _graph(weights, edges, n):
+    return Graph(
+        BCOO(
+            (weights, jnp.asarray(edges, dtype=jnp.int32).reshape(-1, 2)), shape=(n, n)
         )
-        return jnp.sum(distances_jax)
-
-    grad_sum_bellman_ford = jit(grad(sum_bellman_ford))
-    sensitivity_bellman_ford = grad_sum_bellman_ford(permeability_raster)
-
-    def sum_floyd_warshall(permeability_raster):
-        grid = GridGraph(grid=permeability_raster)
-        A = grid.get_adjacency_matrix()
-        distances_jax = floyd_warshall(A)
-        return jnp.sum(distances_jax)
-
-    grad_sum_floyd_warshall = jit(grad(sum_floyd_warshall))
-    sensitivity_floyd_warshall = grad_sum_floyd_warshall(permeability_raster)
-
-    # import matplotlib.pyplot as plt
-    # plt.imshow(sensitivity_bellman_ford)
-    # plt.imshow(sensitivity_floyd_warshall)
-
-    assert jnp.allclose(sensitivity_bellman_ford, sensitivity_floyd_warshall, rtol=1e-1)
+    )
 
 
-def test_LCPDistance_sources_sparse():
-    key = jr.PRNGKey(0)  # Random seed is explicit in JAX
-    permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
-    grid = GridGraph(grid=permeability_raster)
-    distance = LCPDistance()
+def _check_dag(
+    weights, edges, n, expected, gradient, *, sources=(0,), targets=None, seed=None
+):
+    sources = jnp.asarray(sources)
+    targets = jnp.asarray((n - 1,) if targets is None else targets)
 
-    sources = jnp.array([1, 3, 5])
-    D = 1 / grid.get_adjacency_matrix().todense()
-    lcp_scipy_sources = sp.floyd_warshall(D, directed=True)[sources, :]
-    lcp_jax_sources = distance(grid, sources=sources)
-    assert jnp.allclose(lcp_scipy_sources, lcp_jax_sources, rtol=1e-2)
+    def evaluate(a):
+        values, pullback = jax.vjp(
+            lambda x: LCPDistance()(
+                _graph(x, edges, n), sources=sources, targets=targets
+            ),
+            a,
+        )
+        cotangent = (
+            jnp.ones_like(values) if seed is None else jnp.asarray(seed, a.dtype)
+        )
+        return values, pullback(cotangent)[0]
+
+    values, derivative = jax.jit(evaluate)(weights)
+    assert values.dtype == derivative.dtype == weights.dtype
+    tolerance = 3e-6 if weights.dtype == jnp.float32 else 1e-12
+    assert_allclose(values, expected, rtol=tolerance)
+    assert_allclose(derivative, gradient, rtol=tolerance, atol=0)
 
 
-def test_differentiability_lcp_distance():
-    key = jr.PRNGKey(0)  # Random seed is explicit in JAX
-    permeability_raster = jr.uniform(key, (10, 10))  # Start with a uniform permeability
-    distance = LCPDistance()
+@pytest.mark.parametrize("algorithm", ["bellman-ford", "floyd-warshall"])
+@pytest.mark.parametrize(
+    "neighbors", [ROOK_CONTIGUITY, QUEEN_CONTIGUITY], ids=["rook", "queen"]
+)
+def test_lcp_distance(algorithm, neighbors):
+    rng = np.random.default_rng(91)
+    raster = jnp.asarray(rng.uniform(0.8, 2.1, (3, 4)))
+    distance = LCPDistance(algorithm)
+    sources, targets = jnp.array([0, 5, 0]), jnp.array([3, 11])
 
-    def objective(permeability_raster):
-        grid = GridGraph(grid=permeability_raster)
-        dist = distance(grid)
-        return jnp.sum(dist)
+    def selected(x):
+        graph = GridGraph(x, neighbors=neighbors, fun=lambda u, v: 2 / (u + v))
+        return distance(graph, sources=sources, targets=targets)
 
-    grad_objective = grad(objective)
-    dobj = grad_objective(
-        permeability_raster
-    )  # 1.26 ms ± 13.8 μs per loop (mean ± std. dev. of 7 runs, 1,000 loops each)
-    assert isinstance(dobj, jax.Array)
+    graph = GridGraph(raster, neighbors=neighbors, fun=lambda u, v: 2 / (u + v))
+    adjacency = np.asarray(graph.get_adjacency_matrix().todense())
+    costs = np.divide(
+        1, adjacency, out=np.full_like(adjacency, np.inf), where=adjacency > 0
+    )
+    expected = shortest_path(costs, directed=True)[sources[:, None], targets[None, :]]
+    assert_allclose(selected(raster), expected, rtol=1e-12)
 
-    # test with sources
-    sources = jnp.array([0, 1, 2])
+    # A directional finite difference independently checks the raster chain rule.
+    seed = jnp.array([[0.5, -1], [-0.7, 0.2], [1, -0.3]])
+    loss = lambda x: jnp.sum(selected(x) * seed)
+    direction = jnp.asarray(rng.normal(size=raster.shape))
+    epsilon = 1e-5
+    finite_difference = (
+        loss(raster + epsilon * direction) - loss(raster - epsilon * direction)
+    ) / (2 * epsilon)
+    assert_allclose(
+        jnp.sum(jax.jit(jax.grad(loss))(raster) * direction),
+        finite_difference,
+        rtol=1e-7,
+        atol=1e-7,
+    )
 
-    def objective(permeability_raster):
-        grid = GridGraph(grid=permeability_raster)
-        dist = distance(grid, sources)
 
-        return jnp.sum(dist)
+@pytest.mark.parametrize(
+    "dtype,tiny,large", [(jnp.float32, 1e-30, 2**25), (jnp.float64, 1e-200, 2**54)]
+)
+def test_lcp_distance_dag(dtype, tiny, large):
+    def triangle(a):
+        return LCPDistance()(
+            _graph(a, [(0, 2), (0, 1), (1, 2)], 5),
+            sources=jnp.array([0]),
+            targets=jnp.array([2]),
+        )[0, 0]
 
-    grad_objective = grad(objective)
-    dobj = grad_objective(
-        permeability_raster
-    )  # 1.26 ms ± 13.8 μs per loop (mean ± std. dev. of 7 runs, 1,000 loops each)
-    assert isinstance(dobj, jax.Array)
+    # Reuse one compilation across route changes, an exact tie, and a near tie.
+    weights = jnp.array(
+        [[1, 1, 1], [0.25, 1, 1], [0.5, 1, 1], [0.5, 1, 1 - 1e-5]], dtype
+    )
+    expected_values = [1, 2, 2, 2]
+    expected_gradients = [[-1, 0, 0], [0, -1, -1], [-2, -0.5, -0.5], [-4, 0, 0]]
+    compiled = jax.jit(jax.value_and_grad(triangle))
+    for a, value, derivative in zip(weights, expected_values, expected_gradients):
+        actual, gradient = compiled(a)
+        assert_allclose(actual, value)
+        assert_allclose(gradient, derivative)
+    values, gradients = jax.jit(jax.vmap(jax.value_and_grad(triangle)))(weights)
+    assert_allclose(values, expected_values)
+    assert_allclose(gradients, expected_gradients)
+
+    # Three tied paths receive probabilities 1/2, 1/4, 1/4 from local splitting.
+    _check_dag(
+        jnp.array([0.5, 1, 0.5, 1, 1, 1], dtype),
+        [(0, 1), (1, 4), (0, 2), (2, 4), (0, 3), (3, 2)],
+        5,
+        [[3]],
+        [-2, -0.5, -1, -0.5, -0.25, -0.25],
+    )
+    # Parallel edges stay distinct; unused tiny conductances and padding stay zero.
+    _check_dag(
+        jnp.array([0.5, 0.5, 1, 1, tiny, 0, 0], dtype),
+        [(0, 2), (0, 2), (0, 1), (1, 2), (0, 2), (0, 2), (99, 99)],
+        3,
+        [[2]],
+        [-4 / 3, -4 / 3, -1 / 3, -1 / 3, 0, 0, 0],
+    )
+    # Signed seeds accumulate repeated selections. Unreachable and source
+    # distances contribute zero.
+    _check_dag(
+        jnp.array([0.5, 0.25], dtype),
+        [(0, 1), (2, 3)],
+        5,
+        [[2, np.inf, 2, 0], [np.inf, 4, np.inf, np.inf], [2, np.inf, 2, 0]],
+        [-4, 8],
+        sources=(0, 2, 0),
+        targets=(1, 3, 1, 0),
+        seed=[[1, 0, -0.5, 3], [0, -0.5, 0, 0], [0.5, 0, 0, 0]],
+    )
+    # The full n-1 relaxation/adjoint bound, plus the empty one-vertex graph.
+    _check_dag(
+        jnp.ones(64, dtype), [(u, u + 1) for u in range(64)], 65, [[64]], -np.ones(64)
+    )
+    _check_dag(jnp.array([], dtype), [], 1, [[0]], [])
+
+    for a in (tiny, 1 / tiny):
+        for sign in (-1, 1):
+            # Sequential division is representable even when a**2 is not.
+            _check_dag(
+                jnp.array([a], dtype),
+                [(0, 1)],
+                2,
+                [[1 / a]],
+                [-sign / a],
+                seed=[[sign * a]],
+            )
+
+    def invalid(a, edges=((0, 1),), n=2):
+        return LCPDistance()(_graph(a, edges, n), sources=jnp.array([0])).sum()
+
+    for bad in (
+        -1,
+        np.nan,
+        np.inf,
+        np.finfo(np.dtype(dtype)).tiny / 16,
+        np.finfo(np.dtype(dtype)).max,
+    ):
+        with pytest.raises(Exception, match="conductance|positive|finite"):
+            invalid(jnp.array([bad], dtype)).block_until_ready()
+    with pytest.raises(Exception, match="indices|bounds|index"):
+        invalid(jnp.array([1], dtype), edges=((0, 2),)).block_until_ready()
+    for differentiate in (False, True):
+        # Gradient-only execution must retain the strict-order check too.
+        loss = lambda a: invalid(a, edges=((0, 1), (1, 2)), n=3)
+        calculation = jax.jit(jax.grad(loss) if differentiate else loss)
+        with pytest.raises(Exception, match="strict|ordering|float64"):
+            calculation(jnp.array([1 / large, 1], dtype)).block_until_ready()
