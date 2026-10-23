@@ -109,22 +109,18 @@ def test_differentiability_lcp_distance():
         return jnp.sum(dist)
 
     grad_objective = grad(objective)
-    dobj = grad_objective(
-        permeability_raster
-    )  # 1.26 ms ± 13.8 μs per loop (mean ± std. dev. of 7 runs, 1,000 loops each)
+    dobj = grad_objective(permeability_raster)
     assert isinstance(dobj, jax.Array)
 
     # test with sources
     sources = jnp.array([0, 1, 2])
 
-    def objective(permeability_raster):
+    def sources_objective(permeability_raster):
         grid = GridGraph(grid=permeability_raster)
         dist = distance(grid, sources)
 
         return jnp.sum(dist)
 
-    grad_objective = grad(objective)
-    dobj = grad_objective(
-        permeability_raster
-    )  # 1.26 ms ± 13.8 μs per loop (mean ± std. dev. of 7 runs, 1,000 loops each)
+    grad_objective = grad(sources_objective)
+    dobj = grad_objective(permeability_raster)
     assert isinstance(dobj, jax.Array)
