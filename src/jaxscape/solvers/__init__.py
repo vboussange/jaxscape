@@ -7,7 +7,6 @@ from .amjaxcgsolver import (
     build_amjax_solver as build_amjax_solver,
 )
 from .cholmodsolver import CholmodSolver as CholmodSolver
-from .jaxamgcgsolver import JAXAMGCGSolver as JAXAMGCGSolver
 from .operator import (
     BCOOLinearOperator as BCOOLinearOperator,
 )

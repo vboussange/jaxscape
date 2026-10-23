@@ -431,7 +431,7 @@ def dependency_versions() -> dict[str, str | None]:
     versions = {}
     for package in (
         "jax", "jaxlib", "lineax", "equinox", "optimistix",
-        "jaxamg", "amjax", "pyamg", "cholespy",
+        "amjax", "pyamg", "cholespy",
     ):
         try:
             versions[package] = version(package)
