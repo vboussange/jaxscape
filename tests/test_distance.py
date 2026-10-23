@@ -48,6 +48,5 @@ def test_differentiability():
             return jnp.sum(dist)
 
         grad_objective = filter_jit(filter_grad(objective))
-        # %timeit grad_objective(permeability_raster) # 71.2 ms ± 16.4 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
         dobj = grad_objective(permeability_raster)
         assert isinstance(dobj, jax.Array)
