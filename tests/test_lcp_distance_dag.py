@@ -408,3 +408,46 @@ def test_disconnected_components_and_zero_cotangents():
     assert_allclose(values, scipy_distances(weights, edges, 5))
     seed = jnp.zeros((5, 5)).at[0, 1].set(1.5).at[2, 3].set(-0.5)
     assert_allclose(pullback(seed)[0], [-6, 8])
+
+
+@pytest.mark.parametrize("dtype,tiny", [(jnp.float32, 1e-30), (jnp.float64, 1e-200)])
+def test_unused_tiny_conductance_and_padding_have_zero_gradient(dtype, tiny):
+    edges = [(0, 1), (0, 1), (0, 0), (99, 99)]
+    weights = jnp.array([1, tiny, 0, 0], dtype=dtype)
+
+    def loss(a):
+        return LCPDistance()(
+            graph_from_edges(a, edges, 2),
+            sources=jnp.array([0]),
+            targets=jnp.array([1]),
+        )[0, 0]
+
+    value, derivative = jax.jit(jax.value_and_grad(loss))(weights)
+    assert value == 1
+    assert_allclose(derivative, [-1, 0, 0, 0], rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("dtype,tiny", [(jnp.float32, 1e-30), (jnp.float64, 1e-200)])
+@pytest.mark.parametrize("large", [False, True], ids=["small", "large"])
+@pytest.mark.parametrize("sign", [-1, 1])
+def test_reciprocal_pullback_preserves_representable_scaled_gradients(
+    dtype, tiny, large, sign
+):
+    conductance = 1 / tiny if large else tiny
+    weights = jnp.array([conductance], dtype=dtype)
+    seed = jnp.array(sign * conductance, dtype=dtype)
+
+    def loss(a):
+        distance = LCPDistance()(
+            graph_from_edges(a, [(0, 1)], 2),
+            sources=jnp.array([0]),
+            targets=jnp.array([1]),
+        )[0, 0]
+        return seed * distance
+
+    value, derivative = jax.jit(jax.value_and_grad(loss))(weights)
+    tolerance = 3e-6 if dtype == jnp.float32 else 1e-12
+    assert_allclose(value, sign, rtol=tolerance)
+    # Independent analytical derivative; sequential host division avoids a**2.
+    expected = -float(seed) / float(weights[0]) / float(weights[0])
+    assert_allclose(derivative, [expected], rtol=tolerance, atol=0)

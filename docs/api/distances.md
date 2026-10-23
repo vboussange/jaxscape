@@ -11,7 +11,7 @@
     options:
       members: false
 
-### Bellman–Ford distances and derivatives
+##### Bellman–Ford distances and derivatives
 
 The default `LCPDistance()` stops at exact convergence, retaining the $N-1$
 round bound. Hard least-cost values, selection forms and Floyd–Warshall are
