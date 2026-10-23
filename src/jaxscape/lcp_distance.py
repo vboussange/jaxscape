@@ -13,7 +13,18 @@ from jaxscape.graph import AbstractGraph
 
 @final
 class LCPDistance(AbstractDistance):
-    """Compute least-cost distances with edge cost `1/a` for conductance `a`.
+    """Compute least-cost path distances with edge cost `1/a` for conductance `a`,
+    using `algorithm`.
+
+    For `V` vertices, `E` stored edges and `S` requested sources:
+
+    - **Bellman–Ford** (default): Relaxes sparse edges until distances stop
+      changing. Each round costs O(S(V + E)), with at most V − 1 rounds. Favor it
+      for sparse graphs or a small number of sources.
+    - **Floyd–Warshall**: Computes a dense all-pairs distance matrix by considering
+      each vertex as an intermediate stop. Costs O(V³) time, even when requesting
+      only selected pairs. Favor it for small dense graphs when most or all pairs
+      are needed.
 
     For a unique shortest path, the derivative of its distance with respect to
     `a` is `-1/a**2` on that path and zero elsewhere: increasing conductance
@@ -24,16 +35,13 @@ class LCPDistance(AbstractDistance):
 
     **Attributes:**
 
-    - `algorithm`: `"bellman-ford"` (default) for sparse graphs, or
-      `"floyd-warshall"` for small dense all-pairs problems (O(V³) work).
+    - `algorithm`: `"bellman-ford"` (default) or `"floyd-warshall"`.
 
     !!! note
 
-        Bellman–Ford requires finite positive normal conductances with finite
-        positive reciprocal costs. Zero entries are absent; positive duplicates
-        are distinct parallel edges. Optimal edges must strictly increase
-        representable distances. Derivatives assume fixed topology; forward-mode
-        and higher-order differentiation are unsupported.
+        Bellman–Ford requires positive, finite conductances; zero means no edge.
+        Gradients assume the graph connections stay fixed. `jax.jvp`, `jax.jacfwd`,
+        and higher-order derivatives are currently unsupported.
 
     !!! example
 
