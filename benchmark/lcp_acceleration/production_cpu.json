@@ -1,0 +1,1950 @@
+{
+  "measurement": "public LCPDistance before/after default implementation",
+  "baseline_revision": "33e609bc846e581273777573a269f59d504c0286",
+  "baseline_policy": "historical lcp_distance.py, current graph/API/dependencies",
+  "started_at_utc": "2026-10-23T06:42:06.028593+00:00",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "hardware": "Apple M1 Max",
+  "python": "3.13.7 (main, Sep  2 2025, 14:05:52) [Clang 20.1.4 ]",
+  "versions": {
+    "jax": "0.9.1",
+    "jaxlib": "0.9.1",
+    "equinox": "0.13.2",
+    "numpy": "2.4.2",
+    "scipy": "1.16.2"
+  },
+  "devices": {
+    "cpu": {
+      "available": true,
+      "devices": [
+        "TFRT_CPU_0"
+      ]
+    },
+    "gpu": {
+      "available": false,
+      "reason": "Unknown backend: 'gpu' requested, but no platforms that are instances of gpu are present. Platforms present are: cpu"
+    }
+  },
+  "selected_device": "TFRT_CPU_0",
+  "device_kind": "cpu",
+  "dtype": "float32",
+  "revision": "d88ad551fb48a70f90047b2ec71b26fbfefc289b",
+  "tracked_worktree_changes": "",
+  "implementation_sha256": "2dc0b1e86ffaa778ad554e5fa759f1443494ba57974c0a2db25e906a56110ee7",
+  "harness_sha256": "b9661c0eb236d817fec82b81bbee7119e2d6a698921a3a49adbbdd8e31263f3a",
+  "command": [
+    "/Users/victorboussange/.codex/worktrees/lcp-dag-issue9/jaxscape/benchmark/lcp_acceleration/run.py",
+    "--output",
+    "/private/tmp/jaxscape-issue9/production_cpu.json",
+    "--device",
+    "cpu"
+  ],
+  "objective": "sum of selected distances; derivative w.r.t. raster",
+  "edge_conductance": "2 / (cell_cost_u + cell_cost_v), rook neighborhoods",
+  "policy": {
+    "compilation": "lower/compile separate; persistent cache disabled",
+    "warmups_per_executable": 2,
+    "repeats": 7,
+    "synchronization": "jax.block_until_ready on entire output for every call",
+    "order": "randomized across methods and forward/gradient each repetition",
+    "included": "graph/adjacency construction, distance/gradient",
+    "excluded": "inputs, compilation, warmup, correctness checks",
+    "memory": "XLA compiler estimate; no measured peak memory"
+  },
+  "cases": [
+    {
+      "shape": [
+        32,
+        32
+      ],
+      "landscape": "random",
+      "seed": 42,
+      "sources": [
+        768
+      ],
+      "targets": [
+        520,
+        571,
+        734,
+        748,
+        741,
+        663,
+        601,
+        173,
+        304,
+        909,
+        722,
+        152,
+        400,
+        957,
+        928,
+        409,
+        364,
+        744,
+        370
+      ],
+      "input_sha256": "d71c21ec06e851e6cdf78ef20bb6054053e712b832f2e65caaa78a950f9f399e",
+      "methods": {
+        "before": {
+          "forward": {
+            "lower_and_compile_seconds": 0.08162895892746747,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 106536,
+              "argument_bytes": 4096,
+              "output_bytes": 76,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.0042959998827427626,
+              0.004491082858294249,
+              0.004298875108361244,
+              0.0041897911578416824,
+              0.004299958935007453,
+              0.004252416081726551,
+              0.004362666048109531
+            ],
+            "median_seconds": 0.004298875108361244
+          },
+          "value_and_grad": {
+            "lower_and_compile_seconds": 0.17006937507539988,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 4468912,
+              "argument_bytes": 4096,
+              "output_bytes": 4116,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.04184262501075864,
+              0.04018787480890751,
+              0.040342249907553196,
+              0.039765833877027035,
+              0.040203207870945334,
+              0.041754000121727586,
+              0.04037804203107953
+            ],
+            "median_seconds": 0.040342249907553196
+          },
+          "distance_error_scipy": {
+            "max_abs": 4.291534423828125e-06,
+            "relative_l2": 8.848247848378792e-08,
+            "finite": true
+          },
+          "gradient_error_historical_backend": {
+            "max_abs": 0.0,
+            "relative_l2": 0.0,
+            "finite": true
+          }
+        },
+        "after": {
+          "forward": {
+            "lower_and_compile_seconds": 0.21872550016269088,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 168560,
+              "argument_bytes": 4096,
+              "output_bytes": 76,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.0005591248627752066,
+              0.00034654210321605206,
+              0.00035262503661215305,
+              0.0003806671593338251,
+              0.0004669169429689646,
+              0.0005698339082300663,
+              0.0005415419582277536
+            ],
+            "median_seconds": 0.0004669169429689646
+          },
+          "value_and_grad": {
+            "lower_and_compile_seconds": 0.23048304091207683,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 275184,
+              "argument_bytes": 4096,
+              "output_bytes": 4116,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.0012072501704096794,
+              0.0012684999965131283,
+              0.0011118329130113125,
+              0.0012192078866064548,
+              0.001267625018954277,
+              0.0011718750465661287,
+              0.0012524998746812344
+            ],
+            "median_seconds": 0.0012192078866064548
+          },
+          "distance_error_scipy": {
+            "max_abs": 4.291534423828125e-06,
+            "relative_l2": 8.848247848378792e-08,
+            "finite": true
+          },
+          "gradient_error_historical_backend": {
+            "max_abs": 7.62939453125e-06,
+            "relative_l2": 2.1144150252894178e-07,
+            "finite": true
+          }
+        }
+      },
+      "sample_order": [
+        [
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "after",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "before",
+            "forward"
+          ]
+        ],
+        [
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ],
+          [
+            "before",
+            "forward"
+          ]
+        ],
+        [
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ]
+      ]
+    },
+    {
+      "shape": [
+        32,
+        32
+      ],
+      "landscape": "random",
+      "seed": 42,
+      "sources": [
+        368,
+        763,
+        671,
+        308,
+        730,
+        175,
+        375,
+        968
+      ],
+      "targets": [
+        93,
+        708,
+        128,
+        448,
+        334,
+        916,
+        656,
+        593,
+        191,
+        846,
+        473,
+        724,
+        731,
+        408,
+        263,
+        347,
+        513,
+        415,
+        424
+      ],
+      "input_sha256": "d71c21ec06e851e6cdf78ef20bb6054053e712b832f2e65caaa78a950f9f399e",
+      "methods": {
+        "before": {
+          "forward": {
+            "lower_and_compile_seconds": 0.09591537504456937,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 278568,
+              "argument_bytes": 4096,
+              "output_bytes": 608,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.01841666712425649,
+              0.018601540941745043,
+              0.01829891698434949,
+              0.01833299989812076,
+              0.018687833100557327,
+              0.018726916052401066,
+              0.01915787486359477
+            ],
+            "median_seconds": 0.018601540941745043
+          },
+          "value_and_grad": {
+            "lower_and_compile_seconds": 0.1906061249319464,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 34545840,
+              "argument_bytes": 4096,
+              "output_bytes": 4116,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.19886120804585516,
+              0.1968501249793917,
+              0.1976108339149505,
+              0.19732391694560647,
+              0.21402966696769,
+              0.20187691692262888,
+              0.2194906249642372
+            ],
+            "median_seconds": 0.19886120804585516
+          },
+          "distance_error_scipy": {
+            "max_abs": 4.202127456665039e-06,
+            "relative_l2": 8.534305364664261e-08,
+            "finite": true
+          },
+          "gradient_error_historical_backend": {
+            "max_abs": 0.0,
+            "relative_l2": 0.0,
+            "finite": true
+          }
+        },
+        "after": {
+          "forward": {
+            "lower_and_compile_seconds": 0.23867599992081523,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 479792,
+              "argument_bytes": 4096,
+              "output_bytes": 608,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.00149629102088511,
+              0.0014631659723818302,
+              0.0014407499693334103,
+              0.0013330420479178429,
+              0.0015081251040101051,
+              0.0016696250531822443,
+              0.0015816660597920418
+            ],
+            "median_seconds": 0.00149629102088511
+          },
+          "value_and_grad": {
+            "lower_and_compile_seconds": 0.2541479158680886,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 615088,
+              "argument_bytes": 4096,
+              "output_bytes": 4116,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.0031060841865837574,
+              0.002985000144690275,
+              0.002690959023311734,
+              0.002824292052537203,
+              0.0029902500100433826,
+              0.0029842089861631393,
+              0.0029369171243160963
+            ],
+            "median_seconds": 0.0029842089861631393
+          },
+          "distance_error_scipy": {
+            "max_abs": 4.202127456665039e-06,
+            "relative_l2": 8.534305364664261e-08,
+            "finite": true
+          },
+          "gradient_error_historical_backend": {
+            "max_abs": 9.5367431640625e-06,
+            "relative_l2": 1.4595458708299702e-07,
+            "finite": true
+          }
+        }
+      },
+      "sample_order": [
+        [
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "after",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "before",
+            "forward"
+          ]
+        ],
+        [
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ],
+          [
+            "before",
+            "forward"
+          ]
+        ],
+        [
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ]
+      ]
+    },
+    {
+      "shape": [
+        64,
+        64
+      ],
+      "landscape": "random",
+      "seed": 42,
+      "sources": [
+        877
+      ],
+      "targets": [
+        3714,
+        1251,
+        605,
+        2536,
+        2407,
+        2803,
+        1796,
+        1283,
+        2094,
+        2693,
+        1363,
+        1926,
+        3696,
+        2765,
+        1205,
+        4088,
+        2410,
+        2289,
+        391
+      ],
+      "input_sha256": "a57642443b6689c6bd215c4c1e7f4812579ca24272f8717f11f274914fb4474c",
+      "methods": {
+        "before": {
+          "forward": {
+            "lower_and_compile_seconds": 0.07699866709299386,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 426024,
+              "argument_bytes": 16384,
+              "output_bytes": 76,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.06785312481224537,
+              0.06781425001099706,
+              0.06792049994692206,
+              0.06765870889648795,
+              0.06798766693100333,
+              0.07029691711068153,
+              0.08260433399118483
+            ],
+            "median_seconds": 0.06792049994692206
+          },
+          "value_and_grad": {
+            "lower_and_compile_seconds": 0.19530658284202218,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 68206768,
+              "argument_bytes": 16384,
+              "output_bytes": 16404,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.6575507081579417,
+              0.6610196251422167,
+              0.6514529169071466,
+              0.6578340830747038,
+              0.6605677499901503,
+              0.6578619999345392,
+              0.8268142091110349
+            ],
+            "median_seconds": 0.6578619999345392
+          },
+          "distance_error_scipy": {
+            "max_abs": 5.319714546203613e-06,
+            "relative_l2": 1.0982890776878722e-07,
+            "finite": true
+          },
+          "gradient_error_historical_backend": {
+            "max_abs": 0.0,
+            "relative_l2": 0.0,
+            "finite": true
+          }
+        },
+        "after": {
+          "forward": {
+            "lower_and_compile_seconds": 0.22264749999158084,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 672368,
+              "argument_bytes": 16384,
+              "output_bytes": 76,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.0019243748392909765,
+              0.0018587089143693447,
+              0.0018947499338537455,
+              0.001861124997958541,
+              0.0018790420144796371,
+              0.0018977080471813679,
+              0.004971083020791411
+            ],
+            "median_seconds": 0.0018947499338537455
+          },
+          "value_and_grad": {
+            "lower_and_compile_seconds": 0.24558925000019372,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 1098480,
+              "argument_bytes": 16384,
+              "output_bytes": 16404,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.007735499879345298,
+              0.007823499850928783,
+              0.007763249799609184,
+              0.007845125161111355,
+              0.008062541950494051,
+              0.008117042016237974,
+              0.00821541715413332
+            ],
+            "median_seconds": 0.007845125161111355
+          },
+          "distance_error_scipy": {
+            "max_abs": 5.319714546203613e-06,
+            "relative_l2": 1.0982890776878722e-07,
+            "finite": true
+          },
+          "gradient_error_historical_backend": {
+            "max_abs": 3.814697265625e-06,
+            "relative_l2": 1.569232495057804e-07,
+            "finite": true
+          }
+        }
+      },
+      "sample_order": [
+        [
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "after",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "before",
+            "forward"
+          ]
+        ],
+        [
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ],
+          [
+            "before",
+            "forward"
+          ]
+        ],
+        [
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ]
+      ]
+    },
+    {
+      "shape": [
+        64,
+        64
+      ],
+      "landscape": "random",
+      "seed": 42,
+      "sources": [
+        2100,
+        876,
+        1367,
+        2417,
+        2811,
+        3707,
+        606,
+        2544
+      ],
+      "targets": [
+        1247,
+        3388,
+        1279,
+        1316,
+        2907,
+        2529,
+        3741,
+        3702,
+        3647,
+        2974,
+        1287,
+        204,
+        3157,
+        2756,
+        389,
+        2120,
+        3928,
+        2409,
+        2001
+      ],
+      "input_sha256": "a57642443b6689c6bd215c4c1e7f4812579ca24272f8717f11f274914fb4474c",
+      "methods": {
+        "before": {
+          "forward": {
+            "lower_and_compile_seconds": 0.10582354199141264,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 1114152,
+              "argument_bytes": 16384,
+              "output_bytes": 608,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.27324549993500113,
+              0.2835287500638515,
+              0.28895420813933015,
+              0.2843535419087857,
+              0.27534708310849965,
+              0.2756590840872377,
+              0.2844146250281483
+            ],
+            "median_seconds": 0.2835287500638515
+          },
+          "value_and_grad": {
+            "lower_and_compile_seconds": 0.2067994170356542,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 540836016,
+              "argument_bytes": 16384,
+              "output_bytes": 16404,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              2.3090131669305265,
+              2.2840769169852138,
+              2.3280870420858264,
+              2.3275628751143813,
+              2.309346499852836,
+              2.3104130420833826,
+              2.3040067499969155
+            ],
+            "median_seconds": 2.309346499852836
+          },
+          "distance_error_scipy": {
+            "max_abs": 5.46872615814209e-06,
+            "relative_l2": 8.965688730479626e-08,
+            "finite": true
+          },
+          "gradient_error_historical_backend": {
+            "max_abs": 0.0,
+            "relative_l2": 0.0,
+            "finite": true
+          }
+        },
+        "after": {
+          "forward": {
+            "lower_and_compile_seconds": 0.23359116702340543,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 1917488,
+              "argument_bytes": 16384,
+              "output_bytes": 608,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.010629584081470966,
+              0.01086749997921288,
+              0.011296374956145883,
+              0.010567291872575879,
+              0.010707790963351727,
+              0.010715624783188105,
+              0.010594750056043267
+            ],
+            "median_seconds": 0.010707790963351727
+          },
+          "value_and_grad": {
+            "lower_and_compile_seconds": 0.2840756659861654,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 2458288,
+              "argument_bytes": 16384,
+              "output_bytes": 16404,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.02145337499678135,
+              0.021303541027009487,
+              0.021388459019362926,
+              0.021076499950140715,
+              0.020676250103861094,
+              0.02144354092888534,
+              0.02162354183383286
+            ],
+            "median_seconds": 0.021388459019362926
+          },
+          "distance_error_scipy": {
+            "max_abs": 5.46872615814209e-06,
+            "relative_l2": 8.965688730479626e-08,
+            "finite": true
+          },
+          "gradient_error_historical_backend": {
+            "max_abs": 1.52587890625e-05,
+            "relative_l2": 1.4774511214454833e-07,
+            "finite": true
+          }
+        }
+      },
+      "sample_order": [
+        [
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "after",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "before",
+            "forward"
+          ]
+        ],
+        [
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ],
+          [
+            "before",
+            "forward"
+          ]
+        ],
+        [
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ]
+      ]
+    },
+    {
+      "shape": [
+        64,
+        64
+      ],
+      "landscape": "clipped",
+      "seed": 42,
+      "sources": [
+        877
+      ],
+      "targets": [
+        3714,
+        1251,
+        605,
+        2536,
+        2407,
+        2803,
+        1796,
+        1283,
+        2094,
+        2693,
+        1363,
+        1926,
+        3696,
+        2765,
+        1205,
+        4088,
+        2410,
+        2289,
+        391
+      ],
+      "input_sha256": "b91f44e9e42d85c2898f5ecca628302618bd9b60d6f2b13e2cd066d4f73af130",
+      "methods": {
+        "before": {
+          "forward": {
+            "lower_and_compile_seconds": 0.07815779116936028,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 426024,
+              "argument_bytes": 16384,
+              "output_bytes": 76,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.06805362505838275,
+              0.067887166980654,
+              0.06818312499672174,
+              0.06826420803554356,
+              0.06798116699792445,
+              0.07059491705149412,
+              0.06848904211074114
+            ],
+            "median_seconds": 0.06818312499672174
+          },
+          "value_and_grad": {
+            "lower_and_compile_seconds": 0.17311916686594486,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 68206768,
+              "argument_bytes": 16384,
+              "output_bytes": 16404,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.6765565830282867,
+              0.6742552500218153,
+              0.6738829999230802,
+              0.6742270418908447,
+              0.67324462486431,
+              0.6733135001268238,
+              0.6743442919105291
+            ],
+            "median_seconds": 0.6742270418908447
+          },
+          "distance_error_scipy": {
+            "max_abs": 9.000301361083984e-06,
+            "relative_l2": 2.8782406084316614e-07,
+            "finite": true
+          },
+          "gradient_error_historical_backend": {
+            "max_abs": 0.0,
+            "relative_l2": 0.0,
+            "finite": true
+          }
+        },
+        "after": {
+          "forward": {
+            "lower_and_compile_seconds": 0.22007058397866786,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 672368,
+              "argument_bytes": 16384,
+              "output_bytes": 76,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.001998041057959199,
+              0.002020041923969984,
+              0.0018621250055730343,
+              0.001850249944254756,
+              0.0018855419475585222,
+              0.0020213329698890448,
+              0.00203616707585752
+            ],
+            "median_seconds": 0.001998041057959199
+          },
+          "value_and_grad": {
+            "lower_and_compile_seconds": 0.24201708380132914,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 1098480,
+              "argument_bytes": 16384,
+              "output_bytes": 16404,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.007836165837943554,
+              0.007926999824121594,
+              0.00772724999114871,
+              0.007876249961555004,
+              0.008044542046263814,
+              0.008536624955013394,
+              0.008305500028654933
+            ],
+            "median_seconds": 0.007926999824121594
+          },
+          "distance_error_scipy": {
+            "max_abs": 9.000301361083984e-06,
+            "relative_l2": 2.8782406084316614e-07,
+            "finite": true
+          },
+          "gradient_error_historical_backend": {
+            "max_abs": 4.76837158203125e-06,
+            "relative_l2": 1.633915047705159e-07,
+            "finite": true
+          }
+        }
+      },
+      "sample_order": [
+        [
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "after",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "before",
+            "forward"
+          ]
+        ],
+        [
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ],
+          [
+            "before",
+            "forward"
+          ]
+        ],
+        [
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ]
+      ]
+    },
+    {
+      "shape": [
+        32,
+        32
+      ],
+      "landscape": "uniform",
+      "seed": 42,
+      "sources": [
+        768
+      ],
+      "targets": [
+        520,
+        571,
+        734,
+        748,
+        741,
+        663,
+        601,
+        173,
+        304,
+        909,
+        722,
+        152,
+        400,
+        957,
+        928,
+        409,
+        364,
+        744,
+        370
+      ],
+      "input_sha256": "e9bac255f4adc7cb4ada9298e193a5ff66b434d15afabd458505325f29c398c7",
+      "methods": {
+        "before": {
+          "forward": {
+            "lower_and_compile_seconds": 0.07016870798543096,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 106536,
+              "argument_bytes": 4096,
+              "output_bytes": 76,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.004220000002533197,
+              0.004335417179390788,
+              0.004317084094509482,
+              0.004225332988426089,
+              0.004216499859467149,
+              0.004236416891217232,
+              0.004208582919090986
+            ],
+            "median_seconds": 0.004225332988426089
+          },
+          "value_and_grad": {
+            "lower_and_compile_seconds": 0.16469408408738673,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 4468912,
+              "argument_bytes": 4096,
+              "output_bytes": 4116,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.03996116598136723,
+              0.03975579189136624,
+              0.04004612495191395,
+              0.039704374969005585,
+              0.03919637482613325,
+              0.039499792037531734,
+              0.03959970781579614
+            ],
+            "median_seconds": 0.039704374969005585
+          },
+          "distance_error_scipy": {
+            "max_abs": 0.0,
+            "relative_l2": 0.0,
+            "finite": true
+          },
+          "gradient_error_historical_backend": {
+            "max_abs": 0.0,
+            "relative_l2": 0.0,
+            "finite": true
+          }
+        },
+        "after": {
+          "forward": {
+            "lower_and_compile_seconds": 0.2063523328397423,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 168560,
+              "argument_bytes": 4096,
+              "output_bytes": 76,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.0004703328013420105,
+              0.0004330419469624758,
+              0.0003938749432563782,
+              0.00034466711804270744,
+              0.0004755828995257616,
+              0.0004636249504983425,
+              0.000464125070720911
+            ],
+            "median_seconds": 0.0004636249504983425
+          },
+          "value_and_grad": {
+            "lower_and_compile_seconds": 0.2351845409721136,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 275184,
+              "argument_bytes": 4096,
+              "output_bytes": 4116,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.0011422920506447554,
+              0.0011992501094937325,
+              0.0011304998770356178,
+              0.0012369160540401936,
+              0.001254166942089796,
+              0.0011492089834064245,
+              0.0011348749976605177
+            ],
+            "median_seconds": 0.0011492089834064245
+          },
+          "distance_error_scipy": {
+            "max_abs": 0.0,
+            "relative_l2": 0.0,
+            "finite": true
+          },
+          "gradient_error_historical_backend": {
+            "max_abs": 5.7220458984375e-06,
+            "relative_l2": 1.980989026151292e-07,
+            "finite": true
+          }
+        }
+      },
+      "sample_order": [
+        [
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "after",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "before",
+            "forward"
+          ]
+        ],
+        [
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ],
+          [
+            "before",
+            "forward"
+          ]
+        ],
+        [
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ]
+      ]
+    },
+    {
+      "shape": [
+        1,
+        512
+      ],
+      "landscape": "corridor",
+      "seed": 42,
+      "sources": [
+        0
+      ],
+      "targets": [
+        511
+      ],
+      "input_sha256": "2604ed8ced1ab84de9c0f9e0c09bf8771dea6dae8bbf05bdaec9c0fef54fa9bf",
+      "methods": {
+        "before": {
+          "forward": {
+            "lower_and_compile_seconds": 0.08137804199941456,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 53288,
+              "argument_bytes": 2048,
+              "output_bytes": 4,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.0027848328463733196,
+              0.0026921669486910105,
+              0.0028031668625772,
+              0.002839958993718028,
+              0.002717458177357912,
+              0.0027540840674191713,
+              0.0028269579634070396
+            ],
+            "median_seconds": 0.0027848328463733196
+          },
+          "value_and_grad": {
+            "lower_and_compile_seconds": 0.17687804182060063,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 1185968,
+              "argument_bytes": 2048,
+              "output_bytes": 2068,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.01480233296751976,
+              0.014804957900196314,
+              0.014739915961399674,
+              0.014707415830343962,
+              0.014690125128254294,
+              0.014747875044122338,
+              0.014720709063112736
+            ],
+            "median_seconds": 0.014739915961399674
+          },
+          "distance_error_scipy": {
+            "max_abs": 5.498528480529785e-06,
+            "relative_l2": 1.8000741706951717e-08,
+            "finite": true
+          },
+          "gradient_error_historical_backend": {
+            "max_abs": 0.0,
+            "relative_l2": 0.0,
+            "finite": true
+          }
+        },
+        "after": {
+          "forward": {
+            "lower_and_compile_seconds": 0.20962400012649596,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 84592,
+              "argument_bytes": 2048,
+              "output_bytes": 4,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.003051250008866191,
+              0.0027937081176787615,
+              0.0028584999963641167,
+              0.0028269581962376833,
+              0.002866458846256137,
+              0.0029399998020380735,
+              0.0029707078356295824
+            ],
+            "median_seconds": 0.002866458846256137
+          },
+          "value_and_grad": {
+            "lower_and_compile_seconds": 0.25994875002652407,
+            "xla_memory_estimate": {
+              "available": true,
+              "measurement_type": "XLA executable compiler estimate; not measured peak",
+              "temporary_bytes": 137968,
+              "argument_bytes": 2048,
+              "output_bytes": 2068,
+              "alias_bytes": 0
+            },
+            "samples_seconds": [
+              0.007088291924446821,
+              0.007297042058780789,
+              0.00726537499576807,
+              0.0072145829908549786,
+              0.007241124985739589,
+              0.007113667204976082,
+              0.007188291987404227
+            ],
+            "median_seconds": 0.0072145829908549786
+          },
+          "distance_error_scipy": {
+            "max_abs": 5.498528480529785e-06,
+            "relative_l2": 1.8000741706951717e-08,
+            "finite": true
+          },
+          "gradient_error_historical_backend": {
+            "max_abs": 1.1920928955078125e-07,
+            "relative_l2": 3.7400745611648745e-08,
+            "finite": true
+          }
+        }
+      },
+      "sample_order": [
+        [
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "after",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "before",
+            "forward"
+          ]
+        ],
+        [
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ],
+          [
+            "before",
+            "forward"
+          ]
+        ],
+        [
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ],
+        [
+          [
+            "before",
+            "value_and_grad"
+          ],
+          [
+            "after",
+            "forward"
+          ],
+          [
+            "before",
+            "forward"
+          ],
+          [
+            "after",
+            "value_and_grad"
+          ]
+        ]
+      ]
+    }
+  ],
+  "completed_at_utc": "2026-10-23T06:42:53.573310+00:00"
+}

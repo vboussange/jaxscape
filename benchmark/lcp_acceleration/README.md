@@ -51,11 +51,40 @@ performance, large all-pairs scalability or universal speedups. The corridor
 has no early-stopping advantage. Compare software versions and hardware load
 before interpreting compilation or execution differences between runs.
 
-## Production measurements
+## Production measurements (23 October 2026)
 
-Production results are recorded separately in `production_cpu.json` once the
-correctness checks pass. The original prototype results below are historical
-evidence, not measurements of the production implementation.
+[Raw production report](production_cpu.json): Apple M1 Max CPU, float32,
+JAX/jaxlib 0.9.1, Equinox 0.13.2, NumPy 2.4.2, SciPy 1.16.2.
+Clean production revision `d88ad551fb48a70f90047b2ec71b26fbfefc289b`;
+baseline module `33e609bc846e581273777573a269f59d504c0286`.
+GPU was unavailable. All values passed the independent SciPy checks and all
+gradients were finite. Medians below exclude compilation, which is separately
+reported alongside every raw sample in the JSON.
+
+| Workload | Sources | Before forward (ms) | After forward (ms) | Before value + grad (ms) | After value + grad (ms) | Value + grad speedup |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 32×32 random | 1 | 4.299 | 0.467 | 40.342 | 1.219 | 33.1× |
+| 32×32 random | 8 | 18.602 | 1.496 | 198.861 | 2.984 | 66.6× |
+| 64×64 random | 1 | 67.920 | 1.895 | 657.862 | 7.845 | 83.9× |
+| 64×64 random | 8 | 283.529 | 10.708 | 2309.346 | 21.388 | 108.0× |
+| 64×64 clipped | 1 | 68.183 | 1.998 | 674.227 | 7.927 | 85.1× |
+| 32×32 uniform | 1 | 4.225 | 0.464 | 39.704 | 1.149 | 34.5× |
+| 1×512 corridor | 1 | 2.785 | 2.866 | 14.740 | 7.215 | 2.0× |
+
+For 64×64 with eight sources, XLA estimated value-plus-gradient temporary
+storage decreased from 515.8 MiB to 2.34 MiB. This is not a measured memory peak.
+The corridor forward pass was 2.9% slower: it needs the full relaxation bound,
+and the new implementation also validates the final tight graph. Its complete
+value-plus-gradient evaluation was still 2.0× faster.
+
+Against the original same-hardware/same-JAX random-grid prototype medians,
+production value-plus-gradient times ranged from 1.2% faster to 8.6% slower;
+the clipped case was 4.6% slower. These separate runs show no material
+regression against the prototype. Validation and stable reciprocal derivative
+arithmetic add work, but these measurements do not isolate their overhead
+from run-to-run noise. Gradient relative L2 differences from the historical
+backend were at most 2.2e-7 in these sampled cases; the analytical tie
+counterexample in the API guide demonstrates that agreement is not universal.
 
 ## Historical investigation (22 October 2026)
 
