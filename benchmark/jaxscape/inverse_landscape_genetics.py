@@ -35,7 +35,6 @@ import jax
 import jax.nn as jnn
 import jax.numpy as jnp
 from jaxscape import GridGraph, ResistanceDistance
-from jaxscape.solvers import JAXAMGCGSolver
 
 from benchmark.benchmark_distances import (
     as_point_array,
@@ -58,12 +57,10 @@ from benchmark.benchmark_distances import (
 )
 from benchmark.inverse_benchmark_settings import load_inverse_benchmark_settings
 from benchmark.jaxscape.resistance_profile_support import (
-    JAXAMG_RESISTANCE_PROFILES,
     make_amjaxcg_solver,
     make_cholmod_solver,
     make_spielman_method,
     profile_metadata,
-    profile_unavailable_reason,
     ResistanceProfile,
 )
 
@@ -95,7 +92,6 @@ JAXSCAPE_INVERSE_PROFILES = (
         solver_factory=make_cholmod_solver,
         dtype=jnp.float32,
     ),
-    *JAXAMG_RESISTANCE_PROFILES,
     ResistanceProfile(
         "amjaxcg_f32",
         "JAXScape / AMJaxCGSolver / f32",
@@ -248,14 +244,7 @@ def _distance_state(
     *,
     state: Any = None,
 ) -> Any:
-    if (
-        state is not None
-        or distance.solver is None
-        or isinstance(distance.solver, JAXAMGCGSolver)
-    ):
-        # JAX-AMG binds to current matrix values inside the compiled solve.
-        # Its function-operator state contains static Jaxprs, which are not
-        # arrays and must not be passed through a blanket stop_gradient map.
+    if state is not None or distance.solver is None:
         return state
     return jax.tree.map(jax.lax.stop_gradient, distance.init(grid))
 
@@ -472,11 +461,6 @@ def _run_inverse_profile_direct(
         )
 
     metrics.update(profile_metadata(profile, device.platform))
-    if profile.gpu_only:
-        metrics["solver_preconditioner_reused"] = None
-        metrics["solver_cg_state_refreshed"] = True
-        # Upstream controls native refreshes; do not claim a fixed refresh count.
-        metrics["solver_preconditioner_refresh_count"] = None
     record = ok_record_with_metrics(
         case.task,
         tool_label,
@@ -537,11 +521,6 @@ def run_worker(payload: dict[str, Any]) -> BenchmarkRecord:
         if backend == "cpu" and not profile.gpu_capable
         else backend_tool_label(profile.tool, backend)
     )
-    unavailable = profile_unavailable_reason(profile, backend)
-    if unavailable is not None:
-        return skip_record(
-            case.task, tool_label, "JAXScape + Optimistix", case.name, unavailable
-        )
     return _run_inverse_profile_direct(
         case,
         profile,
@@ -590,15 +569,14 @@ def collect_jaxscape_inverse_results(
     records: list[BenchmarkRecord] = []
     for profile in selected_profiles(profile_keys):
         if profile.gpu_capable:
-            if not profile.gpu_only:
-                records.append(
-                    run_jaxscape_inverse_profile(
-                        case,
-                        config,
-                        backend_tool_label(profile.tool, "cpu"),
-                        device=config.cpu_device,
-                    )
+            records.append(
+                run_jaxscape_inverse_profile(
+                    case,
+                    config,
+                    backend_tool_label(profile.tool, "cpu"),
+                    device=config.cpu_device,
                 )
+            )
             if config.gpu_device is None:
                 records.append(
                     gpu_placeholder_record(case, profile.tool, "JAXScape + Optimistix")

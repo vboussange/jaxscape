@@ -1,4 +1,0 @@
-2026-10-14 11:22:03,251 INFO benchmark.jaxscape.inverse_landscape_genetics: Dispatching benchmark worker for case=synthetic_inverse_medium tool=JAXScape / JAXAMGCGSolver / f32 (GPU) walltime=180s
-2026-10-14 11:25:03,538 ERROR benchmark.jaxscape.inverse_landscape_genetics: Benchmark worker timed out for case=synthetic_inverse_medium tool=JAXScape / JAXAMGCGSolver / f32 (GPU) after 180s
-2026-10-14 11:25:03,539 INFO benchmark.jaxscape.inverse_landscape_genetics: Dispatching benchmark worker for case=synthetic_inverse_medium tool=JAXScape / JAXAMGCGSolver / f64 (GPU) walltime=180s
-2026-10-14 11:28:03,863 ERROR benchmark.jaxscape.inverse_landscape_genetics: Benchmark worker timed out for case=synthetic_inverse_medium tool=JAXScape / JAXAMGCGSolver / f64 (GPU) after 180s
