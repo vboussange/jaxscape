@@ -42,57 +42,84 @@ custom implicit-differentiation rule.
 
 ## Quick start
 
-This small example uses positive, symmetric conductances and the dense default
-solvers. Edge costs for least-cost and free-energy distances are reciprocals of
-conductance. Larger landscapes need an explicit
-[linear solver](https://vboussange.github.io/jaxscape/api/linear_solvers/).
+**1. Download sample data**
+
+```bash
+curl -sL https://github.com/vboussange/jaxscape/releases/download/v0.0.6/data.zip -o data.zip && unzip -q data.zip && rm data.zip
+```
+
+**2. Run the analysis**
 
 ```python
 import jax
 
-# Float64 gives the free-energy calculation a wider usable numerical range.
+# Explicit float64 profile for the free-energy calculation.
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
+import lineax as lx
 import matplotlib.pyplot as plt
 import numpy as np
 from jaxscape import FreeEnergyDistance, GridGraph, LCPDistance, ResistanceDistance
 
 permeability = jnp.array(
-    [[1.0, 1.0, 0.5, 1.0],
-     [1.0, 0.5, 0.5, 1.0],
-     [1.0, 1.0, 1.0, 1.0]],
-    dtype=jnp.float64,
+    np.loadtxt("data/permeability.csv", delimiter=","), dtype=jnp.float32
+) + 0.001
+barriers = np.asarray(permeability <= 0.1)
+
+# Symmetric conductances are the mean permeability of neighboring cells.
+grid = GridGraph(grid=permeability, fun=lambda x, y: (x + y) / 2)
+
+# Compute distances from the top-left pixel to every other pixel.
+source = grid.coord_to_index(jnp.array([0]), jnp.array([0]))
+
+# Keep the original panels in float32; request float64 explicitly for FED.
+free_energy_grid = GridGraph(
+    permeability.astype(jnp.float64), fun=lambda x, y: (x + y) / 2
 )
-# The default GridGraph weight function can be directed. Use a symmetric one.
-grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
-source = jnp.array([[0, 0]])
+free_energy = FreeEnergyDistance(
+    theta=0.01,
+    solver=lx.CG(rtol=1e-10, atol=1e-90, max_steps=10_000, stabilise_every=None),
+)
 distances = {
-    "Least-cost distance": LCPDistance(),
-    "Free-energy distance": FreeEnergyDistance(theta=0.2),
-    "Resistance distance": ResistanceDistance(),
+    "LCP distance": LCPDistance()(grid, sources=source),
+    "Resistance distance": ResistanceDistance()(grid, sources=source),
+    "Free-energy distance": free_energy(free_energy_grid, sources=source),
 }
 
-fig, axs = plt.subplots(1, 4, figsize=(12, 3))
-im = axs[0].imshow(permeability, cmap="gray", vmin=0, vmax=1)
+distance_cmap = plt.cm.magma.copy()
+distance_cmap.set_bad(color="lightgray")
+
+fig, axs = plt.subplots(1, 4, figsize=(12, 4))
+
+permeability_im = axs[0].imshow(permeability, cmap="gray", vmin=0, vmax=1)
+axs[0].set_xticks([])
+axs[0].set_yticks([])
+for spine in axs[0].spines.values():
+    spine.set_visible(True)
 axs[0].set_title("Permeability")
-fig.colorbar(im, ax=axs[0], shrink=0.6)
-for ax, (title, distance) in zip(axs[1:], distances.items()):
-    values = distance(grid, sources=source)
-    im = ax.imshow(np.asarray(values).reshape(permeability.shape), cmap="magma")
-    ax.set_title(title)
-    fig.colorbar(im, ax=ax, shrink=0.6)
-for ax in axs:
+fig.colorbar(permeability_im, ax=axs[0], shrink=0.2)
+
+for ax, (title, dist_to_node) in zip(axs[1:], distances.items()):
+    # Convert from node values to a 2D array and hide barrier cells
+    dist_array = np.asarray(grid.node_values_to_array(dist_to_node.ravel()))
+    dist_array = np.ma.masked_where(barriers, dist_array)
+
+    # Plotting
+    im = ax.imshow(dist_array, cmap=distance_cmap)
     ax.axis("off")
-fig.suptitle("Distances from the top-left pixel")
+    ax.set_title(title)
+    fig.colorbar(im, ax=ax, shrink=0.2)
+
+fig.suptitle("Permeability and distance to the top-left pixel")
 plt.tight_layout()
 plt.show()
 ```
 
-`theta` is **inverse temperature**: increasing it favors least-cost paths.
-As it decreases toward zero, free-energy distance approaches a scaled effective
-resistance; on a loop-free graph with `m` undirected edges, the limit is `m`
-times the resistance distance. These limits may be numerically unresolved at
-extreme parameter values; the calculation then raises an error.
+`theta` is inverse temperature: larger values favor least-cost paths. This
+example requests float64 and tight CG tolerances to resolve distant inverse
+entries. The settings are a workload-specific profile, not library defaults;
+the final numerical check still rejects unresolved queries. See the
+[solver guide](https://vboussange.github.io/jaxscape/api/linear_solvers/).
 
 <div align="center"><img src="examples/distance_calculation/distances.png" alt="Distances"  width="600"></div>
 
