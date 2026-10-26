@@ -187,40 +187,61 @@ def test_rejects_nonfinite_negative_or_asymmetric_conductances():
         FreeEnergyDistance(0.7)(Graph(BCOO.fromdense(matrix))).block_until_ready()
 
 
-SOLVERS: list[lx.AbstractLinearSolver] = [lx.CG(rtol=1e-12, atol=1e-12, max_steps=100)]
+SOLVERS = ["cg"]
 if find_spec("pyamg") is not None:
-    SOLVERS.append(PyAMGSolver(rtol=1e-12, atol=1e-12))
+    SOLVERS.append("pyamg")
 if find_spec("cholespy") is not None:
-    SOLVERS.append(CholmodSolver())
+    SOLVERS.append("cholespy")
 if find_spec("amjax") is not None and find_spec("pyamg") is not None:
-    SOLVERS.append(AMJaxCGSolver(rtol=1e-12, atol=1e-12, max_steps=100))
+    SOLVERS.append("amjax")
 
 
-@pytest.mark.parametrize("solver", SOLVERS)
-def test_sparse_solvers_state_and_joint_gradients(solver):
+@pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
+@pytest.mark.parametrize("solver_name", SOLVERS)
+def test_sparse_solvers_state_and_joint_gradients(solver_name, dtype):
     with jax.enable_x64():
-        weights = jnp.asarray(WEIGHTS)
+        rtol, atol = (1e-6, 1e-7) if dtype == jnp.float32 else (1e-12, 1e-12)
+        solver: lx.AbstractLinearSolver
+        if solver_name == "cg":
+            solver = lx.CG(rtol=rtol, atol=atol, max_steps=100)
+        elif solver_name == "pyamg":
+            solver = PyAMGSolver(rtol=rtol, atol=atol, maxiter=100)
+        elif solver_name == "cholespy":
+            solver = CholmodSolver()
+        else:
+            solver = AMJaxCGSolver(rtol=rtol, atol=atol, max_steps=100)
+        tolerance = 3e-4 if dtype == jnp.float32 else 1e-10
+        weights = jnp.asarray(WEIGHTS, dtype=dtype)
+        theta_value = jnp.asarray(0.7, dtype=dtype)
         nodes = jnp.array([3, 1, 3])
-        coefficients = jnp.array([[0.1, -0.2, 0.3], [1.1, 0.4, -0.7], [0.5, 0.9, -0.3]])
-        distance = FreeEnergyDistance(0.7, solver=solver)
-        state = distance.init(graph(weights))
-        np.testing.assert_allclose(
-            distance(graph(weights), nodes=nodes, state=state),
-            distance(graph(weights), nodes=nodes),
-            rtol=1e-10,
-            atol=1e-11,
+        coefficients = jnp.array(
+            [[0.1, -0.2, 0.3], [1.1, 0.4, -0.7], [0.5, 0.9, -0.3]], dtype=dtype
         )
-        for updated_weights, theta in [(weights * 1.1, 0.7), (weights, 0.9)]:
+        distance = FreeEnergyDistance(theta_value, solver=solver)
+        state = distance.init(graph(weights))
+        initialized = distance(graph(weights), nodes=nodes, state=state)
+        assert initialized.dtype == dtype
+        np.testing.assert_allclose(
+            initialized,
+            distance(graph(weights), nodes=nodes),
+            rtol=tolerance,
+            atol=tolerance,
+        )
+        for updated_weights, theta in [
+            (weights * 1.1, theta_value),
+            (weights, jnp.asarray(0.9, dtype=dtype)),
+        ]:
             updated = FreeEnergyDistance(theta, solver=solver)
             refreshed = updated.init(graph(updated_weights))
-            expected = reference(adjacency(updated_weights), theta)[
-                nodes[:, None], nodes[None, :]
-            ]
+            expected = reference(
+                adjacency(updated_weights.astype(jnp.float64)),
+                theta.astype(jnp.float64),
+            )[nodes[:, None], nodes[None, :]]
             np.testing.assert_allclose(
                 updated(graph(updated_weights), nodes=nodes, state=refreshed),
                 expected,
-                rtol=1e-10,
-                atol=1e-11,
+                rtol=tolerance,
+                atol=tolerance,
             )
         differentiable_state = (
             distance.init_preconditioner(graph(weights))
@@ -238,17 +259,22 @@ def test_sparse_solvers_state_and_joint_gradients(solver):
 
         def oracle(weights, theta):
             return jnp.sum(
-                coefficients
+                coefficients.astype(jnp.float64)
                 * reference(adjacency(weights), theta)[nodes[:, None], nodes[None, :]]
             )
 
         actual = jax.jit(jax.value_and_grad(objective, argnums=(0, 1)))(
-            weights, jnp.array(0.7)
+            weights, theta_value
         )
-        expected = jax.value_and_grad(oracle, argnums=(0, 1))(weights, jnp.array(0.7))
-        np.testing.assert_allclose(actual[0], expected[0], rtol=1e-10)
+        expected = jax.value_and_grad(oracle, argnums=(0, 1))(
+            weights.astype(jnp.float64), theta_value.astype(jnp.float64)
+        )
+        np.testing.assert_allclose(
+            actual[0], expected[0], rtol=tolerance, atol=tolerance
+        )
         for a, e in zip(actual[1], expected[1]):
-            np.testing.assert_allclose(a, e, rtol=1e-9, atol=1e-10)
+            assert a.dtype == dtype
+            np.testing.assert_allclose(a, e, rtol=tolerance, atol=tolerance)
 
 
 def test_amjax_preconditioner_only_state_reuses_current_operator():
@@ -426,3 +452,27 @@ def test_grid_rectangular_coordinates_and_batched_gradients():
         expected = jax.vmap(jax.value_and_grad(oracle))(batch)
         np.testing.assert_allclose(actual[0], expected[0], rtol=1e-11)
         np.testing.assert_allclose(actual[1], expected[1], rtol=1e-10, atol=1e-11)
+
+
+@pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
+def test_metric_with_tied_equal_cost_alternatives(dtype):
+    """Opposite four-cycle vertices have two shortest routes of equal cost."""
+    with jax.enable_x64():
+        matrix = jnp.array(
+            [[0, 1, 1, 0], [1, 0, 0, 1], [1, 0, 0, 1], [0, 1, 1, 0]],
+            dtype=dtype,
+        )
+        expected = reference(matrix.astype(jnp.float64), 0.7)
+        actual = FreeEnergyDistance(0.7)(Graph(BCOO.fromdense(matrix)))
+        tolerance = 2e-5 if dtype == jnp.float32 else 1e-11
+        np.testing.assert_allclose(actual, expected, rtol=tolerance, atol=tolerance)
+        np.testing.assert_allclose(actual, actual.T, atol=tolerance)
+        np.testing.assert_array_equal(jnp.diag(actual), 0)
+        assert jnp.all(actual[~jnp.eye(4, dtype=bool)] > 0)
+        for intermediate in range(4):
+            assert jnp.all(
+                actual
+                <= actual[:, intermediate, None]
+                + actual[None, intermediate, :]
+                + tolerance
+            )
