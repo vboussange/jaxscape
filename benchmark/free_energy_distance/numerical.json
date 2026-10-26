@@ -1,0 +1,316 @@
+{
+  "metadata": {
+    "measured_at_utc": "2026-10-26T09:41:34.474804+00:00",
+    "implementation_revision": "e62388d764c178baba5e48a488ee0eef0e738bb0",
+    "implementation_has_local_changes": false,
+    "implementation_sha256": "e6268f73dacdf16a80a0a0128154f685101f7e10d5a346131a021d758af70e3e",
+    "thread_environment": {
+      "XLA_FLAGS": null,
+      "OMP_NUM_THREADS": null,
+      "OPENBLAS_NUM_THREADS": null,
+      "MKL_NUM_THREADS": null,
+      "VECLIB_MAXIMUM_THREADS": null
+    },
+    "base_revision": "80d09ae39632024591d69845aad586be25cba2d3",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "processor": "Apple M1 Max",
+    "devices": [
+      "TFRT_CPU_0"
+    ],
+    "jax": "0.9.1",
+    "equinox": "0.13.2",
+    "lineax": "0.1.0",
+    "numpy": "2.5.4",
+    "samples": 7,
+    "memory_measurement": "XLA compiled memory estimate, not measured peak memory",
+    "timing_scope": "Preplaced inputs; graph/adjacency + automatic state + solve + selection; synchronized; setup additionally reported; no claim of state-reuse speedup",
+    "objective": "Signed weighted sum of selected distances; jointly differentiate all raster cells and theta"
+  },
+  "cases": [],
+  "numerical_probes": [
+    {
+      "dtype": "float32",
+      "theta": 1e-12,
+      "vertices": 64,
+      "selected_columns": 3,
+      "backend": "dense",
+      "status": "rejected",
+      "error": "_EquinoxRuntimeError: FreeEnergyDistance cannot resolve the requested logarithms accurately; choose a different theta, float64 precision, or tighter solver tolerances."
+    },
+    {
+      "dtype": "float32",
+      "theta": 1e-08,
+      "vertices": 64,
+      "selected_columns": 3,
+      "backend": "dense",
+      "status": "rejected",
+      "error": "_EquinoxRuntimeError: FreeEnergyDistance cannot resolve the requested logarithms accurately; choose a different theta, float64 precision, or tighter solver tolerances."
+    },
+    {
+      "dtype": "float32",
+      "theta": 1e-05,
+      "vertices": 64,
+      "selected_columns": 3,
+      "backend": "dense",
+      "status": "rejected",
+      "error": "_EquinoxRuntimeError: FreeEnergyDistance cannot resolve the requested logarithms accurately; choose a different theta, float64 precision, or tighter solver tolerances."
+    },
+    {
+      "dtype": "float32",
+      "theta": 0.001,
+      "vertices": 64,
+      "selected_columns": 3,
+      "backend": "dense",
+      "status": "rejected",
+      "error": "_EquinoxRuntimeError: FreeEnergyDistance cannot resolve the requested logarithms accurately; choose a different theta, float64 precision, or tighter solver tolerances."
+    },
+    {
+      "dtype": "float32",
+      "theta": 0.01,
+      "vertices": 64,
+      "selected_columns": 3,
+      "backend": "dense",
+      "status": "accepted",
+      "accuracy": {
+        "distances": {
+          "max_absolute": 5.6487516275183225e-05,
+          "relative_l2": 1.17136179574025e-06
+        },
+        "raster_gradient": {
+          "max_absolute": 1.0007762417885147e-05,
+          "relative_l2": 8.39429964069384e-07
+        },
+        "theta_gradient": {
+          "max_absolute": 0.006299740922258934,
+          "relative_l2": 6.420675978706863e-06
+        }
+      }
+    },
+    {
+      "dtype": "float32",
+      "theta": 0.1,
+      "vertices": 64,
+      "selected_columns": 3,
+      "backend": "dense",
+      "status": "accepted",
+      "accuracy": {
+        "distances": {
+          "max_absolute": 2.042201568741575e-06,
+          "relative_l2": 1.2773559183540263e-07
+        },
+        "raster_gradient": {
+          "max_absolute": 4.00569860836697e-07,
+          "relative_l2": 1.315198530331657e-07
+        },
+        "theta_gradient": {
+          "max_absolute": 2.029745914455816e-05,
+          "relative_l2": 3.353206086047336e-07
+        }
+      }
+    },
+    {
+      "dtype": "float32",
+      "theta": 1.0,
+      "vertices": 64,
+      "selected_columns": 3,
+      "backend": "dense",
+      "status": "accepted",
+      "accuracy": {
+        "distances": {
+          "max_absolute": 1.3853869118563011e-07,
+          "relative_l2": 4.1135256517092676e-08
+        },
+        "raster_gradient": {
+          "max_absolute": 2.1192026244953865e-07,
+          "relative_l2": 2.1183998561602742e-07
+        },
+        "theta_gradient": {
+          "max_absolute": 3.547050750896119e-07,
+          "relative_l2": 3.2596406721783583e-07
+        }
+      }
+    },
+    {
+      "dtype": "float32",
+      "theta": 5.0,
+      "vertices": 64,
+      "selected_columns": 3,
+      "backend": "dense",
+      "status": "rejected",
+      "error": "_EquinoxRuntimeError: FreeEnergyDistance cannot resolve the requested logarithms accurately; choose a different theta, float64 precision, or tighter solver tolerances."
+    },
+    {
+      "dtype": "float32",
+      "theta": 50.0,
+      "vertices": 64,
+      "selected_columns": 3,
+      "backend": "dense",
+      "status": "rejected",
+      "error": "_EquinoxRuntimeError: FreeEnergyDistance cannot resolve the requested logarithms accurately; choose a different theta, float64 precision, or tighter solver tolerances."
+    },
+    {
+      "dtype": "float32",
+      "theta": 500.0,
+      "vertices": 64,
+      "selected_columns": 3,
+      "backend": "dense",
+      "status": "rejected",
+      "error": "_EquinoxRuntimeError: FreeEnergyDistance cannot resolve the requested logarithms accurately; choose a different theta, float64 precision, or tighter solver tolerances."
+    },
+    {
+      "dtype": "float64",
+      "theta": 1e-12,
+      "vertices": 64,
+      "selected_columns": 3,
+      "backend": "dense",
+      "status": "rejected",
+      "error": "_EquinoxRuntimeError: FreeEnergyDistance cannot resolve the requested logarithms accurately; choose a different theta, float64 precision, or tighter solver tolerances."
+    },
+    {
+      "dtype": "float64",
+      "theta": 1e-08,
+      "vertices": 64,
+      "selected_columns": 3,
+      "backend": "dense",
+      "status": "rejected",
+      "error": "_EquinoxRuntimeError: FreeEnergyDistance cannot resolve the requested logarithms accurately; choose a different theta, float64 precision, or tighter solver tolerances."
+    },
+    {
+      "dtype": "float64",
+      "theta": 1e-05,
+      "vertices": 64,
+      "selected_columns": 3,
+      "backend": "dense",
+      "status": "rejected",
+      "error": "_EquinoxRuntimeError: FreeEnergyDistance cannot resolve the requested logarithms accurately; choose a different theta, float64 precision, or tighter solver tolerances."
+    },
+    {
+      "dtype": "float64",
+      "theta": 0.001,
+      "vertices": 64,
+      "selected_columns": 3,
+      "backend": "dense",
+      "status": "accepted",
+      "accuracy": {
+        "distances": {
+          "max_absolute": 1.9113599591946695e-12,
+          "relative_l2": 3.115762799318813e-14
+        },
+        "raster_gradient": {
+          "max_absolute": 5.844214001626824e-13,
+          "relative_l2": 3.911025034102187e-14
+        },
+        "theta_gradient": {
+          "max_absolute": 1.382431946694851e-09,
+          "relative_l2": 6.359547265636724e-13
+        }
+      }
+    },
+    {
+      "dtype": "float64",
+      "theta": 0.01,
+      "vertices": 64,
+      "selected_columns": 3,
+      "backend": "dense",
+      "status": "accepted",
+      "accuracy": {
+        "distances": {
+          "max_absolute": 2.1316282072803006e-14,
+          "relative_l2": 3.4198135738991726e-16
+        },
+        "raster_gradient": {
+          "max_absolute": 1.3322676295501878e-14,
+          "relative_l2": 2.3409920612848744e-15
+        },
+        "theta_gradient": {
+          "max_absolute": 1.3642420526593924e-12,
+          "relative_l2": 1.3904311561781535e-15
+        }
+      }
+    },
+    {
+      "dtype": "float64",
+      "theta": 0.1,
+      "vertices": 64,
+      "selected_columns": 3,
+      "backend": "dense",
+      "status": "accepted",
+      "accuracy": {
+        "distances": {
+          "max_absolute": 7.105427357601002e-15,
+          "relative_l2": 3.6472388921119183e-16
+        },
+        "raster_gradient": {
+          "max_absolute": 2.6645352591003757e-15,
+          "relative_l2": 7.797078746581522e-16
+        },
+        "theta_gradient": {
+          "max_absolute": 7.105427357601002e-14,
+          "relative_l2": 1.1738395674296808e-15
+        }
+      }
+    },
+    {
+      "dtype": "float64",
+      "theta": 1.0,
+      "vertices": 64,
+      "selected_columns": 3,
+      "backend": "dense",
+      "status": "accepted",
+      "accuracy": {
+        "distances": {
+          "max_absolute": 8.881784197001252e-16,
+          "relative_l2": 1.680850019947041e-16
+        },
+        "raster_gradient": {
+          "max_absolute": 4.440892098500626e-16,
+          "relative_l2": 4.686744488895161e-16
+        },
+        "theta_gradient": {
+          "max_absolute": 4.440892098500626e-16,
+          "relative_l2": 4.0810557442613105e-16
+        }
+      }
+    },
+    {
+      "dtype": "float64",
+      "theta": 5.0,
+      "vertices": 64,
+      "selected_columns": 3,
+      "backend": "dense",
+      "status": "accepted",
+      "accuracy": {
+        "distances": {
+          "max_absolute": 4.440892098500626e-16,
+          "relative_l2": 1.6698806089686985e-16
+        },
+        "raster_gradient": {
+          "max_absolute": 1.1102230246251565e-16,
+          "relative_l2": 1.292134639100728e-16
+        },
+        "theta_gradient": {
+          "max_absolute": 5.551115123125783e-17,
+          "relative_l2": 1.0990099879336596e-15
+        }
+      }
+    },
+    {
+      "dtype": "float64",
+      "theta": 50.0,
+      "vertices": 64,
+      "selected_columns": 3,
+      "backend": "dense",
+      "status": "rejected",
+      "error": "_EquinoxRuntimeError: FreeEnergyDistance cannot resolve the requested logarithms accurately; choose a different theta, float64 precision, or tighter solver tolerances."
+    },
+    {
+      "dtype": "float64",
+      "theta": 500.0,
+      "vertices": 64,
+      "selected_columns": 3,
+      "backend": "dense",
+      "status": "rejected",
+      "error": "_EquinoxRuntimeError: FreeEnergyDistance cannot resolve the requested logarithms accurately; choose a different theta, float64 precision, or tighter solver tolerances."
+    }
+  ]
+}
