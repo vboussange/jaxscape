@@ -156,3 +156,52 @@ reference walk, reciprocal costs and target normalization, validates values,
 and times construction/factorization rather than a cached accessor. That is
 additional integration beyond this contained revision. SciPy is an independent
 correctness reference here, not a claim about ConScape performance.
+
+### Validated revision profile (26 October 2026)
+
+[Raw records](jaxscape/free_energy_validation.json) retain inputs' and production
+source hashes, software versions, compilation/setup times, all timing samples,
+device placement, directional checks and expected numerical failures. These
+measurements use the shared runner above on an Apple M1 Max CPU (JAX 0.9.1,
+Lineax 0.1.0) and an RTX 3090 (JAX 0.10.0, Lineax 0.1.0). The original prototype
+timings are not reused. Each device's reference uses its exact realized array.
+
+All rows use 20 sites and float64. Times are warmed medians of three synchronized
+samples, except 500×500 (one sample after warming); compilation is excluded.
+Value errors cover all 380 off-diagonal entries. Gradient errors are the largest
+scaled discrepancy across three signed-objective landscape directions and theta.
+
+| Device | Grid | Theta | Forward (ms) | Value + gradient (ms) | Max value error | Max gradient discrepancy |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| CPU | 10×10 | 0.1 | 7.7 | 7.8 | 1.87e-15 | 4.91e-09 |
+| CPU | 100×100 | 0.01 | 5603.2 | 5303.4 | 1.86e-15 | 8.25e-09 |
+| CPU | 100×100 | 0.1 | 2037.9 | 2016.4 | 5.69e-16 | 6.87e-09 |
+| CPU | 100×100 | 1 | 732.9 | 745.3 | 4.27e-15 | 2.97e-09 |
+| GPU | 10×10 | 0.1 | 16.4 | 16.6 | 1.36e-15 | 4.91e-09 |
+| GPU | 100×100 | 0.01 | 450.8 | 453.0 | 1.86e-15 | 8.23e-09 |
+| GPU | 100×100 | 0.1 | 180.5 | 181.9 | 4.32e-16 | 6.87e-09 |
+| GPU | 100×100 | 1 | 71.1 | 80.3 | 3.24e-15 | 2.97e-09 |
+| GPU | 200×200 | 0.1 | 539.0 | 538.1 | 5.36e-16 | 9.05e-09 |
+| GPU | 500×500 | 0.01 | 8536.5 | 8564.7 | 1.03e-15 | 1.85e-08 |
+
+CPU negative controls at 100×100, theta=0.1 and 1, with `atol=1e-14` and
+`stabilise_every=10` still raised the existing unresolved-logarithm error.
+Float32 values/gradients and all optional solvers passed the public regression
+suite (105 tests in total); this large-grid GPU profile was measured only in
+float64. The 200/500 cases are bounded examples, not general scaling guarantees.
+
+At 100×100/theta=1, seven randomized paired measurements found guard overhead
+of 2.4% on CPU and 0.9% on GPU relative to the same compiled solver
+work with only guard routines bypassed in temporary measurement instrumentation.
+This is a net compiler-dependent cost, not a public switch or a CI threshold.
+GPU recompilation changes values by at most 1.32e-14 scaled error; no validation
+result above bypasses the guard. Nested traces contain no N×N arrays in either
+direction and no solve/iteration/callback primitives in the backward pass.
+The numerical solve runs in JAX on the GPU; the retained forward host callbacks
+only report errors. The guard uses four sparse block products and no extra solve.
+
+The revised guard reuses the existing SPD assembly, selected solves, final
+logarithm acceptance check and distance-owned VJP. The benchmark reuses case
+generation, site selection, conductances, synchronized timing, worker execution
+and result records; its small independent SciPy oracle is needed to check values
+and finite differences without reusing the production algebra.

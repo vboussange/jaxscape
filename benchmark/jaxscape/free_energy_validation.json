@@ -1,0 +1,1547 @@
+{
+  "issue": 34,
+  "measured_date": "2026-10-26",
+  "runs": {
+    "cpu": {
+      "measured_at": "2026-10-26T18:33:55.558531+00:00",
+      "revision": "b4a12fce0ffd8c9e7d800babfcce2f714d7b563a",
+      "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+      "device_kind": "cpu",
+      "thread_environment": {
+        "BENCHMARK_THREADS": "4",
+        "OMP_NUM_THREADS": "4",
+        "OPENBLAS_NUM_THREADS": "4",
+        "MKL_NUM_THREADS": "4",
+        "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=true intra_op_parallelism_threads=4",
+        "CUDA_VISIBLE_DEVICES": null
+      },
+      "cases": [
+        {
+          "task": "free_energy_distance",
+          "tool": "JAXScape / CG / theta=0.1 / f64 (CPU)",
+          "software": "JAXScape",
+          "scenario": "synthetic_free_energy_10",
+          "status": "ok",
+          "median_seconds": 0.007707166951149702,
+          "timings_seconds": [
+            0.00795870809815824,
+            0.007630417123436928,
+            0.007707166951149702
+          ],
+          "metrics": {
+            "theta": 0.1,
+            "dtype": "float64",
+            "backend": "cpu",
+            "device": "TFRT_CPU_0",
+            "device_kind": "cpu",
+            "dependency_versions": {
+              "jax": "0.9.1",
+              "jaxlib": "0.9.1",
+              "lineax": "0.1.0",
+              "numpy": "2.5.4",
+              "scipy": "1.18.1",
+              "equinox": "0.13.2",
+              "optimistix": null,
+              "amjax": "0.0.3",
+              "pyamg": "5.3.0",
+              "cholespy": "2.2.0"
+            },
+            "implementation_sha256": "3b3bdf069311317e5a8260d90a66087cb745e958e7ac2f633be4f0ce7a0206e5",
+            "solver_settings": {
+              "rtol": 1e-10,
+              "atol": 1e-90,
+              "max_steps": 10000,
+              "stabilise_every": null
+            },
+            "samples": 3,
+            "point_count": 20,
+            "seed": 0,
+            "timing_scope": "Graph construction, state rebuild, selected solves and guard",
+            "input_sha256": "81aaaecaa3cb73b7e280e143000481a8be5b73a1af4aded2cba7861b6af2adc0",
+            "compile_seconds": {
+              "setup": 0.29553058301098645,
+              "forward": 0.6526506249792874,
+              "value_and_grad": 0.8026121659204364
+            },
+            "setup_seconds": [
+              0.00027549988590180874,
+              0.0002392090391367674,
+              0.0002015409991145134
+            ],
+            "forward_seconds": [
+              0.00795870809815824,
+              0.007630417123436928,
+              0.007707166951149702
+            ],
+            "value_and_grad_seconds": [
+              0.007862874772399664,
+              0.00782525003887713,
+              0.00771141704171896
+            ],
+            "off_diagonal_entries": 380,
+            "max_scaled_error": 1.868804551225702e-15,
+            "all_finite": true,
+            "objective": -0.6092352194001164,
+            "output_devices": [
+              "TFRT_CPU_0"
+            ],
+            "gradient_devices": [
+              "TFRT_CPU_0"
+            ],
+            "theta_gradient_devices": [
+              "TFRT_CPU_0"
+            ],
+            "derivative_checks": [
+              {
+                "parameter": "landscape_direction_0",
+                "step": 0.0001,
+                "finite_difference": 0.015037543958407697,
+                "autodiff": 0.015037544910411647,
+                "scaled_error": 9.520039496307975e-10
+              },
+              {
+                "parameter": "landscape_direction_1",
+                "step": 0.0001,
+                "finite_difference": 0.1603166835821233,
+                "autodiff": 0.16031668303292337,
+                "scaled_error": 5.491999355289323e-10
+              },
+              {
+                "parameter": "landscape_direction_2",
+                "step": 0.0001,
+                "finite_difference": 0.06422966597514662,
+                "autodiff": 0.06422966426607793,
+                "scaled_error": 1.7090686921239495e-09
+              },
+              {
+                "parameter": "theta",
+                "step": 1e-05,
+                "finite_difference": 2.90340879445884,
+                "autodiff": 2.903408780207376,
+                "scaled_error": 4.908528222448893e-09
+              }
+            ]
+          },
+          "note": "",
+          "grid_side": 10
+        },
+        {
+          "task": "free_energy_distance",
+          "tool": "JAXScape / CG / theta=0.01 / f64 (CPU)",
+          "software": "JAXScape",
+          "scenario": "synthetic_free_energy_100",
+          "status": "ok",
+          "median_seconds": 5.6032097497954965,
+          "timings_seconds": [
+            5.6032097497954965,
+            5.820425207959488,
+            5.408988666953519
+          ],
+          "metrics": {
+            "theta": 0.01,
+            "dtype": "float64",
+            "backend": "cpu",
+            "device": "TFRT_CPU_0",
+            "device_kind": "cpu",
+            "dependency_versions": {
+              "jax": "0.9.1",
+              "jaxlib": "0.9.1",
+              "lineax": "0.1.0",
+              "numpy": "2.5.4",
+              "scipy": "1.18.1",
+              "equinox": "0.13.2",
+              "optimistix": null,
+              "amjax": "0.0.3",
+              "pyamg": "5.3.0",
+              "cholespy": "2.2.0"
+            },
+            "implementation_sha256": "3b3bdf069311317e5a8260d90a66087cb745e958e7ac2f633be4f0ce7a0206e5",
+            "solver_settings": {
+              "rtol": 1e-10,
+              "atol": 1e-90,
+              "max_steps": 10000,
+              "stabilise_every": null
+            },
+            "samples": 3,
+            "point_count": 20,
+            "seed": 1,
+            "timing_scope": "Graph construction, state rebuild, selected solves and guard",
+            "input_sha256": "ee860edff401db6043c1d351cf735d014a258634231527bacd3e0743fa5feffc",
+            "compile_seconds": {
+              "setup": 0.3431515828706324,
+              "forward": 0.6974106670822948,
+              "value_and_grad": 0.8641266669146717
+            },
+            "setup_seconds": [
+              0.010081375017762184,
+              0.010035125073045492,
+              0.010078874882310629
+            ],
+            "forward_seconds": [
+              5.6032097497954965,
+              5.820425207959488,
+              5.408988666953519
+            ],
+            "value_and_grad_seconds": [
+              5.303429582854733,
+              5.263917583040893,
+              5.3188674580305815
+            ],
+            "off_diagonal_entries": 380,
+            "max_scaled_error": 1.862090930929293e-15,
+            "all_finite": true,
+            "objective": -11.058718104950495,
+            "output_devices": [
+              "TFRT_CPU_0"
+            ],
+            "gradient_devices": [
+              "TFRT_CPU_0"
+            ],
+            "theta_gradient_devices": [
+              "TFRT_CPU_0"
+            ],
+            "derivative_checks": [
+              {
+                "parameter": "landscape_direction_0",
+                "step": 0.0001,
+                "finite_difference": -0.7528946515738849,
+                "autodiff": -0.7528946514515624,
+                "scaled_error": 1.2232248547405788e-10
+              },
+              {
+                "parameter": "landscape_direction_1",
+                "step": 0.0001,
+                "finite_difference": -1.2323341327302009,
+                "autodiff": -1.2323341225624804,
+                "scaled_error": 8.250782132318854e-09
+              },
+              {
+                "parameter": "landscape_direction_2",
+                "step": 0.0001,
+                "finite_difference": -1.0586845234611812,
+                "autodiff": -1.0586845221992045,
+                "scaled_error": 1.1920234190258124e-09
+              },
+              {
+                "parameter": "theta",
+                "step": 1.0000000000000002e-06,
+                "finite_difference": 638.2285561732976,
+                "autodiff": 638.2285519042439,
+                "scaled_error": 6.688910610267656e-09
+              }
+            ]
+          },
+          "note": "",
+          "grid_side": 100
+        },
+        {
+          "task": "free_energy_distance",
+          "tool": "JAXScape / CG / theta=0.1 / f64 (CPU)",
+          "software": "JAXScape",
+          "scenario": "synthetic_free_energy_100",
+          "status": "ok",
+          "median_seconds": 2.0378620421979576,
+          "timings_seconds": [
+            2.0378620421979576,
+            2.0171672080177814,
+            2.0451321250293404
+          ],
+          "metrics": {
+            "theta": 0.1,
+            "dtype": "float64",
+            "backend": "cpu",
+            "device": "TFRT_CPU_0",
+            "device_kind": "cpu",
+            "dependency_versions": {
+              "jax": "0.9.1",
+              "jaxlib": "0.9.1",
+              "lineax": "0.1.0",
+              "numpy": "2.5.4",
+              "scipy": "1.18.1",
+              "equinox": "0.13.2",
+              "optimistix": null,
+              "amjax": "0.0.3",
+              "pyamg": "5.3.0",
+              "cholespy": "2.2.0"
+            },
+            "implementation_sha256": "3b3bdf069311317e5a8260d90a66087cb745e958e7ac2f633be4f0ce7a0206e5",
+            "solver_settings": {
+              "rtol": 1e-10,
+              "atol": 1e-90,
+              "max_steps": 10000,
+              "stabilise_every": null
+            },
+            "samples": 3,
+            "point_count": 20,
+            "seed": 1,
+            "timing_scope": "Graph construction, state rebuild, selected solves and guard",
+            "input_sha256": "ee860edff401db6043c1d351cf735d014a258634231527bacd3e0743fa5feffc",
+            "compile_seconds": {
+              "setup": 0.3389039591420442,
+              "forward": 0.7074421669822186,
+              "value_and_grad": 0.825532125076279
+            },
+            "setup_seconds": [
+              0.010363125009462237,
+              0.009984124917536974,
+              0.009906833991408348
+            ],
+            "forward_seconds": [
+              2.0378620421979576,
+              2.0171672080177814,
+              2.0451321250293404
+            ],
+            "value_and_grad_seconds": [
+              2.012066958937794,
+              2.0163840418681502,
+              2.033787874970585
+            ],
+            "off_diagonal_entries": 380,
+            "max_scaled_error": 5.691360561968693e-16,
+            "all_finite": true,
+            "objective": -2.9784915220438997,
+            "output_devices": [
+              "TFRT_CPU_0"
+            ],
+            "gradient_devices": [
+              "TFRT_CPU_0"
+            ],
+            "theta_gradient_devices": [
+              "TFRT_CPU_0"
+            ],
+            "derivative_checks": [
+              {
+                "parameter": "landscape_direction_0",
+                "step": 0.0001,
+                "finite_difference": -0.12641520092655137,
+                "autodiff": -0.1264152007682069,
+                "scaled_error": 1.5834447641971394e-10
+              },
+              {
+                "parameter": "landscape_direction_1",
+                "step": 0.0001,
+                "finite_difference": -0.2709837437220191,
+                "autodiff": -0.27098374201126973,
+                "scaled_error": 1.7107493754942027e-09
+              },
+              {
+                "parameter": "landscape_direction_2",
+                "step": 0.0001,
+                "finite_difference": -0.1911953014471488,
+                "autodiff": -0.19119530214670022,
+                "scaled_error": 6.995514167940087e-10
+              },
+              {
+                "parameter": "theta",
+                "step": 1e-05,
+                "finite_difference": 16.433279939525864,
+                "autodiff": 16.43327982668729,
+                "scaled_error": 6.866466977702619e-09
+              }
+            ]
+          },
+          "note": "",
+          "grid_side": 100
+        },
+        {
+          "task": "free_energy_distance",
+          "tool": "JAXScape / CG / theta=1 / f64 (CPU)",
+          "software": "JAXScape",
+          "scenario": "synthetic_free_energy_100",
+          "status": "ok",
+          "median_seconds": 0.7329267500899732,
+          "timings_seconds": [
+            0.7351466659456491,
+            0.7329267500899732,
+            0.7298605828545988
+          ],
+          "metrics": {
+            "theta": 1.0,
+            "dtype": "float64",
+            "backend": "cpu",
+            "device": "TFRT_CPU_0",
+            "device_kind": "cpu",
+            "dependency_versions": {
+              "jax": "0.9.1",
+              "jaxlib": "0.9.1",
+              "lineax": "0.1.0",
+              "numpy": "2.5.4",
+              "scipy": "1.18.1",
+              "equinox": "0.13.2",
+              "optimistix": null,
+              "amjax": "0.0.3",
+              "pyamg": "5.3.0",
+              "cholespy": "2.2.0"
+            },
+            "implementation_sha256": "3b3bdf069311317e5a8260d90a66087cb745e958e7ac2f633be4f0ce7a0206e5",
+            "solver_settings": {
+              "rtol": 1e-10,
+              "atol": 1e-90,
+              "max_steps": 10000,
+              "stabilise_every": null
+            },
+            "samples": 3,
+            "point_count": 20,
+            "seed": 1,
+            "timing_scope": "Graph construction, state rebuild, selected solves and guard",
+            "input_sha256": "ee860edff401db6043c1d351cf735d014a258634231527bacd3e0743fa5feffc",
+            "compile_seconds": {
+              "setup": 0.319505708059296,
+              "forward": 0.7846122500486672,
+              "value_and_grad": 0.8612725420389324
+            },
+            "setup_seconds": [
+              0.009944583987817168,
+              0.00986908283084631,
+              0.00961404200643301
+            ],
+            "forward_seconds": [
+              0.7351466659456491,
+              0.7329267500899732,
+              0.7298605828545988
+            ],
+            "value_and_grad_seconds": [
+              0.7407992919906974,
+              0.7546599998604506,
+              0.7452920419164002
+            ],
+            "off_diagonal_entries": 380,
+            "max_scaled_error": 4.272275613889893e-15,
+            "all_finite": true,
+            "objective": -0.8742653969683166,
+            "output_devices": [
+              "TFRT_CPU_0"
+            ],
+            "gradient_devices": [
+              "TFRT_CPU_0"
+            ],
+            "theta_gradient_devices": [
+              "TFRT_CPU_0"
+            ],
+            "derivative_checks": [
+              {
+                "parameter": "landscape_direction_0",
+                "step": 0.0001,
+                "finite_difference": -0.0539622709135749,
+                "autodiff": -0.05396227042920277,
+                "scaled_error": 4.843721326808215e-10
+              },
+              {
+                "parameter": "landscape_direction_1",
+                "step": 0.0001,
+                "finite_difference": -0.13753956034763393,
+                "autodiff": -0.13753955914989513,
+                "scaled_error": 1.1977387970318887e-09
+              },
+              {
+                "parameter": "landscape_direction_2",
+                "step": 0.0001,
+                "finite_difference": -0.019450807108085878,
+                "autodiff": -0.019450807679041768,
+                "scaled_error": 5.709558902056155e-10
+              },
+              {
+                "parameter": "theta",
+                "step": 0.0001,
+                "finite_difference": 0.446508832496286,
+                "autodiff": 0.4465088295283664,
+                "scaled_error": 2.967919576768452e-09
+              }
+            ]
+          },
+          "note": "",
+          "grid_side": 100
+        },
+        {
+          "task": "free_energy_distance",
+          "tool": "JAXScape / CG / theta=0.1 / f64 (CPU)",
+          "software": "JAXScape",
+          "scenario": "synthetic_free_energy_100_unresolved",
+          "status": "failed",
+          "median_seconds": null,
+          "timings_seconds": [],
+          "metrics": {
+            "theta": 0.1,
+            "dtype": "float64",
+            "backend": "cpu",
+            "device": "TFRT_CPU_0",
+            "device_kind": "cpu",
+            "dependency_versions": {
+              "jax": "0.9.1",
+              "jaxlib": "0.9.1",
+              "lineax": "0.1.0",
+              "numpy": "2.5.4",
+              "scipy": "1.18.1",
+              "equinox": "0.13.2",
+              "optimistix": null,
+              "amjax": "0.0.3",
+              "pyamg": "5.3.0",
+              "cholespy": "2.2.0"
+            },
+            "implementation_sha256": "3b3bdf069311317e5a8260d90a66087cb745e958e7ac2f633be4f0ce7a0206e5",
+            "solver_settings": {
+              "rtol": 1e-10,
+              "atol": 1e-14,
+              "max_steps": 10000,
+              "stabilise_every": 10
+            },
+            "samples": 1,
+            "point_count": 20,
+            "seed": 1,
+            "timing_scope": "Graph construction, state rebuild, selected solves and guard",
+            "input_sha256": "ee860edff401db6043c1d351cf735d014a258634231527bacd3e0743fa5feffc",
+            "compile_seconds": {
+              "setup": 0.31820337497629225,
+              "forward": 0.781297666952014
+            },
+            "setup_seconds": [
+              0.009942875010892749
+            ]
+          },
+          "note": "FreeEnergyDistance cannot resolve the requested logarithms accurately; choose a different theta, float64 precision, or tighter solver tolerances.",
+          "expected_rejection": true,
+          "grid_side": 100
+        },
+        {
+          "task": "free_energy_distance",
+          "tool": "JAXScape / CG / theta=1 / f64 (CPU)",
+          "software": "JAXScape",
+          "scenario": "synthetic_free_energy_100_unresolved",
+          "status": "failed",
+          "median_seconds": null,
+          "timings_seconds": [],
+          "metrics": {
+            "theta": 1.0,
+            "dtype": "float64",
+            "backend": "cpu",
+            "device": "TFRT_CPU_0",
+            "device_kind": "cpu",
+            "dependency_versions": {
+              "jax": "0.9.1",
+              "jaxlib": "0.9.1",
+              "lineax": "0.1.0",
+              "numpy": "2.5.4",
+              "scipy": "1.18.1",
+              "equinox": "0.13.2",
+              "optimistix": null,
+              "amjax": "0.0.3",
+              "pyamg": "5.3.0",
+              "cholespy": "2.2.0"
+            },
+            "implementation_sha256": "3b3bdf069311317e5a8260d90a66087cb745e958e7ac2f633be4f0ce7a0206e5",
+            "solver_settings": {
+              "rtol": 1e-10,
+              "atol": 1e-14,
+              "max_steps": 10000,
+              "stabilise_every": 10
+            },
+            "samples": 1,
+            "point_count": 20,
+            "seed": 1,
+            "timing_scope": "Graph construction, state rebuild, selected solves and guard",
+            "input_sha256": "ee860edff401db6043c1d351cf735d014a258634231527bacd3e0743fa5feffc",
+            "compile_seconds": {
+              "setup": 0.28596533299423754,
+              "forward": 0.5958755421452224
+            },
+            "setup_seconds": [
+              0.010004583979025483
+            ]
+          },
+          "note": "FreeEnergyDistance cannot resolve the requested logarithms accurately; choose a different theta, float64 precision, or tighter solver tolerances.",
+          "expected_rejection": true,
+          "grid_side": 100
+        }
+      ],
+      "hardware": "Apple M1 Max CPU"
+    },
+    "gpu": {
+      "measured_at": "2026-10-26T18:36:06.410509+00:00",
+      "revision": "b0d926ec876457e7100bc385814a8b4daa5d7d16",
+      "platform": "Linux-5.15.0-194-generic-x86_64-with-glibc2.35",
+      "device_kind": "NVIDIA GeForce RTX 3090",
+      "thread_environment": {
+        "BENCHMARK_THREADS": "4",
+        "OMP_NUM_THREADS": "4",
+        "OPENBLAS_NUM_THREADS": "4",
+        "MKL_NUM_THREADS": "4",
+        "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=true intra_op_parallelism_threads=4",
+        "CUDA_VISIBLE_DEVICES": "3"
+      },
+      "cases": [
+        {
+          "task": "free_energy_distance",
+          "tool": "JAXScape / CG / theta=0.1 / f64 (GPU)",
+          "software": "JAXScape",
+          "scenario": "synthetic_free_energy_10",
+          "status": "ok",
+          "median_seconds": 0.016434148885309696,
+          "timings_seconds": [
+            0.017130026128143072,
+            0.016411270014941692,
+            0.016434148885309696
+          ],
+          "metrics": {
+            "theta": 0.1,
+            "dtype": "float64",
+            "backend": "gpu",
+            "device": "cuda:0",
+            "device_kind": "NVIDIA GeForce RTX 3090",
+            "dependency_versions": {
+              "jax": "0.10.0",
+              "jaxlib": "0.10.0",
+              "lineax": "0.1.0",
+              "numpy": "2.4.4",
+              "scipy": "1.17.1",
+              "equinox": "0.13.6",
+              "optimistix": "0.1.0",
+              "amjax": "0.0.3",
+              "pyamg": "5.3.0",
+              "cholespy": "2.2.0"
+            },
+            "implementation_sha256": "3b3bdf069311317e5a8260d90a66087cb745e958e7ac2f633be4f0ce7a0206e5",
+            "solver_settings": {
+              "rtol": 1e-10,
+              "atol": 1e-90,
+              "max_steps": 10000,
+              "stabilise_every": null
+            },
+            "samples": 3,
+            "point_count": 20,
+            "seed": 0,
+            "timing_scope": "Graph construction, state rebuild, selected solves and guard",
+            "input_sha256": "9ff3ae1a9853ded54081ed65438e2e62eaf18f4c7ab5b1a040f0a2f468d5a5b7",
+            "compile_seconds": {
+              "setup": 2.30925090610981,
+              "forward": 8.139579218346626,
+              "value_and_grad": 8.702713266946375
+            },
+            "setup_seconds": [
+              0.0005616480484604836,
+              0.000502048060297966,
+              0.0004623481072485447
+            ],
+            "forward_seconds": [
+              0.017130026128143072,
+              0.016411270014941692,
+              0.016434148885309696
+            ],
+            "value_and_grad_seconds": [
+              0.017273616045713425,
+              0.016615828964859247,
+              0.01654989831149578
+            ],
+            "off_diagonal_entries": 380,
+            "max_scaled_error": 1.3638259825731351e-15,
+            "all_finite": true,
+            "objective": -0.609235219400115,
+            "output_devices": [
+              "cuda:0"
+            ],
+            "gradient_devices": [
+              "cuda:0"
+            ],
+            "theta_gradient_devices": [
+              "cuda:0"
+            ],
+            "derivative_checks": [
+              {
+                "parameter": "landscape_direction_0",
+                "step": 0.0001,
+                "finite_difference": 0.015037543962270573,
+                "autodiff": 0.015037544910411524,
+                "scaled_error": 9.481409511680194e-10
+              },
+              {
+                "parameter": "landscape_direction_1",
+                "step": 0.0001,
+                "finite_difference": 0.1603166835813441,
+                "autodiff": 0.16031668303292326,
+                "scaled_error": 5.484208365214016e-10
+              },
+              {
+                "parameter": "landscape_direction_2",
+                "step": 0.0001,
+                "finite_difference": 0.0642296659753025,
+                "autodiff": 0.06422966426607615,
+                "scaled_error": 1.7092263437934463e-09
+              },
+              {
+                "parameter": "theta",
+                "step": 1e-05,
+                "finite_difference": 2.903408794466712,
+                "autodiff": 2.9034087802073847,
+                "scaled_error": 4.911236586360706e-09
+              }
+            ]
+          },
+          "note": "",
+          "grid_side": 10
+        },
+        {
+          "task": "free_energy_distance",
+          "tool": "JAXScape / CG / theta=0.01 / f64 (GPU)",
+          "software": "JAXScape",
+          "scenario": "synthetic_free_energy_100",
+          "status": "ok",
+          "median_seconds": 0.4508010339923203,
+          "timings_seconds": [
+            0.4509091037325561,
+            0.4508010339923203,
+            0.45053833490237594
+          ],
+          "metrics": {
+            "theta": 0.01,
+            "dtype": "float64",
+            "backend": "gpu",
+            "device": "cuda:0",
+            "device_kind": "NVIDIA GeForce RTX 3090",
+            "dependency_versions": {
+              "jax": "0.10.0",
+              "jaxlib": "0.10.0",
+              "lineax": "0.1.0",
+              "numpy": "2.4.4",
+              "scipy": "1.17.1",
+              "equinox": "0.13.6",
+              "optimistix": "0.1.0",
+              "amjax": "0.0.3",
+              "pyamg": "5.3.0",
+              "cholespy": "2.2.0"
+            },
+            "implementation_sha256": "3b3bdf069311317e5a8260d90a66087cb745e958e7ac2f633be4f0ce7a0206e5",
+            "solver_settings": {
+              "rtol": 1e-10,
+              "atol": 1e-90,
+              "max_steps": 10000,
+              "stabilise_every": null
+            },
+            "samples": 3,
+            "point_count": 20,
+            "seed": 1,
+            "timing_scope": "Graph construction, state rebuild, selected solves and guard",
+            "input_sha256": "8e8adc8246a68b376f1521062c8e3d9b1fdad05302b8ac0061bf4d920ce28ee4",
+            "compile_seconds": {
+              "setup": 6.82198321679607,
+              "forward": 17.624736447818577,
+              "value_and_grad": 17.5927843907848
+            },
+            "setup_seconds": [
+              0.0011245147325098515,
+              0.000926177017390728,
+              0.0008628470823168755
+            ],
+            "forward_seconds": [
+              0.4509091037325561,
+              0.4508010339923203,
+              0.45053833490237594
+            ],
+            "value_and_grad_seconds": [
+              0.45282427594065666,
+              0.45296409633010626,
+              0.4529673960059881
+            ],
+            "off_diagonal_entries": 380,
+            "max_scaled_error": 1.8620909309292912e-15,
+            "all_finite": true,
+            "objective": -11.058718104950476,
+            "output_devices": [
+              "cuda:0"
+            ],
+            "gradient_devices": [
+              "cuda:0"
+            ],
+            "theta_gradient_devices": [
+              "cuda:0"
+            ],
+            "derivative_checks": [
+              {
+                "parameter": "landscape_direction_0",
+                "step": 0.0001,
+                "finite_difference": -0.7528946515819701,
+                "autodiff": -0.7528946514515674,
+                "scaled_error": 1.3040268864727977e-10
+              },
+              {
+                "parameter": "landscape_direction_1",
+                "step": 0.0001,
+                "finite_difference": -1.2323341327077284,
+                "autodiff": -1.2323341225624787,
+                "scaled_error": 8.232547879779715e-09
+              },
+              {
+                "parameter": "landscape_direction_2",
+                "step": 0.0001,
+                "finite_difference": -1.0586845235180784,
+                "autodiff": -1.058684522199199,
+                "scaled_error": 1.2457719186387176e-09
+              },
+              {
+                "parameter": "theta",
+                "step": 1.0000000000000002e-06,
+                "finite_difference": 638.2285561615015,
+                "autodiff": 638.2285519042482,
+                "scaled_error": 6.670421205196381e-09
+              }
+            ]
+          },
+          "note": "",
+          "grid_side": 100
+        },
+        {
+          "task": "free_energy_distance",
+          "tool": "JAXScape / CG / theta=0.1 / f64 (GPU)",
+          "software": "JAXScape",
+          "scenario": "synthetic_free_energy_100",
+          "status": "ok",
+          "median_seconds": 0.18053188314661384,
+          "timings_seconds": [
+            0.18083229195326567,
+            0.18037679372355342,
+            0.18053188314661384
+          ],
+          "metrics": {
+            "theta": 0.1,
+            "dtype": "float64",
+            "backend": "gpu",
+            "device": "cuda:0",
+            "device_kind": "NVIDIA GeForce RTX 3090",
+            "dependency_versions": {
+              "jax": "0.10.0",
+              "jaxlib": "0.10.0",
+              "lineax": "0.1.0",
+              "numpy": "2.4.4",
+              "scipy": "1.17.1",
+              "equinox": "0.13.6",
+              "optimistix": "0.1.0",
+              "amjax": "0.0.3",
+              "pyamg": "5.3.0",
+              "cholespy": "2.2.0"
+            },
+            "implementation_sha256": "3b3bdf069311317e5a8260d90a66087cb745e958e7ac2f633be4f0ce7a0206e5",
+            "solver_settings": {
+              "rtol": 1e-10,
+              "atol": 1e-90,
+              "max_steps": 10000,
+              "stabilise_every": null
+            },
+            "samples": 3,
+            "point_count": 20,
+            "seed": 1,
+            "timing_scope": "Graph construction, state rebuild, selected solves and guard",
+            "input_sha256": "8e8adc8246a68b376f1521062c8e3d9b1fdad05302b8ac0061bf4d920ce28ee4",
+            "compile_seconds": {
+              "setup": 6.575497458688915,
+              "forward": 15.540785956196487,
+              "value_and_grad": 16.188419960904866
+            },
+            "setup_seconds": [
+              0.0010444959625601768,
+              0.0008905660361051559,
+              0.00082797696813941
+            ],
+            "forward_seconds": [
+              0.18083229195326567,
+              0.18037679372355342,
+              0.18053188314661384
+            ],
+            "value_and_grad_seconds": [
+              0.18723525805398822,
+              0.18114349013194442,
+              0.18190045794472098
+            ],
+            "off_diagonal_entries": 380,
+            "max_scaled_error": 4.3203639404255353e-16,
+            "all_finite": true,
+            "objective": -2.9784915220439094,
+            "output_devices": [
+              "cuda:0"
+            ],
+            "gradient_devices": [
+              "cuda:0"
+            ],
+            "theta_gradient_devices": [
+              "cuda:0"
+            ],
+            "derivative_checks": [
+              {
+                "parameter": "landscape_direction_0",
+                "step": 0.0001,
+                "finite_difference": -0.12641520093230316,
+                "autodiff": -0.12641520076820587,
+                "scaled_error": 1.640972913108385e-10
+              },
+              {
+                "parameter": "landscape_direction_1",
+                "step": 0.0001,
+                "finite_difference": -0.27098374371638545,
+                "autodiff": -0.27098374201126896,
+                "scaled_error": 1.7051164924453133e-09
+              },
+              {
+                "parameter": "landscape_direction_2",
+                "step": 0.0001,
+                "finite_difference": -0.19119530144746827,
+                "autodiff": -0.19119530214670016,
+                "scaled_error": 6.992318946075216e-10
+              },
+              {
+                "parameter": "theta",
+                "step": 1e-05,
+                "finite_difference": 16.433279939599828,
+                "autodiff": 16.43327982668731,
+                "scaled_error": 6.870966543800243e-09
+              }
+            ]
+          },
+          "note": "",
+          "grid_side": 100
+        },
+        {
+          "task": "free_energy_distance",
+          "tool": "JAXScape / CG / theta=1 / f64 (GPU)",
+          "software": "JAXScape",
+          "scenario": "synthetic_free_energy_100",
+          "status": "ok",
+          "median_seconds": 0.0710688135586679,
+          "timings_seconds": [
+            0.07988291326910257,
+            0.0710688135586679,
+            0.07059422601014376
+          ],
+          "metrics": {
+            "theta": 1.0,
+            "dtype": "float64",
+            "backend": "gpu",
+            "device": "cuda:0",
+            "device_kind": "NVIDIA GeForce RTX 3090",
+            "dependency_versions": {
+              "jax": "0.10.0",
+              "jaxlib": "0.10.0",
+              "lineax": "0.1.0",
+              "numpy": "2.4.4",
+              "scipy": "1.17.1",
+              "equinox": "0.13.6",
+              "optimistix": "0.1.0",
+              "amjax": "0.0.3",
+              "pyamg": "5.3.0",
+              "cholespy": "2.2.0"
+            },
+            "implementation_sha256": "3b3bdf069311317e5a8260d90a66087cb745e958e7ac2f633be4f0ce7a0206e5",
+            "solver_settings": {
+              "rtol": 1e-10,
+              "atol": 1e-90,
+              "max_steps": 10000,
+              "stabilise_every": null
+            },
+            "samples": 3,
+            "point_count": 20,
+            "seed": 1,
+            "timing_scope": "Graph construction, state rebuild, selected solves and guard",
+            "input_sha256": "8e8adc8246a68b376f1521062c8e3d9b1fdad05302b8ac0061bf4d920ce28ee4",
+            "compile_seconds": {
+              "setup": 6.562077607959509,
+              "forward": 15.402855551801622,
+              "value_and_grad": 16.156222026329488
+            },
+            "setup_seconds": [
+              0.0011828462593257427,
+              0.0008866968564689159,
+              0.000793426763266325
+            ],
+            "forward_seconds": [
+              0.07988291326910257,
+              0.0710688135586679,
+              0.07059422601014376
+            ],
+            "value_and_grad_seconds": [
+              0.08029867196455598,
+              0.0803734608925879,
+              0.07573847705498338
+            ],
+            "off_diagonal_entries": 380,
+            "max_scaled_error": 3.238519630877083e-15,
+            "all_finite": true,
+            "objective": -0.8742653969683178,
+            "output_devices": [
+              "cuda:0"
+            ],
+            "gradient_devices": [
+              "cuda:0"
+            ],
+            "theta_gradient_devices": [
+              "cuda:0"
+            ],
+            "derivative_checks": [
+              {
+                "parameter": "landscape_direction_0",
+                "step": 0.0001,
+                "finite_difference": -0.053962270912916624,
+                "autodiff": -0.05396227042921744,
+                "scaled_error": 4.836991848722327e-10
+              },
+              {
+                "parameter": "landscape_direction_1",
+                "step": 0.0001,
+                "finite_difference": -0.13753956034884252,
+                "autodiff": -0.1375395591499073,
+                "scaled_error": 1.198935228874376e-09
+              },
+              {
+                "parameter": "landscape_direction_2",
+                "step": 0.0001,
+                "finite_difference": -0.019450807108514153,
+                "autodiff": -0.019450807679059365,
+                "scaled_error": 5.705452117699128e-10
+              },
+              {
+                "parameter": "theta",
+                "step": 0.0001,
+                "finite_difference": 0.4465088324964898,
+                "autodiff": 0.4465088295283446,
+                "scaled_error": 2.968145229598207e-09
+              }
+            ]
+          },
+          "note": "",
+          "grid_side": 100
+        },
+        {
+          "task": "free_energy_distance",
+          "tool": "JAXScape / CG / theta=0.1 / f64 (GPU)",
+          "software": "JAXScape",
+          "scenario": "synthetic_free_energy_200",
+          "status": "ok",
+          "median_seconds": 0.5389532619155943,
+          "timings_seconds": [
+            0.5405287863686681,
+            0.5389532619155943,
+            0.5373622877523303
+          ],
+          "metrics": {
+            "theta": 0.1,
+            "dtype": "float64",
+            "backend": "gpu",
+            "device": "cuda:0",
+            "device_kind": "NVIDIA GeForce RTX 3090",
+            "dependency_versions": {
+              "jax": "0.10.0",
+              "jaxlib": "0.10.0",
+              "lineax": "0.1.0",
+              "numpy": "2.4.4",
+              "scipy": "1.17.1",
+              "equinox": "0.13.6",
+              "optimistix": "0.1.0",
+              "amjax": "0.0.3",
+              "pyamg": "5.3.0",
+              "cholespy": "2.2.0"
+            },
+            "implementation_sha256": "3b3bdf069311317e5a8260d90a66087cb745e958e7ac2f633be4f0ce7a0206e5",
+            "solver_settings": {
+              "rtol": 1e-10,
+              "atol": 1e-90,
+              "max_steps": 10000,
+              "stabilise_every": null
+            },
+            "samples": 3,
+            "point_count": 20,
+            "seed": 2,
+            "timing_scope": "Graph construction, state rebuild, selected solves and guard",
+            "input_sha256": "be1922affb756175223741cc7b962989884bb4b5941f56ec34374415937e4902",
+            "compile_seconds": {
+              "setup": 9.708581069950014,
+              "forward": 22.941802854649723,
+              "value_and_grad": 23.853159797843546
+            },
+            "setup_seconds": [
+              0.0032549379393458366,
+              0.0016639637760818005,
+              0.001669574063271284
+            ],
+            "forward_seconds": [
+              0.5405287863686681,
+              0.5389532619155943,
+              0.5373622877523303
+            ],
+            "value_and_grad_seconds": [
+              0.5378101551905274,
+              0.5420770109631121,
+              0.5380728361196816
+            ],
+            "off_diagonal_entries": 380,
+            "max_scaled_error": 5.360642195481067e-16,
+            "all_finite": true,
+            "objective": -17.2819403327595,
+            "output_devices": [
+              "cuda:0"
+            ],
+            "gradient_devices": [
+              "cuda:0"
+            ],
+            "theta_gradient_devices": [
+              "cuda:0"
+            ],
+            "derivative_checks": [
+              {
+                "parameter": "landscape_direction_0",
+                "step": 0.0001,
+                "finite_difference": -0.19282169065644864,
+                "autodiff": -0.19282169139778843,
+                "scaled_error": 7.413397951072653e-10
+              },
+              {
+                "parameter": "landscape_direction_1",
+                "step": 0.0001,
+                "finite_difference": 0.038281028776183904,
+                "autodiff": 0.03828101972151482,
+                "scaled_error": 9.05466908396324e-09
+              },
+              {
+                "parameter": "landscape_direction_2",
+                "step": 0.0001,
+                "finite_difference": 0.14079732401491601,
+                "autodiff": 0.14079732181720958,
+                "scaled_error": 2.197706433504365e-09
+              },
+              {
+                "parameter": "theta",
+                "step": 1e-05,
+                "finite_difference": 88.94449041737477,
+                "autodiff": 88.94448984213506,
+                "scaled_error": 6.467401267784451e-09
+              }
+            ]
+          },
+          "note": "",
+          "grid_side": 200
+        },
+        {
+          "task": "free_energy_distance",
+          "tool": "JAXScape / CG / theta=0.01 / f64 (GPU)",
+          "software": "JAXScape",
+          "scenario": "synthetic_free_energy_500",
+          "status": "ok",
+          "median_seconds": 8.536459343973547,
+          "timings_seconds": [
+            8.536459343973547
+          ],
+          "metrics": {
+            "theta": 0.01,
+            "dtype": "float64",
+            "backend": "gpu",
+            "device": "cuda:0",
+            "device_kind": "NVIDIA GeForce RTX 3090",
+            "dependency_versions": {
+              "jax": "0.10.0",
+              "jaxlib": "0.10.0",
+              "lineax": "0.1.0",
+              "numpy": "2.4.4",
+              "scipy": "1.17.1",
+              "equinox": "0.13.6",
+              "optimistix": "0.1.0",
+              "amjax": "0.0.3",
+              "pyamg": "5.3.0",
+              "cholespy": "2.2.0"
+            },
+            "implementation_sha256": "3b3bdf069311317e5a8260d90a66087cb745e958e7ac2f633be4f0ce7a0206e5",
+            "solver_settings": {
+              "rtol": 1e-10,
+              "atol": 1e-90,
+              "max_steps": 10000,
+              "stabilise_every": null
+            },
+            "samples": 1,
+            "point_count": 20,
+            "seed": 3,
+            "timing_scope": "Graph construction, state rebuild, selected solves and guard",
+            "input_sha256": "d4d7c4ee89ef922644cacc821f48a9c6463d23f828f0b4d00ad34eead1d71305",
+            "compile_seconds": {
+              "setup": 11.549268411006778,
+              "forward": 28.23679711529985,
+              "value_and_grad": 28.191316759213805
+            },
+            "setup_seconds": [
+              0.013880020007491112
+            ],
+            "forward_seconds": [
+              8.536459343973547
+            ],
+            "value_and_grad_seconds": [
+              8.564741712994874
+            ],
+            "off_diagonal_entries": 380,
+            "max_scaled_error": 1.0299159483630445e-15,
+            "all_finite": true,
+            "objective": 1.7368504327575351,
+            "output_devices": [
+              "cuda:0"
+            ],
+            "gradient_devices": [
+              "cuda:0"
+            ],
+            "theta_gradient_devices": [
+              "cuda:0"
+            ],
+            "derivative_checks": [
+              {
+                "parameter": "landscape_direction_0",
+                "step": 0.0001,
+                "finite_difference": -0.047420991839811674,
+                "autodiff": -0.04742099517420284,
+                "scaled_error": 3.3343911659544645e-09
+              },
+              {
+                "parameter": "landscape_direction_1",
+                "step": 0.0001,
+                "finite_difference": 0.23677448194561496,
+                "autodiff": 0.2367744836613067,
+                "scaled_error": 1.7156917553329265e-09
+              },
+              {
+                "parameter": "landscape_direction_2",
+                "step": 0.0001,
+                "finite_difference": 0.3648545634734881,
+                "autodiff": 0.36485456640005554,
+                "scaled_error": 2.926567432837146e-09
+              },
+              {
+                "parameter": "theta",
+                "step": 1.0000000000000002e-06,
+                "finite_difference": 108.27573035359931,
+                "autodiff": 108.27572835185379,
+                "scaled_error": 1.8487481191850173e-08
+              }
+            ]
+          },
+          "note": "",
+          "grid_side": 500
+        }
+      ],
+      "hardware": "NVIDIA GeForce RTX 3090"
+    }
+  },
+  "guard_profiles": {
+    "cpu": {
+      "side": 100,
+      "theta": 1.0,
+      "sites": 20,
+      "dtype": "float64",
+      "device": "TFRT_CPU_0",
+      "device_kind": "cpu",
+      "jax": "0.9.1",
+      "lineax": "0.1.0",
+      "equinox": "0.13.2",
+      "source_sha256": "3b3bdf069311317e5a8260d90a66087cb745e958e7ac2f633be4f0ce7a0206e5",
+      "input_sha256": "ee860edff401db6043c1d351cf735d014a258634231527bacd3e0743fa5feffc",
+      "compile_ms": {
+        "checked": 827.92375003919,
+        "unchecked": 596.7501669656485,
+        "gradient": 904.6726250089705
+      },
+      "checked": {
+        "median_ms": 757.7271249610931,
+        "samples_ms": [
+          757.9973749816418,
+          753.5971670877188,
+          767.5506670493633,
+          750.6790840998292,
+          756.2398330774158,
+          763.0416669417173,
+          757.7271249610931
+        ]
+      },
+      "unchecked": {
+        "median_ms": 740.1890829205513,
+        "samples_ms": [
+          751.5970410313457,
+          745.2340829186141,
+          727.8444161638618,
+          740.1890829205513,
+          738.6082499288023,
+          744.0723329782486,
+          735.8183751348406
+        ]
+      },
+      "guard_overhead_ratio": 0.023694002580181506,
+      "checked_unchecked_max_scaled_difference": 0.0,
+      "gradient_all_finite": true,
+      "forward_trace": {
+        "primitive_counts": {
+          "abs": 12,
+          "add": 46,
+          "and": 28,
+          "bcoo_dot_general": 4,
+          "bcoo_sum_duplicates": 4,
+          "bcoo_transpose": 2,
+          "broadcast_in_dim": 99,
+          "concatenate": 19,
+          "cond": 8,
+          "convert_element_type": 48,
+          "custom_jvp_call": 12,
+          "custom_vjp_call": 1,
+          "div": 14,
+          "eq": 8,
+          "exp": 2,
+          "expm1": 2,
+          "gather": 13,
+          "ge": 7,
+          "gt": 12,
+          "integer_pow": 1,
+          "iota": 13,
+          "is_finite": 16,
+          "jit": 70,
+          "le": 4,
+          "log": 8,
+          "log1p": 6,
+          "lt": 38,
+          "max": 3,
+          "min": 1,
+          "mul": 19,
+          "ne": 12,
+          "neg": 12,
+          "nondifferentiable_backward": 1,
+          "not": 17,
+          "or": 14,
+          "platform_index": 1,
+          "pow": 1,
+          "pure_callback": 14,
+          "reduce_and": 24,
+          "reduce_max": 3,
+          "reduce_or": 10,
+          "reduce_sum": 1,
+          "rem": 2,
+          "reshape": 3,
+          "scatter-add": 5,
+          "select_n": 41,
+          "sign": 2,
+          "slice": 17,
+          "sqrt": 1,
+          "squeeze": 17,
+          "stop_gradient": 22,
+          "sub": 13,
+          "transpose": 8,
+          "unvmap_any": 7,
+          "vprim": 1
+        },
+        "solve_or_iteration_primitives": {
+          "pure_callback": 14
+        },
+        "has_n_by_n_array": false,
+        "largest_array_elements": 200000
+      },
+      "backward_trace": {
+        "primitive_counts": {
+          "add": 3,
+          "add_any": 15,
+          "and": 1,
+          "broadcast_in_dim": 24,
+          "cond": 1,
+          "convert_element_type": 4,
+          "div": 11,
+          "dot_general": 1,
+          "gather": 5,
+          "ge": 1,
+          "jit": 28,
+          "lt": 3,
+          "mul": 20,
+          "neg": 12,
+          "reduce_and": 1,
+          "reduce_sum": 8,
+          "reshape": 2,
+          "scatter-add": 7,
+          "select_n": 12,
+          "slice": 2,
+          "split": 1,
+          "squeeze": 2,
+          "transpose": 1
+        },
+        "solve_or_iteration_primitives": {},
+        "has_n_by_n_array": false,
+        "largest_array_elements": 1000000
+      },
+      "compiler_memory": {
+        "forward": {
+          "argument_size_in_bytes": 80008,
+          "output_size_in_bytes": 3200,
+          "alias_size_in_bytes": 0,
+          "temp_size_in_bytes": 36688216,
+          "generated_code_size_in_bytes": 0
+        },
+        "value_and_grad": {
+          "argument_size_in_bytes": 80008,
+          "output_size_in_bytes": 80040,
+          "alias_size_in_bytes": 0,
+          "temp_size_in_bytes": 40887640,
+          "generated_code_size_in_bytes": 0
+        }
+      },
+      "note": "Same solver work, randomized paired timings, outputs agree near float64 roundoff (GPU compilation/fusion may change); bypass only in scratch instrumentation. CPU callbacks in forward trace are retained Equinox error reporting, not a numerical solve."
+    },
+    "gpu": {
+      "side": 100,
+      "theta": 1.0,
+      "sites": 20,
+      "dtype": "float64",
+      "device": "cuda:0",
+      "device_kind": "NVIDIA GeForce RTX 3090",
+      "jax": "0.10.0",
+      "lineax": "0.1.0",
+      "equinox": "0.13.6",
+      "source_sha256": "3b3bdf069311317e5a8260d90a66087cb745e958e7ac2f633be4f0ce7a0206e5",
+      "input_sha256": "8e8adc8246a68b376f1521062c8e3d9b1fdad05302b8ac0061bf4d920ce28ee4",
+      "compile_ms": {
+        "checked": 17995.718179736286,
+        "unchecked": 8082.970594987273,
+        "gradient": 18327.07806909457
+      },
+      "checked": {
+        "median_ms": 70.47004718333483,
+        "samples_ms": [
+          70.47004718333483,
+          70.34464692696929,
+          70.53338596597314,
+          70.39439724758267,
+          70.3875869512558,
+          70.72262512519956,
+          70.61164593324065
+        ]
+      },
+      "unchecked": {
+        "median_ms": 69.83988918364048,
+        "samples_ms": [
+          69.68631921336055,
+          69.67930914834142,
+          69.83988918364048,
+          70.15711814165115,
+          70.0083882547915,
+          69.82649909332395,
+          70.49808697775006
+        ]
+      },
+      "guard_overhead_ratio": 0.009022895182971613,
+      "checked_unchecked_max_scaled_difference": 1.3110771339943412e-14,
+      "gradient_all_finite": true,
+      "forward_trace": {
+        "primitive_counts": {
+          "abs": 12,
+          "add": 46,
+          "and": 28,
+          "bcoo_dot_general": 4,
+          "bcoo_sum_duplicates": 4,
+          "bcoo_transpose": 2,
+          "broadcast_in_dim": 99,
+          "concatenate": 19,
+          "cond": 8,
+          "convert_element_type": 48,
+          "custom_jvp_call": 12,
+          "custom_vjp_call": 1,
+          "div": 14,
+          "eq": 8,
+          "exp": 2,
+          "expm1": 2,
+          "gather": 13,
+          "ge": 7,
+          "gt": 12,
+          "integer_pow": 1,
+          "iota": 13,
+          "is_finite": 16,
+          "jit": 70,
+          "le": 4,
+          "log": 8,
+          "log1p": 6,
+          "lt": 38,
+          "max": 3,
+          "min": 1,
+          "mul": 19,
+          "ne": 12,
+          "neg": 12,
+          "nondifferentiable_backward": 1,
+          "not": 17,
+          "or": 14,
+          "platform_index": 1,
+          "pow": 1,
+          "pure_callback": 14,
+          "reduce_and": 24,
+          "reduce_max": 3,
+          "reduce_or": 10,
+          "reduce_sum": 1,
+          "rem": 2,
+          "reshape": 3,
+          "scatter-add": 5,
+          "select_n": 41,
+          "sign": 2,
+          "slice": 17,
+          "sqrt": 1,
+          "squeeze": 17,
+          "stop_gradient": 22,
+          "sub": 13,
+          "transpose": 8,
+          "unvmap_any": 7,
+          "vprim": 1
+        },
+        "solve_or_iteration_primitives": {
+          "pure_callback": 14
+        },
+        "has_n_by_n_array": false,
+        "largest_array_elements": 200000
+      },
+      "backward_trace": {
+        "primitive_counts": {
+          "add": 3,
+          "add_any": 15,
+          "and": 1,
+          "broadcast_in_dim": 24,
+          "cond": 1,
+          "convert_element_type": 4,
+          "div": 11,
+          "dot_general": 1,
+          "gather": 5,
+          "ge": 1,
+          "jit": 28,
+          "lt": 3,
+          "mul": 20,
+          "neg": 12,
+          "reduce_and": 1,
+          "reduce_sum": 8,
+          "reshape": 2,
+          "scatter-add": 7,
+          "select_n": 12,
+          "slice": 2,
+          "split": 1,
+          "squeeze": 2,
+          "transpose": 1
+        },
+        "solve_or_iteration_primitives": {},
+        "has_n_by_n_array": false,
+        "largest_array_elements": 1000000
+      },
+      "compiler_memory": {
+        "forward": {
+          "argument_size_in_bytes": 80008,
+          "output_size_in_bytes": 3200,
+          "alias_size_in_bytes": 0,
+          "temp_size_in_bytes": 16546888,
+          "generated_code_size_in_bytes": 628408
+        },
+        "value_and_grad": {
+          "argument_size_in_bytes": 80008,
+          "output_size_in_bytes": 80040,
+          "alias_size_in_bytes": 0,
+          "temp_size_in_bytes": 20533576,
+          "generated_code_size_in_bytes": 693752
+        }
+      },
+      "note": "Same solver work, randomized paired timings, outputs agree near float64 roundoff (GPU compilation/fusion may change); bypass only in scratch instrumentation. CPU callbacks in forward trace are retained Equinox error reporting, not a numerical solve."
+    }
+  },
+  "checks": {
+    "pytest": "105 passed with CG, PyAMG, Cholespy and AMJax installed; 2 dependency deprecations and 1 sandbox cache-write warning",
+    "docs": "mkdocs build --strict passed; rendered solver guide and FED mathematics visually inspected",
+    "hooks": "Ruff format, Ruff and Pyright passed on all PR-changed applicable files",
+    "example": "Original float32 LCP/resistance computations preserved; FED all400 values max_scaled_error=4.370315804522872e-15 against independent dense walk",
+    "review": {
+      "standards_findings_remaining": 0,
+      "spec_findings": 0
+    },
+    "limits": "Selected20-site float64 profiles only; GPU float32 not measured; no arbitrary landscape/theta or million-cell guarantee; ConScape comparison deferred"
+  }
+}
