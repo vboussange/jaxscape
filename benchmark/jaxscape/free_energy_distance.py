@@ -121,9 +121,24 @@ def derivative_checks(raster, points, theta, coefficients, gradient, theta_gradi
 def run_profile(case, *, theta, device, repeats, solver_settings=None):
     """Time public forward/gradient calls and validate the same realized inputs.
 
-    ``solver_settings`` permits explicit negative-control runs; it does not
-    alter production defaults. Custom cases can reuse ``build_case`` for bounded
-    larger-grid experiments without adding another benchmark harness.
+    Custom cases can reuse `build_case` for bounded larger-grid experiments.
+
+    **Arguments:**
+
+    - `case`: `BenchmarkCase` containing the raster and at least two selected
+      sites. Reference and production calculations use the same realized input.
+    - `theta`: Finite positive scalar inverse temperature.
+    - `device`: JAX device on which forward and gradient computations run.
+    - `repeats`: Positive number of synchronized warmed samples per operation.
+    - `solver_settings`: Optional dictionary of `lineax.CG` keyword arguments,
+      including tolerances, for explicit profile or negative-control runs.
+      `None` uses `CG_SETTINGS`; production solver defaults remain unchanged.
+
+    **Returns:**
+
+    `BenchmarkRecord` with forward timings, setup/gradient measurements and
+    independent accuracy checks. Computation or accuracy-check failures return
+    a `failed` record with the error message and metadata collected so far.
     """
     settings = CG_SETTINGS if solver_settings is None else solver_settings
     tool = backend_tool_label(f"JAXScape / CG / theta={theta:g} / f64", device.platform)
