@@ -8,6 +8,7 @@ from .connectivity_analysis import (
     SensitivityAnalysis as SensitivityAnalysis,
 )
 from .euclidean_distance import EuclideanDistance as EuclideanDistance
+from .free_energy_distance import FreeEnergyDistance as FreeEnergyDistance
 from .graph import (
     Graph as Graph,
     GridGraph as GridGraph,
@@ -20,7 +21,6 @@ from .resistance_distance import (
     ResistanceDistance as ResistanceDistance,
     SpielmanApproximation as SpielmanApproximation,
 )
-from .rsp_distance import RSPDistance as RSPDistance
 from .utils import padding as padding
 from .window_operation import WindowOperation as WindowOperation
 from .windowed_analysis import WindowedAnalysis as WindowedAnalysis
