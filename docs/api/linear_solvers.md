@@ -1,19 +1,20 @@
 # Linear solvers
 
-`ResistanceDistance` and `RSPDistance` internally solve one or more sparse linear systems. The choice of solver directly affects both runtime and memory usage.
+`ResistanceDistance` and `FreeEnergyDistance` use linear systems. The choice of solver directly affects runtime and memory usage.
 
-By default, when no solver is provided, `JAXScape` falls back to dense matrix inversion, which is only suitable for small graphs. For any non-trivial landscape, passing an explicit solver is strongly recommended. `CholmodSolver` is the preferred choice when memory permits.
+`solver=None` is suitable for small graphs: exact resistance distance uses a dense pseudoinverse, and free-energy distance uses a dense solve. For larger graphs, pass an explicit sparse solver. `CholmodSolver` is a direct CPU option when factorization memory permits; iterative methods trade factorization storage for convergence work.
 
 ## `lineax` solvers
 
-`JAXScape` accepts any [Lineax](https://docs.kidger.site/lineax/) solver. For example, to use the Conjugate Gradient method:
+Use a [Lineax](https://docs.kidger.site/lineax/) solver compatible with the sparse symmetric positive-definite operator, such as Conjugate Gradient:
 
 ```python
 import lineax as lx
-from jaxscape import ResistanceDistance
+from jaxscape import FreeEnergyDistance, ResistanceDistance
 
 solver = lx.CG(rtol=1e-6, atol=1e-6)
-distance = ResistanceDistance(solver=solver)
+resistance = ResistanceDistance(solver=solver)
+free_energy = FreeEnergyDistance(theta=0.2, solver=solver)
 ```
 
 See the [Lineax documentation](https://docs.kidger.site/lineax/) for the full list of available solvers and their options.
@@ -98,6 +99,66 @@ R = distance(grid, state=state)
 
 Use `distance.init(grid)` instead when the graph is fixed and you want to reuse the full solver state.
 
+## Free-energy solver state and accuracy
+
+`FreeEnergyDistance` uses the same solver choices and state conventions as
+resistance distance. Its operator is $H=D-B$, where
+$D=\operatorname{diag}(A\mathbf1)$ and
+$B_{ij}=a_{ij}e^{-\theta/a_{ij}}$ on present edges. This common symmetric
+positive-definite system serves every selected endpoint. It is different from
+the grounded Laplacian used for resistance distance, so state from one distance
+must not be passed to the other.
+
+Initialize full state for repeated queries with an unchanged graph and inverse
+temperature:
+
+```python
+import jax
+
+jax.config.update("jax_enable_x64", True)
+import jax.numpy as jnp
+from jaxscape import FreeEnergyDistance, GridGraph
+from jaxscape.solvers import AMJaxCGSolver
+
+permeability = jnp.ones((3, 3), dtype=jnp.float64)
+grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
+solver = AMJaxCGSolver(rtol=1e-10, atol=1e-12, max_steps=1_000)
+distance = FreeEnergyDistance(theta=0.2, solver=solver)
+nodes = jnp.array([0, 4, 8])
+
+state = distance.init(grid)
+values = distance(grid, nodes=nodes, state=state)
+```
+
+Full solver state is bound to both the conductances $A$ and $\theta$. Rebuild
+it after changing either; arbitrary stale state is not automatically detected.
+With AMJax, preconditioner-only state can be reused across related operators
+with the same structure. Fresh CG state is then prepared for the current
+conductances and inverse temperature:
+
+```python
+preconditioner_state = distance.init_preconditioner(grid)
+updated_grid = GridGraph(permeability * 1.1, fun=lambda x, y: (x + y) / 2)
+updated_distance = FreeEnergyDistance(theta=0.25, solver=solver)
+values = updated_distance(updated_grid, nodes=nodes, state=preconditioner_state)
+```
+
+For solvers without a separate preconditioner initializer,
+`init_preconditioner` follows the existing full-state initialization convention;
+that state remains bound to the unchanged operator.
+
+The free-energy check can reject a solve that met the backend's convergence
+criterion. A tiny absolute error in a small positive inverse entry can become
+a large error after taking its logarithm. Tighter solver tolerances may help,
+but extreme inverse temperatures can remain unresolved. Float64 is recommended
+and must be requested explicitly; it is never enabled or substituted by the
+library. See the [distance guide](distances.md#numerical-range) for numerical
+policy and supported differentiation.
+
+Distance calls return arrays and use normal Lineax/Equinox error behavior.
+[Lineax documents](https://docs.kidger.site/lineax/api/linear_solve/) that errors
+are reliably raised on CPUs, while GPU failures may only print an error.
+
 ::: jaxscape.solvers.cholmodsolver.CholmodSolver
     options:
       members: false
@@ -112,7 +173,7 @@ Use `distance.init(grid)` instead when the graph is fixed and you want to reuse 
 
 ## Advanced: `BCOOLinearOperator`
 
-`JAXScape` exposes a `lineax`-compatible linear operator that wraps JAX's native `BCOO` sparse matrix format. This allows any Lineax solver to operate directly on sparse matrices without converting to a dense representation, and is used internally by the three optional solvers above.
+`JAXScape` exposes a `lineax`-compatible linear operator that wraps JAX's native `BCOO` sparse matrix format. It lets compatible Lineax solvers operate on sparse matrices without converting to a dense representation, and is used internally by the three optional solvers above.
 
 ::: jaxscape.solvers.operator.BCOOLinearOperator
     options:
