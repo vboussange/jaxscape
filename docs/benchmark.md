@@ -5,6 +5,7 @@
 JAXScape ships with a benchmark workspace that keeps benchmark inputs synthetic and reproducible, records the exact runtime context used for each published artifact, and renders the benchmark page from shared metadata plus the latest benchmark result JSON.
 
 !!! tip "Observed Best JAXScape Configurations"
+    - Free-energy distance: inverse temperatures define different workloads; inspect each profile's accuracy and timing together.
     - Resistance distance: `JAXScape / AMJaxCGSolver / f64 (GPU)` is the fastest successful JAXScape configuration on `synthetic_resistance_large` at 0.331 s, about 42.24x faster than the matching CPU run.
     - Least-cost path: no successful JAXScape run is available for `synthetic_lcp_large` in the current artifact.
     - Centrality and gradient sensitivity: `JAXScape / shortest-path gradient (GPU)` is the fastest successful JAXScape configuration on `synthetic_sensitivity_large` at 1.305 s, about 52.76x faster than the matching CPU run.
@@ -26,6 +27,7 @@ JAXScape ships with a benchmark workspace that keeps benchmark inputs synthetic 
 
 | Feature | Published benchmark coverage | Notes |
 | --- | --- | --- |
+| Free-energy distance | `JAXScape` | Float64 CG at inverse temperatures 0.01, 0.1 and 1; values and directional gradients checked against an independent sparse reference. No external package timing comparison is included. |
 | Resistance distance | `JAXScape`, `gdistance`, `Circuitscape.jl` | The published `gdistance` series is rescaled from commute time to effective resistance by dividing by graph volume. |
 | Least-cost path | `JAXScape`, `gdistance` | The published comparison uses the same grid-graph least-cost task in JAXScape and `gdistance`. |
 | Centrality and gradient sensitivity | `JAXScape`, `gdistance` | The chart compares single-origin JAXScape gradients against the matching single-origin `gdistance::shortestPath` incidence and `gdistance::passage(..., totalNet = "total")` references on the same origin/destination set. |
@@ -46,6 +48,26 @@ Published benchmark coverage:
 `JAXScape`, `gdistance`, `Circuitscape.jl`
 
 <div align="center"><img src="../assets/benchmark_resistance_distance.png" alt="Resistance distance benchmark scorecard" width="900"></div>
+
+## Free-energy distance
+
+The symmetric first-hitting free-energy task uses the resistance benchmark's
+landscapes, seeds, reciprocal-cost conductances and 20 selected interior sites.
+The 10×10 and 100×100 cases run at inverse temperatures 0.01, 0.1 and 1.
+These temperatures define different mathematical workloads, so their timings
+are not interchangeable solver speedups. The explicit float64 CG profile uses
+`rtol=1e-10`, `atol=1e-90`, `max_steps=10000` and `stabilise_every=None`.
+
+Published benchmark coverage:
+
+`JAXScape`
+
+Each result records separate compilation and setup times, synchronized warmed
+forward and value-and-gradient samples, and independent sparse reference checks
+for all selected distances and four gradient directions. Failures remain in the
+result file. The larger-grid support range and external ConScape comparison are
+not inferred from these cases; see `benchmark/README.md` for reproduction and
+the precise scope.
 
 ## Least-cost path
 

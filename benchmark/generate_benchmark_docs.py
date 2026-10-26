@@ -27,6 +27,11 @@ DEFAULT_TEMPLATE = ROOT / "docs" / "benchmark.template.md"
 DEFAULT_OUTPUT = ROOT / "docs" / "benchmark.md"
 
 COMPATIBILITY_NOTES = {
+    "free_energy_distance": (
+        "Float64 CG at inverse temperatures 0.01, 0.1 and 1; values and directional "
+        "gradients checked against an independent sparse reference. No external "
+        "package timing comparison is included."
+    ),
     "resistance_distance": (
         "The published `gdistance` series is rescaled from commute time to "
         "effective resistance by dividing by graph volume."
@@ -38,7 +43,7 @@ COMPATIBILITY_NOTES = {
     "sensitivity_analysis": (
         "The chart compares single-origin JAXScape gradients against the "
         "matching single-origin `gdistance::shortestPath` incidence and "
-        "`gdistance::passage(..., totalNet = \"total\")` references on the "
+        '`gdistance::passage(..., totalNet = "total")` references on the '
         "same origin/destination set."
     ),
     "inverse_landscape_genetics": (
@@ -136,10 +141,16 @@ def environment_table(payload: dict[str, Any]) -> str:
     thread_environment = environment.get("thread_environment") or {}
     rows = [
         ("Requested device", environment.get("requested_device_platform", "n/a")),
-        ("Dependency versions", ", ".join(
-            f"{name}={value or 'unavailable'}"
-            for name, value in (environment.get("dependency_versions") or {}).items()
-        ) or "n/a"),
+        (
+            "Dependency versions",
+            ", ".join(
+                f"{name}={value or 'unavailable'}"
+                for name, value in (
+                    environment.get("dependency_versions") or {}
+                ).items()
+            )
+            or "n/a",
+        ),
         ("CUDA visible devices", environment.get("cuda_visible_devices", "n/a")),
         (
             "Available JAX platforms",
@@ -227,7 +238,9 @@ def best_jaxscape_record_for_task(
     )
 
 
-def matching_cpu_record(payload: dict[str, Any], record: dict[str, Any]) -> dict[str, Any] | None:
+def matching_cpu_record(
+    payload: dict[str, Any], record: dict[str, Any]
+) -> dict[str, Any] | None:
     tool = str(record["tool"])
     if not tool.endswith("(GPU)"):
         return None
@@ -248,23 +261,32 @@ def recommendation_box(payload: dict[str, Any]) -> str:
     largest_cases = largest_case_names_by_task(payload)
     lines = ['!!! tip "Observed Best JAXScape Configurations"']
     for task_spec in BENCHMARK_TASK_SPECS:
+        if task_spec.task == "free_energy_distance":
+            lines.append(
+                "    - Free-energy distance: inverse temperatures define different "
+                "workloads; inspect each profile's accuracy and timing together."
+            )
+            continue
         scenario = largest_cases.get(task_spec.task)
         if scenario is None:
             lines.append(
-                f"    - {task_spec.title}: no benchmark scenario is available in the current artifact."
+                f"    - {task_spec.title}: no benchmark scenario is available "
+                "in the current artifact."
             )
             continue
 
         record = best_jaxscape_record_for_task(payload, task_spec.task, scenario)
         if record is None:
             lines.append(
-                f"    - {task_spec.title}: no successful JAXScape run is available for `{scenario}` in the current artifact."
+                f"    - {task_spec.title}: no successful JAXScape run is available "
+                f"for `{scenario}` in the current artifact."
             )
             continue
 
         line = (
             f"    - {task_spec.title}: `{record['tool']}` is the fastest successful "
-            f"JAXScape configuration on `{scenario}` at {format_runtime(record['median_seconds'])}"
+            f"JAXScape configuration on `{scenario}` "
+            f"at {format_runtime(record['median_seconds'])}"
         )
         metrics = record.get("metrics") or {}
         if task_spec.task == "inverse_landscape_genetics":
@@ -275,7 +297,9 @@ def recommendation_box(payload: dict[str, Any]) -> str:
 
         cpu_record = matching_cpu_record(payload, record)
         if cpu_record is not None:
-            speedup = float(cpu_record["median_seconds"]) / float(record["median_seconds"])
+            speedup = float(cpu_record["median_seconds"]) / float(
+                record["median_seconds"]
+            )
             line += f", about {speedup:.2f}x faster than the matching CPU run"
 
         line += "."
@@ -293,6 +317,7 @@ def render_page(template_text: str, payload: dict[str, Any]) -> str:
         "{{ENVIRONMENT_TABLE}}": environment_table(payload),
         "{{COMPATIBILITY_TABLE}}": compatibility_table(),
         "{{RESISTANCE_PROFILES}}": task_profiles("resistance_distance"),
+        "{{FREE_ENERGY_PROFILES}}": task_profiles("free_energy_distance"),
         "{{LCP_PROFILES}}": task_profiles("least_cost_path"),
         "{{SENSITIVITY_PROFILES}}": task_profiles("sensitivity_analysis"),
         "{{INVERSE_PROFILES}}": task_profiles("inverse_landscape_genetics"),
@@ -303,8 +328,7 @@ def render_page(template_text: str, payload: dict[str, Any]) -> str:
         rendered = rendered.replace(placeholder, replacement)
     return (
         "<!-- Generated from docs/benchmark.template.md by "
-        "benchmark/generate_benchmark_docs.py. -->\n\n"
-        + rendered
+        "benchmark/generate_benchmark_docs.py. -->\n\n" + rendered
     )
 
 
