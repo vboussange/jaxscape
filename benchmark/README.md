@@ -14,6 +14,7 @@ sensitivity suite uses a smaller `large` case than the distance tasks.
 
 | Feature | Automated profiles | Optional local profiles | Notes |
 | --- | --- | --- | --- |
+| Free-energy distance | `JAXScape / CG / theta=0.01,0.1,1 / f64 (CPU/GPU)` | custom cases via the shared `build_case` helper | 10×10 and 100×100 grids, 20 selected sites; independent value and directional-gradient checks accompany timings. |
 | Resistance distance | `JAXScape / PyAMG`, `gdistance / commuteDistance`, `Circuitscape.jl / cg+amg / f64`, `Circuitscape.jl / cholmod / f64` | `JAXScape / CholmodSolver / f32`, `JAXScape / CholmodSolver / f64`, `JAXScape / AMJaxCGSolver / f32 (CPU/GPU)`, `JAXScape / AMJaxCGSolver / f64 (CPU/GPU)`, `JAXScape / approx AMJaxCGSolver / f32 (CPU/GPU)`, `JAXScape / approx AMJaxCGSolver / f64 (CPU/GPU)`, `JAXScape / approx CholmodSolver / f32`, `JAXScape / approx CholmodSolver / f64`, `Conefor` adapters | The dense `pinv` family is intentionally excluded from the full resistance suite because the large resistance case is not a useful dense-pseudoinverse benchmark target. |
 | Least-cost path | `JAXScape (CPU/GPU)`, `gdistance / costDistance` | `Conefor` adapter | Conefor remains a manual external integration. |
 | Sensitivity analysis | `JAXScape / shortest-path gradient (CPU/GPU)`, `gdistance / shortestPath`, `JAXScape / resistance gradient (CPU/GPU)`, `gdistance / passage` | none | This scorecard compares JAX gradients to the matching `gdistance` centrality surfaces. |
@@ -102,3 +103,56 @@ JAXScape-specific benchmark code separate from the cross-software orchestration.
 Benchmark entry points set `XLA_PYTHON_CLIENT_PREALLOCATE=false` by default,
 unless the environment already defines a different value, so the coordinator
 does not reserve most GPU memory before the worker subprocesses start.
+
+## Free-energy profiles
+
+```bash
+uv run --extra benchmark python benchmark/jaxscape/free_energy_distance.py
+```
+
+This uses the existing standalone runner and writes the same JSON/CSV record
+format under `benchmark/results/tasks/free_energy_distance/`. Full-suite and
+smoke runs also include FED. Cases reuse the resistance raster generator, seeds,
+interior-site selection and `cost_conductance`; a worker receives the realized
+case file so reference and production calculations use identical arrays.
+
+The explicit float64 profile is `lineax.CG(rtol=1e-10, atol=1e-90,
+max_steps=10000, stabilise_every=None)`. The small absolute tolerance resolves
+distant entries, while disabling periodic residual replacement avoids injecting
+the near-source rounding floor. The independent production guard remains
+essential because recursive residuals may drift. These are measured workload
+settings, not universal defaults or an automatic dtype promotion.
+
+`median_seconds` is warmed forward time including graph construction and solver
+state rebuilding. `metrics` additionally contains lowering/compilation time,
+separate setup and value-and-gradient samples, device placement, versions,
+precision, solver settings and independent accuracy checks. Timings use the
+shared synchronization helper, exclude compilation and inputs' device transfer,
+and include setup on every changed-landscape call. Setup is also measured
+separately; do not add it again to forward time. Errors produce `failed` records
+with the available metadata, rather than a favorable timing without validation.
+
+The independent SciPy reference constructs the nonsymmetric killed walk
+`W = P * exp(-theta * cost)` from NumPy grid edges and solves selected columns of
+`I-W`. All 380 off-diagonal values must meet
+`max(abs(error)/max(1,abs(reference))) < 1e-7`. A signed weighted objective checks
+three deterministic landscape directions and theta against central differences
+with scaled discrepancy below `1e-6`. Steps are `1e-4` for normalized landscape
+directions and `theta*1e-4` for theta. These allow finite-difference truncation and
+cancellation error; they do not certify every gradient component.
+
+For bounded larger cases or an ordinary-tolerance negative control, use
+`build_case(..., size=200, seed=1)` and `run_profile(case, theta=0.1,
+device=jax.devices()[0], repeats=3)`. The optional `solver_settings` argument can
+record rejected ordinary-CG runs. No million-cell or arbitrary-temperature
+support is promised. Existing subprocess walltime limits and failure records
+apply to normal runs; the direct profiling helper leaves resource limits to its
+caller.
+
+The optional ConScape.jl comparison is deferred: the existing Julia environment
+and adapters contain Circuitscape resistance calculations only. A matching FED
+comparison needs a new package setup and adapter that constructs the same
+reference walk, reciprocal costs and target normalization, validates values,
+and times construction/factorization rather than a cached accessor. That is
+additional integration beyond this contained revision. SciPy is an independent
+correctness reference here, not a claim about ConScape performance.
