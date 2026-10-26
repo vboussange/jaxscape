@@ -18,7 +18,7 @@ from jaxscape.solvers.operator import (
 
 
 class FreeEnergyDistance(AbstractDistance):
-    """Symmetric first-hitting free-energy distance with reciprocal edge costs.
+    r"""Symmetric first-hitting free-energy distance with reciprocal edge costs.
 
     **Attributes:**
 
@@ -27,22 +27,27 @@ class FreeEnergyDistance(AbstractDistance):
     - `solver`: Optional supported Lineax sparse solver, following
       `ResistanceDistance`. `None` uses a dense solve for small graphs.
 
+    For conductances $a_{ij}$, let $c_{ij}=1/a_{ij}$ on present edges,
+    $P_{ij}=a_{ij}/\sum_k a_{ik}$, and $Z=(I-P\odot e^{-\theta C})^{-1}$.
+    The first-hitting partition is $z^h_{ij}=Z_{ij}/Z_{jj}$ and
+    $d_{ij}=-(\log z^h_{ij}+\log z^h_{ji})/(2\theta)$.
+    This is free energy, not expected randomized-shortest-path cost; see
+    [Kivimäki, Shimbo & Saerens](https://arxiv.org/abs/1212.1666) and
+    [Françoisse et al.](https://apiacoa.org/publications/2017/francoissekivimakietal2017bag-of-path.pdf).
+
     Inputs must be connected, symmetric graphs with positive finite present
-    conductances. Edge costs and reference transition probabilities both depend
-    on these conductances. Float32 and float64 are retained; float64 is
-    recommended for a wider numerically resolvable range. As `theta` increases,
-    the distance tends to reciprocal-cost least-cost distance. For a loop-free
-    graph with `m` undirected edges, its small-`theta` limit is `m` times the
-    effective resistance, without a normalization change.
+    conductances. Both costs and transition probabilities vary with conductance.
+    Float32 and float64 are retained; float64 widens the resolvable range.
+    The large-`theta` limit is reciprocal-cost least-cost distance; on a loop-free
+    graph with `m` undirected edges, the small-`theta` limit is `m` times effective
+    resistance. Rebuild full solver state after conductances or `theta` change.
 
     Numerically unresolved queried logarithms raise an Equinox error. No
-    clipping, regularization, precision conversion, or fallback repairs the
-    result. The residual/rounding check is a conservative heuristic rather than
-    a floating-point certificate; accepted gradients require separate accuracy
-    validation. Lineax errors reliably raise on CPU; on GPU they may only print.
-    First-order reverse-mode differentiation reuses forward selected inverse
-    columns without another solve. No forward-mode or higher-order guarantee is
-    introduced.
+    clipping or substitution repairs the result. The residual/rounding check is
+    a heuristic, not an accuracy certificate for values or gradients. Lineax
+    errors reliably raise on CPU; on GPU they may only print. First-order
+    reverse mode reuses forward solutions; forward/higher-order modes are not
+    guaranteed.
 
     !!! example
 
@@ -199,6 +204,7 @@ class FreeEnergyDistance(AbstractDistance):
         rows = jnp.arange(sources.size)
         cols = jnp.arange(targets.size) + (0 if same_nodes else sources.size)
         diagonal = jnp.diag(selected)
+        diagonal_errors = jnp.diag(errors)
         self_pair = sources[:, None] == targets[None, :]
         # Mask self-pairs before logarithms. Their value and derivative are
         # structurally zero, including repeated selections of the same vertex.
@@ -214,10 +220,10 @@ class FreeEnergyDistance(AbstractDistance):
         entry_errors = tuple(
             jnp.where(self_pair, 0, error)
             for error in (
-                errors[rows, None],
-                errors[None, cols],
-                errors[None, cols],
-                errors[rows, None],
+                diagonal_errors[rows, None],
+                diagonal_errors[None, cols],
+                errors[rows[:, None], cols[None, :]],
+                errors[cols[:, None], rows[None, :]].T,
             )
         )
         logs = tuple(jnp.log(value) for value in values)
@@ -342,7 +348,7 @@ def _selected_inverse_fwd(
         "precision, or solver.",
     )
     errors = _entry_error(operator, basis, potentials, killing)
-    return (potentials[nodes], errors), potentials
+    return (potentials[nodes], errors[nodes]), potentials
 
 
 _selected_inverse.def_fwd(_selected_inverse_fwd)
@@ -377,12 +383,12 @@ def _selected_inverse_bwd(
 def _entry_error(
     operator: BCOO, basis: Array, potentials: Array, killing: Array
 ) -> Array:
-    """Conservative floating-point heuristic, not an accuracy certificate.
+    """Comparison envelopes with heuristic rounding allowances, not a certificate.
 
-    The residual bound eta=max(abs(E-HX)/kappa) is augmented for rounding in
-    assembly and the sparse residual product. Even a rounded zero residual
-    therefore receives a nonzero allowance. Absolute row sums times column
-    maxima bound its scale without another sparse block product or solve.
+    H is inverse-positive. If rho >= |b-Hx| and 0 < delta <= Hw for w > 0,
+    then |H^-1 b-x| <= H^-1 rho <= w*max(rho/delta). Retain w=1 as a fallback
+    and use a spatially decaying w only when its rounded lower margin is positive.
+    Assembly/product rounding scales are calibrated heuristics, not interval bounds.
     """
     operator, basis, potentials, killing = jax.tree.map(
         jax.lax.stop_gradient, (operator, basis, potentials, killing)
@@ -391,22 +397,30 @@ def _entry_error(
     valid = jnp.all(
         (operator.indices >= 0) & (operator.indices < operator.shape[0]), axis=1
     )
-    row_scale = (
-        jnp.zeros(operator.shape[0], dtype=operator.dtype)
-        .at[operator.indices[:, 0]]
-        .add(jnp.where(valid, jnp.abs(operator.data), 0))
-    )
-    magnitude = row_scale[:, None] * jnp.max(jnp.abs(potentials), axis=0)[
-        None, :
-    ] + jnp.abs(basis)
+    absolute = BCOO((jnp.abs(operator.data), operator.indices), shape=operator.shape)
+    magnitude = absolute @ jnp.abs(potentials) + jnp.abs(basis)
     count = (
         jnp.zeros(operator.shape[0], dtype=jnp.int32)
         .at[operator.indices[:, 0]]
         .add(valid.astype(jnp.int32))
     )
     eps = jnp.finfo(potentials.dtype).eps
-    rounding = (jnp.max(count) + 4) * eps * magnitude
-    return jnp.max((jnp.abs(residual) + rounding) / killing[:, None], axis=0)
+    # Calibrated allowance for sparse accumulation plus operator assembly;
+    # the four extra rounding units do not make this a rigorous error bound.
+    gamma = (jnp.max(count) + 4) * eps
+    rho = jnp.abs(residual) + gamma * magnitude
+    constant = jnp.max(rho / killing[:, None], axis=0)
+    # A power just below one follows column decay while giving Hw a positive
+    # margin. The floor constructs w only; it never changes inverse entries.
+    weights = jnp.maximum(potentials, jnp.finfo(potentials.dtype).tiny) ** 0.99
+    margin = operator @ weights - gamma * (absolute @ weights)
+    usable = jnp.all(
+        (potentials > 0) & jnp.isfinite(weights) & jnp.isfinite(margin) & (margin > 0),
+        axis=0,
+    )
+    scale = jnp.max(rho / jnp.where(margin > 0, margin, 1), axis=0)
+    weighted = jnp.where(usable[None, :], weights * scale[None, :], jnp.inf)
+    return jnp.minimum(constant[None, :], weighted)
 
 
 def _check_distances(
