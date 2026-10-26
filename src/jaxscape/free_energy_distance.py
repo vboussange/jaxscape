@@ -77,6 +77,15 @@ class FreeEnergyDistance(AbstractDistance):
 
         Rebuild full state when either changes. Solver setup is not part of the
         differentiable mathematical value.
+
+        **Arguments:**
+
+        - `graph`: Connected symmetric graph whose conductances define the
+          operator together with this distance's `theta`.
+
+        **Returns:**
+
+        Matrix-dependent solver state, or `None` for the dense default.
         """
         if self.solver is None:
             return None
@@ -90,6 +99,15 @@ class FreeEnergyDistance(AbstractDistance):
 
         AMJax preconditioners may be reused with a fresh operator, following the
         existing resistance-distance conventions. Other solvers use full state.
+
+        **Arguments:**
+
+        - `graph`: Connected symmetric graph used to build the preconditioner.
+
+        **Returns:**
+
+        Reusable preconditioner state when supported, otherwise full solver
+        state. Returns `None` for the dense default.
         """
         if self.solver is None:
             return None
@@ -101,21 +119,60 @@ class FreeEnergyDistance(AbstractDistance):
 
     @eqx.filter_jit
     def all_pairs_distance(self, graph: AbstractGraph, state: Any = None) -> Array:
-        """Return the `(graph.nv, graph.nv)` free-energy distance array."""
+        """Compute free-energy distances between all vertices.
+
+        **Arguments:**
+
+        - `graph`: Connected symmetric graph with `graph.nv` vertices.
+        - `state`: Optional solver state for the current operator. `None`
+          initializes state automatically; AMJax setup must precede JIT tracing.
+
+        **Returns:**
+
+        Distance array with shape `(graph.nv, graph.nv)` and exact zero diagonal.
+        """
         return self.nodes_to_nodes_distance(graph, jnp.arange(graph.nv), state)
 
     @eqx.filter_jit
     def nodes_to_nodes_distance(
         self, graph: AbstractGraph, nodes: Array, state: Any = None
     ) -> Array:
-        """Return `(len(nodes), len(nodes))` distances, retaining selection order."""
+        """Compute pairwise free-energy distances among selected vertices.
+
+        **Arguments:**
+
+        - `graph`: Connected symmetric graph.
+        - `nodes`: Vertex indices with shape `(k,)`. Order and repetitions are
+          retained. Use the callable distance interface for grid coordinates.
+        - `state`: Optional solver state for the current operator. `None`
+          initializes state automatically; AMJax setup must precede JIT tracing.
+
+        **Returns:**
+
+        Distance array with shape `(k, k)` in the requested selection order.
+        """
         return self._distances(graph, nodes, nodes, True, state)
 
     @eqx.filter_jit
     def sources_to_targets_distance(
         self, graph: AbstractGraph, sources: Array, targets: Array, state: Any = None
     ) -> Array:
-        """Return `(len(sources), len(targets))` distances using endpoint columns."""
+        """Compute free-energy distances from selected sources to targets.
+
+        **Arguments:**
+
+        - `graph`: Connected symmetric graph.
+        - `sources`: Source vertex indices with shape `(s,)`.
+        - `targets`: Target vertex indices with shape `(t,)`. Selection order
+          and repetitions are retained on both sides. Use the callable distance
+          interface for grid coordinates or omitted endpoints.
+        - `state`: Optional solver state for the current operator. `None`
+          initializes state automatically; AMJax setup must precede JIT tracing.
+
+        **Returns:**
+
+        Distance array with shape `(s, t)` in source and target selection order.
+        """
         return self._distances(graph, sources, targets, False, state)
 
     def _distances(
