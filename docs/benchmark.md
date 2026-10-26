@@ -5,7 +5,7 @@
 JAXScape ships with a benchmark workspace that keeps benchmark inputs synthetic and reproducible, records the exact runtime context used for each published artifact, and renders the benchmark page from shared metadata plus the latest benchmark result JSON.
 
 !!! tip "Observed Best JAXScape Configurations"
-    - Free-energy distance: inverse temperatures define different workloads; inspect each profile's accuracy and timing together.
+    - Free-energy distance: no benchmark scenario is available in the current artifact.
     - Resistance distance: `JAXScape / AMJaxCGSolver / f64 (GPU)` is the fastest successful JAXScape configuration on `synthetic_resistance_large` at 0.331 s, about 42.24x faster than the matching CPU run.
     - Least-cost path: no successful JAXScape run is available for `synthetic_lcp_large` in the current artifact.
     - Centrality and gradient sensitivity: `JAXScape / shortest-path gradient (GPU)` is the fastest successful JAXScape configuration on `synthetic_sensitivity_large` at 1.305 s, about 52.76x faster than the matching CPU run.
@@ -27,7 +27,7 @@ JAXScape ships with a benchmark workspace that keeps benchmark inputs synthetic 
 
 | Feature | Published benchmark coverage | Notes |
 | --- | --- | --- |
-| Free-energy distance | `JAXScape` | Float64 CG at inverse temperatures 0.01, 0.1 and 1; values and directional gradients checked against an independent sparse reference. No external package timing comparison is included. |
+| Free-energy distance | `JAXScape` | Float64 CG at inverse temperature 0.1, using the resistance benchmark's grid sizes, seeds, conductances and selected sites. |
 | Resistance distance | `JAXScape`, `gdistance`, `Circuitscape.jl` | The published `gdistance` series is rescaled from commute time to effective resistance by dividing by graph volume. |
 | Least-cost path | `JAXScape`, `gdistance` | The published comparison uses the same grid-graph least-cost task in JAXScape and `gdistance`. |
 | Centrality and gradient sensitivity | `JAXScape`, `gdistance` | The chart compares single-origin JAXScape gradients against the matching single-origin `gdistance::shortestPath` incidence and `gdistance::passage(..., totalNet = "total")` references on the same origin/destination set. |
@@ -35,7 +35,7 @@ JAXScape ships with a benchmark workspace that keeps benchmark inputs synthetic 
 
 ## Fairness policy
 
-All automated runs use deterministic synthetic landscapes on 4-neighbour grid graphs and report median runtimes from the repeat count recorded in each benchmark artifact. Resistance, least-cost, and sensitivity tasks share the same raster-to-graph parameterization, the same site-sampling policy, and the same published thread budget across Python, Julia, and R. The sensitivity benchmark uses a task-specific large grid because exact reverse-mode centrality objectives have much higher memory growth than distance-matrix queries; the large sensitivity case records one timed repeat, while smaller cases use the suite repeat count. The environment snapshot above is rendered directly from the benchmark artifact so the documented runtime context tracks the actual run rather than a hand-maintained description.
+All automated runs use deterministic synthetic landscapes on 4-neighbour grid graphs and report median runtimes from the repeat count recorded in each benchmark artifact. Resistance, free-energy, least-cost, and sensitivity tasks share the same raster-to-graph parameterization, the same site-sampling policy, and the same published thread budget across Python, Julia, and R. The sensitivity benchmark uses a task-specific large grid because exact reverse-mode centrality objectives have much higher memory growth than distance-matrix queries; the large sensitivity case records one timed repeat, while smaller cases use the suite repeat count. The environment snapshot above is rendered directly from the benchmark artifact so the documented runtime context tracks the actual run.
 
 Cross-software comparisons are only published when the task definition is close enough to interpret. For resistance distance, the `gdistance` series is rescaled from commute time to effective resistance by dividing by graph volume. For inverse landscape genetics, runtime and fit quality are reported together so budget-limited or non-converged runs remain visible.
 
@@ -51,23 +51,17 @@ Published benchmark coverage:
 
 ## Free-energy distance
 
-The symmetric first-hitting free-energy task uses the resistance benchmark's
-landscapes, seeds, reciprocal-cost conductances and 20 selected interior sites.
-The 10×10 and 100×100 cases run at inverse temperatures 0.01, 0.1 and 1.
-These temperatures define different mathematical workloads, so their timings
-are not interchangeable solver speedups. The explicit float64 CG profile uses
-`rtol=1e-10`, `atol=1e-90`, `max_steps=10000` and `stabilise_every=None`.
+Formal problem: given the same undirected grid graph and sampled node set $S$,
+compute the symmetric first-hitting free-energy distance matrix for all
+$u, v \in S$, with reciprocal edge costs and inverse temperature $\theta=0.1$.
+The float64 CG profile uses `rtol=1e-10`, `atol=1e-90`, `max_steps=10000` and
+`stabilise_every=None`.
 
 Published benchmark coverage:
 
 `JAXScape`
 
-Each result records separate compilation and setup times, synchronized warmed
-forward and value-and-gradient samples, and independent sparse reference checks
-for all selected distances and four gradient directions. Failures remain in the
-result file. The larger-grid support range and external ConScape comparison are
-not inferred from these cases; see `benchmark/README.md` for reproduction and
-the precise scope.
+<div align="center"><img src="../assets/benchmark_free_energy_distance.png" alt="Free-energy distance benchmark scorecard" width="900"></div>
 
 ## Least-cost path
 

@@ -31,7 +31,7 @@ class FreeEnergyDistance(AbstractDistance):
     $P_{ij}=a_{ij}/\sum_k a_{ik}$, and $Z=(I-P\odot e^{-\theta C})^{-1}$.
     The first-hitting partition is $z^h_{ij}=Z_{ij}/Z_{jj}$ and
     $d_{ij}=-(\log z^h_{ij}+\log z^h_{ji})/(2\theta)$.
-    This is free energy, not expected randomized-shortest-path cost; see
+    For the derivation, see
     [Kivimäki, Shimbo & Saerens](https://arxiv.org/abs/1212.1666) and
     [Françoisse et al.](https://apiacoa.org/publications/2017/francoissekivimakietal2017bag-of-path.pdf).
 
@@ -43,9 +43,9 @@ class FreeEnergyDistance(AbstractDistance):
     resistance. Rebuild full solver state after conductances or `theta` change.
 
     Numerically unresolved queried logarithms raise an Equinox error. No
-    clipping or substitution repairs the result. The residual/rounding check is
-    a heuristic, not an accuracy certificate for values or gradients. Lineax
-    errors reliably raise on CPU; on GPU they may only print. First-order
+    clipping or substitution repairs the result. The residual/rounding check
+    uses heuristic allowances; validate accuracy for the intended workload.
+    Lineax errors reliably raise on CPU; on GPU they may only print. First-order
     reverse mode reuses forward solutions; forward/higher-order modes are not
     guaranteed.
 
@@ -383,12 +383,12 @@ def _selected_inverse_bwd(
 def _entry_error(
     operator: BCOO, basis: Array, potentials: Array, killing: Array
 ) -> Array:
-    """Comparison envelopes with heuristic rounding allowances, not a certificate.
+    """Comparison envelopes with heuristic rounding allowances.
 
     H is inverse-positive. If rho >= |b-Hx| and 0 < delta <= Hw for w > 0,
     then |H^-1 b-x| <= H^-1 rho <= w*max(rho/delta). Retain w=1 as a fallback
     and use a spatially decaying w only when its rounded lower margin is positive.
-    Assembly/product rounding scales are calibrated heuristics, not interval bounds.
+    Assembly/product rounding scales use calibrated heuristics.
     """
     operator, basis, potentials, killing = jax.tree.map(
         jax.lax.stop_gradient, (operator, basis, potentials, killing)

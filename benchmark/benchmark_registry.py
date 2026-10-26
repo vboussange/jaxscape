@@ -53,7 +53,7 @@ BENCHMARK_TASK_SPECS = (
         group_name="free_energy",
         task="free_energy_distance",
         title="Free-energy distance",
-        size_by_label={"small": 10, "medium": 100},
+        size_by_label={"small": 10, "medium": 100, "large": 1000},
         seed_base=0,
         scorecard_asset_name="benchmark_free_energy_distance.png",
     ),
@@ -96,10 +96,7 @@ TASK_SPECS_BY_TASK = {spec.task: spec for spec in BENCHMARK_TASK_SPECS}
 TASK_LABELS = {spec.task: spec.title for spec in BENCHMARK_TASK_SPECS}
 
 TOOL_SPECS_BY_TASK = {
-    "free_energy_distance": tuple(
-        ToolSpec(f"JAXScape / CG / theta={theta:g} / f64", gpu_capable=True)
-        for theta in (0.01, 0.1, 1.0)
-    ),
+    "free_energy_distance": (ToolSpec("JAXScape / CG / f64", gpu_capable=True),),
     "resistance_distance": (
         # Resistance pinv-family profiles are kept out of the full suite because
         # the large resistance case is not a scientifically useful dense-pinv

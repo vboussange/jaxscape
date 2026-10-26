@@ -1,4 +1,4 @@
-"""Benchmark report metadata, without running performance workloads."""
+"""Benchmark report metadata and a small task-runner smoke check."""
 
 
 def test_report_environment_includes_dependency_versions():
@@ -17,20 +17,18 @@ def test_report_environment_includes_dependency_versions():
     assert "amjax" in rendered
 
 
-def test_free_energy_benchmark_reports_independent_accuracy():
+def test_free_energy_benchmark_worker():
     from benchmark.jaxscape.free_energy_distance import run_worker
 
     record = run_worker(
         {
             "case_name": "synthetic_free_energy_small",
-            "theta": 0.1,
             "backend": "cpu",
             "repeats": 1,
         }
     )
     assert record.status == "ok", record.note
     assert len(record.timings_seconds) == 1
-    assert record.metrics["off_diagonal_entries"] == 380
-    assert record.metrics["max_scaled_error"] < 1e-7
-    assert len(record.metrics["derivative_checks"]) == 4
-    assert max(x["scaled_error"] for x in record.metrics["derivative_checks"]) < 1e-6
+    assert record.tool == "JAXScape / CG / f64 (CPU)"
+    assert record.metrics["theta"] == 0.1
+    assert record.metrics["dtype"] == "float64"

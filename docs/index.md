@@ -117,7 +117,7 @@ plt.show()
 
 `theta` is inverse temperature: larger values favor least-cost paths. This
 example requests float64 and tight CG tolerances to resolve distant inverse
-entries. The settings are a workload-specific profile, not library defaults;
+entries. These settings are specific to this example;
 the final numerical check still rejects unresolved queries. See the
 [solver guide](https://vboussange.github.io/jaxscape/api/linear_solvers/).
 

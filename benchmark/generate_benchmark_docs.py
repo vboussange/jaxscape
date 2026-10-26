@@ -28,9 +28,8 @@ DEFAULT_OUTPUT = ROOT / "docs" / "benchmark.md"
 
 COMPATIBILITY_NOTES = {
     "free_energy_distance": (
-        "Float64 CG at inverse temperatures 0.01, 0.1 and 1; values and directional "
-        "gradients checked against an independent sparse reference. No external "
-        "package timing comparison is included."
+        "Float64 CG at inverse temperature 0.1, using the resistance benchmark's "
+        "grid sizes, seeds, conductances and selected sites."
     ),
     "resistance_distance": (
         "The published `gdistance` series is rescaled from commute time to "
@@ -261,12 +260,6 @@ def recommendation_box(payload: dict[str, Any]) -> str:
     largest_cases = largest_case_names_by_task(payload)
     lines = ['!!! tip "Observed Best JAXScape Configurations"']
     for task_spec in BENCHMARK_TASK_SPECS:
-        if task_spec.task == "free_energy_distance":
-            lines.append(
-                "    - Free-energy distance: inverse temperatures define different "
-                "workloads; inspect each profile's accuracy and timing together."
-            )
-            continue
         scenario = largest_cases.get(task_spec.task)
         if scenario is None:
             lines.append(
