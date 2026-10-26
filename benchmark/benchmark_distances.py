@@ -42,10 +42,10 @@ from benchmark.benchmark_registry import (
 )
 from benchmark.inverse_benchmark_settings import load_inverse_benchmark_settings
 from benchmark.jaxscape.utils import (
-    benchmark_walltime_seconds,
     configure_logging,
     format_walltime_seconds,
 )
+
 
 os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
 
@@ -107,9 +107,7 @@ def configure_local_toolchain_path() -> None:
             prepended_entries.append(candidate_string)
             existing_entries.add(candidate_string)
     if prepended_entries:
-        os.environ["PATH"] = os.pathsep.join(
-            [*prepended_entries, *path_entries]
-        )
+        os.environ["PATH"] = os.pathsep.join([*prepended_entries, *path_entries])
 
 
 def configure_thread_environment(thread_count: int) -> None:
@@ -430,8 +428,16 @@ def benchmark_environment() -> dict[str, str]:
 def dependency_versions() -> dict[str, str | None]:
     versions = {}
     for package in (
-        "jax", "jaxlib", "lineax", "equinox", "optimistix",
-        "amjax", "pyamg", "cholespy",
+        "jax",
+        "jaxlib",
+        "lineax",
+        "numpy",
+        "scipy",
+        "equinox",
+        "optimistix",
+        "amjax",
+        "pyamg",
+        "cholespy",
     ):
         try:
             versions[package] = version(package)
@@ -706,9 +712,7 @@ def _walltime_seconds_from_env(env_name: str) -> float | None:
     try:
         return max(1.0, float(raw_value))
     except ValueError as error:
-        message = (
-            f"{env_name} must be numeric, received {raw_value!r}."
-        )
+        message = f"{env_name} must be numeric, received {raw_value!r}."
         raise RuntimeError(message) from error
 
 
@@ -813,7 +817,9 @@ def log_case_start(case: BenchmarkCase) -> None:
     )
 
 
-def log_case_completion(case: BenchmarkCase, records: Sequence[BenchmarkRecord]) -> None:
+def log_case_completion(
+    case: BenchmarkCase, records: Sequence[BenchmarkRecord]
+) -> None:
     status_counts = Counter(record.status for record in records)
     counts = ", ".join(
         f"{status}={count}" for status, count in sorted(status_counts.items())
@@ -969,7 +975,9 @@ def run_circuitscape_resistance(
             env=benchmark_environment(),
         )
         if note is not None:
-            return failed_record(case.task, tool_label, "Circuitscape.jl", case.name, note)
+            return failed_record(
+                case.task, tool_label, "Circuitscape.jl", case.name, note
+            )
         try:
             payload = json.loads(output.read_text())
         except Exception as error:
@@ -1274,7 +1282,11 @@ def write_results(
 
 def benchmark_software_label(task: str, tool_label: str) -> str:
     if tool_label.startswith("JAXScape"):
-        return "JAXScape + Optimistix" if task == "inverse_landscape_genetics" else "JAXScape"
+        return (
+            "JAXScape + Optimistix"
+            if task == "inverse_landscape_genetics"
+            else "JAXScape"
+        )
     if tool_label.startswith("gdistance"):
         return "gdistance"
     if tool_label.startswith("Circuitscape.jl"):
@@ -1297,11 +1309,27 @@ def unexpected_case_failure_records(
     for tool in sorted(REQUIRED_BASE_TOOL_LABELS_BY_TASK.get(case.task, set())):
         software = benchmark_software_label(case.task, tool)
         if tool in gpu_capable_labels:
-            records.append(failed_record(case.task, backend_tool_label(tool, "cpu"), software, case.name, note))
+            records.append(
+                failed_record(
+                    case.task,
+                    backend_tool_label(tool, "cpu"),
+                    software,
+                    case.name,
+                    note,
+                )
+            )
             if config.gpu_device is None:
                 records.append(gpu_placeholder_record(case, tool, software))
             else:
-                records.append(failed_record(case.task, backend_tool_label(tool, "gpu"), software, case.name, note))
+                records.append(
+                    failed_record(
+                        case.task,
+                        backend_tool_label(tool, "gpu"),
+                        software,
+                        case.name,
+                        note,
+                    )
+                )
         else:
             records.append(failed_record(case.task, tool, software, case.name, note))
     return records
@@ -1341,21 +1369,26 @@ def validate_records(records: list[BenchmarkRecord], config: BenchmarkConfig) ->
                         continue
                     detail = "; ".join(
                         f"{candidate_label}: "
-                        f"{(record.note or record.status) if record is not None else 'missing'}"
-                        for candidate_label, record in zip(candidate_labels, candidate_records, strict=False)
+                        + (
+                            record.note or record.status
+                            if record is not None
+                            else "missing"
+                        )
+                        for candidate_label, record in zip(
+                            candidate_labels, candidate_records, strict=False
+                        )
                     )
                     incomplete_messages.append(f"{tool}/{task}/{case.name}: {detail}")
                     continue
 
                 record = observed.get((task, case.name, tool))
                 if record is None:
-                    incomplete_messages.append(
-                        f"{tool}/{task}/{case.name}: missing"
-                    )
+                    incomplete_messages.append(f"{tool}/{task}/{case.name}: missing")
                     continue
                 if record.status != "ok":
                     incomplete_messages.append(
-                        f"{record.tool}/{record.task}/{record.scenario}: {record.note or record.status}"
+                        f"{record.tool}/{record.task}/{record.scenario}: "
+                        f"{record.note or record.status}"
                     )
 
     if incomplete_messages:
@@ -1365,8 +1398,10 @@ def validate_records(records: list[BenchmarkRecord], config: BenchmarkConfig) ->
 
 
 def collect_resistance_results(
-    case: BenchmarkCase, config: BenchmarkConfig,
-    *, profile_keys: list[str] | None = None,
+    case: BenchmarkCase,
+    config: BenchmarkConfig,
+    *,
+    profile_keys: list[str] | None = None,
 ) -> list[BenchmarkRecord]:
     from benchmark.jaxscape import resistance_distance
 
@@ -1434,6 +1469,14 @@ def collect_least_cost_results(
     return records
 
 
+def collect_free_energy_results(case: BenchmarkCase, config: BenchmarkConfig):
+    from benchmark.jaxscape.free_energy_distance import (
+        collect_jaxscape_free_energy_results,
+    )
+
+    return collect_jaxscape_free_energy_results(case, config)
+
+
 def collect_sensitivity_results(
     case: BenchmarkCase, config: BenchmarkConfig
 ) -> list[BenchmarkRecord]:
@@ -1470,8 +1513,10 @@ def collect_sensitivity_results(
 
 
 def collect_inverse_results(
-    case: BenchmarkCase, config: BenchmarkConfig,
-    *, profile_keys: list[str] | None = None,
+    case: BenchmarkCase,
+    config: BenchmarkConfig,
+    *,
+    profile_keys: list[str] | None = None,
 ) -> list[BenchmarkRecord]:
     from benchmark.jaxscape import inverse_landscape_genetics
 
@@ -1486,7 +1531,8 @@ def collect_inverse_results(
 def collect_results(
     config: BenchmarkConfig,
     *,
-    checkpoint_callback: Callable[[list[BenchmarkRecord], BenchmarkConfig], None] | None = None,
+    checkpoint_callback: Callable[[list[BenchmarkRecord], BenchmarkConfig], None]
+    | None = None,
 ) -> list[BenchmarkRecord]:
     configure_logging()
     records: list[BenchmarkRecord] = []
@@ -1512,6 +1558,8 @@ def collect_results(
 
     for case in CASES["resistance"]:
         collect_case(case, collect_resistance_results)
+    for case in CASES["free_energy"]:
+        collect_case(case, collect_free_energy_results)
     for case in CASES["lcp"]:
         collect_case(case, collect_least_cost_results)
     for case in CASES["sensitivity"]:

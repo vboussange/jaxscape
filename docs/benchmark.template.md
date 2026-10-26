@@ -28,6 +28,26 @@ Published benchmark coverage:
 
 <div align="center"><img src="../assets/benchmark_resistance_distance.png" alt="Resistance distance benchmark scorecard" width="900"></div>
 
+## Free-energy distance
+
+The symmetric first-hitting free-energy task uses the resistance benchmark's
+landscapes, seeds, reciprocal-cost conductances and 20 selected interior sites.
+The 10×10 and 100×100 cases run at inverse temperatures 0.01, 0.1 and 1.
+These temperatures define different mathematical workloads, so their timings
+are not interchangeable solver speedups. The explicit float64 CG profile uses
+`rtol=1e-10`, `atol=1e-90`, `max_steps=10000` and `stabilise_every=None`.
+
+Published benchmark coverage:
+
+{{FREE_ENERGY_PROFILES}}
+
+Each result records separate compilation and setup times, synchronized warmed
+forward and value-and-gradient samples, and independent sparse reference checks
+for all selected distances and four gradient directions. Failures remain in the
+result file. The larger-grid support range and external ConScape comparison are
+not inferred from these cases; see `benchmark/README.md` for reproduction and
+the precise scope.
+
 ## Least-cost path
 
 Formal problem: given the same grid graph and sampled node set $S$, compute the pairwise shortest-path distance matrix $D_{uv}$ for all $u, v \in S$ under edge costs $r_{ij} = \frac{c_i + c_j}{2}$.
