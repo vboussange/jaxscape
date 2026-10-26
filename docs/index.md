@@ -17,7 +17,7 @@ uv add jaxscape
 
 The default installation is CPU-only. For NVIDIA GPUs, use `uv add 'jaxscape[cuda]'`, or install JAX following the [official JAX installation guide](https://jax.readthedocs.io/en/latest/installation.html). JAXScape will automatically use the JAX backend you have configured.
 
-You may be required to install optional linear solvers for large-scale resistance distance computations. `CholmodSolver`, `PyAMGSolver`, and `AMJaxCGSolver` are documented on the [linear solver page](https://vboussange.github.io/jaxscape/api/linear_solvers), including the one-time `init_preconditioner(...)` workflow used by `AMJaxCGSolver` for JIT-compiled and differentiable repeated solves.
+You may be required to install optional linear solvers for large-scale resistance and free-energy distance computations. `CholmodSolver`, `PyAMGSolver`, and `AMJaxCGSolver` are documented on the [linear solver page](https://vboussange.github.io/jaxscape/api/linear_solvers), including the one-time `init_preconditioner(...)` workflow used by `AMJaxCGSolver` for JIT-compiled and differentiable repeated solves.
 
 ## Resistance distance methods
 
@@ -42,67 +42,57 @@ custom implicit-differentiation rule.
 
 ## Quick start
 
-**1. Download sample data**
-
-```bash
-curl -sL https://github.com/vboussange/jaxscape/releases/download/v0.0.6/data.zip -o data.zip && unzip -q data.zip && rm data.zip
-```
-
-**2. Run the analysis**
+This small example uses positive, symmetric conductances and the dense default
+solvers. Edge costs for least-cost and free-energy distances are reciprocals of
+conductance. Larger landscapes need an explicit
+[linear solver](https://vboussange.github.io/jaxscape/api/linear_solvers/).
 
 ```python
-import numpy as np
-import matplotlib.pyplot as plt
+import jax
+
+# Float64 gives the free-energy calculation a wider usable numerical range.
+jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
-from jaxscape import GridGraph
-from jaxscape import LCPDistance, ResistanceDistance, RSPDistance
+import matplotlib.pyplot as plt
+import numpy as np
+from jaxscape import FreeEnergyDistance, GridGraph, LCPDistance, ResistanceDistance
 
-permeability = jnp.array(np.loadtxt("data/permeability.csv", delimiter=",")) + 0.001
-barriers = np.asarray(permeability <= 0.1)
-
-# Create a grid graph where edge weights are the average permeability of the two nodes
-grid = GridGraph(grid=permeability, fun=lambda x, y: (x + y) / 2)
-
-# We set the source to the top left pixel, and compute distances to all other pixels with three different distance metrics
-source = grid.coord_to_index(jnp.array([0]), jnp.array([0]))
-
+permeability = jnp.array(
+    [[1.0, 1.0, 0.5, 1.0],
+     [1.0, 0.5, 0.5, 1.0],
+     [1.0, 1.0, 1.0, 1.0]],
+    dtype=jnp.float64,
+)
+# The default GridGraph weight function can be directed. Use a symmetric one.
+grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
+source = jnp.array([[0, 0]])
 distances = {
-    "LCP distance": LCPDistance(),
+    "Least-cost distance": LCPDistance(),
+    "Free-energy distance": FreeEnergyDistance(theta=0.2),
     "Resistance distance": ResistanceDistance(),
-    "RSP distance": RSPDistance(theta=0.01, cost=lambda x: -jnp.log(x)),
 }
 
-distance_cmap = plt.cm.magma.copy()
-distance_cmap.set_bad(color="lightgray")
-
-fig, axs = plt.subplots(1, 4, figsize=(12, 4))
-
-permeability_im = axs[0].imshow(permeability, cmap="gray", vmin=0, vmax=1)
-axs[0].set_xticks([])
-axs[0].set_yticks([])
-for spine in axs[0].spines.values():
-    spine.set_visible(True)
+fig, axs = plt.subplots(1, 4, figsize=(12, 3))
+im = axs[0].imshow(permeability, cmap="gray", vmin=0, vmax=1)
 axs[0].set_title("Permeability")
-fig.colorbar(permeability_im, ax=axs[0], shrink=0.2)
-
+fig.colorbar(im, ax=axs[0], shrink=0.6)
 for ax, (title, distance) in zip(axs[1:], distances.items()):
-    # Compute distances from all nodes to the source
-    dist_to_node = distance(grid, source)
-
-    # Convert from node values to a 2D array and hide barrier cells
-    dist_array = np.asarray(grid.node_values_to_array(dist_to_node.ravel()))
-    dist_array = np.ma.masked_where(barriers, dist_array)
-    
-    # Plotting
-    im = ax.imshow(dist_array, cmap=distance_cmap)
-    ax.axis("off")
+    values = distance(grid, sources=source)
+    im = ax.imshow(np.asarray(values).reshape(permeability.shape), cmap="magma")
     ax.set_title(title)
-    fig.colorbar(im, ax=ax, shrink=0.2)
-
-fig.suptitle("Permeability and distance to the top-left pixel")
+    fig.colorbar(im, ax=ax, shrink=0.6)
+for ax in axs:
+    ax.axis("off")
+fig.suptitle("Distances from the top-left pixel")
 plt.tight_layout()
 plt.show()
 ```
+
+`theta` is **inverse temperature**: increasing it favors least-cost paths.
+As it decreases toward zero, free-energy distance approaches a scaled effective
+resistance; on a loop-free graph with `m` undirected edges, the limit is `m`
+times the resistance distance. These limits may be numerically unresolved at
+extreme parameter values; the calculation then raises an error.
 
 <div align="center"><img src="examples/distance_calculation/distances.png" alt="Distances"  width="600"></div>
 
