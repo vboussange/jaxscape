@@ -33,7 +33,7 @@ def __getattr__(name: str):
     if name == "RSPDistance":
         # ImportError keeps this message for `from jaxscape import RSPDistance`.
         raise ImportError(
-            "RSPDistance was removed in JAXScape 0.1.0. FreeEnergyDistance "
+            "RSPDistance was removed in JAXScape 0.0.14. FreeEnergyDistance "
             "replaces it: it uses edge costs 1/a_ij and returns symmetric "
             "first-hitting free-energy distances, so its values differ from the "
             "expected path costs that RSPDistance returned. See "
