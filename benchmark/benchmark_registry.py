@@ -53,7 +53,9 @@ BENCHMARK_TASK_SPECS = (
         group_name="free_energy",
         task="free_energy_distance",
         title="Free-energy distance",
-        size_by_label={"small": 10, "medium": 100, "large": 1000},
+        # Larger grids put the most distant sampled pairs below float64
+        # resolution of the fundamental matrix at theta=0.1.
+        size_by_label={"small": 10, "medium": 100, "large": 300},
         seed_base=0,
         scorecard_asset_name="benchmark_free_energy_distance.png",
     ),
