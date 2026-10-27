@@ -47,7 +47,7 @@ uv add jaxscape
 
 The default installation is CPU-only. For NVIDIA GPUs, use `uv add 'jaxscape[cuda]'`, or install JAX following the [official JAX installation guide](https://jax.readthedocs.io/en/latest/installation.html). JAXScape will automatically use the JAX backend you have configured.
 
-You may be required to install optional linear solvers for large-scale resistance distance computations. `CholmodSolver`, `PyAMGSolver`, and `AMJaxCGSolver` are documented on the [linear solver page](https://vboussange.github.io/jaxscape/api/linear_solvers).
+You may be required to install optional linear solvers for large-scale resistance and free-energy distance computations. `CholmodSolver`, `PyAMGSolver`, and `AMJaxCGSolver` are documented on the [linear solver page](https://vboussange.github.io/jaxscape/api/linear_solvers).
 
 ## Quick start
 
@@ -60,25 +60,39 @@ curl -sL https://github.com/vboussange/jaxscape/releases/download/v0.0.6/data.zi
 **2. Run the analysis**
 
 ```python
-import numpy as np
-import matplotlib.pyplot as plt
-import jax.numpy as jnp
-from jaxscape import GridGraph
-from jaxscape import LCPDistance, ResistanceDistance, RSPDistance
+import jax
 
-permeability = jnp.array(np.loadtxt("data/permeability.csv", delimiter=",")) + 0.001
+# Enable float64 arrays for the free-energy distance.
+jax.config.update("jax_enable_x64", True)
+import jax.numpy as jnp
+import lineax as lx
+import matplotlib.pyplot as plt
+import numpy as np
+from jaxscape import FreeEnergyDistance, GridGraph, LCPDistance, ResistanceDistance
+
+permeability = jnp.array(
+    np.loadtxt("data/permeability.csv", delimiter=","), dtype=jnp.float32
+) + 0.001
 barriers = np.asarray(permeability <= 0.1)
 
-# Create a grid graph where edge weights are the average permeability of the two nodes
+# Symmetric conductances are the mean permeability of neighboring cells.
 grid = GridGraph(grid=permeability, fun=lambda x, y: (x + y) / 2)
 
-# We set the source to the top left pixel, and compute distances to all other pixels with three different distance metrics
+# Compute distances from the top-left pixel to every other pixel.
 source = grid.coord_to_index(jnp.array([0]), jnp.array([0]))
 
+# LCP and resistance distances use float32; free-energy distance uses float64.
+free_energy_grid = GridGraph(
+    permeability.astype(jnp.float64), fun=lambda x, y: (x + y) / 2
+)
+free_energy = FreeEnergyDistance(
+    theta=0.01,
+    solver=lx.CG(rtol=1e-10, atol=1e-90, max_steps=10_000, stabilise_every=None),
+)
 distances = {
-    "LCP distance": LCPDistance(),
-    "Resistance distance": ResistanceDistance(),
-    "RSP distance": RSPDistance(theta=0.01, cost=lambda x: -jnp.log(x)),
+    "LCP distance": LCPDistance()(grid, sources=source),
+    "Resistance distance": ResistanceDistance()(grid, sources=source),
+    "Free-energy distance": free_energy(free_energy_grid, sources=source),
 }
 
 distance_cmap = plt.cm.magma.copy()
@@ -94,14 +108,11 @@ for spine in axs[0].spines.values():
 axs[0].set_title("Permeability")
 fig.colorbar(permeability_im, ax=axs[0], shrink=0.2)
 
-for ax, (title, distance) in zip(axs[1:], distances.items()):
-    # Compute distances from all nodes to the source
-    dist_to_node = distance(grid, source)
-
+for ax, (title, dist_to_node) in zip(axs[1:], distances.items()):
     # Convert from node values to a 2D array and hide barrier cells
     dist_array = np.asarray(grid.node_values_to_array(dist_to_node.ravel()))
     dist_array = np.ma.masked_where(barriers, dist_array)
-    
+
     # Plotting
     im = ax.imshow(dist_array, cmap=distance_cmap)
     ax.axis("off")
@@ -112,6 +123,14 @@ fig.suptitle("Permeability and distance to the top-left pixel")
 plt.tight_layout()
 plt.show()
 ```
+
+`theta` is the inverse temperature: larger values concentrate the path
+distribution on least-cost paths. Entries of the fundamental matrix decay
+exponentially with path cost, so this example uses float64 and tight CG
+tolerances to resolve them. The
+[solver guide](https://vboussange.github.io/jaxscape/api/linear_solvers/)
+covers solver choices for larger landscapes.
+
 <div align="center"><img src="docs/examples/distance_calculation/distances.png" alt="Distances"  width="600"></div>
 
 But what's really cool about `JAXscape` is that you can autodiff through thoses distances! Check out the [documentation](#documentation) to learn about applications and more!

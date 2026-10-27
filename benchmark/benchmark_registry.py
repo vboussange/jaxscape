@@ -50,6 +50,14 @@ SIZE_ORDER = {label: index for index, label in enumerate(SIZE_LABELS)}
 
 BENCHMARK_TASK_SPECS = (
     BenchmarkTaskSpec(
+        group_name="free_energy",
+        task="free_energy_distance",
+        title="Free-energy distance",
+        size_by_label={"small": 10, "medium": 100, "large": 1000},
+        seed_base=0,
+        scorecard_asset_name="benchmark_free_energy_distance.png",
+    ),
+    BenchmarkTaskSpec(
         group_name="resistance",
         task="resistance_distance",
         title="Resistance distance",
@@ -88,6 +96,7 @@ TASK_SPECS_BY_TASK = {spec.task: spec for spec in BENCHMARK_TASK_SPECS}
 TASK_LABELS = {spec.task: spec.title for spec in BENCHMARK_TASK_SPECS}
 
 TOOL_SPECS_BY_TASK = {
+    "free_energy_distance": (ToolSpec("JAXScape / CG / f64", gpu_capable=True),),
     "resistance_distance": (
         # Resistance pinv-family profiles are kept out of the full suite because
         # the large resistance case is not a scientifically useful dense-pinv
@@ -176,7 +185,9 @@ OPTIONAL_BASE_TOOL_LABELS_BY_TASK = {
 }
 
 DISPLAY_ORDER_BY_TASK = {
-    task: [display_label for tool in tool_specs for display_label in tool.display_labels()]
+    task: [
+        display_label for tool in tool_specs for display_label in tool.display_labels()
+    ]
     for task, tool_specs in TOOL_SPECS_BY_TASK.items()
 }
 
