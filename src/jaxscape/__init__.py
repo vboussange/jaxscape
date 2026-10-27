@@ -27,3 +27,17 @@ from .windowed_analysis import WindowedAnalysis as WindowedAnalysis
 
 
 __version__ = importlib.metadata.version("jaxscape")
+
+
+def __getattr__(name: str):
+    if name == "RSPDistance":
+        # ImportError keeps this message for `from jaxscape import RSPDistance`.
+        raise ImportError(
+            "RSPDistance was removed in JAXScape 0.1.0. FreeEnergyDistance "
+            "replaces it: it uses edge costs 1/a_ij and returns symmetric "
+            "first-hitting free-energy distances, so its values differ from the "
+            "expected path costs that RSPDistance returned. See "
+            "https://vboussange.github.io/jaxscape/api/distances/.",
+            name=__name__,
+        )
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

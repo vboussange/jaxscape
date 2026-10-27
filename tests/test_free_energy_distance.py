@@ -465,3 +465,8 @@ def test_grid_rectangular_coordinates_and_batched_gradients():
     expected = jax.vmap(jax.value_and_grad(oracle))(batch)
     np.testing.assert_allclose(actual[0], expected[0], rtol=1e-11)
     np.testing.assert_allclose(actual[1], expected[1], rtol=1e-10, atol=1e-11)
+
+
+def test_removed_rsp_distance_import_names_replacement():
+    with pytest.raises(ImportError, match="FreeEnergyDistance"):
+        from jaxscape import RSPDistance  # noqa: F401

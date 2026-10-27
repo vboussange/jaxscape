@@ -34,7 +34,7 @@ license = {file = "LICENSE"}
 name = "jaxscape"
 readme = "README.md"
 requires-python = ">=3.11"
-version = "0.0.13"
+version = "0.1.0"
 
 [project.optional-dependencies]
 amjax = [
