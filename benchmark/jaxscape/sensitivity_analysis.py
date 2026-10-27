@@ -29,6 +29,7 @@ from benchmark.jaxscape.utils import (
     run_worker_subprocess,
 )
 
+
 configure_standalone_environment()
 
 import equinox as eqx
@@ -36,7 +37,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from jaxscape import GridGraph, LCPDistance, ResistanceDistance
-from jaxscape.solvers import batched_linear_solve
+from jaxscape.solvers.operator import _linear_solve
 from jaxscape.utils import graph_laplacian
 
 from benchmark.benchmark_distances import (
@@ -70,7 +71,7 @@ SHORTEST_PATH_GRADIENT_NOTE = (
 RESISTANCE_GRADIENT_NOTE = (
     "Target-wise checkpointed closed-form gradient of graph-volume-scaled "
     "effective resistance with solver-backed grounded Laplacian solves, "
-    "compared against `gdistance::passage(..., totalNet = \"total\")` on "
+    'compared against `gdistance::passage(..., totalNet = "total")` on '
     "the same single-origin, shared-surface, shared-destination task."
 )
 LOGGER = logging.getLogger(__name__)
@@ -191,12 +192,7 @@ def _single_source_resistance_gradient(
             n_reduced,
             laplacian_reduced.dtype,
         )
-        potential = batched_linear_solve(
-            laplacian_reduced,
-            rhs[:, None],
-            solver,
-            state=state,
-        )[:, 0]
+        potential = _linear_solve(laplacian_reduced, rhs, solver, state=state)
         row_potentials = _grounded_values(potential, rows, n_reduced)
         col_potentials = _grounded_values(potential, cols, n_reduced)
         edge_delta_squares = jnp.where(
