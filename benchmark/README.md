@@ -8,13 +8,14 @@ feature into `docs/assets/`. Long GPU launches can also be run through the
 run-scoped wrapper at `benchmark/results/runs/<timestamp>/`, and the smoke
 pipeline writes isolated artifacts under `benchmark/results/smoke/`. Every
 automated feature is benchmarked on deterministic synthetic size tiers; the
-sensitivity suite uses a smaller `large` case than the distance tasks.
+free-energy and sensitivity suites use smaller `large` cases than the other
+distance tasks.
 
 ## Compatibility summary
 
 | Feature | Automated profiles | Optional local profiles | Notes |
 | --- | --- | --- | --- |
-| Free-energy distance | `JAXScape / CG / f64 (CPU/GPU)` | none | Same grid sizes, seeds, conductances and selected sites as resistance distance; fixed inverse temperature 0.1. |
+| Free-energy distance | `JAXScape / CG / f64 (CPU/GPU)` | none | Small and medium cases match resistance distance; the large case uses a 300 x 300 grid. Fixed inverse temperature 0.1. |
 | Resistance distance | `JAXScape / PyAMG`, `gdistance / commuteDistance`, `Circuitscape.jl / cg+amg / f64`, `Circuitscape.jl / cholmod / f64` | `JAXScape / CholmodSolver / f32`, `JAXScape / CholmodSolver / f64`, `JAXScape / AMJaxCGSolver / f32 (CPU/GPU)`, `JAXScape / AMJaxCGSolver / f64 (CPU/GPU)`, `JAXScape / approx AMJaxCGSolver / f32 (CPU/GPU)`, `JAXScape / approx AMJaxCGSolver / f64 (CPU/GPU)`, `JAXScape / approx CholmodSolver / f32`, `JAXScape / approx CholmodSolver / f64`, `Conefor` adapters | The dense `pinv` family is intentionally excluded from the full resistance suite because the large resistance case is not a useful dense-pseudoinverse benchmark target. |
 | Least-cost path | `JAXScape (CPU/GPU)`, `gdistance / costDistance` | `Conefor` adapter | Conefor remains a manual external integration. |
 | Sensitivity analysis | `JAXScape / shortest-path gradient (CPU/GPU)`, `gdistance / shortestPath`, `JAXScape / resistance gradient (CPU/GPU)`, `gdistance / passage` | none | This scorecard compares JAX gradients to the matching `gdistance` centrality surfaces. |

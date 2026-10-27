@@ -32,3 +32,23 @@ def test_free_energy_benchmark_worker():
     assert record.tool == "JAXScape / CG / f64 (CPU)"
     assert record.metrics["theta"] == 0.1
     assert record.metrics["dtype"] == "float64"
+
+
+def test_sensitivity_benchmark_worker():
+    from benchmark.jaxscape.sensitivity_analysis import run_worker
+
+    for kind, tool in (
+        ("resistance", "JAXScape / resistance gradient (CPU)"),
+        ("shortest_path", "JAXScape / shortest-path gradient (CPU)"),
+    ):
+        record = run_worker(
+            {
+                "case_name": "synthetic_sensitivity_small",
+                "backend": "cpu",
+                "repeats": 1,
+                "centrality_kind": kind,
+                "reference_raster_path": None,
+            }
+        )
+        assert record.status == "ok", record.note
+        assert record.tool == tool

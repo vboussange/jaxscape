@@ -28,8 +28,8 @@ DEFAULT_OUTPUT = ROOT / "docs" / "benchmark.md"
 
 COMPATIBILITY_NOTES = {
     "free_energy_distance": (
-        "Float64 CG at inverse temperature 0.1, using the resistance benchmark's "
-        "grid sizes, seeds, conductances and selected sites."
+        "Float64 CG at inverse temperature 0.1. Small and medium cases match "
+        "the resistance benchmark; the large case uses a 300 x 300 grid."
     ),
     "resistance_distance": (
         "The published `gdistance` series is rescaled from commute time to "
