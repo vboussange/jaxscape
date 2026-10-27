@@ -62,7 +62,7 @@ curl -sL https://github.com/vboussange/jaxscape/releases/download/v0.0.6/data.zi
 ```python
 import jax
 
-# Explicit float64 profile for the free-energy calculation.
+# Enable float64 arrays for the free-energy distance.
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import lineax as lx
@@ -81,7 +81,7 @@ grid = GridGraph(grid=permeability, fun=lambda x, y: (x + y) / 2)
 # Compute distances from the top-left pixel to every other pixel.
 source = grid.coord_to_index(jnp.array([0]), jnp.array([0]))
 
-# Keep the original panels in float32; request float64 explicitly for FED.
+# LCP and resistance distances use float32; free-energy distance uses float64.
 free_energy_grid = GridGraph(
     permeability.astype(jnp.float64), fun=lambda x, y: (x + y) / 2
 )
@@ -124,11 +124,12 @@ plt.tight_layout()
 plt.show()
 ```
 
-`theta` is inverse temperature: larger values favor least-cost paths. This
-example requests float64 and tight CG tolerances to resolve distant inverse
-entries. These settings are specific to this example;
-the final numerical check still rejects unresolved queries. See the
-[solver guide](https://vboussange.github.io/jaxscape/api/linear_solvers/).
+`theta` is the inverse temperature: larger values concentrate the path
+distribution on least-cost paths. Entries of the fundamental matrix decay
+exponentially with path cost, so this example uses float64 and tight CG
+tolerances to resolve them. The
+[solver guide](https://vboussange.github.io/jaxscape/api/linear_solvers/)
+covers solver choices for larger landscapes.
 
 <div align="center"><img src="docs/examples/distance_calculation/distances.png" alt="Distances"  width="600"></div>
 

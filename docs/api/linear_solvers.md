@@ -8,8 +8,8 @@ For substantial landscapes, choose an explicit sparse solver:
   try `PyAMGSolver` when factorization storage is too costly.
 - For JIT-compiled CPU or GPU execution, use Lineax CG, or `AMJaxCGSolver` when
   a reusable multigrid preconditioner helps convergence. AMJax setup runs on CPU.
-- `solver=None` remains the default for convenience on small graphs. Its dense
-  storage makes it the least favorable option for substantial landscapes.
+- The default, `solver=None`, uses a dense solve and is suited to small
+  graphs only.
 
 Solver tolerances depend on the workload and precision. Check accuracy for your
 queries; solver convergence alone does not establish accurate distances.

@@ -18,14 +18,15 @@ from jaxscape.solvers.operator import (
 
 
 class FreeEnergyDistance(AbstractDistance):
-    r"""Symmetric first-hitting free-energy distance with reciprocal edge costs.
+    r"""Symmetric first-hitting free-energy distance with edge costs $1/a_{ij}$.
 
     **Attributes:**
 
-    - `theta`: Finite positive scalar inverse temperature. Larger values favor
-      least-cost paths. This is a differentiable numerical parameter.
-    - `solver`: Optional supported Lineax sparse solver, following
-      `ResistanceDistance`. `None` uses a dense solve for small graphs.
+    - `theta`: Finite positive scalar inverse temperature. Larger values
+      concentrate the path distribution on least-cost paths. Distances are
+      differentiable with respect to `theta`.
+    - `solver`: Optional Lineax solver, with the same options as
+      `ResistanceDistance`. `None` uses a dense solve, suitable for small graphs.
 
     For conductances $a_{ij}$, let $c_{ij}=1/a_{ij}$ on present edges,
     $P_{ij}=a_{ij}/\sum_k a_{ik}$, and $Z=(I-P\odot e^{-\theta C})^{-1}$.
@@ -35,19 +36,25 @@ class FreeEnergyDistance(AbstractDistance):
     [Kivimäki, Shimbo & Saerens](https://arxiv.org/abs/1212.1666) and
     [Françoisse et al.](https://apiacoa.org/publications/2017/francoissekivimakietal2017bag-of-path.pdf).
 
-    Inputs must be connected, symmetric graphs with positive finite present
-    conductances. Both costs and transition probabilities vary with conductance.
-    Float32 and float64 are retained; float64 widens the resolvable range.
-    The large-`theta` limit is reciprocal-cost least-cost distance; on a loop-free
-    graph with `m` undirected edges, the small-`theta` limit is `m` times effective
-    resistance. Rebuild full solver state after conductances or `theta` change.
+    The graph must be connected and symmetric, with positive finite
+    conductances on present edges. Conductance enters both the edge costs and
+    the transition probabilities. As `theta` grows, the distance approaches the
+    least-cost distance with edge costs $c_{ij}$. On a graph without self-loops
+    and with `m` undirected edges, the small-`theta` limit is `m` times the
+    effective resistance. Solver state depends on the conductances and on
+    `theta`; rebuild it when either changes.
 
-    Numerically unresolved queried logarithms raise an Equinox error. No
-    clipping or substitution repairs the result. The residual/rounding check
-    uses heuristic allowances; validate accuracy for the intended workload.
-    Lineax errors reliably raise on CPU; on GPU they may only print. First-order
-    reverse mode reuses forward solutions; forward/higher-order modes are not
-    guaranteed.
+    **Precision and errors:** float32 and float64 inputs are supported. Entries
+    of $Z$ decay exponentially with path cost, and float64 resolves smaller
+    entries, hence larger distances and larger `theta`. Each queried logarithm
+    is checked against a residual-based error estimate; unresolved entries raise
+    an `EquinoxRuntimeError` and are never clipped or substituted. The estimate
+    includes heuristic rounding allowances, so accuracy should be validated for
+    the intended workload. Checks use `eqx.error_if`; on GPU, a failed check may
+    be reported without raising, depending on `EQX_ON_ERROR`.
+
+    **Differentiation:** first-order reverse mode reuses the forward solutions.
+    Forward-mode and higher-order derivatives are not validated.
 
     !!! example
 
@@ -80,8 +87,8 @@ class FreeEnergyDistance(AbstractDistance):
     def init(self, graph: AbstractGraph) -> Any:
         """Initialize state bound to the current conductances and `theta`.
 
-        Rebuild full state when either changes. Solver setup is not part of the
-        differentiable mathematical value.
+        Rebuild the state when either changes. Gradients do not propagate
+        through solver setup.
 
         **Arguments:**
 
@@ -102,8 +109,9 @@ class FreeEnergyDistance(AbstractDistance):
     def init_preconditioner(self, graph: AbstractGraph) -> Any:
         """Initialize preconditioner-only state when supported by the solver.
 
-        AMJax preconditioners may be reused with a fresh operator, following the
-        existing resistance-distance conventions. Other solvers use full state.
+        For `AMJaxCGSolver`, the preconditioner can be reused with a fresh
+        operator, as in `ResistanceDistance`. Other solvers return full solver
+        state.
 
         **Arguments:**
 
@@ -147,14 +155,14 @@ class FreeEnergyDistance(AbstractDistance):
         **Arguments:**
 
         - `graph`: Connected symmetric graph.
-        - `nodes`: Vertex indices with shape `(k,)`. Order and repetitions are
-          retained. Use the callable distance interface for grid coordinates.
+        - `nodes`: Vertex indices with shape `(k,)`, possibly repeated. Use the
+          callable distance interface for grid coordinates.
         - `state`: Optional solver state for the current operator. `None`
           initializes state automatically; AMJax setup must precede JIT tracing.
 
         **Returns:**
 
-        Distance array with shape `(k, k)` in the requested selection order.
+        Distance array with shape `(k, k)`, ordered as `nodes`.
         """
         return self._distances(graph, nodes, nodes, True, state)
 
@@ -168,15 +176,15 @@ class FreeEnergyDistance(AbstractDistance):
 
         - `graph`: Connected symmetric graph.
         - `sources`: Source vertex indices with shape `(s,)`.
-        - `targets`: Target vertex indices with shape `(t,)`. Selection order
-          and repetitions are retained on both sides. Use the callable distance
+        - `targets`: Target vertex indices with shape `(t,)`. Sources and
+          targets may contain repeated indices. Use the callable distance
           interface for grid coordinates or omitted endpoints.
         - `state`: Optional solver state for the current operator. `None`
           initializes state automatically; AMJax setup must precede JIT tracing.
 
         **Returns:**
 
-        Distance array with shape `(s, t)` in source and target selection order.
+        Distance array with shape `(s, t)`, ordered as `sources` and `targets`.
         """
         return self._distances(graph, sources, targets, False, state)
 
@@ -383,12 +391,12 @@ def _selected_inverse_bwd(
 def _entry_error(
     operator: BCOO, basis: Array, potentials: Array, killing: Array
 ) -> Array:
-    """Comparison envelopes with heuristic rounding allowances.
+    """Entrywise error envelopes for the computed columns of H^-1.
 
     H is inverse-positive. If rho >= |b-Hx| and 0 < delta <= Hw for w > 0,
-    then |H^-1 b-x| <= H^-1 rho <= w*max(rho/delta). Retain w=1 as a fallback
-    and use a spatially decaying w only when its rounded lower margin is positive.
-    Assembly/product rounding scales use calibrated heuristics.
+    then |H^-1 b-x| <= H^-1 rho <= w*max(rho/delta). The constant w=1 is the
+    fallback; a spatially decaying w is used when its rounded lower margin is
+    positive. Rounding allowances for assembly and products are heuristic.
     """
     operator, basis, potentials, killing = jax.tree.map(
         jax.lax.stop_gradient, (operator, basis, potentials, killing)
@@ -405,7 +413,7 @@ def _entry_error(
         .add(valid.astype(jnp.int32))
     )
     eps = jnp.finfo(potentials.dtype).eps
-    # Calibrated allowance for sparse accumulation plus operator assembly;
+    # Heuristic allowance for sparse accumulation plus operator assembly;
     # the four extra rounding units do not make this a rigorous error bound.
     gamma = (jnp.max(count) + 4) * eps
     rho = jnp.abs(residual) + gamma * magnitude
@@ -432,10 +440,10 @@ def _check_distances(
 ) -> Array:
     """Reject unresolved queried logarithms without differentiating the check.
 
-    A private relative allowance of 16*sqrt(eps), scaled by max(1, abs(d)),
-    permits ordinary float32 and float64 solves while conservatively rejecting
-    ill-conditioned small theta and underresolved distant/large-theta pairs.
-    Independent public-API tests calibrate values and gradients separately.
+    The relative tolerance 16*sqrt(eps), scaled by max(1, abs(d)), accepts
+    well-resolved float32 and float64 solves and rejects ill-conditioned
+    small-theta queries and under-resolved distant or large-theta pairs. The
+    tolerance is heuristic.
     """
     checked_values: tuple[Array, ...]
     checked_errors: tuple[Array, ...]

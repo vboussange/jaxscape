@@ -30,9 +30,11 @@ Published benchmark coverage:
 
 ## Free-energy distance
 
-Formal problem: given the same undirected grid graph and sampled node set $S$,
-compute the symmetric first-hitting free-energy distance matrix for all
-$u, v \in S$, with reciprocal edge costs and inverse temperature $\theta=0.1$.
+Formal problem: given the same undirected grid graph, conductance weights
+$w_{ij}$ and sampled node set $S$, compute the symmetric first-hitting
+free-energy distance matrix for all $u, v \in S$, with edge costs
+$1/w_{ij} = \frac{c_i + c_j}{2}$ (the least-cost edge costs) and inverse
+temperature $\theta=0.1$.
 The float64 CG profile uses `rtol=1e-10`, `atol=1e-90`, `max_steps=10000` and
 `stabilise_every=None`.
 
