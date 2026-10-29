@@ -17,6 +17,11 @@ from lineax import AbstractLinearOperator, RESULTS
 from .operator import AbstractRefreshingSolver
 
 
+# Finding the spec imports nothing: spineax and the CUDA libraries load only
+# when a `CuDSSSolver` is constructed.
+CUDSS_AVAILABLE = importlib.util.find_spec("spineax") is not None
+
+
 @final
 class CuDSSSolverState(eqx.Module):
     """State of `CuDSSSolver` for one sparsity pattern.
@@ -28,11 +33,15 @@ class CuDSSSolverState(eqx.Module):
     - `value_map`: For each stored entry of the BCOO matrix, the index of its
       CSR value, or the number of CSR values for padding entries.
     - `rows`: The row of each CSR value.
+    - `failed`: Whether the factorization in `token` failed its check. Solves
+      with a failed state fail, and `refresh_state` analyses the matrix
+      afresh instead of refactorizing.
     """
 
     token: Any
     value_map: Array
     rows: Array
+    failed: Array
 
 
 @final
@@ -57,14 +66,22 @@ class CuDSSSolver(AbstractRefreshingSolver):
     transpose. No gradient is taken through analysis or factorization.
 
     It factorizes and solves in the dtype of the matrix, float32 or float64.
-    spineax reports no factorization status, so each solve checks its solution
-    `x` against the factorized matrix `A`: a solution that is not finite, or
-    whose residual `max|b - A x|` exceeds `max|b|` times 1e-4 in float64 or
-    1e-1 in float32, becomes NaN and reports `lineax.RESULTS.singular`. A
-    matrix that is not positive definite, or is numerically singular,
-    therefore makes the solve raise with `throw=True` and return a failed
-    result with `throw=False`. The check costs one sparse matrix-vector
-    product per right-hand side.
+    spineax reports no factorization status: a failed cuDSS factorization
+    leaves finite or NaN solutions, and one that meets a non-positive pivot
+    also leaves its cuDSS handle unusable for later refactorizations.
+    `CuDSSSolver` therefore checks each factorization, in `init` and
+    `refresh_state`, by solving `A x = A 1`: the factorization fails when the
+    backward error `max|A 1 - A x| / (||A||_inf max|x|)` exceeds the square
+    root of the machine epsilon of the dtype. The next `refresh_state` of a
+    failed state analyses the matrix afresh. Each solve also checks its
+    solution `x` of `b`: it fails when `x` is not finite or its residual
+    `max|b - A x|` exceeds `max|b|` times 1e-4 in float64 or 1e-1 in
+    float32, which catches singular matrices for the right-hand sides they
+    make inconsistent. A failed solve returns NaN and reports
+    `lineax.RESULTS.singular`, so it raises with `throw=True` and returns a
+    failed result with `throw=False`. The checks cost one single right-hand
+    side solve and two sparse matrix-vector products per factorization, and
+    one sparse matrix-vector product per right-hand side.
 
     !!! example
 
@@ -117,8 +134,9 @@ class CuDSSSolver(AbstractRefreshingSolver):
 
         `init` reads concrete sparse indices, so create the state outside
         `jax.jit`. A state belongs to one sparsity pattern, i.e. one graph
-        geometry with any conductances; `refresh_state` maps values onto that
-        pattern by position and does not compare sparse indices. A query uses
+        geometry with any conductances, and `refresh_state` raises an error
+        for an operator whose sparse indices differ from those the state was
+        initialized for. A query uses
         up the factorization of the state it is given, because cuDSS handles
         cannot be copied (spineax issue #27). Pass the state that a
         `*_distance_and_state` query returns to the next call. Passing a
@@ -135,13 +153,11 @@ class CuDSSSolver(AbstractRefreshingSolver):
         self, operator: AbstractLinearOperator, options: dict[str, Any]
     ) -> CuDSSSolverState:
         del options
-        cudss = _load_cudss()
         matrix = jax.lax.stop_gradient(_bcoo_matrix(operator))
         offsets, columns, rows, value_map = _csr_pattern(matrix)
         values = _csr_values(matrix.data, value_map, columns.shape[0])
-        token = cudss.analyze(values, offsets, columns, mtype_id="spd", mview_id="full")
-        token = cudss.factorize(token, values)
-        return CuDSSSolverState(token=token, value_map=value_map, rows=rows)
+        token = _analyse_and_factorize(values, offsets, columns)
+        return _checked_state(token, value_map, rows)
 
     def refresh_state(
         self,
@@ -149,25 +165,35 @@ class CuDSSSolver(AbstractRefreshingSolver):
         options: dict[str, Any],
         state: CuDSSSolverState,
     ) -> CuDSSSolverState:
-        """Refactorize `state` for the values of `operator`.
+        """Factorize `state` for the values of `operator`.
 
         **Arguments:**
 
-        - `operator`: BCOO-backed operator with the sparsity pattern `state`
-          was initialized for, and possibly different values.
+        - `operator`: BCOO-backed operator with the sparse indices `state` was
+          initialized for, and possibly different values.
         - `options`: Unused.
         - `state`: State from `init` or an earlier call.
 
         **Returns:**
 
         A new state factorized for `operator`, to solve with and to pass to
-        the next call. The factorization of `state` is used up.
+        the next call. It refactorizes `state`, whose factorization is used
+        up, or analyses the matrix afresh when `state` failed its check.
         """
         del options
-        matrix = _bcoo_matrix(operator)
-        values = _csr_values(matrix.data, state.value_map, state.token.nnz)
-        token = _load_cudss().refactorize(state.token, values)
-        return CuDSSSolverState(token=token, value_map=state.value_map, rows=state.rows)
+        cudss = _load_cudss()
+        data = _checked_pattern(_bcoo_matrix(operator), state)
+        values = _csr_values(data, state.value_map, state.token.nnz)
+        token = jax.lax.cond(
+            state.failed,
+            lambda token, values: _analyse_and_factorize(
+                values, token.offsets, token.columns
+            ),
+            cudss.refactorize,
+            state.token,
+            values,
+        )
+        return _checked_state(token, state.value_map, state.rows)
 
     def compute(
         self,
@@ -177,9 +203,8 @@ class CuDSSSolver(AbstractRefreshingSolver):
     ) -> tuple[Array, RESULTS, dict[str, Any]]:
         del options
         solution = _load_cudss().solve(state.token, vector)
-        solved = _solves(state, solution, vector)
-        # spineax reports no factorization status, and a failed factorization
-        # can leave finite solutions. Failed solutions become NaN, so that
+        solved = ~state.failed & _residual_check_passes(state, solution, vector)
+        # A failed solve can leave finite solutions. They become NaN, so that
         # their values never look valid.
         solution = jnp.where(solved, solution, jnp.nan)
         return solution, RESULTS.where(solved, RESULTS.successful, RESULTS.singular), {}
@@ -200,7 +225,7 @@ def _load_cudss() -> ModuleType:
     Importing `spineax.cudss` initializes JAX's backends and loads the CUDA
     libraries, so it happens only here, when a `CuDSSSolver` is used.
     """
-    if importlib.util.find_spec("spineax") is None:
+    if not CUDSS_AVAILABLE:
         raise ImportError(
             "CuDSSSolver requires spineax, which is not installed. Install it "
             "with `pip install 'jaxscape[cudss]'` on Linux x86-64 with Python "
@@ -238,11 +263,13 @@ def _bcoo_matrix(operator: AbstractLinearOperator) -> BCOO:
 
 
 def _csr_pattern(matrix: BCOO) -> tuple[Array, Array, Array, Array]:
-    """CSR pattern of `matrix`, the row of each CSR value, and the map from its
-    stored entries to CSR values.
+    """Return the CSR pattern of `matrix`, with CSR rows and the value map.
 
-    The pattern is sorted and unique: duplicate entries share one CSR value and
-    padding entries, whose indices are out of bounds, are left out.
+    The pattern, CSR offsets and columns, is sorted and unique: duplicate
+    entries share one CSR value and padding entries, whose indices are out of
+    bounds, are left out. The rows give the row of each CSR value, and the
+    value map the CSR value of each stored entry, or the number of CSR values
+    for padding entries.
     """
     try:
         indices = np.asarray(matrix.indices, dtype=np.int64)
@@ -275,30 +302,95 @@ def _csr_values(data: Array, value_map: Array, nnz: int) -> Array:
     return jnp.zeros(nnz, dtype=data.dtype).at[value_map].add(data, mode="drop")
 
 
-# Largest residual of a solution, relative to its right-hand side, in the
-# infinity norm. A failed Cholesky factorization leaves solutions with NaN or
-# with residuals of the order of the right-hand side. A successful one of
-# grounded Laplacians with six orders of conductance contrast and a 1e-6 floor
-# keeps residuals below 1e-7 in float64, up to 1000 x 1000 rasters (#40), and
-# mostly below 1e-1 in float32.
-_RESIDUAL_TOLERANCE = {jnp.dtype(jnp.float32): 1e-1, jnp.dtype(jnp.float64): 1e-4}
+_PATTERN_MISMATCH = (
+    "CuDSSSolver: the operator's sparse indices differ from those the state "
+    "was initialized for. A state belongs to one sparsity pattern; initialize "
+    "a new one, e.g. with `distance.init(graph)`, for this graph geometry."
+)
 
 
-def _solves(state: CuDSSSolverState, solution: Array, vector: Array) -> Array:
-    """Whether `solution` solves the factorized matrix for `vector`.
+def _checked_pattern(matrix: BCOO, state: CuDSSSolverState) -> Array:
+    """Return the values of `matrix`, raising when its indices differ from the
+    pattern of `state`.
 
-    It is false for non-finite solutions and for residuals above the tolerance
-    of their precision. It costs one sparse matrix-vector product with the
-    factorized matrix and two maximum reductions.
+    Each stored entry must sit where the value map of `state` puts it: at the
+    row and column of its CSR value, or out of bounds for padding entries.
     """
+    if matrix.indices.shape != (state.value_map.shape[0], 2):
+        raise ValueError(_PATTERN_MISMATCH)
     token = state.token
-    product = jax.ops.segment_sum(
-        token.values * solution[token.columns],
-        state.rows,
+    rows, columns = matrix.indices[:, 0], matrix.indices[:, 1]
+    in_bounds = (rows >= 0) & (rows < token.n) & (columns >= 0) & (columns < token.n)
+    stored = state.value_map < token.nnz
+    slot = jnp.where(stored, state.value_map, 0)
+    same_entry = (state.rows[slot] == rows) & (token.columns[slot] == columns)
+    matches = jnp.all(jnp.where(stored, in_bounds & same_entry, ~in_bounds))
+    return eqx.error_if(matrix.data, ~matches, _PATTERN_MISMATCH)
+
+
+def _analyse_and_factorize(values: Array, offsets: Array, columns: Array) -> Any:
+    cudss = _load_cudss()
+    token = cudss.analyze(values, offsets, columns, mtype_id="spd", mview_id="full")
+    return cudss.factorize(token, values)
+
+
+def _checked_state(token: Any, value_map: Array, rows: Array) -> CuDSSSolverState:
+    """Return the state of a fresh factorization, with the result of its check.
+
+    The check solves `A x = A 1` with the factorization, one solve of one
+    right-hand side. The factorization fails when the backward error
+    `max|A 1 - A x| / (||A||_inf max|x|)` is not finite or exceeds the square
+    root of the machine epsilon. On grounded grid Laplacians of up to
+    1000 x 1000 cells, with up to six orders of magnitude of conductance
+    contrast and a 1e-6 conductance floor, cuDSS factorizations had backward
+    errors of at most 1.1e-6 in float32 and 1.0e-15 in float64; those that met
+    a non-positive pivot had at least 3.9e-2, or were not finite.
+    """
+    ones = jnp.ones(token.n, token.values.dtype)
+    b = _product(token, rows, ones)
+    x = _load_cudss().solve(token, b)
+    residual = jnp.max(jnp.abs(b - _product(token, rows, x)))
+    norm = jnp.max(
+        jax.ops.segment_sum(
+            jnp.abs(token.values), rows, num_segments=token.n, indices_are_sorted=True
+        )
+    )
+    tolerance = jnp.sqrt(jnp.finfo(token.values.dtype).eps)
+    # A NaN residual compares false.
+    passes = residual <= tolerance * norm * jnp.max(jnp.abs(x))
+    return CuDSSSolverState(token=token, value_map=value_map, rows=rows, failed=~passes)
+
+
+def _product(token: Any, rows: Array, vector: Array) -> Array:
+    """The product of the factorized matrix of `token` with `vector`."""
+    return jax.ops.segment_sum(
+        token.values * vector[token.columns],
+        rows,
         num_segments=token.n,
         indices_are_sorted=True,
     )
-    residual = jnp.max(jnp.abs(vector - product))
+
+
+# Largest residual of a solution, relative to its right-hand side, in the
+# infinity norm. A successful factorization of grounded Laplacians with six
+# orders of conductance contrast and a 1e-6 floor keeps residuals of basis
+# right-hand sides below 1.2e-11 in float64 and 6.6e-3 in float32, up to
+# 1000 x 1000 grids. A grounded Laplacian with vertices disconnected from the
+# ground vertex leaves residuals of 3e-2 to 0.16 in float64; in float32 they
+# ranged from 1.5e-3 on 1000 x 1000 grids to 0.5 on 100 x 100 grids.
+_RESIDUAL_TOLERANCE = {jnp.dtype(jnp.float32): 1e-1, jnp.dtype(jnp.float64): 1e-4}
+
+
+def _residual_check_passes(
+    state: CuDSSSolverState, solution: Array, vector: Array
+) -> Array:
+    """Whether `solution` of `vector` passes the residual check.
+
+    It fails for non-finite solutions and for residuals above the tolerance
+    of their precision. It costs one sparse matrix-vector product with the
+    factorized matrix and two maximum reductions.
+    """
+    residual = jnp.max(jnp.abs(vector - _product(state.token, state.rows, solution)))
     tolerance = _RESIDUAL_TOLERANCE[jnp.dtype(solution.dtype)]
     # A NaN residual compares false.
     return residual <= tolerance * jnp.max(jnp.abs(vector))

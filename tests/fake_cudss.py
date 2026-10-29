@@ -17,18 +17,19 @@ that the solver's plumbing runs in CI:
   multi-RHS solve, and a vmapped numeric phase with an unbatched token raises.
 
 Factorization uses dense Cholesky on the host and is meant for small systems.
-Like spineax, the double reports no factorization status. What a failed
-factorization leaves in the factor is set by `failed_pivots`, because cuDSS's
-behaviour is not documented for it:
+Like spineax, the double reports no factorization status. It reproduces what
+real cuDSS 0.8 does with a factorization that meets a non-positive pivot,
+measured on an RTX 3090:
 
-- `"nan"` (the default): a matrix that is not numerically positive definite
-  gives a NaN factor, so its solutions are NaN. A singular matrix whose
-  pivots round to small positive values still factorizes, into finite
-  solutions that do not solve it.
-- `"perturbed"`: every pivot below cuDSS's default pivot epsilon (1e-13 in
-  float64, 1e-5 in float32) is replaced by that epsilon, which leaves finite
-  solutions that do not solve the matrix wherever the factorization stays
-  finite.
+- the factorization leaves solutions that do not solve the matrix: finite
+  garbage (`failed_pivots = "finite"`, the default), or NaN
+  (`failed_pivots = "nan"`);
+- the handle is poisoned: every later numeric phase of its registry entry,
+  whatever the values, leaves the same garbage. Only a fresh analysis, or the
+  rebuild of an entry that is no longer resident, gives a valid factorization.
+
+A singular matrix whose pivots round to small positive values still
+factorizes, into finite solutions that do not solve it, and poisons nothing.
 
 Besides the spineax API, the double records what ran, for tests: `analyses`,
 `factorizations` (numeric factorizations, rebuilds included) and
@@ -151,8 +152,8 @@ class FakeCuDSS:
 
     # ---------------------------------------------------------------- spies
     def reset(self) -> None:
-        """Empty the registry, zero every counter and restore NaN factors for
-        failed factorizations."""
+        """Empty the registry, zero every counter and restore finite garbage
+        for failed factorizations."""
         self._entries: collections.OrderedDict[
             int, dict[str, Any]
         ] = collections.OrderedDict()
@@ -161,7 +162,7 @@ class FakeCuDSS:
         self.analyses = 0
         self.factorizations = 0
         self.solve_calls: list[int] = []
-        self.failed_pivots = "nan"
+        self.failed_pivots = "finite"
 
     # --------------------------------------------------------- public API
     def analyze(
@@ -367,35 +368,52 @@ class FakeCuDSS:
             )
         return entry
 
-    def _factor(self, values, offsets, columns, fingerprint) -> dict[str, Any]:
+    def _factor(
+        self, values, offsets, columns, fingerprint, entry=None
+    ) -> dict[str, Any]:
+        """Factorize `values`, in `entry` when it is given and resident."""
         self.factorizations += 1
+        if entry is not None and entry["poisoned"]:
+            # A poisoned handle keeps its garbage, whatever the values.
+            return entry
         n = offsets.shape[0] - 1
         matrix = np.zeros((n, n), dtype=values.dtype)
         rows = np.repeat(np.arange(n), np.diff(offsets))
         matrix[rows, columns] = values
-        if self.failed_pivots == "perturbed":
-            factor = _cholesky_perturbing_pivots(matrix)
-        else:
-            try:
-                factor = np.linalg.cholesky(matrix)
-            except np.linalg.LinAlgError:
-                factor = np.full((n, n), np.nan, dtype=values.dtype)
-        return {"factor": factor, "fingerprint": np.array(fingerprint)}
+        try:
+            factor = np.linalg.cholesky(matrix)
+            poisoned = False
+        except np.linalg.LinAlgError:
+            # A non-positive pivot. The garbage factor is the identity, so
+            # that solutions are the right-hand sides themselves.
+            fill = np.nan if self.failed_pivots == "nan" else 0.0
+            factor = np.where(np.eye(n, dtype=bool), 1.0, fill).astype(values.dtype)
+            poisoned = True
+        return {
+            "factor": factor,
+            "fingerprint": np.array(fingerprint),
+            "poisoned": poisoned,
+        }
 
     def _host_analyze(self, fingerprint):
         self.analyses += 1
-        entry = {"factor": None, "fingerprint": np.array(fingerprint)}
+        entry = {
+            "factor": None,
+            "fingerprint": np.array(fingerprint),
+            "poisoned": False,
+        }
         return np.asarray([self._insert(entry)], dtype=np.int32)
 
     def _host_numeric(self, token_id, offsets, columns, fingerprint, values):
         token_id = int(token_id[0])
-        if self._resident(token_id, fingerprint) is None:
+        resident = self._resident(token_id, fingerprint)
+        if resident is None:
             # Self-heal: analysis and factorization of the call's own values.
             self._rebuilds += 1
             self.analyses += 1
             entry = self._factor(values, offsets, columns, fingerprint)
             return np.asarray([self._insert(entry)], dtype=np.int32)
-        entry = self._factor(values, offsets, columns, fingerprint)
+        entry = self._factor(values, offsets, columns, fingerprint, resident)
         # The numeric phase uses up the input id: re-register under a new one.
         del self._entries[token_id]
         return np.asarray([self._insert(entry)], dtype=np.int32)
@@ -417,24 +435,6 @@ class FakeCuDSS:
             raise RuntimeError("spineax token: solve on an analysed-only entry")
         solution = scipy.linalg.cho_solve((factor, True), rhs.T, check_finite=False)
         return solution.T.reshape(b.shape).astype(b.dtype)
-
-
-_PIVOT_EPSILON = {np.dtype(np.float32): 1e-5, np.dtype(np.float64): 1e-13}
-
-
-def _cholesky_perturbing_pivots(matrix: np.ndarray) -> np.ndarray:
-    """Lower Cholesky factor, with each pivot below cuDSS's default pivot
-    epsilon replaced by the epsilon."""
-    epsilon = _PIVOT_EPSILON[matrix.dtype]
-    factor = np.zeros_like(matrix)
-    with np.errstate(all="ignore"):
-        for k in range(matrix.shape[0]):
-            pivot = matrix[k, k] - factor[k, :k] @ factor[k, :k]
-            factor[k, k] = np.sqrt(pivot if pivot > epsilon else epsilon)
-            factor[k + 1 :, k] = (
-                matrix[k + 1 :, k] - factor[k + 1 :, :k] @ factor[k, :k]
-            ) / factor[k, k]
-    return factor
 
 
 FAKE_CUDSS = FakeCuDSS()

@@ -39,21 +39,18 @@ def cudss(request, monkeypatch):
     return use_cudss(request.param, monkeypatch)
 
 
-@pytest.fixture(
-    params=["cpu-double-nan-pivots", "cpu-double-perturbed-pivots", "spineax-gpu"]
-)
+@pytest.fixture(params=["cpu-double-finite", "cpu-double-nan", "spineax-gpu"])
 def failing_cudss(request, monkeypatch):
     """The spineax phase API, for factorizations that fail.
 
-    spineax reports no factorization status. A failed cuDSS factorization
-    leaves NaN or, with perturbed pivots, finite factors; the CPU double
-    reproduces both.
+    spineax reports no factorization status. A cuDSS factorization that meets
+    a non-positive pivot leaves finite garbage or NaN, and poisons its handle;
+    the CPU double reproduces both.
     """
     if request.param == "spineax-gpu":
         return use_cudss(request.param, monkeypatch)
     use_cudss("cpu-double", monkeypatch)
-    pivots = request.param.removeprefix("cpu-double-").removesuffix("-pivots")
-    FAKE_CUDSS.failed_pivots = pivots
+    FAKE_CUDSS.failed_pivots = request.param.removeprefix("cpu-double-")
     return FAKE_CUDSS
 
 
@@ -106,7 +103,9 @@ sys.modules["spineax"] = None  # an environment without the cudss extra
 import jaxscape
 from jaxscape import ResistanceDistance
 from jaxscape.solvers import CuDSSSolver
+from jaxscape.solvers.cudsssolver import CUDSS_AVAILABLE
 assert ResistanceDistance().solver is None
+assert CUDSS_AVAILABLE is False
 try:
     CuDSSSolver()
 except ImportError as error:
@@ -122,11 +121,24 @@ else:
     assert "jaxscape[cudss]" in result.stdout
 
 
+def test_the_availability_flag_loads_no_cuda_library():
+    code = """
+import sys
+from jaxscape.solvers.cudsssolver import CUDSS_AVAILABLE
+print(CUDSS_AVAILABLE)
+assert "spineax.cudss" not in sys.modules
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stderr
+    installed = importlib.util.find_spec("spineax") is not None
+    assert result.stdout.strip() == str(installed)
+
+
 def installed_spineax_without_runtime(monkeypatch):
     """spineax is installed, but its cuDSS module cannot load."""
-    spineax = types.ModuleType("spineax")
-    spineax.__spec__ = importlib.machinery.ModuleSpec("spineax", None)
-    monkeypatch.setitem(sys.modules, "spineax", spineax)
+    monkeypatch.setattr(cudsssolver, "CUDSS_AVAILABLE", True)
     monkeypatch.setitem(sys.modules, "spineax.cudss", None)
 
 
@@ -142,7 +154,7 @@ def jax_backend(monkeypatch, backend, platform_version):
 
 
 def test_missing_spineax_is_reported(monkeypatch):
-    monkeypatch.setitem(sys.modules, "spineax", None)
+    monkeypatch.setattr(cudsssolver, "CUDSS_AVAILABLE", False)
     with pytest.raises(ImportError, match=r"spineax.*jaxscape\[cudss\]"):
         CuDSSSolver()
 
@@ -302,16 +314,63 @@ def test_tiny_graphs_give_exact_distances(cudss, graph, dtype):
     np.testing.assert_allclose(actual, np.asarray(expected), rtol=rtol, atol=rtol)
 
 
-def test_compiled_queries_need_a_state_from_initialization(cudss):
-    grid = conductance_grid(conductance_surface("smooth"))
+def query_and_state(distance, query):
+    """The state-returning form of `query`, called with `QUERIES[query]`."""
+    method = getattr(distance, f"{query}_distance_and_state")
+    return lambda graph, state: method(graph, state=state, **QUERIES[query])
+
+
+@pytest.mark.parametrize("query", QUERIES)
+def test_eager_queries_without_a_state_initialize_one(cudss, query):
+    conductance = conductance_surface("smooth")
     distance = ResistanceDistance(solver=CuDSSSolver())
+    distances_and_state = query_and_state(distance, query)
+    expected = ResistanceDistance()(conductance_grid(conductance), **QUERIES[query])
 
     # Eager calls initialize their own state from the concrete graph.
     np.testing.assert_allclose(
-        distance(grid), ResistanceDistance()(grid), rtol=FLOAT64_RTOL
+        distance(conductance_grid(conductance), **QUERIES[query]),
+        expected,
+        rtol=FLOAT64_RTOL,
     )
-    with pytest.raises(ValueError, match=r"outside `jax\.jit`.*distance\.init"):
-        jax.jit(lambda grid: distance(grid))(grid)
+    distances, state = distances_and_state(conductance_grid(conductance), None)
+    np.testing.assert_allclose(distances, expected, rtol=FLOAT64_RTOL)
+    # The returned state serves the next call, with twice the conductances,
+    # without a new analysis.
+    rebuilds = cudss.rebuild_count()
+    distances, _ = distances_and_state(conductance_grid(2 * conductance), state)
+    np.testing.assert_allclose(distances, expected / 2, rtol=FLOAT64_RTOL)
+    assert cudss.rebuild_count() == rebuilds
+    # Compiled calls need a state from initialization.
+    for compiled in (
+        jax.jit(lambda grid: distance(grid, **QUERIES[query])),
+        jax.jit(lambda grid: distances_and_state(grid, None)),
+    ):
+        with pytest.raises(ValueError, match=r"outside `jax\.jit`.*distance\.init"):
+            compiled(conductance_grid(conductance))
+
+
+def ring_graph(chords):
+    """A ring of 10 vertices with `chords`, of distinct conductances."""
+    n = 10
+    adjacency = np.zeros((n, n))
+    edges = [(i, (i + 1) % n) for i in range(n)] + chords
+    for k, (u, v) in enumerate(edges):
+        adjacency[u, v] = adjacency[v, u] = 1.0 + k / 4
+    return Graph(BCOO.fromdense(jnp.asarray(adjacency)))
+
+
+def test_a_state_rejects_graphs_of_another_sparsity_pattern(cudss):
+    distance = ResistanceDistance(solver=CuDSSSolver())
+    state = distance.init(ring_graph([(0, 5), (2, 7)]))
+    # As many stored entries as the pattern of the state, at other positions.
+    moved_chord = ring_graph([(0, 4), (2, 7)])
+    # More stored entries.
+    extra_chord = ring_graph([(0, 5), (2, 7), (4, 9)])
+
+    for graph in (moved_chord, extra_chord):
+        with pytest.raises(Exception, match="sparse indices differ"):
+            jax.block_until_ready(distance(graph, state=state))
 
 
 @pytest.mark.parametrize("query", QUERIES)
@@ -322,7 +381,9 @@ def test_all_right_hand_sides_of_a_query_share_one_factorization(cudss, query):
 
     calls = cudss_calls(cudss, lambda: distance(grid, state=state, **QUERIES[query]))
 
-    assert calls == (1, 1)
+    # One refactorization, its check (a solve of one right-hand side), and one
+    # solve of all the right-hand sides of the query.
+    assert calls == (1, 2)
 
 
 def sparse_layout(dense):
@@ -393,7 +454,8 @@ def test_sparse_solve_of_single_and_multiple_right_hand_sides(cudss, n_rhs):
 
     np.testing.assert_allclose(x, np.linalg.solve(matrix, b), rtol=1e-12)
     np.testing.assert_allclose(A @ x - b, 0.0, atol=1e-12)
-    assert cudss_calls(cudss, solve) == (1, 1)
+    # A refactorization, its check and one solve of every right-hand side.
+    assert cudss_calls(cudss, solve) == (1, 2)
 
 
 @pytest.mark.parametrize("n_rhs", [None, 1, 4])
@@ -505,12 +567,6 @@ def test_inverse_objective_gradients_match_dense_reference(cudss):
         np.testing.assert_allclose(
             gradient, expected_gradient, rtol=FLOAT64_RTOL, atol=1e-12
         )
-
-
-def query_and_state(distance, query):
-    """The state-returning form of `query`, called with `QUERIES[query]`."""
-    method = getattr(distance, f"{query}_distance_and_state")
-    return lambda graph, state: method(graph, state=state, **QUERIES[query])
 
 
 def compiled_step(distance, query):
@@ -796,26 +852,34 @@ def grounded_laplacian(conductance):
 def test_without_throw_a_failed_factorization_returns_a_failed_result(
     failing_cudss, surface, factorization, dtype
 ):
-    operator = BCOOLinearOperator(
+    """A failed factorization fails its solves and leaves the next one exact."""
+    invalid = BCOOLinearOperator(
         grounded_laplacian(invalid_surface(surface).astype(dtype))
     )
+    valid_laplacian = grounded_laplacian(conductance_surface("smooth").astype(dtype))
+    valid = BCOOLinearOperator(valid_laplacian)
     solver = CuDSSSolver()
-    if factorization == "initialization":
-        state = solver.init(operator, {})
-    else:
-        valid = grounded_laplacian(conductance_surface("smooth").astype(dtype))
-        state = solver.init(BCOOLinearOperator(valid), {})
     # Current enters at every vertex, the floating ones included.
-    b = jnp.ones(operator.in_size(), dtype)
+    b = jnp.ones(invalid.in_size(), dtype)
 
     @jax.jit
     def solve(operator, state):
-        if factorization == "refactorization":
-            state = solver.refresh_state(operator, {}, state)
         solution = lx.linear_solve(operator, b, solver, state=state, throw=False)
         return solution.value, solution.result
 
-    value, result = solve(operator, state)
+    refresh = jax.jit(lambda operator, state: solver.refresh_state(operator, {}, state))
+    if factorization == "initialization":
+        state = solver.init(invalid, {})
+    else:
+        state = refresh(invalid, solver.init(valid, {}))
+
+    value, result = solve(invalid, state)
 
     assert result != lx.RESULTS.successful
     assert np.all(np.isnan(value))
+    # The next factorization, of valid values, is exact.
+    value, result = solve(valid, refresh(valid, state))
+    assert result == lx.RESULTS.successful
+    expected = np.linalg.solve(np.asarray(valid_laplacian.todense(), np.float64), b)
+    rtol = distance_rtol(dtype, "smooth")
+    np.testing.assert_allclose(value, expected, rtol=rtol)
