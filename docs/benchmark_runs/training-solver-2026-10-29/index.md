@@ -285,6 +285,12 @@ Forward solve for 20 RHS on a 4-decade surface. The JAX-AMG field differs
   It could be revisited if JAX-AMG gains multi-RHS solves and wheels, or as
   AmgX PCG with one setup per step.
 
+## Follow-up
+
+- [#41](https://github.com/vboussange/jaxscape/issues/41) specifies `CuDSSSolver` and the state-returning `ResistanceDistance` queries. It supersedes [#1](https://github.com/vboussange/jaxscape/issues/1).
+- [vboussange/ilg-toolkit#141](https://github.com/vboussange/ilg-toolkit/issues/141), blocked by #41, adopts the solver in training. It also adds a failure policy that names the region, species and step.
+- [#19](https://github.com/vboussange/jaxscape/issues/19)–[#22](https://github.com/vboussange/jaxscape/issues/22) are closed as not planned. The reopening conditions are on [#19](https://github.com/vboussange/jaxscape/issues/19#issuecomment-6491249959).
+
 ## Limitations
 
 - **One GPU model.** All runs used a consumer RTX 3090, which has weak FP64
