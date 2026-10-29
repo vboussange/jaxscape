@@ -53,11 +53,14 @@ from benchmark.benchmark_distances import (
     skip_record,
 )
 from benchmark.jaxscape.resistance_profile_support import (
+    CUDSS_RESISTANCE_PROFILES,
     make_amjaxcg_solver,
     make_cholmod_solver,
     make_pyamg_solver,
     make_spielman_method,
+    passing_state,
     profile_metadata,
+    profile_unavailable_reason,
     ResistanceProfile,
 )
 
@@ -79,6 +82,7 @@ JAXSCAPE_RESISTANCE_PROFILES = (
         solver_factory=make_cholmod_solver,
         dtype=jnp.float64,
     ),
+    *CUDSS_RESISTANCE_PROFILES,
     ResistanceProfile(
         "amjaxcg_f32",
         "JAXScape / AMJaxCGSolver / f32",
@@ -142,6 +146,7 @@ def _run_resistance_profile_direct(
     solver_factory: Callable[[], Any] | None = None,
     method_factory: Callable[[], Any] | None = None,
     requires_preparation: bool = False,
+    passes_state: bool = False,
     dtype: Any = jnp.float32,
 ) -> BenchmarkRecord:
     LOGGER.info(
@@ -189,6 +194,15 @@ def _run_resistance_profile_direct(
                     grid,
                     nodes,
                     state,
+                    repeats=repeats,
+                )
+            elif passes_state:
+                state = distance.init(GridGraph(permeability, fun=cost_conductance))
+                timings, _ = measure_runtime(
+                    passing_state(_jaxscape_resistance_and_state, state),
+                    distance,
+                    permeability,
+                    nodes,
                     repeats=repeats,
                 )
             else:
@@ -267,6 +281,9 @@ def run_worker(payload: dict[str, Any]) -> BenchmarkRecord:
         if backend == "cpu" and not profile.gpu_capable
         else backend_tool_label(profile.tool, backend)
     )
+    unavailable = profile_unavailable_reason(profile, backend)
+    if unavailable is not None:
+        return skip_record(case.task, tool_label, "JAXScape", case.name, unavailable)
     device = device_for_backend(backend)
     return _run_resistance_profile_direct(
         case,
@@ -276,6 +293,7 @@ def run_worker(payload: dict[str, Any]) -> BenchmarkRecord:
         solver_factory=profile.solver_factory,
         method_factory=profile.method_factory,
         requires_preparation=profile.requires_preparation,
+        passes_state=profile.passes_state,
         dtype=profile.dtype,
     )
 
@@ -286,6 +304,15 @@ def _jaxscape_resistance_with_distance(
 ) -> jax.Array:
     grid = GridGraph(permeability, fun=cost_conductance)
     return distance(grid, nodes=nodes)
+
+
+@eqx.filter_jit
+def _jaxscape_resistance_and_state(
+    distance: ResistanceDistance, permeability: jax.Array, nodes: jax.Array, state: Any
+) -> tuple[jax.Array, Any]:
+    grid = GridGraph(permeability, fun=cost_conductance)
+    node_indices = grid.coord_to_index(nodes[:, 0], nodes[:, 1])
+    return distance.nodes_to_nodes_distance_and_state(grid, node_indices, state)
 
 
 @eqx.filter_jit
@@ -336,16 +363,17 @@ def collect_jaxscape_resistance_results(
     records: list[BenchmarkRecord] = []
     for profile in selected_profiles(profile_keys):
         if profile.gpu_capable:
-            records.append(
-                run_jaxscape_resistance_profile(
-                    case,
-                    config,
-                    backend_tool_label(profile.tool, "cpu"),
-                    device=config.cpu_device,
-                    solver_factory=profile.solver_factory,
-                    requires_preparation=profile.requires_preparation,
+            if not profile.gpu_only:
+                records.append(
+                    run_jaxscape_resistance_profile(
+                        case,
+                        config,
+                        backend_tool_label(profile.tool, "cpu"),
+                        device=config.cpu_device,
+                        solver_factory=profile.solver_factory,
+                        requires_preparation=profile.requires_preparation,
+                    )
                 )
-            )
             if config.gpu_device is None:
                 records.append(gpu_placeholder_record(case, profile.tool, "JAXScape"))
             else:

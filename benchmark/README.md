@@ -15,10 +15,10 @@ sensitivity suite uses a smaller `large` case than the distance tasks.
 | Feature | Automated profiles | Optional local profiles | Notes |
 | --- | --- | --- | --- |
 | Free-energy distance | `JAXScape / CG / f64 (CPU/GPU)` | none | Same grid sizes, seeds, conductances and selected sites as resistance distance; fixed inverse temperature 0.1. |
-| Resistance distance | `JAXScape / PyAMG`, `gdistance / commuteDistance`, `Circuitscape.jl / cg+amg / f64`, `Circuitscape.jl / cholmod / f64` | `JAXScape / CholmodSolver / f32`, `JAXScape / CholmodSolver / f64`, `JAXScape / AMJaxCGSolver / f32 (CPU/GPU)`, `JAXScape / AMJaxCGSolver / f64 (CPU/GPU)`, `JAXScape / approx AMJaxCGSolver / f32 (CPU/GPU)`, `JAXScape / approx AMJaxCGSolver / f64 (CPU/GPU)`, `JAXScape / approx CholmodSolver / f32`, `JAXScape / approx CholmodSolver / f64`, `Conefor` adapters | The dense `pinv` family is intentionally excluded from the full resistance suite because the large resistance case is not a useful dense-pseudoinverse benchmark target. |
+| Resistance distance | `JAXScape / PyAMG`, `gdistance / commuteDistance`, `Circuitscape.jl / cg+amg / f64`, `Circuitscape.jl / cholmod / f64` | `JAXScape / CholmodSolver / f32`, `JAXScape / CholmodSolver / f64`, `JAXScape / CuDSSSolver / f32 (GPU)`, `JAXScape / CuDSSSolver / f64 (GPU)`, `JAXScape / AMJaxCGSolver / f32 (CPU/GPU)`, `JAXScape / AMJaxCGSolver / f64 (CPU/GPU)`, `JAXScape / approx AMJaxCGSolver / f32 (CPU/GPU)`, `JAXScape / approx AMJaxCGSolver / f64 (CPU/GPU)`, `JAXScape / approx CholmodSolver / f32`, `JAXScape / approx CholmodSolver / f64`, `Conefor` adapters | The dense `pinv` family is intentionally excluded from the full resistance suite because the large resistance case is not a useful dense-pseudoinverse benchmark target. |
 | Least-cost path | `JAXScape (CPU/GPU)`, `gdistance / costDistance` | `Conefor` adapter | Conefor remains a manual external integration. |
 | Sensitivity analysis | `JAXScape / shortest-path gradient (CPU/GPU)`, `gdistance / shortestPath`, `JAXScape / resistance gradient (CPU/GPU)`, `gdistance / passage` | none | This scorecard compares JAX gradients to the matching `gdistance` centrality surfaces. |
-| Inverse landscape genetics | `JAXScape / CholmodSolver / f32`, `JAXScape / AMJaxCGSolver / f32 (CPU/GPU)`, `JAXScape / AMJaxCGSolver / f64 (CPU/GPU)`, `JAXScape / approx pinv / f32 (CPU/GPU)`, `JAXScape / approx pinv / f64 (CPU/GPU)`, `ResistanceGA` | none | JAXScape runs the fixed-budget synthetic inverse problem through Optimistix LBFGS and reports final fit quality on a shared commute-distance evaluation metric. |
+| Inverse landscape genetics | `JAXScape / CholmodSolver / f32`, `JAXScape / AMJaxCGSolver / f32 (CPU/GPU)`, `JAXScape / AMJaxCGSolver / f64 (CPU/GPU)`, `JAXScape / approx pinv / f32 (CPU/GPU)`, `JAXScape / approx pinv / f64 (CPU/GPU)`, `ResistanceGA` | `JAXScape / CuDSSSolver / f32 (GPU)`, `JAXScape / CuDSSSolver / f64 (GPU)` | JAXScape runs the fixed-budget synthetic inverse problem through Optimistix LBFGS and reports final fit quality on a shared commute-distance evaluation metric. |
 
 ## Tasks
 
@@ -68,6 +68,25 @@ To benchmark `AMJaxCGSolver`, also enable the `amjax` extra:
 ```bash
 uv sync --extra benchmark --extra amjax
 ```
+
+To benchmark `CuDSSSolver`, enable the `cudss` extra on Linux x86-64 with an
+NVIDIA GPU and switch the device flag. The linear solvers page of the
+documentation describes the CUDA 12 build of spineax.
+
+```bash
+uv sync --extra benchmark --extra cholespy --extra cudss
+./benchmark/run_benchmarks.sh --device gpu
+```
+
+The cuDSS profiles run only on NVIDIA GPUs and have no CPU series. Without
+spineax, cuDSS or an NVIDIA GPU, each one is recorded as skipped, with a note
+naming what is missing. Their records carry the spineax version and the cuDSS
+runtime package (`spineax_version`, `cudss_version`), and the environment
+report lists both. Analysis runs once, outside timing. The resistance profile
+then refactorizes the solver state that the previous call returned, and the
+inverse profile runs Optimistix LBFGS in a compiled loop that passes the state
+from one objective evaluation to the next and takes the same steps as
+`optimistix.minimise`.
 
 To run the representative smoke benchmark and render isolated smoke artifacts:
 
