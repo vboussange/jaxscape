@@ -1,3 +1,4 @@
+import abc
 from typing import Any
 
 import equinox as eqx
@@ -30,6 +31,39 @@ class BCOOLinearOperator(lx.MatrixLinearOperator):
 @lx.is_positive_semidefinite.register(BCOOLinearOperator)
 def _(op: BCOOLinearOperator) -> bool:
     return True
+
+
+class AbstractRefreshingSolver(lx.AbstractLinearSolver):
+    """Lineax solver whose state is rebuilt for each operator it solves.
+
+    Use this for solvers whose state depends on the matrix values, such as a
+    sparse factorization. Before solving, a resistance-distance query passes
+    the supplied state to `refresh_state` with the current grounded Laplacian.
+    The query solves with the refreshed state, and its state-returning form
+    hands that state back, so the next call can start from it.
+    """
+
+    @abc.abstractmethod
+    def refresh_state(
+        self,
+        operator: lx.AbstractLinearOperator,
+        options: dict[str, Any],
+        state: Any,
+    ) -> Any:
+        """Refresh `state` for `operator`.
+
+        **Arguments:**
+
+        - `operator`: The operator to solve, with the same structure as the one
+          `state` was built for and possibly different values. It carries no
+          gradient.
+        - `options`: Solver options, as passed to `init`.
+        - `state`: A state returned by `init` or `refresh_state`.
+
+        **Returns:**
+
+        The state to solve `operator` with, and to pass to the next call.
+        """
 
 
 def _linear_solve(
@@ -99,12 +133,25 @@ def _solver_state(
     options: dict[str, Any] | None,
     state: Any,
 ) -> Any:
+    return _refresh_solver_state(A, solver, options, state)[0]
+
+
+def _refresh_solver_state(
+    A: BCOO,
+    solver: lx.AbstractLinearSolver,
+    options: dict[str, Any] | None,
+    state: Any,
+) -> tuple[Any, Any]:
+    """Return the state that solves `A` and the state to carry to the next call.
+
+    Without a supplied `state`, both are the state initialized for `A`.
+    """
     options = _solver_options(options)
-    operator = BCOOLinearOperator(A)
-    solve_state = _solver_state_from_operator(operator, solver, options, state)
-    if solve_state is not None:
-        return solve_state
-    return solver.init(_stop_gradient_operator(operator), options)
+    operator = _stop_gradient_operator(BCOOLinearOperator(A))
+    if state is None:
+        state = solver.init(operator, options)
+        return state, state
+    return _refresh_supplied_state(operator, solver, options, state)
 
 
 def _solver_options(options: dict[str, Any] | None) -> dict[str, Any]:
@@ -121,10 +168,27 @@ def _solver_state_from_operator(
 ) -> Any:
     if state is None:
         return None
+    return _refresh_supplied_state(
+        _stop_gradient_operator(operator), solver, options, state
+    )[0]
+
+
+def _refresh_supplied_state(
+    operator: lx.AbstractLinearOperator,
+    solver: lx.AbstractLinearSolver,
+    options: dict[str, Any],
+    state: Any,
+) -> tuple[Any, Any]:
+    if isinstance(solver, AbstractRefreshingSolver):
+        state = solver.refresh_state(operator, options, state)
+        return state, state
+    # `materialize_state` completes a state for this operator only, e.g. CG
+    # state around a reusable AMJax preconditioner; the supplied state is the
+    # one to carry forward.
     materialize_state = getattr(solver, "materialize_state", None)
     if materialize_state is None:
-        return state
-    return materialize_state(_stop_gradient_operator(operator), options, state)
+        return state, state
+    return materialize_state(operator, options, state), state
 
 
 def _stop_gradient_operator(
