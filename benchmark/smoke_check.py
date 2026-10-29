@@ -29,11 +29,11 @@ from benchmark.benchmark_distances import (
     benchmark_graph_volume,
     build_config,
     CASES,
+    collect_free_energy_results,
     collect_least_cost_results,
     collect_sensitivity_results,
     configure_benchmark_point_count,
     gdistance_record_from_payload,
-    REPEATS,
     RESULTS_DIR,
     run_circuitscape_resistance,
     run_gdistance_payload,
@@ -52,7 +52,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--point-count", type=int, default=DEFAULT_SMOKE_POINT_COUNT)
-    parser.add_argument("--device", default=os.environ.get("JAXSCAPE_BENCHMARK_DEVICE", "default"))
+    parser.add_argument(
+        "--device", default=os.environ.get("JAXSCAPE_BENCHMARK_DEVICE", "default")
+    )
     parser.add_argument("--results-json", type=Path, default=DEFAULT_SMOKE_RESULTS_JSON)
     parser.add_argument("--results-csv", type=Path, default=DEFAULT_SMOKE_RESULTS_CSV)
     parser.add_argument(
@@ -132,10 +134,18 @@ def collect_smoke_records(config) -> tuple[list, list]:
     resistance_case, lcp_case, sensitivity_case, inverse_case = representative_cases()
     records = []
     records.extend(collect_resistance_smoke_records(resistance_case, config))
+    free_energy_case = CASES["free_energy"][0]
+    records.extend(collect_free_energy_results(free_energy_case, config))
     records.extend(collect_least_cost_results(lcp_case, config))
     records.extend(collect_sensitivity_results(sensitivity_case, config))
     records.extend(collect_inverse_smoke_records(inverse_case, config))
-    return records, [resistance_case, lcp_case, sensitivity_case, inverse_case]
+    return records, [
+        resistance_case,
+        free_energy_case,
+        lcp_case,
+        sensitivity_case,
+        inverse_case,
+    ]
 
 
 def failing_records(records, *, require_complete: bool) -> list:

@@ -14,7 +14,7 @@ JAXScape ships with a benchmark workspace that keeps benchmark inputs synthetic 
 
 ## Fairness policy
 
-All automated runs use deterministic synthetic landscapes on 4-neighbour grid graphs and report median runtimes from the repeat count recorded in each benchmark artifact. Resistance, least-cost, and sensitivity tasks share the same raster-to-graph parameterization, the same site-sampling policy, and the same published thread budget across Python, Julia, and R. The sensitivity benchmark uses a task-specific large grid because exact reverse-mode centrality objectives have much higher memory growth than distance-matrix queries; the large sensitivity case records one timed repeat, while smaller cases use the suite repeat count. The environment snapshot above is rendered directly from the benchmark artifact so the documented runtime context tracks the actual run rather than a hand-maintained description.
+All automated runs use deterministic synthetic landscapes on 4-neighbour grid graphs and report median runtimes from the repeat count recorded in each benchmark artifact. Resistance, free-energy, least-cost, and sensitivity tasks share the same raster-to-graph parameterization, the same site-sampling policy, and the same published thread budget across Python, Julia, and R. The sensitivity benchmark uses a task-specific large grid because exact reverse-mode centrality objectives have much higher memory growth than distance-matrix queries; the large sensitivity case records one timed repeat, while smaller cases use the suite repeat count. The environment snapshot above is rendered directly from the benchmark artifact so the documented runtime context tracks the actual run.
 
 Cross-software comparisons are only published when the task definition is close enough to interpret. For resistance distance, the `gdistance` series is rescaled from commute time to effective resistance by dividing by graph volume. For inverse landscape genetics, runtime and fit quality are reported together so budget-limited or non-converged runs remain visible.
 
@@ -27,6 +27,22 @@ Published benchmark coverage:
 {{RESISTANCE_PROFILES}}
 
 <div align="center"><img src="../assets/benchmark_resistance_distance.png" alt="Resistance distance benchmark scorecard" width="900"></div>
+
+## Free-energy distance
+
+Formal problem: given the same undirected grid graph, conductance weights
+$w_{ij}$ and sampled node set $S$, compute the symmetric first-hitting
+free-energy distance matrix for all $u, v \in S$, with edge costs
+$1/w_{ij} = \frac{c_i + c_j}{2}$ (the least-cost edge costs) and inverse
+temperature $\theta=0.1$.
+The float64 CG profile uses `rtol=1e-10`, `atol=1e-90`, `max_steps=10000` and
+`stabilise_every=None`.
+
+Published benchmark coverage:
+
+{{FREE_ENERGY_PROFILES}}
+
+<div align="center"><img src="../assets/benchmark_free_energy_distance.png" alt="Free-energy distance benchmark scorecard" width="900"></div>
 
 ## Least-cost path
 

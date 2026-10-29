@@ -4,10 +4,10 @@ import jax.random as jr
 from equinox import filter_grad, filter_jit
 from jaxscape import (
     EuclideanDistance,
+    FreeEnergyDistance,
     GridGraph,
     LCPDistance,
     ResistanceDistance,
-    RSPDistance,
 )
 
 
@@ -15,7 +15,7 @@ DISTANCES = [
     EuclideanDistance(),
     LCPDistance(),
     ResistanceDistance(),
-    RSPDistance(theta=0.1),
+    FreeEnergyDistance(theta=0.1),
 ]
 
 
