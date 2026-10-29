@@ -370,3 +370,94 @@ def test_inverse_objective_gradients_match_dense_reference(cudss):
         np.testing.assert_allclose(
             gradient, expected_gradient, rtol=FLOAT64_RTOL, atol=1e-12
         )
+
+
+def query_and_state(distance, query):
+    """The state-returning form of `query`, called with `QUERIES[query]`."""
+    method = getattr(distance, f"{query}_distance_and_state")
+    return lambda graph, state: method(graph, state=state, **QUERIES[query])
+
+
+def compiled_step(distance, query):
+    """`query` on the grid of a conductance raster, compiled, with the state."""
+    distances_and_state = query_and_state(distance, query)
+
+    @jax.jit
+    def step(conductance, state):
+        return distances_and_state(conductance_grid(conductance), state)
+
+    return step
+
+
+def compiled_executables(function):
+    """The number of entries in the compilation cache of a `jax.jit` function."""
+    return function._cache_size()  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("query", QUERIES)
+def test_compiled_steps_carry_the_returned_state(cudss, query):
+    distance = ResistanceDistance(solver=CuDSSSolver())
+    state = distance.init(conductance_grid(conductance_surface("smooth")))
+    step = compiled_step(distance, query)
+
+    rebuilds = cudss.rebuild_count()
+    # New conductances at every step, on one raster geometry.
+    for scale, surface in enumerate(
+        ["smooth", "six_decades", "barrier_with_floor", "smooth"], start=1
+    ):
+        conductance = scale * conductance_surface(surface)
+        distances, state = step(conductance, state)
+
+        expected = ResistanceDistance()(conductance_grid(conductance), **QUERIES[query])
+        np.testing.assert_allclose(distances, expected, rtol=FLOAT64_RTOL, atol=1e-12)
+    # One executable for every step, and no step repeats the analysis.
+    assert compiled_executables(step) == 1
+    assert cudss.rebuild_count() == rebuilds
+
+
+@pytest.mark.parametrize("query", QUERIES)
+def test_compiled_gradient_steps_carry_the_returned_state(cudss, query):
+    """Fit land-cover conductances, passing the state from step to step."""
+    land_cover = np.random.default_rng(3).integers(0, 3, (6, 7))
+    features = jax.nn.one_hot(land_cover, num_classes=3, dtype=jnp.float64)
+
+    def landscape(log_conductance):
+        return conductance_grid(jnp.exp(features @ log_conductance))
+
+    distance = ResistanceDistance(solver=CuDSSSolver())
+    distances_and_state = query_and_state(distance, query)
+    reference = query_and_state(ResistanceDistance(), query)
+    target, _ = reference(landscape(jnp.array([0.3, -0.4, 0.2])), None)
+
+    def objective(log_conductance, distances_and_state, state):
+        predicted, state = distances_and_state(landscape(log_conductance), state)
+        return jnp.mean((predicted - target) ** 2), state
+
+    step = jax.jit(
+        jax.value_and_grad(
+            lambda p, state: objective(p, distances_and_state, state), has_aux=True
+        )
+    )
+    reference_step = jax.value_and_grad(
+        lambda p: objective(p, reference, None), has_aux=True
+    )
+    initial = jnp.array([-0.2, 0.25, -0.1])
+    state = distance.init(landscape(initial))
+
+    rebuilds = cudss.rebuild_count()
+    # Up to six orders of magnitude of contrast between land covers.
+    for log_conductance in (
+        initial,
+        jnp.array([0.15, -0.2, 0.1]),
+        jnp.array([0.0, -6.9, -13.8]),
+        jnp.array([-0.3, 0.4, -2.0]),
+    ):
+        (loss, state), gradient = step(log_conductance, state)
+
+        (expected_loss, _), expected_gradient = reference_step(log_conductance)
+        np.testing.assert_allclose(loss, expected_loss, rtol=FLOAT64_RTOL)
+        np.testing.assert_allclose(
+            gradient, expected_gradient, rtol=FLOAT64_RTOL, atol=1e-12
+        )
+    assert compiled_executables(step) == 1
+    assert cudss.rebuild_count() == rebuilds
