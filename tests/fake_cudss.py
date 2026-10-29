@@ -30,6 +30,10 @@ measured on an RTX 3090:
 
 A singular matrix whose pivots round to small positive values still
 factorizes, into finite solutions that do not solve it, and poisons nothing.
+On an RTX 3090, some such factorizations, of grounded Laplacians with
+vertices cut off from the ground vertex, did poison their handle;
+`poison_next_factorization` reproduces that: the next numeric phase gives a
+valid factorization and poisons its handle.
 
 Besides the spineax API, the double records what ran, for tests: `analyses`,
 `factorizations` (numeric factorizations, rebuilds included) and
@@ -163,6 +167,7 @@ class FakeCuDSS:
         self.factorizations = 0
         self.solve_calls: list[int] = []
         self.failed_pivots = "finite"
+        self.poison_next_factorization = False
 
     # --------------------------------------------------------- public API
     def analyze(
@@ -414,6 +419,9 @@ class FakeCuDSS:
             entry = self._factor(values, offsets, columns, fingerprint)
             return np.asarray([self._insert(entry)], dtype=np.int32)
         entry = self._factor(values, offsets, columns, fingerprint, resident)
+        if self.poison_next_factorization:
+            entry["poisoned"] = True
+            self.poison_next_factorization = False
         # The numeric phase uses up the input id: re-register under a new one.
         del self._entries[token_id]
         return np.asarray([self._insert(entry)], dtype=np.int32)

@@ -73,11 +73,13 @@ class CuDSSSolver(AbstractRefreshingSolver):
     `refresh_state`, by solving `A x = A 1`: the factorization fails when the
     backward error `max|A 1 - A x| / (||A||_inf max|x|)` exceeds the square
     root of the machine epsilon of the dtype. The next `refresh_state` of a
-    failed state analyses the matrix afresh. Each solve also checks its
-    solution `x` of `b`: it fails when `x` is not finite or its residual
-    `max|b - A x|` exceeds `max|b|` times 1e-4 in float64 or 1e-1 in
-    float32, which catches singular matrices for the right-hand sides they
-    make inconsistent. A failed solve returns NaN and reports
+    failed state analyses the matrix afresh, and a refactorization that fails
+    its check is retried on a fresh analysis, because a factorization that
+    passes its check can still leave its handle unusable. Each solve also
+    checks its solution `x` of `b`: it fails when `x` is not finite or its
+    residual `max|b - A x|` exceeds `max|b|` times 1e-4 in float64 or 1e-1
+    in float32, which catches singular matrices for the right-hand sides
+    they make inconsistent. A failed solve returns NaN and reports
     `lineax.RESULTS.singular`, so it raises with `throw=True` and returns a
     failed result with `throw=False`. The checks cost one solve of one
     right-hand side and two sparse matrix-vector products per factorization,
@@ -156,8 +158,10 @@ class CuDSSSolver(AbstractRefreshingSolver):
         matrix = jax.lax.stop_gradient(_bcoo_matrix(operator))
         offsets, columns, rows, value_map = _csr_pattern(matrix)
         values = _csr_values(matrix.data, value_map, columns.shape[0])
-        token = _analyse_and_factorize(values, offsets, columns)
-        return _checked_state(token, value_map, rows)
+        token, failed = _analysed(values, offsets, columns, rows)
+        return CuDSSSolverState(
+            token=token, value_map=value_map, rows=rows, failed=failed
+        )
 
     def refresh_state(
         self,
@@ -178,22 +182,33 @@ class CuDSSSolver(AbstractRefreshingSolver):
 
         A new state factorized for `operator`, to solve with and to pass to
         the next call. It refactorizes `state`, whose factorization is used
-        up, or analyses the matrix afresh when `state` failed its check.
+        up. It analyses the matrix afresh when `state` failed its check, and
+        retries a refactorization that fails its check on a fresh analysis.
         """
         del options
-        cudss = _load_cudss()
         data = _checked_pattern(_bcoo_matrix(operator), state)
         values = _csr_values(data, state.value_map, state.token.nnz)
-        token = jax.lax.cond(
-            state.failed,
-            lambda token, values: _analyse_and_factorize(
-                values, token.offsets, token.columns
-            ),
-            cudss.refactorize,
-            state.token,
-            values,
+        rows = state.rows
+
+        def analysed(token: Any, values: Array) -> tuple[Any, Array]:
+            return _analysed(values, token.offsets, token.columns, rows)
+
+        def refactorized(token: Any, values: Array) -> tuple[Any, Array]:
+            token = _load_cudss().refactorize(token, values)
+            failed = _check_fails(token, rows)
+            # A factorization can pass its check and still leave its handle
+            # unusable, as one with vertices cut off from the ground vertex
+            # did on an RTX 3090, so a failed refactorization is retried.
+            return jax.lax.cond(
+                failed, analysed, lambda token, _: (token, failed), token, values
+            )
+
+        token, failed = jax.lax.cond(
+            state.failed, analysed, refactorized, state.token, values
         )
-        return _checked_state(token, state.value_map, state.rows)
+        return CuDSSSolverState(
+            token=token, value_map=state.value_map, rows=rows, failed=failed
+        )
 
     def compute(
         self,
@@ -329,14 +344,22 @@ def _checked_pattern(matrix: BCOO, state: CuDSSSolverState) -> Array:
     return eqx.error_if(matrix.data, ~matches, _PATTERN_MISMATCH)
 
 
-def _analyse_and_factorize(values: Array, offsets: Array, columns: Array) -> Any:
+def _analysed(
+    values: Array, offsets: Array, columns: Array, rows: Array
+) -> tuple[Any, Array]:
+    """Analyse and factorize on a new cuDSS handle, and check the factorization.
+
+    Every analysis in a refresh sits in a branch that runs only after a failed
+    check, together with one factorization and one check solve.
+    """
     cudss = _load_cudss()
     token = cudss.analyze(values, offsets, columns, mtype_id="spd", mview_id="full")
-    return cudss.factorize(token, values)
+    token = cudss.factorize(token, values)
+    return token, _check_fails(token, rows)
 
 
-def _checked_state(token: Any, value_map: Array, rows: Array) -> CuDSSSolverState:
-    """Return the state of a fresh factorization, with the result of its check.
+def _check_fails(token: Any, rows: Array) -> Array:
+    """Whether the factorization in `token` fails its check.
 
     The check solves `A x = A 1` with the factorization, one solve of one
     right-hand side. The factorization fails when the backward error
@@ -358,8 +381,7 @@ def _checked_state(token: Any, value_map: Array, rows: Array) -> CuDSSSolverStat
     )
     tolerance = jnp.sqrt(jnp.finfo(token.values.dtype).eps)
     # A NaN residual compares false.
-    passes = residual <= tolerance * norm * jnp.max(jnp.abs(x))
-    return CuDSSSolverState(token=token, value_map=value_map, rows=rows, failed=~passes)
+    return ~(residual <= tolerance * norm * jnp.max(jnp.abs(x)))
 
 
 def _product(token: Any, rows: Array, vector: Array) -> Array:

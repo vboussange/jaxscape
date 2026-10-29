@@ -186,9 +186,10 @@ def cudss_calls(cudss, run):
     """Count the numeric factorizations and solve calls that `run` makes.
 
     The CPU double records them as they run; with spineax, they are the cuDSS
-    calls in the compiled program. There, a refresh also holds a fresh
-    analysis and factorization, in the branch that runs only after a failed
-    factorization, so each analysis discounts one factorization.
+    calls in the compiled program. There, a refresh also holds branches that
+    run only after a failed check, each with one analysis, one factorization
+    and one check solve, so each analysis discounts one factorization and
+    one solve.
     """
     if cudss is FAKE_CUDSS:
         factorizations = cudss.factorizations
@@ -196,12 +197,13 @@ def cudss_calls(cudss, run):
         jax.block_until_ready(run())
         return cudss.factorizations - factorizations, len(cudss.solve_calls)
     program = jax.jit(run).lower().as_text()
+    analyses = program.count("spineax_token_analyze")
     numeric = (
         program.count("spineax_token_factorize")
         + program.count("spineax_token_refactorize")
-        - program.count("spineax_token_analyze")
+        - analyses
     )
-    return numeric, program.count("spineax_token_solve")
+    return numeric, program.count("spineax_token_solve") - analyses
 
 
 # Relative tolerance of float64 distances against the dense pseudo-inverse,
@@ -818,6 +820,36 @@ def test_a_failed_refactorization_raises_mid_optimization(
 
     with raises_failed_solve():
         jax.block_until_ready(step(invalid_surface(surface).astype(dtype), state))
+
+
+def test_a_failed_refactorization_is_retried_on_a_fresh_analysis(cudss):
+    """A factorization can pass its check and still leave its cuDSS handle
+    unusable, as one with vertices cut off from the ground vertex did on a
+    100 x 100 grid of an RTX 3090. The next refactorization then fails its
+    check, and is retried on a fresh analysis."""
+    smooth = conductance_surface("smooth")
+    middle = 2 * smooth if cudss is FAKE_CUDSS else invalid_surface("disconnected")
+    laplacians = [grounded_laplacian(c) for c in (smooth, middle, 3 * smooth)]
+    operators = [BCOOLinearOperator(laplacian) for laplacian in laplacians]
+    solver = CuDSSSolver()
+    b = jnp.ones(operators[0].in_size())
+
+    @jax.jit
+    def step(operator, state):
+        state = solver.refresh_state(operator, {}, state)
+        solution = lx.linear_solve(operator, b, solver, state=state, throw=False)
+        return solution.value, solution.result, state
+
+    state = solver.init(operators[0], {})
+    if cudss is FAKE_CUDSS:
+        # The double poisons the handle of its next, valid, factorization.
+        cudss.poison_next_factorization = True
+    _, _, state = step(operators[1], state)
+    value, result, _ = step(operators[2], state)
+
+    assert result == lx.RESULTS.successful
+    expected = np.linalg.solve(np.asarray(laplacians[2].todense()), b)
+    np.testing.assert_allclose(value, expected, rtol=FLOAT64_RTOL)
 
 
 def grounded_laplacian(conductance):
