@@ -52,6 +52,12 @@ cholespy = [
 cuda = [
   "jax[cuda]>=0.9.0"
 ]
+# spineax 0.0.5 ships one CUDA 13 wheel (Linux x86-64, Python >= 3.12) built
+# against cuDSS 0.x; cuDSS 1.0 is unsupported until spineax issues #29/#30.
+cudss = [
+  "spineax==0.0.5; python_version >= '3.12' and sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "nvidia-cudss-cu13>=0.8,<1; python_version >= '3.12' and sys_platform == 'linux' and platform_machine == 'x86_64'"
+]
 dev = [
   "ipykernel>=6.29.5"
 ]
