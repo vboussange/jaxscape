@@ -126,8 +126,8 @@ def profile_metadata(profile: ResistanceProfile, backend: str) -> dict[str, Any]
         ] = "AMJax hierarchy prepared outside timing and frozen"
     if profile.passes_state:
         metadata["solver_state_behavior"] = (
-            "analysis and first factorization prepared outside timing; each "
-            "call refactorizes and passes its solver state to the next call"
+            "analysis and first factorization run outside timing; every "
+            "evaluation refactorizes the solver state the previous one returned"
         )
     if profile.solver_factory is make_cudss_solver:
         metadata.update(cudss_versions())

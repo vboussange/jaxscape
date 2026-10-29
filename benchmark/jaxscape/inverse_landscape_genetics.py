@@ -31,6 +31,7 @@ from benchmark.jaxscape.utils import (
 
 configure_standalone_environment()
 
+import equinox as eqx
 import jax
 import jax.nn as jnn
 import jax.numpy as jnp
@@ -61,6 +62,7 @@ from benchmark.jaxscape.resistance_profile_support import (
     make_amjaxcg_solver,
     make_cholmod_solver,
     make_spielman_method,
+    passing_state,
     profile_metadata,
     profile_unavailable_reason,
     ResistanceProfile,
@@ -270,6 +272,124 @@ def _inverse_loss(
     return jnp.mean((predicted - target_distances) ** 2)
 
 
+def _inverse_loss_and_state(
+    params: jax.Array,
+    base_resistance: jax.Array,
+    sample_coords: jax.Array,
+    target_distances: jax.Array,
+    state: Any,
+    *,
+    distance: ResistanceDistance,
+) -> tuple[jax.Array, Any]:
+    """`_inverse_loss`, and the solver state refreshed for `params`."""
+    permeability = _permeability_from_inverse_params(params, base_resistance)
+    grid = _inverse_grid(permeability)
+    nodes = grid.coord_to_index(sample_coords[:, 0], sample_coords[:, 1])
+    predicted, state = distance.nodes_to_nodes_distance_and_state(grid, nodes, state)
+    return jnp.mean((predicted - target_distances) ** 2), state
+
+
+@eqx.filter_jit
+def _minimise_passing_state(
+    objective: Callable[[jax.Array, Any, Any], tuple[jax.Array, Any]],
+    optimizer: Any,
+    y0: jax.Array,
+    args: Any,
+    state: Any,
+    *,
+    max_steps: int,
+) -> Any:
+    """Minimise like `optimistix.minimise`, passing the solver state between steps.
+
+    `objective(params, args, state)` returns the loss at `params` and the
+    solver state refreshed for `params`. `optimistix.minimise` gives every
+    objective evaluation the same `args`, so this compiled loop runs the
+    optimizer's `init`, `step`, `terminate` and `postprocess` as
+    `optimistix.minimise` does. Each step of a quasi-Newton optimizer such as
+    LBFGS evaluates the objective once, at the point `y_eval` of its state.
+    The loop makes that evaluation itself with the solver state that the
+    previous evaluation returned, keeps the refreshed state, and hands the
+    step the loss and gradient. Every evaluation therefore refactorizes the
+    state of the evaluation before it, whether the line search accepts the
+    step or not. The gradient is computed at every evaluation, including
+    those the line search rejects; exact resistance distances differentiate
+    with the potentials of the forward solve, with no further solve.
+
+    **Returns:**
+
+    An `optimistix.Solution` whose `aux` is the last solver state, to pass to
+    the next call.
+    """
+    assert optx is not None
+    results = optx.RESULTS
+    options: dict[str, Any] = {}
+    tags: frozenset[object] = frozenset()
+
+    def evaluated(loss: jax.Array, grad: jax.Array) -> Callable:
+        # The objective as the step sees it: `loss` and `grad`, wherever it
+        # is evaluated. The step evaluates it at `y_eval`, where they hold.
+        def fn(params: jax.Array, _) -> tuple[jax.Array, None]:
+            return loss + jnp.vdot(grad, params - jax.lax.stop_gradient(params)), None
+
+        return fn
+
+    loss_struct, _ = jax.eval_shape(objective, y0, args, state)
+    unevaluated = evaluated(jnp.zeros((), loss_struct.dtype), jnp.zeros_like(y0))
+    opt_state = optimizer.init(unevaluated, y0, None, options, loss_struct, None, tags)
+    dynamic_opt_state, static_opt_state = eqx.partition(opt_state, eqx.is_array)
+
+    def terminate_and_result(y, opt_state):
+        terminate, result = optimizer.terminate(
+            unevaluated, y, None, options, opt_state, tags
+        )
+        result = results.where(jnp.all(jnp.isfinite(y)), result, results.nonfinite)
+        return terminate, result
+
+    def cond_fun(carry):
+        _, num_steps, _, _, terminate, result = carry
+        return (
+            jnp.invert(terminate)
+            & (result == results.successful)
+            & (num_steps < max_steps)
+        )
+
+    def body_fun(carry):
+        y, num_steps, dynamic_opt_state, state, _, _ = carry
+        opt_state = eqx.combine(dynamic_opt_state, static_opt_state)
+        (loss, state), grad = jax.value_and_grad(objective, has_aux=True)(
+            opt_state.y_eval, args, state
+        )
+        new_y, opt_state, _ = optimizer.step(
+            evaluated(loss, grad), y, None, options, opt_state, tags
+        )
+        terminate, result = terminate_and_result(y, opt_state)
+        dynamic_opt_state, _ = eqx.partition(opt_state, eqx.is_array)
+        return new_y, num_steps + 1, dynamic_opt_state, state, terminate, result
+
+    terminate, result = terminate_and_result(y0, opt_state)
+    y, num_steps, dynamic_opt_state, state, terminate, result = jax.lax.while_loop(
+        cond_fun,
+        body_fun,
+        (y0, jnp.array(0), dynamic_opt_state, state, terminate, result),
+    )
+    result = results.where(
+        (result == results.successful) & jnp.invert(terminate),
+        results.nonlinear_max_steps_reached,
+        result,
+    )
+    opt_state = eqx.combine(dynamic_opt_state, static_opt_state)
+    y, _, stats = optimizer.postprocess(
+        unevaluated, y, None, None, options, opt_state, tags, result
+    )
+    return optx.Solution(
+        value=y,
+        result=result,
+        aux=state,
+        stats={"num_steps": num_steps, "max_steps": max_steps, **stats},
+        state=opt_state,
+    )
+
+
 def _run_inverse_profile_direct(
     case: BenchmarkCase,
     profile: ResistanceProfile,
@@ -361,7 +481,47 @@ def _run_inverse_profile_direct(
                     throw=False,
                 )
 
-            timings, solution = measure_runtime(solve, init_params, repeats=repeats)
+            def objective_and_state(
+                params: jax.Array,
+                args: tuple[jax.Array, jax.Array, jax.Array],
+                state: Any,
+            ) -> tuple[jax.Array, Any]:
+                reference_resistance, coords, targets = args
+                return _inverse_loss_and_state(
+                    params,
+                    reference_resistance,
+                    coords,
+                    targets,
+                    state,
+                    distance=distance,
+                )
+
+            def solve_and_state(start_params: jax.Array, state: Any):
+                solution = _minimise_passing_state(
+                    objective_and_state,
+                    solver,
+                    start_params,
+                    (base_resistance, sample_coords, target_effective_distances),
+                    state,
+                    max_steps=inverse_settings.max_steps,
+                )
+                return solution, solution.aux
+
+            if profile.passes_state:
+                # Analysis runs once, outside timing. Each optimization starts
+                # from the solver state that the previous one ended with.
+                initial_state = distance.init(
+                    _inverse_grid(
+                        _permeability_from_inverse_params(init_params, base_resistance)
+                    )
+                )
+                timings, solution = measure_runtime(
+                    passing_state(solve_and_state, initial_state),
+                    init_params,
+                    repeats=repeats,
+                )
+            else:
+                timings, solution = measure_runtime(solve, init_params, repeats=repeats)
 
             fitted_permeability = _permeability_from_inverse_params(
                 solution.value,
