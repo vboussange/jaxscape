@@ -15,6 +15,7 @@ from pathlib import Path
 
 import jax
 import jax.numpy as jnp
+import lineax as lx
 import numpy as np
 import pytest
 from fake_cudss import FAKE_CUDSS
@@ -28,13 +29,36 @@ from jaxscape.solvers import (
     cudsssolver,
 )
 from jaxscape.solvers.operator import _batched_linear_solve, _linear_solve
+from jaxscape.utils import graph_laplacian
 from packaging.requirements import Requirement
 
 
 @pytest.fixture(params=["cpu-double", "spineax-gpu"])
 def cudss(request, monkeypatch):
     """The spineax phase API that `CuDSSSolver` runs on."""
+    return use_cudss(request.param, monkeypatch)
+
+
+@pytest.fixture(
+    params=["cpu-double-nan-pivots", "cpu-double-perturbed-pivots", "spineax-gpu"]
+)
+def failing_cudss(request, monkeypatch):
+    """The spineax phase API, for factorizations that fail.
+
+    spineax reports no factorization status. A failed cuDSS factorization
+    leaves NaN or, with perturbed pivots, finite factors; the CPU double
+    reproduces both.
+    """
     if request.param == "spineax-gpu":
+        return use_cudss(request.param, monkeypatch)
+    use_cudss("cpu-double", monkeypatch)
+    pivots = request.param.removeprefix("cpu-double-").removesuffix("-pivots")
+    FAKE_CUDSS.failed_pivots = pivots
+    return FAKE_CUDSS
+
+
+def use_cudss(kind, monkeypatch):
+    if kind == "spineax-gpu":
         try:
             return cudsssolver._load_cudss()
         except (ImportError, RuntimeError) as error:
@@ -165,6 +189,15 @@ def cudss_calls(cudss, run):
 FLOAT64_RTOL = 1e-8
 
 
+def distance_rtol(dtype, surface):
+    """Relative tolerance of distances against the float64 dense reference."""
+    if dtype == jnp.float64:
+        return FLOAT64_RTOL
+    # A 1e-6 floor across a two-cell barrier costs float32 about three of its
+    # seven digits; the other surfaces keep about five.
+    return 1e-2 if surface == "barrier_with_floor" else 1e-4
+
+
 def conductance_grid(conductance):
     return GridGraph(conductance, fun=lambda x, y: (x + y) / 2)
 
@@ -197,11 +230,13 @@ QUERIES = {
 }
 
 
+@pytest.mark.parametrize("dtype", [jnp.float64, jnp.float32])
 @pytest.mark.parametrize("compiled", [False, True], ids=["eager", "jit"])
 @pytest.mark.parametrize("query", QUERIES)
 @pytest.mark.parametrize("surface", ["smooth", "six_decades", "barrier_with_floor"])
-def test_exact_distances_match_dense_reference(cudss, surface, query, compiled):
-    grid = conductance_grid(conductance_surface(surface))
+def test_exact_distances_match_dense_reference(cudss, surface, query, compiled, dtype):
+    conductance = conductance_surface(surface)
+    grid = conductance_grid(conductance.astype(dtype))
     distance = ResistanceDistance(solver=CuDSSSolver())
     state = distance.init(grid)
 
@@ -212,9 +247,59 @@ def test_exact_distances_match_dense_reference(cudss, surface, query, compiled):
         distances = jax.jit(distances)
     actual = distances(grid, state)
 
-    expected = ResistanceDistance()(grid, **QUERIES[query])
-    assert actual.dtype == jnp.float64
-    np.testing.assert_allclose(actual, expected, rtol=FLOAT64_RTOL, atol=1e-12)
+    expected = ResistanceDistance()(conductance_grid(conductance), **QUERIES[query])
+    assert actual.dtype == dtype
+    rtol = distance_rtol(dtype, surface)
+    np.testing.assert_allclose(
+        actual, expected, rtol=rtol, atol=rtol * float(np.max(expected))
+    )
+
+
+TINY_GRAPHS = {
+    # A single edge of conductance 4: the grounded Laplacian is 1 x 1.
+    "edge": ([(0, 1, 4.0)], [[0.0, 0.25], [0.25, 0.0]]),
+    # Conductances 2 and 4 in series.
+    "path": (
+        [(0, 1, 2.0), (1, 2, 4.0)],
+        [[0, 0.5, 0.75], [0.5, 0, 0.25], [0.75, 0.25, 0]],
+    ),
+    # A unit triangle: one edge in parallel with two in series.
+    "triangle": (
+        [(0, 1, 1.0), (1, 2, 1.0), (0, 2, 1.0)],
+        np.full((3, 3), 2 / 3) - np.diag(np.full(3, 2 / 3)),
+    ),
+    # A unit square with one diagonal of conductance 2. By symmetry, no
+    # current crosses the diagonal between vertices 1 and 3.
+    "square": (
+        [(0, 1, 1.0), (1, 2, 1.0), (2, 3, 1.0), (3, 0, 1.0), (0, 2, 2.0)],
+        np.array(
+            [
+                [0, 7 / 12, 1 / 3, 7 / 12],
+                [7 / 12, 0, 7 / 12, 1],
+                [1 / 3, 7 / 12, 0, 7 / 12],
+                [7 / 12, 1, 7 / 12, 0],
+            ]
+        ),
+    ),
+}
+
+
+@pytest.mark.parametrize("dtype", [jnp.float64, jnp.float32])
+@pytest.mark.parametrize("graph", TINY_GRAPHS)
+def test_tiny_graphs_give_exact_distances(cudss, graph, dtype):
+    edges, expected = TINY_GRAPHS[graph]
+    n = len(expected)
+    adjacency = np.zeros((n, n))
+    for u, v, w in edges:
+        adjacency[u, v] = adjacency[v, u] = w
+    graph = Graph(BCOO.fromdense(jnp.asarray(adjacency, dtype=dtype)))
+    distance = ResistanceDistance(solver=CuDSSSolver())
+
+    actual = distance(graph, state=distance.init(graph))
+
+    assert actual.dtype == dtype
+    rtol = distance_rtol(dtype, "smooth")
+    np.testing.assert_allclose(actual, np.asarray(expected), rtol=rtol, atol=rtol)
 
 
 def test_compiled_queries_need_a_state_from_initialization(cudss):
@@ -639,3 +724,98 @@ def test_spielman_adjoint_solves_reuse_the_forward_factorization(cudss, query):
     # factorization: no new factorization, and no repeated analysis.
     assert cudss.rebuild_count() == rebuilds
     assert cudss_calls(cudss, lambda: pullback(cotangent)) == (0, 1)
+
+
+def invalid_surface(name):
+    """6 x 7 conductance rasters whose grounded Laplacian is not positive
+    definite."""
+    surface = np.array(conductance_surface("barrier_with_floor"))
+    if name == "disconnected":
+        # The barrier without its floor conducts nothing: the vertices left of
+        # it float, and the grounded Laplacian is singular.
+        surface[:, 3:5] = 0.0
+    elif name == "negative":
+        # The edges around this cell have negative conductances.
+        surface[2, 2] = -10.0
+    else:
+        raise ValueError(name)
+    return jnp.asarray(surface)
+
+
+def raises_failed_solve():
+    """Expect Lineax's error for a failed solve.
+
+    Its exception type depends on the compilation wrapper and the JAX version.
+    """
+    return pytest.raises(Exception, match="linear solver returned non-finite")
+
+
+@pytest.mark.parametrize("dtype", [jnp.float64, jnp.float32])
+@pytest.mark.parametrize("compiled", [False, True], ids=["eager", "jit"])
+@pytest.mark.parametrize("surface", ["disconnected", "negative"])
+def test_a_failed_factorization_raises(failing_cudss, surface, compiled, dtype):
+    grid = conductance_grid(invalid_surface(surface).astype(dtype))
+    distance = ResistanceDistance(solver=CuDSSSolver())
+    # spineax reports nothing from analysis and factorization.
+    state = distance.init(grid)
+
+    def distances(grid, state):
+        return distance(grid, state=state)
+
+    if compiled:
+        distances = jax.jit(distances)
+    with raises_failed_solve():
+        jax.block_until_ready(distances(grid, state))
+
+
+@pytest.mark.parametrize("dtype", [jnp.float64, jnp.float32])
+@pytest.mark.parametrize("query", QUERIES)
+@pytest.mark.parametrize("surface", ["disconnected", "negative"])
+def test_a_failed_refactorization_raises_mid_optimization(
+    failing_cudss, surface, query, dtype
+):
+    # Pivots of this surface stay above cuDSS's float32 pivot epsilon.
+    valid = conductance_surface("smooth").astype(dtype)
+    distance = ResistanceDistance(solver=CuDSSSolver())
+    step = compiled_step(distance, query)
+    _, state = step(valid, distance.init(conductance_grid(valid)))
+
+    with raises_failed_solve():
+        jax.block_until_ready(step(invalid_surface(surface).astype(dtype), state))
+
+
+def grounded_laplacian(conductance):
+    """The grounded Laplacian that resistance distances solve with."""
+    adjacency = conductance_grid(conductance).get_adjacency_matrix()
+    return graph_laplacian(adjacency)[:-1, :-1]
+
+
+@pytest.mark.parametrize("dtype", [jnp.float64, jnp.float32])
+@pytest.mark.parametrize("factorization", ["initialization", "refactorization"])
+@pytest.mark.parametrize("surface", ["disconnected", "negative"])
+def test_without_throw_a_failed_factorization_returns_a_failed_result(
+    failing_cudss, surface, factorization, dtype
+):
+    operator = BCOOLinearOperator(
+        grounded_laplacian(invalid_surface(surface).astype(dtype))
+    )
+    solver = CuDSSSolver()
+    if factorization == "initialization":
+        state = solver.init(operator, {})
+    else:
+        valid = grounded_laplacian(conductance_surface("smooth").astype(dtype))
+        state = solver.init(BCOOLinearOperator(valid), {})
+    # Current enters at every vertex, the floating ones included.
+    b = jnp.ones(operator.in_size(), dtype)
+
+    @jax.jit
+    def solve(operator, state):
+        if factorization == "refactorization":
+            state = solver.refresh_state(operator, {}, state)
+        solution = lx.linear_solve(operator, b, solver, state=state, throw=False)
+        return solution.value, solution.result
+
+    value, result = solve(operator, state)
+
+    assert result != lx.RESULTS.successful
+    assert np.all(np.isnan(value))
