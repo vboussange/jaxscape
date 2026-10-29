@@ -6,6 +6,7 @@ skip explicitly elsewhere, and against a CPU double of spineax's phase API
 """
 
 import importlib.machinery
+import importlib.util
 import subprocess
 import sys
 import tomllib
@@ -18,9 +19,14 @@ import numpy as np
 import pytest
 from fake_cudss import FAKE_CUDSS
 from jax.experimental.sparse import BCOO
-from jaxscape import Graph, GridGraph, ResistanceDistance
+from jaxscape import Graph, GridGraph, ResistanceDistance, SpielmanApproximation
 from jaxscape.resistance_distance import p_inv_resistance_distance
-from jaxscape.solvers import BCOOLinearOperator, CuDSSSolver, cudsssolver
+from jaxscape.solvers import (
+    BCOOLinearOperator,
+    CholmodSolver,
+    CuDSSSolver,
+    cudsssolver,
+)
 from jaxscape.solvers.operator import _batched_linear_solve, _linear_solve
 from packaging.requirements import Requirement
 
@@ -524,3 +530,112 @@ def test_an_outdated_state_still_gives_exact_distances(cudss, query):
         np.testing.assert_allclose(distances, expected, rtol=FLOAT64_RTOL, atol=1e-12)
     # spineax repeated the analysis for the outdated state.
     assert cudss.rebuild_count() > rebuilds
+
+
+needs_cholmod = pytest.mark.skipif(
+    importlib.util.find_spec("cholespy") is None,
+    reason="The reference CholmodSolver needs cholespy.",
+)
+SPIELMAN = SpielmanApproximation(epsilon=0.3, seed=7)
+
+
+def spielman_atol(expected):
+    """Absolute tolerance of float64 Spielman distances.
+
+    A distance is a difference of squared feature norms, so near-zero
+    distances, such as those of a vertex to itself, carry rounding errors
+    relative to the largest distance.
+    """
+    return 1e-13 * np.max(np.abs(expected))
+
+
+@needs_cholmod
+@pytest.mark.parametrize("compiled", [False, True], ids=["eager", "jit"])
+@pytest.mark.parametrize("query", QUERIES)
+@pytest.mark.parametrize("surface", ["smooth", "six_decades", "barrier_with_floor"])
+def test_spielman_distances_match_cholmod(cudss, surface, query, compiled):
+    grid = conductance_grid(conductance_surface(surface))
+    distance = ResistanceDistance(solver=CuDSSSolver(), method=SPIELMAN)
+    state = distance.init(grid)
+
+    def distances(grid, state):
+        return distance(grid, state=state, **QUERIES[query])
+
+    if compiled:
+        distances = jax.jit(distances)
+    actual = distances(grid, state)
+
+    reference = ResistanceDistance(solver=CholmodSolver(), method=SPIELMAN)
+    expected = reference(grid, **QUERIES[query])
+    assert actual.dtype == jnp.float64
+    np.testing.assert_allclose(
+        actual, expected, rtol=FLOAT64_RTOL, atol=spielman_atol(expected)
+    )
+
+
+@needs_cholmod
+@pytest.mark.parametrize("query", QUERIES)
+def test_spielman_gradients_match_cholmod(cudss, query):
+    """Fit land-cover conductances to approximate sampled-site distances."""
+    land_cover = np.random.default_rng(4).integers(0, 3, (6, 7))
+    features = jax.nn.one_hot(land_cover, num_classes=3, dtype=jnp.float64)
+
+    def landscape(log_conductance):
+        return conductance_grid(jnp.exp(features @ log_conductance))
+
+    distance = ResistanceDistance(solver=CuDSSSolver(), method=SPIELMAN)
+    reference = ResistanceDistance(solver=CholmodSolver(), method=SPIELMAN)
+    distances_and_state = query_and_state(distance, query)
+    reference_distances = query_and_state(reference, query)
+    target, _ = reference_distances(landscape(jnp.array([0.3, -0.4, 0.2])), None)
+
+    def objective(log_conductance, distances_and_state, state):
+        predicted, state = distances_and_state(landscape(log_conductance), state)
+        return jnp.mean((predicted - target) ** 2), state
+
+    step = jax.jit(
+        jax.value_and_grad(
+            lambda p, state: objective(p, distances_and_state, state), has_aux=True
+        )
+    )
+    reference_step = jax.value_and_grad(
+        lambda p: objective(p, reference_distances, None), has_aux=True
+    )
+    initial = jnp.array([-0.2, 0.25, -0.1])
+    state = distance.init(landscape(initial))
+
+    # Up to six orders of magnitude of contrast between land covers.
+    for log_conductance in (
+        initial,
+        jnp.array([0.15, -0.2, 0.1]),
+        jnp.array([0.0, -6.9, -13.8]),
+    ):
+        (loss, state), gradient = step(log_conductance, state)
+
+        (expected_loss, _), expected_gradient = reference_step(log_conductance)
+        np.testing.assert_allclose(loss, expected_loss, rtol=FLOAT64_RTOL)
+        np.testing.assert_allclose(
+            gradient, expected_gradient, rtol=FLOAT64_RTOL, atol=1e-12
+        )
+
+
+@pytest.mark.parametrize("query", QUERIES)
+def test_spielman_adjoint_solves_reuse_the_forward_factorization(cudss, query):
+    conductance = conductance_surface("six_decades")
+    distance = ResistanceDistance(solver=CuDSSSolver(), method=SPIELMAN)
+    state = distance.init(conductance_grid(conductance))
+    distances_and_state = query_and_state(distance, query)
+
+    def distances(conductance):
+        return distances_and_state(conductance_grid(conductance), state)[0]
+
+    # The forward pass refactorizes the state and solves.
+    forward, pullback = jax.vjp(distances, conductance)
+    cotangent = jnp.asarray(np.random.default_rng(5).standard_normal(forward.shape))
+
+    rebuilds = cudss.rebuild_count()
+    jax.block_until_ready(pullback(cotangent))
+    # The backward pass makes one multi-RHS adjoint solve with the forward
+    # factorization: no new factorization, and no repeated analysis.
+    assert cudss.rebuild_count() == rebuilds
+    assert cudss_calls(cudss, lambda: pullback(cotangent)) == (0, 1)
