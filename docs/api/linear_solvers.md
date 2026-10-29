@@ -188,25 +188,46 @@ needs `jax.config.update("jax_enable_x64", True)` and float64 conductances.
   measurements of float32 Cholesky solves, the relative error of resistance
   distances grew from about 10⁻⁵ on small grids to 10⁻² on 300×300 grids at
   6 orders of magnitude of contrast, and reached 10⁻¹ with a 10⁻⁶ conductance
-  floor. Use float64 for high-contrast surfaces.
+  floor. Use float64 for high-contrast surfaces. A 10⁻⁶ conductance is also
+  within float32 rounding of a zero conductance relative to unit ones, so
+  float32 cannot reliably tell vertices joined through such edges from
+  vertices cut off from the ground vertex (see
+  [Failed factorizations](#failed-factorizations)).
 
 ### Failed factorizations
 
 A Cholesky factorization fails when the grounded Laplacian is not positive
-definite, for example with a negative conductance, or is numerically
-singular, for example when zero conductances cut vertices off from the ground
-vertex, the graph's last vertex. spineax reports no factorization status, and
-a failed cuDSS factorization can leave NaN or finite solutions that do not
-solve the system. `CuDSSSolver` therefore checks each solution `x` of a
-right-hand side `b` against the matrix `A` it factorized. The solve fails
-when `x` is not finite, or when `max|b - A x|` exceeds `max|b|` times 10⁻⁴ in
-float64 or 10⁻¹ in float32. A failed solve returns NaN values and reports
-`lineax.RESULTS.singular` through Lineax's result:
+definite, for example with a negative conductance or a vertex whose
+conductances are all zero, or is singular, for example when zero
+conductances cut vertices off from the ground vertex, the graph's last
+vertex. spineax reports no factorization status. On an RTX 3090, a cuDSS
+factorization that meets a non-positive pivot left finite garbage or NaN,
+and poisoned its cuDSS handle: every later refactorization on that handle
+gave the same garbage, whatever the conductances.
 
-- resistance-distance queries solve with `throw=True` and raise, for the state
-  from `init` and after a query refactorizes for new conductances, eagerly
-  and inside `jax.jit`. Lineax raises reliably on CPUs; on GPUs it may only
-  print the error, and the failed distances are then NaN;
+`CuDSSSolver` therefore checks its results twice:
+
+- **Each factorization**, in `init` and at each query, solves `A x = A 1` with
+  the new factorization. It fails when the backward error
+  `max|A 1 - A x| / (‖A‖∞ max|x|)` is not finite or exceeds the square root
+  of the machine epsilon: 3.5·10⁻⁴ in float32 and 1.5·10⁻⁸ in float64. The
+  state records the failure; the next query that refreshes it analyses the
+  matrix afresh instead of refactorizing the poisoned handle, so one bad
+  step leaves the following steps exact.
+- **Each solve** checks its solution `x` of a right-hand side `b`: it fails
+  when `x` is not finite, or when `max|b - A x|` exceeds `max|b|` times 10⁻⁴
+  in float64 or 10⁻¹ in float32. This catches singular matrices whose
+  factorization passes, for the right-hand sides they make inconsistent, so
+  a query of vertices that all stay connected to the ground vertex succeeds
+  with exact distances.
+
+A failed solve, including every solve with a failed factorization, returns
+NaN values and reports `lineax.RESULTS.singular` through Lineax's result:
+
+- resistance-distance queries solve with `throw=True` and raise, eagerly and
+  inside `jax.jit`, for the state from `init` and after a query refactorizes
+  for new conductances. On GPUs, Lineax may only print the error, and the
+  failed distances are then NaN;
 - a direct Lineax solve with `throw=False` returns the failed result.
 
 ```python
@@ -220,12 +241,25 @@ solution = lx.linear_solve(operator, b, solver, state=state, throw=False)
 failed = solution.result != lx.RESULTS.successful
 ```
 
-The check costs one sparse matrix-vector product with `A` per right-hand side
-and runs no further factorization or solve. It judges the solutions a query
-computes, so a query of vertices that all stay connected to the ground vertex
-succeeds with exact distances. In float32, a surface whose solves miss the
-float32 tolerance is reported as failed, as a 10⁻⁶ conductance floor on a
-100×100 grid was in CPU measurements; solve it in float64.
+The factorization check costs one solve of one right-hand side and two
+sparse matrix-vector products per factorization; the solve check costs one
+sparse matrix-vector product per right-hand side. Their thresholds come from
+measurements on an RTX 3090 with grounded grid Laplacians of 100×100,
+300×300 and 1000×1000 cells, smooth or with up to 6 orders of magnitude of
+contrast and a straight barrier at a 10⁻⁶ conductance floor:
+
+| Measurement | float32 | float64 |
+|---|---|---|
+| Factorization backward error, valid matrices | at most 1.1·10⁻⁶ | at most 1.0·10⁻¹⁵ |
+| Factorization backward error, non-positive pivot | at least 3.9·10⁻², or not finite | at least 3.9·10⁻², or not finite |
+| Solve residual of single-vertex currents, valid matrices | at most 6.6·10⁻³ | at most 1.2·10⁻¹¹ |
+| Solve residual, vertices cut off from the ground vertex | 1.5·10⁻³ to 0.5 | 3·10⁻² to 0.16 |
+
+In float64, both checks separate valid and failed matrices by orders of
+magnitude. In float32, a factorization that meets a non-positive pivot is
+always caught, but vertices cut off from the ground vertex can pass the
+solve check on large grids: their residuals overlap those of valid
+high-contrast matrices. Use float64 when conductances can be zero.
 
 ### Installing cuDSS support
 
@@ -400,17 +434,22 @@ Analysis runs again, and a call costs about as much as `init`, when:
   factorizations filled its cache. A loop that passes on more states than the
   cache holds, for example one per region, needs a larger
   `SPINEAX_FACTOR_CACHE`;
-- **an eager query receives no state**, and initializes one. A compiled query
-  without a state raises a `ValueError` asking for `distance.init(graph)`.
+- **an eager query receives no state**, and initializes one, as
+  `distance(graph)` and the `*_distance_and_state` forms do. A compiled
+  query without a state raises a `ValueError` asking for
+  `distance.init(graph)`;
+- **a query receives a state whose factorization failed its check**, and
+  analyses the matrix afresh, because cuDSS leaves the handle of such a
+  factorization unusable.
 
 A used-up or evicted state still gives exact distances: spineax repeats the
 analysis and factorization for the current conductances. A mistake in passing
 the state costs time and leaves the results unchanged.
 
 A state belongs to the sparsity pattern it was initialized for: for a
-`GridGraph`, the raster shape and contiguity, with any conductances. The solver
-maps values onto that pattern by position and does not compare sparse indices,
-so initialize a new state whenever the geometry changes.
+`GridGraph`, the raster shape and contiguity, with any conductances. A query
+whose grounded Laplacian has other sparse indices than the state raises an
+error, so initialize a new state whenever the geometry changes.
 
 ## Solver reference
 
@@ -429,6 +468,11 @@ so initialize a new state whenever the geometry changes.
 ::: jaxscape.solvers.cudsssolver.CuDSSSolver
     options:
       members: false
+
+::: jaxscape.solvers.operator.AbstractRefreshingSolver
+    options:
+      members:
+        - refresh_state
 
 ## Advanced: `BCOOLinearOperator`
 

@@ -12,6 +12,7 @@ from .cudsssolver import (
     CuDSSSolverState as CuDSSSolverState,
 )
 from .operator import (
+    AbstractRefreshingSolver as AbstractRefreshingSolver,
     BCOOLinearOperator as BCOOLinearOperator,
 )
 from .pyamgsolver import PyAMGSolver as PyAMGSolver
