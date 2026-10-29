@@ -494,6 +494,16 @@ def _spielman_distances(
     )
 
 
+def _matmul(a: Array, b: Array) -> Array:
+    """Matrix product in full precision.
+
+    On GPUs, JAX's default precision multiplies float32 matrices in TF32,
+    with about three significant digits, which loses the accuracy of float32
+    resistance distances and their gradients.
+    """
+    return jnp.matmul(a, b, precision=lax.Precision.HIGHEST)
+
+
 def _projection_size(n: int, epsilon: float) -> int:
     """Number of Spielman-Srivastava random projections for accuracy epsilon."""
     if epsilon <= 0:
@@ -624,7 +634,7 @@ def _exact_selected_inverse_bwd(
     # This uses the saved forward solutions: no backward solve is needed.
     # G need not be symmetric; the formula uses X G, not X G.T. The shared
     # helper applies the remaining chain rule from A to the stored edge data.
-    adjoint = potentials @ cotangent
+    adjoint = _matmul(potentials, cotangent)
     return _laplacian_data_pullback(adjoint, potentials, indices, shape)
 
 
@@ -761,7 +771,7 @@ def _spielman_project_potentials(
         signs = _rademacher_projection_signs(k, data.shape[0], seed, data.dtype)
         # Scale the (edges, sites) differences once instead of weighting every
         # entry of the (projections, edges) sign matrix before the contraction.
-        return signs @ (scaled_weights[:, None] * edge_deltas)
+        return _matmul(signs, scaled_weights[:, None] * edge_deltas)
 
     key = jax.random.PRNGKey(seed)
 
@@ -769,7 +779,7 @@ def _spielman_project_potentials(
     def project_one(projection_index):
         projection_key = jax.random.fold_in(key, projection_index)
         signs = jax.random.rademacher(projection_key, data.shape).astype(data.dtype)
-        return (signs * scaled_weights) @ edge_deltas
+        return _matmul(signs * scaled_weights, edge_deltas)
 
     # lax.map handles a final partial batch with the same global fold_in keys.
     # Checkpointing each row recomputes signs in reverse mode instead of saving
@@ -787,7 +797,7 @@ def _distances_from_selected_features(
     return (
         source_norms[:, None]
         + target_norms[None, :]
-        - 2 * source_features.T @ target_features
+        - 2 * _matmul(source_features.T, target_features)
     )
 
 
@@ -898,4 +908,8 @@ def _distances_from_features_reduced(features_reduced: Array) -> Array:
     features = jnp.pad(features_reduced, ((0, 0), (0, 1)))
     feature_norms = jnp.sum(features**2, axis=0)
     # Pairwise squared distances: ||u - v||^2 = ||u||^2 + ||v||^2 - 2 u*v.
-    return feature_norms[:, None] + feature_norms[None, :] - 2 * features.T @ features
+    return (
+        feature_norms[:, None]
+        + feature_norms[None, :]
+        - 2 * _matmul(features.T, features)
+    )
