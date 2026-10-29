@@ -53,6 +53,13 @@ def paired_with_queries(cases):
     ]
 
 
+def assert_equal_to_rounding(actual, expected):
+    """Arrays agree to rounding: GPU scatter-adds sum in varying order."""
+    np.testing.assert_allclose(
+        actual, expected, rtol=1e-12, atol=1e-13 * float(np.max(np.abs(expected)))
+    )
+
+
 def grid_graph(permeability):
     return GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
 
@@ -155,7 +162,7 @@ def test_state_returning_query_matches_query_and_returns_supplied_state(
 
     distances, returned_state = query_and_state(distance, name, graph, state)
 
-    np.testing.assert_array_equal(distances, query(distance, name, graph, state))
+    assert_equal_to_rounding(distances, query(distance, name, graph, state))
     assert eqx.tree_equal(returned_state, state)
 
 
@@ -184,8 +191,8 @@ def test_state_returning_query_without_state_starts_from_init(solver, name, meth
     expected, expected_state = query_and_state(
         distance, name, graph, distance.init(graph)
     )
-    np.testing.assert_array_equal(distances, expected)
-    np.testing.assert_array_equal(distances, query(distance, name, graph, None))
+    assert_equal_to_rounding(distances, expected)
+    assert_equal_to_rounding(distances, query(distance, name, graph, None))
     # Array for array: a host factorization is a new object at each `init`.
     assert eqx.tree_equal(array_leaves(returned_state), array_leaves(expected_state))
 
@@ -208,8 +215,8 @@ def test_state_returning_query_returns_refreshed_state(name, method):
         graph = grid_graph(permeability(power))
         distances, state = query_and_state(distance, name, graph, state)
 
-        # Solves use the state refreshed for the current graph, not the
-        # supplied one, and the query hands that refreshed state back.
+        # Solves use the state refreshed for the current graph, and the query
+        # hands that refreshed state back.
         assert state.refreshes == step
         np.testing.assert_allclose(
             distances, query(reference, name, graph, None), rtol=1e-10, atol=1e-12
@@ -266,7 +273,7 @@ def test_state_returning_query_gradients_ignore_returned_state(
     )(values, state)
     expected_gradient = eqx.filter_jit(eqx.filter_grad(loss))(values, state)
 
-    np.testing.assert_array_equal(gradient, expected_gradient)
+    assert_equal_to_rounding(gradient, expected_gradient)
     _, expected_state = eqx.filter_jit(query_and_state)(
         distance, name, grid_graph(values), state
     )
