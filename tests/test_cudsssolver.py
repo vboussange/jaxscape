@@ -159,6 +159,15 @@ def cudss_calls(cudss, run):
 FLOAT64_RTOL = 1e-8
 
 
+def distance_rtol(dtype, surface):
+    """Relative tolerance of distances against the float64 dense reference."""
+    if dtype == jnp.float64:
+        return FLOAT64_RTOL
+    # A 1e-6 floor across a two-cell barrier costs float32 about three of its
+    # seven digits; the other surfaces keep about five.
+    return 1e-2 if surface == "barrier_with_floor" else 1e-4
+
+
 def conductance_grid(conductance):
     return GridGraph(conductance, fun=lambda x, y: (x + y) / 2)
 
@@ -191,11 +200,13 @@ QUERIES = {
 }
 
 
+@pytest.mark.parametrize("dtype", [jnp.float64, jnp.float32])
 @pytest.mark.parametrize("compiled", [False, True], ids=["eager", "jit"])
 @pytest.mark.parametrize("query", QUERIES)
 @pytest.mark.parametrize("surface", ["smooth", "six_decades", "barrier_with_floor"])
-def test_exact_distances_match_dense_reference(cudss, surface, query, compiled):
-    grid = conductance_grid(conductance_surface(surface))
+def test_exact_distances_match_dense_reference(cudss, surface, query, compiled, dtype):
+    conductance = conductance_surface(surface)
+    grid = conductance_grid(conductance.astype(dtype))
     distance = ResistanceDistance(solver=CuDSSSolver())
     state = distance.init(grid)
 
@@ -206,9 +217,59 @@ def test_exact_distances_match_dense_reference(cudss, surface, query, compiled):
         distances = jax.jit(distances)
     actual = distances(grid, state)
 
-    expected = ResistanceDistance()(grid, **QUERIES[query])
-    assert actual.dtype == jnp.float64
-    np.testing.assert_allclose(actual, expected, rtol=FLOAT64_RTOL, atol=1e-12)
+    expected = ResistanceDistance()(conductance_grid(conductance), **QUERIES[query])
+    assert actual.dtype == dtype
+    rtol = distance_rtol(dtype, surface)
+    np.testing.assert_allclose(
+        actual, expected, rtol=rtol, atol=rtol * float(np.max(expected))
+    )
+
+
+TINY_GRAPHS = {
+    # A single edge of conductance 4: the grounded Laplacian is 1 x 1.
+    "edge": ([(0, 1, 4.0)], [[0.0, 0.25], [0.25, 0.0]]),
+    # Conductances 2 and 4 in series.
+    "path": (
+        [(0, 1, 2.0), (1, 2, 4.0)],
+        [[0, 0.5, 0.75], [0.5, 0, 0.25], [0.75, 0.25, 0]],
+    ),
+    # A unit triangle: one edge in parallel with two in series.
+    "triangle": (
+        [(0, 1, 1.0), (1, 2, 1.0), (0, 2, 1.0)],
+        np.full((3, 3), 2 / 3) - np.diag(np.full(3, 2 / 3)),
+    ),
+    # A unit square with one diagonal of conductance 2. By symmetry, no
+    # current crosses the diagonal between vertices 1 and 3.
+    "square": (
+        [(0, 1, 1.0), (1, 2, 1.0), (2, 3, 1.0), (3, 0, 1.0), (0, 2, 2.0)],
+        np.array(
+            [
+                [0, 7 / 12, 1 / 3, 7 / 12],
+                [7 / 12, 0, 7 / 12, 1],
+                [1 / 3, 7 / 12, 0, 7 / 12],
+                [7 / 12, 1, 7 / 12, 0],
+            ]
+        ),
+    ),
+}
+
+
+@pytest.mark.parametrize("dtype", [jnp.float64, jnp.float32])
+@pytest.mark.parametrize("graph", TINY_GRAPHS)
+def test_tiny_graphs_give_exact_distances(cudss, graph, dtype):
+    edges, expected = TINY_GRAPHS[graph]
+    n = len(expected)
+    adjacency = np.zeros((n, n))
+    for u, v, w in edges:
+        adjacency[u, v] = adjacency[v, u] = w
+    graph = Graph(BCOO.fromdense(jnp.asarray(adjacency, dtype=dtype)))
+    distance = ResistanceDistance(solver=CuDSSSolver())
+
+    actual = distance(graph, state=distance.init(graph))
+
+    assert actual.dtype == dtype
+    rtol = distance_rtol(dtype, "smooth")
+    np.testing.assert_allclose(actual, np.asarray(expected), rtol=rtol, atol=rtol)
 
 
 def test_compiled_queries_need_a_state_from_initialization(cudss):
