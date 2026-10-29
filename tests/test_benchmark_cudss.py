@@ -3,6 +3,7 @@
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 import pytest
 from benchmark.benchmark_registry import DISPLAY_ORDER_BY_TASK
 from benchmark.jaxscape import inverse_landscape_genetics, resistance_distance
@@ -217,14 +218,73 @@ def test_cudss_inverse_profile_records_the_analyses_spineax_repeats(
         tiny_inverse_case(),
         profile,
         device=jax.devices("cpu")[0],
-        repeats=2,
+        repeats=1,
         tool_label=f"{profile.tool} (GPU)",
     )
 
     assert record.status == "ok", record.note
-    assert len(record.timings_seconds) == 2
+    assert len(record.timings_seconds) == 1
     assert record.metrics["iteration_count"] > 1
-    # Each optimization starts from the state the previous one returned, and
-    # its objective evaluations share that state, so spineax repeats the
-    # analysis for evaluations after the first; the record counts them.
     assert record.metrics["spineax_rebuilds"] == cpu_double_of_cudss.rebuild_count()
+    assert "rejected_steps" in record.metrics
+
+
+def test_the_inverse_loop_takes_the_steps_of_optimistix_minimise(cpu_double_of_cudss):
+    """It re-analyses once early, and once for each rejected line-search step."""
+    optx = pytest.importorskip("optimistix")
+    from benchmark.benchmark_distances import as_point_array
+    from jaxscape import ResistanceDistance
+    from jaxscape.solvers import CuDSSSolver
+
+    runner = inverse_landscape_genetics
+    case = tiny_inverse_case()
+    base = runner._base_resistance(jnp.asarray(case.raster, dtype=jnp.float64))
+    coords = as_point_array(case.points)
+    start = runner._initial_inverse_params(base)
+
+    def grid(params):
+        return runner._inverse_grid(
+            runner._permeability_from_inverse_params(params, base)
+        )
+
+    # Targets far from the start, so that the line search rejects steps.
+    targets = ResistanceDistance()(grid(start + 4.0), nodes=coords)
+    args = (base, coords, targets)
+    distance = ResistanceDistance(solver=CuDSSSolver())
+    optimizer = optx.LBFGS(rtol=1e-5, atol=1e-5)
+
+    def objective(params, args_and_state):
+        (base, coords, targets), state = args_and_state
+        return runner._inverse_loss_and_state(
+            params, base, coords, targets, state, distance=distance
+        )
+
+    state = distance.init(grid(start))
+    rebuilds = cpu_double_of_cudss.rebuild_count()
+    solution = runner._minimise_carrying_state(
+        objective, optimizer, start, args, state, max_steps=50
+    )
+    rejected_steps = int(solution.stats["rejected_steps"])
+    rebuilds = cpu_double_of_cudss.rebuild_count() - rebuilds
+
+    # The same objective, minimised with a state that every evaluation reuses:
+    # spineax rebuilds the factorization, with the same values.
+    reused_state = distance.init(grid(start))
+    expected = optx.minimise(
+        lambda params, args: runner._inverse_loss(
+            params, *args, distance=distance, state=reused_state
+        ),
+        optimizer,
+        start,
+        args,
+        max_steps=50,
+        throw=False,
+    )
+    assert int(solution.stats["num_steps"]) == int(expected.stats["num_steps"]) > 1
+    assert solution.result == expected.result
+    np.testing.assert_array_equal(solution.value, expected.value)
+    # A step receives the state returned by the step before it: the auxiliary
+    # output of the last accepted step before that one. It was used up after
+    # the first step and after each rejected step.
+    assert rejected_steps > 0
+    assert rebuilds == rejected_steps + 1
