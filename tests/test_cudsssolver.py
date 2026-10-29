@@ -51,9 +51,10 @@ def failing_cudss(request, monkeypatch):
     """
     if request.param == "spineax-gpu":
         return use_cudss(request.param, monkeypatch)
-    cudss = use_cudss("cpu-double", monkeypatch)
-    cudss.failed_pivots = request.param.removeprefix("cpu-double-").split("-")[0]
-    return cudss
+    use_cudss("cpu-double", monkeypatch)
+    pivots = request.param.removeprefix("cpu-double-").removesuffix("-pivots")
+    FAKE_CUDSS.failed_pivots = pivots
+    return FAKE_CUDSS
 
 
 def use_cudss(kind, monkeypatch):
