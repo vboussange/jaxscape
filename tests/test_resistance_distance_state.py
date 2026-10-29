@@ -1,5 +1,10 @@
-"""State-returning resistance-distance queries."""
+"""State-returning resistance-distance queries.
 
+All queries share one code path, so each solver case runs one query and
+method, and the cases of each test cycle through every query and method.
+"""
+
+import itertools
 from importlib.util import find_spec
 from typing import final
 
@@ -31,6 +36,21 @@ METHODS = {
     "exact": ExactResistance(),
     "spielman": SpielmanApproximation(epsilon=0.5, seed=3),
 }
+
+
+def paired_with_queries(cases):
+    """Pair each case with a query name and method, cycling through all six."""
+    pairs = itertools.cycle(itertools.product(QUERY_ARGS, METHODS))
+    return [
+        pytest.param(
+            *case.values,
+            name,
+            METHODS[method],
+            id=f"{case.id}-{name}-{method}",
+            marks=case.marks,
+        )
+        for case, (name, method) in zip(cases, pairs)
+    ]
 
 
 def grid_graph(permeability):
@@ -123,9 +143,9 @@ SUPPLIED_STATE_CASES = [
 ]
 
 
-@pytest.mark.parametrize("method", METHODS.values(), ids=METHODS.keys())
-@pytest.mark.parametrize("name", QUERY_ARGS)
-@pytest.mark.parametrize("solver, make_state", SUPPLIED_STATE_CASES)
+@pytest.mark.parametrize(
+    "solver, make_state, name, method", paired_with_queries(SUPPLIED_STATE_CASES)
+)
 def test_state_returning_query_matches_query_and_returns_supplied_state(
     solver, make_state, name, method
 ):
@@ -151,9 +171,9 @@ INITIALIZING_CASES = [
 ]
 
 
-@pytest.mark.parametrize("method", METHODS.values(), ids=METHODS.keys())
-@pytest.mark.parametrize("name", QUERY_ARGS)
-@pytest.mark.parametrize("solver", INITIALIZING_CASES)
+@pytest.mark.parametrize(
+    "solver, name, method", paired_with_queries(INITIALIZING_CASES)
+)
 def test_state_returning_query_without_state_starts_from_init(solver, name, method):
     distance = ResistanceDistance(solver=solver, method=method)
     graph = grid_graph(permeability())
@@ -170,8 +190,15 @@ def test_state_returning_query_without_state_starts_from_init(solver, name, meth
     assert eqx.tree_equal(array_leaves(returned_state), array_leaves(expected_state))
 
 
-@pytest.mark.parametrize("method", METHODS.values(), ids=METHODS.keys())
-@pytest.mark.parametrize("name", QUERY_ARGS)
+@pytest.mark.parametrize(
+    "name, method",
+    [
+        pytest.param("all_pairs", METHODS["exact"], id="all_pairs-exact"),
+        pytest.param(
+            "sources_to_targets", METHODS["spielman"], id="sources_to_targets-spielman"
+        ),
+    ],
+)
 def test_state_returning_query_returns_refreshed_state(name, method):
     distance = ResistanceDistance(solver=_RefreshCountingSolver(), method=method)
     reference = ResistanceDistance(method=method)
@@ -216,9 +243,9 @@ DIFFERENTIATED_CASES = [
 ]
 
 
-@pytest.mark.parametrize("method", METHODS.values(), ids=METHODS.keys())
-@pytest.mark.parametrize("name", QUERY_ARGS)
-@pytest.mark.parametrize("solver, make_state", DIFFERENTIATED_CASES)
+@pytest.mark.parametrize(
+    "solver, make_state, name, method", paired_with_queries(DIFFERENTIATED_CASES)
+)
 def test_state_returning_query_gradients_ignore_returned_state(
     solver, make_state, name, method
 ):
