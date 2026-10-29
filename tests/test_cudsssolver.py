@@ -34,7 +34,28 @@ from packaging.requirements import Requirement
 @pytest.fixture(params=["cpu-double", "spineax-gpu"])
 def cudss(request, monkeypatch):
     """The spineax phase API that `CuDSSSolver` runs on."""
+    return use_cudss(request.param, monkeypatch)
+
+
+@pytest.fixture(
+    params=["cpu-double-nan-pivots", "cpu-double-perturbed-pivots", "spineax-gpu"]
+)
+def failing_cudss(request, monkeypatch):
+    """The spineax phase API, for factorizations that fail.
+
+    spineax reports no factorization status. A failed cuDSS factorization
+    leaves NaN or, with perturbed pivots, finite factors; the CPU double
+    reproduces both.
+    """
     if request.param == "spineax-gpu":
+        return use_cudss(request.param, monkeypatch)
+    cudss = use_cudss("cpu-double", monkeypatch)
+    cudss.failed_pivots = request.param.removeprefix("cpu-double-").split("-")[0]
+    return cudss
+
+
+def use_cudss(kind, monkeypatch):
+    if kind == "spineax-gpu":
         try:
             return cudsssolver._load_cudss()
         except (ImportError, RuntimeError) as error:
@@ -700,3 +721,61 @@ def test_spielman_adjoint_solves_reuse_the_forward_factorization(cudss, query):
     # factorization: no new factorization, and no repeated analysis.
     assert cudss.rebuild_count() == rebuilds
     assert cudss_calls(cudss, lambda: pullback(cotangent)) == (0, 1)
+
+
+def invalid_surface(name):
+    """6 x 7 conductance rasters whose grounded Laplacian is not positive
+    definite."""
+    surface = np.array(conductance_surface("barrier_with_floor"))
+    if name == "disconnected":
+        # The barrier without its floor conducts nothing: the vertices left of
+        # it float, and the grounded Laplacian is singular.
+        surface[:, 3:5] = 0.0
+    elif name == "negative":
+        # The edges around this cell have negative conductances.
+        surface[2, 2] = -10.0
+    else:
+        raise ValueError(name)
+    return jnp.asarray(surface)
+
+
+def raises_failed_solve():
+    """Expect Lineax's error for a failed solve.
+
+    Its exception type depends on the compilation wrapper and the JAX version.
+    """
+    return pytest.raises(Exception, match="linear solver returned non-finite")
+
+
+@pytest.mark.parametrize("dtype", [jnp.float64, jnp.float32])
+@pytest.mark.parametrize("compiled", [False, True], ids=["eager", "jit"])
+@pytest.mark.parametrize("surface", ["disconnected", "negative"])
+def test_a_failed_factorization_raises(failing_cudss, surface, compiled, dtype):
+    grid = conductance_grid(invalid_surface(surface).astype(dtype))
+    distance = ResistanceDistance(solver=CuDSSSolver())
+    # spineax reports nothing from analysis and factorization.
+    state = distance.init(grid)
+
+    def distances(grid, state):
+        return distance(grid, state=state)
+
+    if compiled:
+        distances = jax.jit(distances)
+    with raises_failed_solve():
+        jax.block_until_ready(distances(grid, state))
+
+
+@pytest.mark.parametrize("dtype", [jnp.float64, jnp.float32])
+@pytest.mark.parametrize("query", QUERIES)
+@pytest.mark.parametrize("surface", ["disconnected", "negative"])
+def test_a_failed_refactorization_raises_mid_optimization(
+    failing_cudss, surface, query, dtype
+):
+    # Pivots of this surface stay above cuDSS's float32 pivot epsilon.
+    valid = conductance_surface("smooth").astype(dtype)
+    distance = ResistanceDistance(solver=CuDSSSolver())
+    step = compiled_step(distance, query)
+    _, state = step(valid, distance.init(conductance_grid(valid)))
+
+    with raises_failed_solve():
+        jax.block_until_ready(step(invalid_surface(surface).astype(dtype), state))

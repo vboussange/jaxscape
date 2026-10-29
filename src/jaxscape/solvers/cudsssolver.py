@@ -27,10 +27,12 @@ class CuDSSSolverState(eqx.Module):
       and the values of the last factorization.
     - `value_map`: For each stored entry of the BCOO matrix, the index of its
       CSR value, or the number of CSR values for padding entries.
+    - `rows`: The row of each CSR value.
     """
 
     token: Any
     value_map: Array
+    rows: Array
 
 
 @final
@@ -102,11 +104,11 @@ class CuDSSSolver(AbstractRefreshingSolver):
         del options
         cudss = _load_cudss()
         matrix = jax.lax.stop_gradient(_bcoo_matrix(operator))
-        offsets, columns, value_map = _csr_pattern(matrix)
+        offsets, columns, rows, value_map = _csr_pattern(matrix)
         values = _csr_values(matrix.data, value_map, columns.shape[0])
         token = cudss.analyze(values, offsets, columns, mtype_id="spd", mview_id="full")
         token = cudss.factorize(token, values)
-        return CuDSSSolverState(token=token, value_map=value_map)
+        return CuDSSSolverState(token=token, value_map=value_map, rows=rows)
 
     def refresh_state(
         self,
@@ -132,7 +134,7 @@ class CuDSSSolver(AbstractRefreshingSolver):
         matrix = _bcoo_matrix(operator)
         values = _csr_values(matrix.data, state.value_map, state.token.nnz)
         token = _load_cudss().refactorize(state.token, values)
-        return CuDSSSolverState(token=token, value_map=state.value_map)
+        return CuDSSSolverState(token=token, value_map=state.value_map, rows=state.rows)
 
     def compute(
         self,
@@ -141,7 +143,13 @@ class CuDSSSolver(AbstractRefreshingSolver):
         options: dict[str, Any],
     ) -> tuple[Array, RESULTS, dict[str, Any]]:
         del options
-        return _load_cudss().solve(state.token, vector), RESULTS.successful, {}
+        solution = _load_cudss().solve(state.token, vector)
+        solved = _solves(state, solution, vector)
+        # spineax reports no factorization status, and a failed factorization
+        # can leave finite solutions. Failed solutions become NaN, so that
+        # their values never look valid.
+        solution = jnp.where(solved, solution, jnp.nan)
+        return solution, RESULTS.where(solved, RESULTS.successful, RESULTS.singular), {}
 
     def transpose(self, state: CuDSSSolverState, options: dict[str, Any]):
         return state, options
@@ -196,8 +204,9 @@ def _bcoo_matrix(operator: AbstractLinearOperator) -> BCOO:
     return matrix
 
 
-def _csr_pattern(matrix: BCOO) -> tuple[Array, Array, Array]:
-    """CSR pattern of `matrix` and the map from its stored entries to CSR values.
+def _csr_pattern(matrix: BCOO) -> tuple[Array, Array, Array, Array]:
+    """CSR pattern of `matrix`, the row of each CSR value, and the map from its
+    stored entries to CSR values.
 
     The pattern is sorted and unique: duplicate entries share one CSR value and
     padding entries, whose indices are out of bounds, are left out.
@@ -224,9 +233,39 @@ def _csr_pattern(matrix: BCOO) -> tuple[Array, Array, Array]:
     return (
         jnp.asarray(offsets, dtype=jnp.int32),
         jnp.asarray(columns, dtype=jnp.int32),
+        jnp.asarray(unique_keys // n, dtype=jnp.int32),
         jnp.asarray(value_map, dtype=jnp.int32),
     )
 
 
 def _csr_values(data: Array, value_map: Array, nnz: int) -> Array:
     return jnp.zeros(nnz, dtype=data.dtype).at[value_map].add(data, mode="drop")
+
+
+# Largest residual of a solution, relative to its right-hand side, in the
+# infinity norm. A failed Cholesky factorization leaves solutions with NaN or
+# with residuals of the order of the right-hand side. A successful one of
+# grounded Laplacians with six orders of conductance contrast and a 1e-6 floor
+# keeps residuals below 1e-7 in float64, up to 1000 x 1000 rasters (#40), and
+# mostly below 1e-1 in float32.
+_RESIDUAL_TOLERANCE = {jnp.dtype(jnp.float32): 1e-1, jnp.dtype(jnp.float64): 1e-4}
+
+
+def _solves(state: CuDSSSolverState, solution: Array, vector: Array) -> Array:
+    """Whether `solution` solves the factorized matrix for `vector`.
+
+    It is false for non-finite solutions and for residuals above the tolerance
+    of their precision. It costs one sparse matrix-vector product with the
+    factorized matrix and two maximum reductions.
+    """
+    token = state.token
+    product = jax.ops.segment_sum(
+        token.values * solution[token.columns],
+        state.rows,
+        num_segments=token.n,
+        indices_are_sorted=True,
+    )
+    residual = jnp.max(jnp.abs(vector - product))
+    tolerance = _RESIDUAL_TOLERANCE[jnp.dtype(solution.dtype)]
+    # A NaN residual compares false.
+    return residual <= tolerance * jnp.max(jnp.abs(vector))
