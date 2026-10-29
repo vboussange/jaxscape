@@ -5,8 +5,8 @@ skip explicitly elsewhere, and against a CPU double of spineax's phase API
 (`fake_cudss.py`), so that the solver's plumbing also runs in CI.
 
 All queries share one code path, so tests pair queries, precisions and eager or
-compiled execution instead of taking their product, and loop over conductance
-surfaces inside one compiled function.
+compiled execution, covering each value at least once, and loop over
+conductance surfaces inside one compiled function.
 """
 
 import importlib.machinery

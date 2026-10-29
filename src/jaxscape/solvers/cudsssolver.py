@@ -35,7 +35,7 @@ class CuDSSSolverState(eqx.Module):
     - `rows`: The row of each CSR value.
     - `failed`: Whether the factorization in `token` failed its check. Solves
       with a failed state fail, and `refresh_state` analyses the matrix
-      afresh instead of refactorizing.
+      afresh on a new cuDSS handle.
     """
 
     token: Any

@@ -212,8 +212,8 @@ gave the same garbage, whatever the conductances.
   `max|A 1 - A x| / (‖A‖∞ max|x|)` is not finite or exceeds the square root
   of the machine epsilon: 3.5·10⁻⁴ in float32 and 1.5·10⁻⁸ in float64. The
   state records the failure; the next query that refreshes it analyses the
-  matrix afresh instead of refactorizing the poisoned handle, so one bad
-  step leaves the following steps exact.
+  matrix afresh on a new cuDSS handle, so one bad step leaves the following
+  steps exact.
 - **Each solve** checks its solution `x` of a right-hand side `b`: it fails
   when `x` is not finite, or when `max|b - A x|` exceeds `max|b|` times 10⁻⁴
   in float64 or 10⁻¹ in float32. This catches singular matrices whose
