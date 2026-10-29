@@ -15,6 +15,7 @@ from pathlib import Path
 
 import jax
 import jax.numpy as jnp
+import lineax as lx
 import numpy as np
 import pytest
 from fake_cudss import FAKE_CUDSS
@@ -28,6 +29,7 @@ from jaxscape.solvers import (
     cudsssolver,
 )
 from jaxscape.solvers.operator import _batched_linear_solve, _linear_solve
+from jaxscape.utils import graph_laplacian
 from packaging.requirements import Requirement
 
 
@@ -779,3 +781,40 @@ def test_a_failed_refactorization_raises_mid_optimization(
 
     with raises_failed_solve():
         jax.block_until_ready(step(invalid_surface(surface).astype(dtype), state))
+
+
+def grounded_laplacian(conductance):
+    """The grounded Laplacian that resistance distances solve with."""
+    adjacency = conductance_grid(conductance).get_adjacency_matrix()
+    return graph_laplacian(adjacency)[:-1, :-1]
+
+
+@pytest.mark.parametrize("dtype", [jnp.float64, jnp.float32])
+@pytest.mark.parametrize("factorization", ["initialization", "refactorization"])
+@pytest.mark.parametrize("surface", ["disconnected", "negative"])
+def test_without_throw_a_failed_factorization_returns_a_failed_result(
+    failing_cudss, surface, factorization, dtype
+):
+    operator = BCOOLinearOperator(
+        grounded_laplacian(invalid_surface(surface).astype(dtype))
+    )
+    solver = CuDSSSolver()
+    if factorization == "initialization":
+        state = solver.init(operator, {})
+    else:
+        valid = grounded_laplacian(conductance_surface("smooth").astype(dtype))
+        state = solver.init(BCOOLinearOperator(valid), {})
+    # Current enters at every vertex, the floating ones included.
+    b = jnp.ones(operator.in_size(), dtype)
+
+    @jax.jit
+    def solve(operator, state):
+        if factorization == "refactorization":
+            state = solver.refresh_state(operator, {}, state)
+        solution = lx.linear_solve(operator, b, solver, state=state, throw=False)
+        return solution.value, solution.result
+
+    value, result = solve(operator, state)
+
+    assert result != lx.RESULTS.successful
+    assert np.all(np.isnan(value))
