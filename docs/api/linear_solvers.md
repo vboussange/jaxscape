@@ -125,8 +125,9 @@ Use `distance.init(grid)` instead when the graph is fixed and you want to reuse 
 
 ## GPU direct solver: cuDSS
 
-`CuDSSSolver` computes exact resistance distances on an NVIDIA GPU with the
-sparse Cholesky factorization of [NVIDIA cuDSS](https://developer.nvidia.com/cudss),
+`CuDSSSolver` computes resistance distances, exact or with
+`SpielmanApproximation`, on an NVIDIA GPU with the sparse Cholesky
+factorization of [NVIDIA cuDSS](https://developer.nvidia.com/cudss),
 through the analysis, factorization, refactorization and solve phases of
 [spineax](https://github.com/johnviljoen/spineax). Pass it to
 `ResistanceDistance` like any other solver; it runs inside `jax.jit`:
@@ -143,9 +144,18 @@ factorization fits in GPU memory. A direct solve has no iteration budget and
 no preconditioner, so its cost and accuracy stay the same as conductance
 contrast grows. By comparison, CG preconditioned by an `AMJaxCGSolver`
 hierarchy built for a uniform surface needs about 1100 iterations at 4 orders
-of magnitude of contrast and about 10⁴ at 6. Gradients of exact resistance
-distances reuse the forward solutions, so a gradient step costs one
-refactorization and one multi-RHS solve.
+of magnitude of contrast and about 10⁴ at 6.
+
+Gradients never pass through analysis or factorization:
+
+- gradients of exact resistance distances reuse the forward solutions, so a
+  gradient step costs one refactorization and one multi-RHS solve;
+- gradients of Spielman approximate distances solve the adjoint system with
+  the forward factorization, because the grounded Laplacian is symmetric: the
+  backward pass adds one multi-RHS solve and no factorization;
+- gradients of sparse linear solves with `BCOOLinearOperator`, with respect to
+  matrix values and right-hand sides, also solve the adjoint system with the
+  forward factorization.
 
 !!! note "Evidence"
     The [training-time solver report](https://github.com/vboussange/jaxscape/blob/0564df90691064ec3bb742a3bb8ff9bc03c51216/docs/benchmark_runs/training-solver-2026-10-29/index.md)
