@@ -334,8 +334,10 @@ The evidence report ran the CUDA 12 build:
 JAXScape requires JAX 0.11 or newer, so a CUDA 12 build today pairs spineax
 with JAX 0.11 or newer and its CUDA 12 plugin. The `cudss` extra installs the
 CUDA 13 wheel of the same spineax release, with `nvidia-cudss-cu13` below 1.0.
-That combination follows spineax's published requirements; the evidence run did
-not include it.
+JAXScape's test suite and the measurements of
+[Failed factorizations](#failed-factorizations) ran with the `cudss` extra on
+the same GPU and driver: spineax 0.0.5 (CUDA 13 wheel), `nvidia-cudss-cu13`
+0.8.0.10, and JAX 0.12.0.1 with its CUDA 13 plugin, on Python 3.12.
 
 ### GPU memory
 
