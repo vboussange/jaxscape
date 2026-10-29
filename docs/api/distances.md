@@ -14,7 +14,11 @@
 
 ::: jaxscape.resistance_distance.ResistanceDistance
     options:
-      members: false
+      members:
+        - init
+        - all_pairs_distance_and_state
+        - nodes_to_nodes_distance_and_state
+        - sources_to_targets_distance_and_state
 
 ::: jaxscape.resistance_distance.ExactResistance
     options:
