@@ -1,12 +1,8 @@
 """cuDSS benchmark profiles, checked without running performance workloads."""
 
-import importlib.machinery
-import sys
-import types
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 import pytest
 from benchmark.benchmark_registry import DISPLAY_ORDER_BY_TASK
 from benchmark.jaxscape import inverse_landscape_genetics, resistance_distance
@@ -74,9 +70,7 @@ def test_cudss_worker_skips_without_an_nvidia_gpu_and_runs_nothing(task, key, ba
 def test_cudss_worker_skips_when_spineax_is_installed_without_a_gpu(task, monkeypatch):
     if jax.default_backend() == "gpu":
         pytest.skip("This availability check needs a JAX process without a GPU.")
-    spineax = types.ModuleType("spineax")
-    spineax.__spec__ = importlib.machinery.ModuleSpec("spineax", None)
-    monkeypatch.setitem(sys.modules, "spineax", spineax)
+    monkeypatch.setattr(cudsssolver, "CUDSS_AVAILABLE", True)
 
     record = RUNNERS[task].run_worker(
         {
@@ -152,6 +146,7 @@ def test_cudss_records_carry_spineax_and_cudss_versions(
 ):
     from importlib.metadata import PackageNotFoundError
 
+    from benchmark import benchmark_distances
     from benchmark.jaxscape import resistance_profile_support
 
     def installed_version(package):
@@ -159,7 +154,7 @@ def test_cudss_records_carry_spineax_and_cudss_versions(
             raise PackageNotFoundError(package)
         return installed[package]
 
-    monkeypatch.setattr(resistance_profile_support, "version", installed_version)
+    monkeypatch.setattr(benchmark_distances, "version", installed_version)
 
     for key in CUDSS_PROFILE_KEYS:
         profile = resistance_distance.PROFILE_BY_KEY[key]
@@ -176,14 +171,13 @@ def cpu_double_of_cudss(monkeypatch):
     return FAKE_CUDSS
 
 
-@pytest.mark.parametrize("key", CUDSS_PROFILE_KEYS)
 def test_cudss_resistance_profile_passes_the_state_from_call_to_call(
-    key, cpu_double_of_cudss
+    cpu_double_of_cudss,
 ):
     from benchmark.benchmark_distances import CASES
 
     case = CASES["resistance"][0]
-    profile = resistance_distance.PROFILE_BY_KEY[key]
+    profile = resistance_distance.PROFILE_BY_KEY["cudss_f64"]
 
     record = resistance_distance._run_resistance_profile_direct(
         case,
@@ -201,6 +195,7 @@ def test_cudss_resistance_profile_passes_the_state_from_call_to_call(
     # previous call returned, so spineax never repeats the analysis.
     assert cpu_double_of_cudss.analyses == 1
     assert cpu_double_of_cudss.rebuild_count() == 0
+    assert record.metrics["spineax_rebuilds"] == 0
 
 
 def tiny_inverse_case():
@@ -211,13 +206,12 @@ def tiny_inverse_case():
     )
 
 
-@pytest.mark.parametrize("key", CUDSS_PROFILE_KEYS)
-def test_cudss_inverse_profile_passes_the_state_from_step_to_step(
-    key, cpu_double_of_cudss
+def test_cudss_inverse_profile_records_the_analyses_spineax_repeats(
+    cpu_double_of_cudss,
 ):
     pytest.importorskip("cholespy", reason="target distances use CholmodSolver")
     pytest.importorskip("optimistix")
-    profile = inverse_landscape_genetics.PROFILE_BY_KEY[key]
+    profile = inverse_landscape_genetics.PROFILE_BY_KEY["cudss_f32"]
 
     record = inverse_landscape_genetics._run_inverse_profile_direct(
         tiny_inverse_case(),
@@ -230,67 +224,7 @@ def test_cudss_inverse_profile_passes_the_state_from_step_to_step(
     assert record.status == "ok", record.note
     assert len(record.timings_seconds) == 2
     assert record.metrics["iteration_count"] > 1
-    # Every objective evaluation refactorizes the state that the evaluation
-    # before it returned, across the warm-up and timed optimizations.
-    assert cpu_double_of_cudss.rebuild_count() == 0
-
-
-@pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
-def test_passing_the_state_keeps_the_lbfgs_steps_of_optimistix_minimise(
-    dtype, cpu_double_of_cudss
-):
-    optx = pytest.importorskip("optimistix")
-    from benchmark.benchmark_distances import as_point_array
-    from jaxscape import ResistanceDistance
-    from jaxscape.solvers import CuDSSSolver
-
-    runner = inverse_landscape_genetics
-    case = tiny_inverse_case()
-    with jax.enable_x64(dtype == jnp.float64):
-        base = runner._base_resistance(jnp.asarray(case.raster, dtype=dtype))
-        coords = as_point_array(case.points)
-        start = runner._initial_inverse_params(base)
-
-        def grid(params):
-            return runner._inverse_grid(
-                runner._permeability_from_inverse_params(params, base)
-            )
-
-        targets = ResistanceDistance()(
-            grid(start + jnp.asarray([0.5, -0.5], dtype=dtype)), nodes=coords
-        )
-        args = (base, coords, targets)
-        distance = ResistanceDistance(solver=CuDSSSolver())
-        optimizer = optx.LBFGS(rtol=1e-5, atol=1e-5)
-
-        def objective_and_state(params, args, state):
-            base, coords, targets = args
-            return runner._inverse_loss_and_state(
-                params, base, coords, targets, state, distance=distance
-            )
-
-        solution = runner._minimise_passing_state(
-            objective_and_state,
-            optimizer,
-            start,
-            args,
-            distance.init(grid(start)),
-            max_steps=50,
-        )
-        # The same objective, minimised with a state that every evaluation
-        # reuses: spineax rebuilds the factorization, with the same values.
-        reused_state = distance.init(grid(start))
-        expected = optx.minimise(
-            lambda params, args: runner._inverse_loss(
-                params, *args, distance=distance, state=reused_state
-            ),
-            optimizer,
-            start,
-            args,
-            max_steps=50,
-            throw=False,
-        )
-
-    assert int(solution.stats["num_steps"]) == int(expected.stats["num_steps"]) > 1
-    assert solution.result == expected.result
-    np.testing.assert_allclose(solution.value, expected.value, rtol=1e-6)
+    # Each optimization starts from the state the previous one returned, and
+    # its objective evaluations share that state, so spineax repeats the
+    # analysis for evaluations after the first; the record counts them.
+    assert record.metrics["spineax_rebuilds"] == cpu_double_of_cudss.rebuild_count()

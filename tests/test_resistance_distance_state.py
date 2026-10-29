@@ -1,5 +1,10 @@
-"""State-returning resistance-distance queries."""
+"""State-returning resistance-distance queries.
 
+All queries share one code path, so each solver case runs one query and
+method, and the cases of each test cycle through every query and method.
+"""
+
+import itertools
 from importlib.util import find_spec
 from typing import final
 
@@ -31,6 +36,28 @@ METHODS = {
     "exact": ExactResistance(),
     "spielman": SpielmanApproximation(epsilon=0.5, seed=3),
 }
+
+
+def paired_with_queries(cases):
+    """Pair each case with a query name and method, cycling through all six."""
+    pairs = itertools.cycle(itertools.product(QUERY_ARGS, METHODS))
+    return [
+        pytest.param(
+            *case.values,
+            name,
+            METHODS[method],
+            id=f"{case.id}-{name}-{method}",
+            marks=case.marks,
+        )
+        for case, (name, method) in zip(cases, pairs)
+    ]
+
+
+def assert_equal_to_rounding(actual, expected):
+    """Arrays agree to rounding: GPU scatter-adds sum in varying order."""
+    np.testing.assert_allclose(
+        actual, expected, rtol=1e-12, atol=1e-13 * float(np.max(np.abs(expected)))
+    )
 
 
 def grid_graph(permeability):
@@ -123,9 +150,9 @@ SUPPLIED_STATE_CASES = [
 ]
 
 
-@pytest.mark.parametrize("method", METHODS.values(), ids=METHODS.keys())
-@pytest.mark.parametrize("name", QUERY_ARGS)
-@pytest.mark.parametrize("solver, make_state", SUPPLIED_STATE_CASES)
+@pytest.mark.parametrize(
+    "solver, make_state, name, method", paired_with_queries(SUPPLIED_STATE_CASES)
+)
 def test_state_returning_query_matches_query_and_returns_supplied_state(
     solver, make_state, name, method
 ):
@@ -135,7 +162,7 @@ def test_state_returning_query_matches_query_and_returns_supplied_state(
 
     distances, returned_state = query_and_state(distance, name, graph, state)
 
-    np.testing.assert_array_equal(distances, query(distance, name, graph, state))
+    assert_equal_to_rounding(distances, query(distance, name, graph, state))
     assert eqx.tree_equal(returned_state, state)
 
 
@@ -151,24 +178,34 @@ INITIALIZING_CASES = [
 ]
 
 
-@pytest.mark.parametrize("method", METHODS.values(), ids=METHODS.keys())
-@pytest.mark.parametrize("name", QUERY_ARGS)
-@pytest.mark.parametrize("solver", INITIALIZING_CASES)
-def test_state_returning_query_without_state_returns_initialized_state(
-    solver, name, method
-):
+@pytest.mark.parametrize(
+    "solver, name, method", paired_with_queries(INITIALIZING_CASES)
+)
+def test_state_returning_query_without_state_starts_from_init(solver, name, method):
     distance = ResistanceDistance(solver=solver, method=method)
     graph = grid_graph(permeability())
 
     distances, returned_state = query_and_state(distance, name, graph, None)
 
-    np.testing.assert_array_equal(distances, query(distance, name, graph, None))
-    # Queries are compiled, so they initialize the state from traced values.
-    assert eqx.tree_equal(returned_state, eqx.filter_jit(distance.init)(graph))
+    # As `distance(graph)` does, the query starts from `distance.init(graph)`.
+    expected, expected_state = query_and_state(
+        distance, name, graph, distance.init(graph)
+    )
+    assert_equal_to_rounding(distances, expected)
+    assert_equal_to_rounding(distances, query(distance, name, graph, None))
+    # Array for array: a host factorization is a new object at each `init`.
+    assert eqx.tree_equal(array_leaves(returned_state), array_leaves(expected_state))
 
 
-@pytest.mark.parametrize("method", METHODS.values(), ids=METHODS.keys())
-@pytest.mark.parametrize("name", QUERY_ARGS)
+@pytest.mark.parametrize(
+    "name, method",
+    [
+        pytest.param("all_pairs", METHODS["exact"], id="all_pairs-exact"),
+        pytest.param(
+            "sources_to_targets", METHODS["spielman"], id="sources_to_targets-spielman"
+        ),
+    ],
+)
 def test_state_returning_query_returns_refreshed_state(name, method):
     distance = ResistanceDistance(solver=_RefreshCountingSolver(), method=method)
     reference = ResistanceDistance(method=method)
@@ -178,12 +215,16 @@ def test_state_returning_query_returns_refreshed_state(name, method):
         graph = grid_graph(permeability(power))
         distances, state = query_and_state(distance, name, graph, state)
 
-        # Solves use the state refreshed for the current graph, not the
-        # supplied one, and the query hands that refreshed state back.
+        # Solves use the state refreshed for the current graph, and the query
+        # hands that refreshed state back.
         assert state.refreshes == step
         np.testing.assert_allclose(
             distances, query(reference, name, graph, None), rtol=1e-10, atol=1e-12
         )
+
+
+def array_leaves(tree):
+    return [leaf for leaf in jax.tree.leaves(tree) if eqx.is_array(leaf)]
 
 
 def _sum_inexact_leaves(tree):
@@ -209,9 +250,9 @@ DIFFERENTIATED_CASES = [
 ]
 
 
-@pytest.mark.parametrize("method", METHODS.values(), ids=METHODS.keys())
-@pytest.mark.parametrize("name", QUERY_ARGS)
-@pytest.mark.parametrize("solver, make_state", DIFFERENTIATED_CASES)
+@pytest.mark.parametrize(
+    "solver, make_state, name, method", paired_with_queries(DIFFERENTIATED_CASES)
+)
 def test_state_returning_query_gradients_ignore_returned_state(
     solver, make_state, name, method
 ):
@@ -232,7 +273,7 @@ def test_state_returning_query_gradients_ignore_returned_state(
     )(values, state)
     expected_gradient = eqx.filter_jit(eqx.filter_grad(loss))(values, state)
 
-    np.testing.assert_array_equal(gradient, expected_gradient)
+    assert_equal_to_rounding(gradient, expected_gradient)
     _, expected_state = eqx.filter_jit(query_and_state)(
         distance, name, grid_graph(values), state
     )

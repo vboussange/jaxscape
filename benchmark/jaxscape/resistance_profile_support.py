@@ -4,11 +4,25 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 import jax.numpy as jnp
 from jaxscape import SpielmanApproximation
+
+from benchmark.benchmark_distances import (
+    BenchmarkCase,
+    BenchmarkConfig,
+    BenchmarkRecord,
+    dependency_versions,
+    gpu_placeholder_record,
+    skip_record,
+)
+from benchmark.benchmark_registry import (
+    backend_tool_label,
+    CPU_ONLY,
+    CUDSS_TOOL_LABELS,
+    GPU_ONLY,
+)
 
 
 @dataclass(frozen=True)
@@ -17,8 +31,7 @@ class ResistanceProfile:
     tool: str
     solver_factory: Callable[[], Any] | None = None
     method_factory: Callable[[], Any] | None = None
-    gpu_capable: bool = False
-    gpu_only: bool = False
+    backends: tuple[str, ...] = CPU_ONLY
     requires_preparation: bool = False
     passes_state: bool = False
     dtype: Any = jnp.float32
@@ -73,25 +86,16 @@ def make_cudss_solver() -> Any:
     return CuDSSSolver()
 
 
-CUDSS_RESISTANCE_PROFILES = (
+CUDSS_RESISTANCE_PROFILES = tuple(
     ResistanceProfile(
-        "cudss_f32",
-        "JAXScape / CuDSSSolver / f32",
+        f"cudss_{precision}",
+        label,
         solver_factory=make_cudss_solver,
-        gpu_capable=True,
-        gpu_only=True,
+        backends=GPU_ONLY,
         passes_state=True,
-        dtype=jnp.float32,
-    ),
-    ResistanceProfile(
-        "cudss_f64",
-        "JAXScape / CuDSSSolver / f64",
-        solver_factory=make_cudss_solver,
-        gpu_capable=True,
-        gpu_only=True,
-        passes_state=True,
-        dtype=jnp.float64,
-    ),
+        dtype={"f32": jnp.float32, "f64": jnp.float64}[precision],
+    )
+    for precision, label in CUDSS_TOOL_LABELS.items()
 )
 
 
@@ -99,13 +103,40 @@ def make_spielman_method() -> Any:
     return SpielmanApproximation(epsilon=RESISTANCE_APPROXIMATION_EPSILON, seed=0)
 
 
+def profile_tool_label(profile: ResistanceProfile, backend: str) -> str:
+    """The record label of `profile` on `backend`.
+
+    **Arguments:**
+
+    - `profile`: The benchmark profile.
+    - `backend`: `"cpu"` or `"gpu"`.
+
+    **Returns:**
+
+    The plain tool label of a CPU-only profile on the CPU, and otherwise the
+    tool label with a `(CPU)` or `(GPU)` suffix.
+    """
+    if backend == "cpu" and profile.backends == CPU_ONLY:
+        return profile.tool
+    return backend_tool_label(profile.tool, backend)
+
+
 def profile_unavailable_reason(profile: ResistanceProfile, backend: str) -> str | None:
-    """Why `profile` cannot run on `backend`, found without running a workload.
+    """Return why `profile` cannot run on `backend`, without running a workload.
 
     GPU-only profiles never fall back to another solver or device, so an
     environment that lacks what they need records them as skipped.
+
+    **Arguments:**
+
+    - `profile`: The benchmark profile.
+    - `backend`: `"cpu"` or `"gpu"`.
+
+    **Returns:**
+
+    The reason, or `None` when the profile can run.
     """
-    if not profile.gpu_only:
+    if profile.backends != GPU_ONLY:
         return None
     if backend != "gpu":
         return f"{profile.tool} runs only on an NVIDIA GPU; it has no CPU fallback."
@@ -117,8 +148,75 @@ def profile_unavailable_reason(profile: ResistanceProfile, backend: str) -> str 
     return None
 
 
+def unavailable_profile_record(
+    case: BenchmarkCase, profile: ResistanceProfile, backend: str, software: str
+) -> BenchmarkRecord | None:
+    """Return the skipped record of a profile that cannot run on `backend`.
+
+    **Arguments:**
+
+    - `case`: The benchmark case.
+    - `profile`: The benchmark profile.
+    - `backend`: `"cpu"` or `"gpu"`.
+    - `software`: The software column of the record.
+
+    **Returns:**
+
+    A skipped record naming what is missing, or `None` when the profile can
+    run.
+    """
+    reason = profile_unavailable_reason(profile, backend)
+    if reason is None:
+        return None
+    label = profile_tool_label(profile, backend)
+    return skip_record(case.task, label, software, case.name, reason)
+
+
+def collect_profile_records(
+    case: BenchmarkCase,
+    config: BenchmarkConfig,
+    profile: ResistanceProfile,
+    software: str,
+    run: Callable[[str, Any], BenchmarkRecord],
+) -> list[BenchmarkRecord]:
+    """Run `profile` on each of its backends.
+
+    **Arguments:**
+
+    - `case`: The benchmark case.
+    - `config`: The benchmark configuration, with its devices.
+    - `profile`: The benchmark profile.
+    - `software`: The software column of placeholder records.
+    - `run`: Runs the profile, given its record label and device.
+
+    **Returns:**
+
+    One record per backend of the profile. Without a GPU, the GPU record is a
+    skipped placeholder.
+    """
+    records = []
+    for backend in profile.backends:
+        if backend == "gpu" and config.gpu_device is None:
+            records.append(gpu_placeholder_record(case, profile.tool, software))
+            continue
+        device = config.gpu_device if backend == "gpu" else config.cpu_device
+        records.append(run(profile_tool_label(profile, backend), device))
+    return records
+
+
 def profile_metadata(profile: ResistanceProfile, backend: str) -> dict[str, Any]:
-    """Interpretation metadata, independent of timing and native cache internals."""
+    """Return interpretation metadata, independent of timing and native caches.
+
+    **Arguments:**
+
+    - `profile`: The benchmark profile.
+    - `backend`: `"cpu"` or `"gpu"`.
+
+    **Returns:**
+
+    The dtype and backend, how solver state is prepared, and the spineax and
+    cuDSS versions of cuDSS profiles.
+    """
     metadata: dict[str, Any] = {
         "dtype": str(jnp.dtype(profile.dtype)),
         "backend": backend,
@@ -129,22 +227,29 @@ def profile_metadata(profile: ResistanceProfile, backend: str) -> dict[str, Any]
         ] = "AMJax hierarchy prepared outside timing and frozen"
     if profile.passes_state:
         metadata["solver_state_behavior"] = (
-            "analysis and first factorization run outside timing; every "
-            "evaluation refactorizes the solver state the previous one returned"
+            "analysis and first factorization run outside timing; each timed "
+            "call starts from the solver state the previous call returned; "
+            "spineax_rebuilds counts the analyses spineax repeated"
         )
     if profile.solver_factory is make_cudss_solver:
         metadata.update(cudss_versions())
     return metadata
 
 
-def passing_state(
+def stateful_closure(
     fun: Callable[..., tuple[Any, Any]], state: Any
 ) -> Callable[..., Any]:
-    """Make `fun(*args, state) -> (result, state)` a call `(*args) -> result`.
+    """Return a closure `(*args) -> result` that carries the state of `fun`.
 
-    Each call hands `fun` the state that the previous call returned, starting
-    from `state`, so timing it repeatedly follows the solver state from one
-    call to the next.
+    **Arguments:**
+
+    - `fun`: A function `fun(*args, state) -> (result, state)`.
+    - `state`: The state of the first call.
+
+    **Returns:**
+
+    A closure that calls `fun` with the state the previous call returned, so
+    timing it repeatedly follows the solver state from one call to the next.
     """
 
     def call(*args: Any) -> Any:
@@ -155,27 +260,37 @@ def passing_state(
     return call
 
 
+def spineax_rebuild_count() -> int:
+    """Return spineax's count of factorizations it rebuilt by a fresh analysis.
+
+    spineax rebuilds a factorization when a phase receives a token that is no
+    longer resident, e.g. a used-up one. The count is process-wide.
+    """
+    from jaxscape.solvers.cudsssolver import _load_cudss
+
+    return int(_load_cudss().rebuild_count())
+
+
 # spineax 0.0.5 wheels pull the CUDA 13 runtime; CUDA 12 builds of spineax use
 # the CUDA 12 one.
 CUDSS_RUNTIME_PACKAGES = ("nvidia-cudss-cu13", "nvidia-cudss-cu12")
 
 
 def cudss_versions() -> dict[str, str | None]:
-    """Installed spineax version and cuDSS runtime package, as `name==version`."""
-    cudss_version = None
-    for package in CUDSS_RUNTIME_PACKAGES:
-        package_version = _installed_version(package)
-        if package_version is not None:
-            cudss_version = f"{package}=={package_version}"
-            break
-    return {
-        "spineax_version": _installed_version("spineax"),
-        "cudss_version": cudss_version,
-    }
+    """Return the installed spineax version and cuDSS runtime package.
 
+    **Returns:**
 
-def _installed_version(package: str) -> str | None:
-    try:
-        return version(package)
-    except PackageNotFoundError:
-        return None
+    `spineax_version`, and `cudss_version` as `name==version` of the first
+    installed cuDSS runtime package, each `None` when not installed.
+    """
+    versions = dependency_versions()
+    cudss_version = next(
+        (
+            f"{package}=={versions[package]}"
+            for package in CUDSS_RUNTIME_PACKAGES
+            if versions[package] is not None
+        ),
+        None,
+    )
+    return {"spineax_version": versions["spineax"], "cudss_version": cudss_version}
