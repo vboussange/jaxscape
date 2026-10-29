@@ -20,6 +20,7 @@ class ResistanceProfile:
     gpu_capable: bool = False
     gpu_only: bool = False
     requires_preparation: bool = False
+    passes_state: bool = False
     dtype: Any = jnp.float32
 
 
@@ -79,6 +80,7 @@ CUDSS_RESISTANCE_PROFILES = (
         solver_factory=make_cudss_solver,
         gpu_capable=True,
         gpu_only=True,
+        passes_state=True,
         dtype=jnp.float32,
     ),
     ResistanceProfile(
@@ -87,6 +89,7 @@ CUDSS_RESISTANCE_PROFILES = (
         solver_factory=make_cudss_solver,
         gpu_capable=True,
         gpu_only=True,
+        passes_state=True,
         dtype=jnp.float64,
     ),
 )
@@ -121,9 +124,32 @@ def profile_metadata(profile: ResistanceProfile, backend: str) -> dict[str, Any]
         metadata[
             "hierarchy_behavior"
         ] = "AMJax hierarchy prepared outside timing and frozen"
+    if profile.passes_state:
+        metadata["solver_state_behavior"] = (
+            "analysis and first factorization prepared outside timing; each "
+            "call refactorizes and passes its solver state to the next call"
+        )
     if profile.solver_factory is make_cudss_solver:
         metadata.update(cudss_versions())
     return metadata
+
+
+def passing_state(
+    fun: Callable[..., tuple[Any, Any]], state: Any
+) -> Callable[..., Any]:
+    """Make `fun(*args, state) -> (result, state)` a call `(*args) -> result`.
+
+    Each call hands `fun` the state that the previous call returned, starting
+    from `state`, so timing it repeatedly follows the solver state from one
+    call to the next.
+    """
+
+    def call(*args: Any) -> Any:
+        nonlocal state
+        result, state = fun(*args, state)
+        return result
+
+    return call
 
 
 # spineax 0.0.5 wheels pull the CUDA 13 runtime; CUDA 12 builds of spineax use

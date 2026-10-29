@@ -9,6 +9,8 @@ import jax.numpy as jnp
 import pytest
 from benchmark.benchmark_registry import DISPLAY_ORDER_BY_TASK
 from benchmark.jaxscape import inverse_landscape_genetics, resistance_distance
+from fake_cudss import FAKE_CUDSS
+from jaxscape.solvers import cudsssolver
 
 
 RUNNERS = {
@@ -163,3 +165,38 @@ def test_cudss_records_carry_spineax_and_cudss_versions(
         metadata = resistance_profile_support.profile_metadata(profile, "gpu")
         assert metadata["spineax_version"] == "0.0.5"
         assert metadata["cudss_version"] == cudss_version
+
+
+@pytest.fixture
+def cpu_double_of_cudss(monkeypatch):
+    """Run `CuDSSSolver` on the CPU double of spineax's phase API."""
+    FAKE_CUDSS.reset()
+    monkeypatch.setattr(cudsssolver, "_load_cudss", lambda: FAKE_CUDSS)
+    return FAKE_CUDSS
+
+
+@pytest.mark.parametrize("key", CUDSS_PROFILE_KEYS)
+def test_cudss_resistance_profile_passes_the_state_from_call_to_call(
+    key, cpu_double_of_cudss
+):
+    from benchmark.benchmark_distances import CASES
+
+    case = CASES["resistance"][0]
+    profile = resistance_distance.PROFILE_BY_KEY[key]
+
+    record = resistance_distance._run_resistance_profile_direct(
+        case,
+        f"{profile.tool} (GPU)",
+        device=jax.devices("cpu")[0],
+        repeats=3,
+        solver_factory=profile.solver_factory,
+        passes_state=profile.passes_state,
+        dtype=profile.dtype,
+    )
+
+    assert record.status == "ok", record.note
+    assert len(record.timings_seconds) == 3
+    # Analysis runs once, before timing. Every call refactorizes the state the
+    # previous call returned, so spineax never repeats the analysis.
+    assert cpu_double_of_cudss.analyses == 1
+    assert cpu_double_of_cudss.rebuild_count() == 0
