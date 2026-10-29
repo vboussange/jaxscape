@@ -1,0 +1,131 @@
+conductance_log10_range: [-2.0, 2.0]
+n_unknowns: 89999
+nnz: 448795
+amjax_host_setup_uniform_s: 11.5432755430229
+amjax_levels: 6
+amjax_host_setup_heterogeneous_s: 0.3662430541589856
+plain_cg_cg_iters_rhs0: 5000
+plain_cg_converged: False
+plain_cg_relres: 0.7576885861180894
+plain_cg_time_20rhs_s: 5.583897739648819
+E1029 07:55:29.990571 3272615 slow_operation_alarm.cc:73] Constant folding an instruction is taking > 1s:
+
+  %scatter-add.272 = f64[89999]{0} scatter(%broadcast.66, %constant.1419, %constant.2655), update_window_dims={1}, inserted_window_dims={}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%region_6.9, metadata={op_name="jit(<lambda>)/jit(linear_solve)/while/body/closed_call/scatter-add" stack_frame_id=1081}
+
+This isn't necessarily a bug; constant-folding is inherently a trade-off between compilation time and speed at runtime. XLA has some guards that attempt to keep constant folding from taking too long, but fundamentally you'll always be able to come up with an input program that takes a long time.
+
+If you'd like to file a bug, run with envvar XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.
+E1029 07:55:30.658527 3272024 slow_operation_alarm.cc:140] The operation took 1.668096658s
+Constant folding an instruction is taking > 1s:
+
+  %scatter-add.272 = f64[89999]{0} scatter(%broadcast.66, %constant.1419, %constant.2655), update_window_dims={1}, inserted_window_dims={}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%region_6.9, metadata={op_name="jit(<lambda>)/jit(linear_solve)/while/body/closed_call/scatter-add" stack_frame_id=1081}
+
+This isn't necessarily a bug; constant-folding is inherently a trade-off between compilation time and speed at runtime. XLA has some guards that attempt to keep constant folding from taking too long, but fundamentally you'll always be able to come up with an input program that takes a long time.
+
+If you'd like to file a bug, run with envvar XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.
+amjax_frozen_cg_iters_rhs0: 707
+amjax_frozen_converged: True
+amjax_frozen_relres: 7.575800231574198e-06
+E1029 07:55:44.658255 3272615 slow_operation_alarm.cc:73] Constant folding an instruction is taking > 2s:
+
+  %scatter-add.292 = f64[20,89999]{1,0} scatter(%broadcast.632, %constant.1841, %constant.2884), update_window_dims={1,2}, inserted_window_dims={}, scatter_dims_to_operand_dims={1}, index_vector_dim=1, to_apply=%region_6.9.clone, metadata={op_name="jit(<lambda>)/vmap(jit(linear_solve))/vmap()/while/body/while/body/closed_call/vmap()/scatter-add" stack_frame_id=1577}
+
+This isn't necessarily a bug; constant-folding is inherently a trade-off between compilation time and speed at runtime. XLA has some guards that attempt to keep constant folding from taking too long, but fundamentally you'll always be able to come up with an input program that takes a long time.
+
+If you'd like to file a bug, run with envvar XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.
+E1029 07:56:15.340647 3272024 slow_operation_alarm.cc:140] The operation took 32.682511135s
+Constant folding an instruction is taking > 2s:
+
+  %scatter-add.292 = f64[20,89999]{1,0} scatter(%broadcast.632, %constant.1841, %constant.2884), update_window_dims={1,2}, inserted_window_dims={}, scatter_dims_to_operand_dims={1}, index_vector_dim=1, to_apply=%region_6.9.clone, metadata={op_name="jit(<lambda>)/vmap(jit(linear_solve))/vmap()/while/body/while/body/closed_call/vmap()/scatter-add" stack_frame_id=1577}
+
+This isn't necessarily a bug; constant-folding is inherently a trade-off between compilation time and speed at runtime. XLA has some guards that attempt to keep constant folding from taking too long, but fundamentally you'll always be able to come up with an input program that takes a long time.
+
+If you'd like to file a bug, run with envvar XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.
+E1029 07:56:19.621158 3272615 slow_operation_alarm.cc:73] Constant folding an instruction is taking > 4s:
+
+  %scatter-add.293 = f64[20,15075]{1,0} scatter(%broadcast.640, %constant.1969, %constant.2888), update_window_dims={1,2}, inserted_window_dims={}, scatter_dims_to_operand_dims={1}, index_vector_dim=1, to_apply=%region_14.18.clone, metadata={op_name="jit(<lambda>)/vmap(jit(linear_solve))/vmap()/while/body/while/body/closed_call/vmap()/scatter-add" stack_frame_id=1620}
+
+This isn't necessarily a bug; constant-folding is inherently a trade-off between compilation time and speed at runtime. XLA has some guards that attempt to keep constant folding from taking too long, but fundamentally you'll always be able to come up with an input program that takes a long time.
+
+If you'd like to file a bug, run with envvar XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.
+E1029 07:56:25.323755 3272024 slow_operation_alarm.cc:140] The operation took 9.702761107s
+Constant folding an instruction is taking > 4s:
+
+  %scatter-add.293 = f64[20,15075]{1,0} scatter(%broadcast.640, %constant.1969, %constant.2888), update_window_dims={1,2}, inserted_window_dims={}, scatter_dims_to_operand_dims={1}, index_vector_dim=1, to_apply=%region_14.18.clone, metadata={op_name="jit(<lambda>)/vmap(jit(linear_solve))/vmap()/while/body/while/body/closed_call/vmap()/scatter-add" stack_frame_id=1620}
+
+This isn't necessarily a bug; constant-folding is inherently a trade-off between compilation time and speed at runtime. XLA has some guards that attempt to keep constant folding from taking too long, but fundamentally you'll always be able to come up with an input program that takes a long time.
+
+If you'd like to file a bug, run with envvar XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.
+E1029 07:56:34.618954 3272615 slow_operation_alarm.cc:73] Constant folding an instruction is taking > 8s:
+
+  %scatter-add.272 = f64[20,89999]{1,0} scatter(%broadcast.60, %constant.1449, %broadcast.1113), update_window_dims={1,2}, inserted_window_dims={}, scatter_dims_to_operand_dims={1}, index_vector_dim=1, to_apply=%region_6.9, metadata={op_name="jit(<lambda>)/vmap(jit(linear_solve))/vmap()/while/body/closed_call/vmap()/scatter-add" stack_frame_id=1082}
+
+This isn't necessarily a bug; constant-folding is inherently a trade-off between compilation time and speed at runtime. XLA has some guards that attempt to keep constant folding from taking too long, but fundamentally you'll always be able to come up with an input program that takes a long time.
+
+If you'd like to file a bug, run with envvar XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.
+E1029 07:56:59.860483 3272024 slow_operation_alarm.cc:140] The operation took 33.241676614s
+Constant folding an instruction is taking > 8s:
+
+  %scatter-add.272 = f64[20,89999]{1,0} scatter(%broadcast.60, %constant.1449, %broadcast.1113), update_window_dims={1,2}, inserted_window_dims={}, scatter_dims_to_operand_dims={1}, index_vector_dim=1, to_apply=%region_6.9, metadata={op_name="jit(<lambda>)/vmap(jit(linear_solve))/vmap()/while/body/closed_call/vmap()/scatter-add" stack_frame_id=1082}
+
+This isn't necessarily a bug; constant-folding is inherently a trade-off between compilation time and speed at runtime. XLA has some guards that attempt to keep constant folding from taking too long, but fundamentally you'll always be able to come up with an input program that takes a long time.
+
+If you'd like to file a bug, run with envvar XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.
+amjax_frozen_time_20rhs_s: 2.056460523046553
+amjax_refreshed_cg_iters_rhs0: 24
+amjax_refreshed_converged: True
+amjax_refreshed_relres: 6.7284943673863415e-06
+E1029 07:57:59.875216 3272615 slow_operation_alarm.cc:73] Constant folding an instruction is taking > 16s:
+
+  %scatter-add.292 = f64[20,89999]{1,0} scatter(%broadcast.632, %constant.1841, %constant.2884), update_window_dims={1,2}, inserted_window_dims={}, scatter_dims_to_operand_dims={1}, index_vector_dim=1, to_apply=%region_6.9.clone, metadata={op_name="jit(<lambda>)/vmap(jit(linear_solve))/vmap()/while/body/while/body/closed_call/vmap()/scatter-add" stack_frame_id=1577}
+
+This isn't necessarily a bug; constant-folding is inherently a trade-off between compilation time and speed at runtime. XLA has some guards that attempt to keep constant folding from taking too long, but fundamentally you'll always be able to come up with an input program that takes a long time.
+
+If you'd like to file a bug, run with envvar XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.
+E1029 07:58:16.434020 3272024 slow_operation_alarm.cc:140] The operation took 32.559025128s
+Constant folding an instruction is taking > 16s:
+
+  %scatter-add.292 = f64[20,89999]{1,0} scatter(%broadcast.632, %constant.1841, %constant.2884), update_window_dims={1,2}, inserted_window_dims={}, scatter_dims_to_operand_dims={1}, index_vector_dim=1, to_apply=%region_6.9.clone, metadata={op_name="jit(<lambda>)/vmap(jit(linear_solve))/vmap()/while/body/while/body/closed_call/vmap()/scatter-add" stack_frame_id=1577}
+
+This isn't necessarily a bug; constant-folding is inherently a trade-off between compilation time and speed at runtime. XLA has some guards that attempt to keep constant folding from taking too long, but fundamentally you'll always be able to come up with an input program that takes a long time.
+
+If you'd like to file a bug, run with envvar XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.
+E1029 07:58:59.743701 3272615 slow_operation_alarm.cc:73] Constant folding an instruction is taking > 32s:
+
+  %scatter-add.272 = f64[20,89999]{1,0} scatter(%broadcast.60, %constant.1449, %broadcast.1113), update_window_dims={1,2}, inserted_window_dims={}, scatter_dims_to_operand_dims={1}, index_vector_dim=1, to_apply=%region_6.9, metadata={op_name="jit(<lambda>)/vmap(jit(linear_solve))/vmap()/while/body/closed_call/vmap()/scatter-add" stack_frame_id=1082}
+
+This isn't necessarily a bug; constant-folding is inherently a trade-off between compilation time and speed at runtime. XLA has some guards that attempt to keep constant folding from taking too long, but fundamentally you'll always be able to come up with an input program that takes a long time.
+
+If you'd like to file a bug, run with envvar XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.
+E1029 07:59:00.498545 3272024 slow_operation_alarm.cc:140] The operation took 32.755060251s
+Constant folding an instruction is taking > 32s:
+
+  %scatter-add.272 = f64[20,89999]{1,0} scatter(%broadcast.60, %constant.1449, %broadcast.1113), update_window_dims={1,2}, inserted_window_dims={}, scatter_dims_to_operand_dims={1}, index_vector_dim=1, to_apply=%region_6.9, metadata={op_name="jit(<lambda>)/vmap(jit(linear_solve))/vmap()/while/body/closed_call/vmap()/scatter-add" stack_frame_id=1082}
+
+This isn't necessarily a bug; constant-folding is inherently a trade-off between compilation time and speed at runtime. XLA has some guards that attempt to keep constant folding from taking too long, but fundamentally you'll always be able to come up with an input program that takes a long time.
+
+If you'd like to file a bug, run with envvar XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.
+amjax_refreshed_time_20rhs_s: 0.05810617236420512
+amjax_vcycle_apply_s: 0.0002306841779500246
+jaxamg_first_call_incl_compile_and_setup_s: 0.23660114593803883
+a_jaxamg_apply_default_refresh_s: 0.015835936181247234
+b_jaxamg_apply_reuse_setup_s: 0.001413334859535098
+jaxamg_refresh_cg_iters_rhs0: 13
+jaxamg_refresh_relres: 4.589272804787592e-06
+jaxamg_refresh_time_1rhs_s: 0.2140746540389955
+jaxamg_refresh_time_20rhs_s: 4.657433102838695
+jaxamg_reuse_cg_iters_rhs0: 13
+jaxamg_reuse_relres: 4.589272748527024e-06
+jaxamg_reuse_time_1rhs_s: 0.01881426479667425
+jaxamg_reuse_time_20rhs_s: 0.3815825441852212
+jaxamg_frozen_uniform_cg_iters_rhs0: 8
+jaxamg_frozen_uniform_converged: True
+c_amgx_pcg_iters_rhs0: 15
+c_amgx_pcg_relres: 5.770579494562095e-07
+c_amgx_pcg_time_1rhs_default_s: 0.023628960130736232
+c_amgx_pcg_time_1rhs_reuse_s: 0.009282285114750266
+c_amgx_pcg_time_20rhs_default_s: 0.4605780839920044
+c_amgx_pcg_time_20rhs_reuse_s: 0.18167191511020064
+c_amgx_pcg_max_relres_20rhs: 8.282795405229944e-07
+c_amgx_pcg_value_and_grad_20rhs_default_s: 0.9251301460899413
+1

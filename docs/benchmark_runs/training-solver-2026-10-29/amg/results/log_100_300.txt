@@ -1,0 +1,86 @@
+[100] B cold setup 8.346s (pyamg 0.021s)
+[100] B setup total 0.088s pyamg 0.021s; levels [{'n': 9999, 'A_nse': 49595, 'P_shape': [9999, 1699], 'P_nse': 24801, 'R_nse': 24801}, {'n': 1699, 'A_nse': 14921, 'P_shape': [1699, 192], 'P_nse': 4607, 'R_nse': 4607}, {'n': 192, 'A_nse': 1692, 'P_shape': [192, 24], 'P_nse': 528, 'R_nse': 528}, {'n': 24, 'A_nse': 194, 'P_shape': [24, 3], 'P_nse': 43, 'R_nse': 43}, {'n': 3, 'A_nse': 9}]
+[100] uniform: log10 c in [0.00, 0.00], direct 0.04s
+[100] uniform  cg      steps_max=500 t_warm_median=0.10936318011954427 t_setup_total=None t_pyamg=None rel_err=1.5897805806690397e-05 same_sig_as_B=None retraced=True n_levels=None error=None
+[100] uniform  jacobi  steps_max=503 t_warm_median=0.11178271984681487 t_setup_total=None t_pyamg=None rel_err=1.3636716894243797e-05 same_sig_as_B=None retraced=True n_levels=None error=None
+[100] uniform  B       steps_max=24 t_warm_median=0.012944275978952646 t_setup_total=0.0 t_pyamg=0.0 rel_err=3.4486465504788545e-07 same_sig_as_B=True retraced=True n_levels=5 error=None
+[100] uniform  B_fine  steps_max=24 t_warm_median=0.012846956960856915 t_setup_total=0.1144990511238575 t_pyamg=0.0 rel_err=3.4486465530410545e-07 same_sig_as_B=True retraced=False n_levels=5 error=None
+[100] uniform  C       steps_max=24 t_warm_median=0.013048856053501368 t_setup_total=0.06999168172478676 t_pyamg=0.020953808911144733 rel_err=3.527770387229501e-07 same_sig_as_B=True retraced=False n_levels=5 error=None
+[100] uniform  C_t25   steps_max=82 t_warm_median=0.04031765228137374 t_setup_total=1.568927382119 t_pyamg=0.017269950825721025 rel_err=3.5977396980660856e-06 same_sig_as_B=False retraced=True n_levels=4 error=None
+[100] uniform  D       steps_max=24 t_warm_median=0.011571569833904505 t_setup_total=0.07594518223777413 t_pyamg=0.01772142993286252 rel_err=3.513163132350448e-07 same_sig_as_B=True retraced=False n_levels=5 error=None
+[100] uniform  E       steps_max=50 t_warm_median=0.02442902699112892 t_setup_total=2.0984270931221545 t_pyamg=0.0022716321982443333 rel_err=2.295591480957109e-06 same_sig_as_B=False retraced=True n_levels=5 error=None
+[100] grf2: log10 c in [-2.00, 0.00], direct 0.04s
+[100] grf2     cg      steps_max=1522 t_warm_median=0.30818936275318265 t_setup_total=None t_pyamg=None rel_err=2.7714230771473846e-06 same_sig_as_B=None retraced=False n_levels=None error=None
+[100] grf2     jacobi  steps_max=553 t_warm_median=0.12172508612275124 t_setup_total=None t_pyamg=None rel_err=6.808161523013228e-06 same_sig_as_B=None retraced=False n_levels=None error=None
+[100] grf2     B       steps_max=145 t_warm_median=0.06770620075985789 t_setup_total=0.0 t_pyamg=0.0 rel_err=2.710854754317443e-07 same_sig_as_B=True retraced=False n_levels=5 error=None
+[100] grf2     B_fine  steps_max=57 t_warm_median=0.02690144767984748 t_setup_total=0.01842450676485896 t_pyamg=0.0 rel_err=1.6726064158225782e-06 same_sig_as_B=True retraced=False n_levels=5 error=None
+[100] grf2     C       steps_max=22 t_warm_median=0.010588873643428087 t_setup_total=0.07496562600135803 t_pyamg=0.020168831571936607 rel_err=7.097037203237012e-07 same_sig_as_B=True retraced=False n_levels=5 error=None
+[100] grf2     C_t25   steps_max=164 t_warm_median=0.07542994385585189 t_setup_total=2.1544636539183557 t_pyamg=0.017158641945570707 rel_err=2.5384392642680692e-06 same_sig_as_B=False retraced=True n_levels=4 error=None
+[100] grf2     D       steps_max=22 t_warm_median=0.010689652990549803 t_setup_total=0.07110819919034839 t_pyamg=0.01961983274668455 rel_err=7.169553771268304e-07 same_sig_as_B=True retraced=False n_levels=5 error=None
+[100] grf2     E       steps_max=56 t_warm_median=0.024398986715823412 t_setup_total=0.052465192042291164 t_pyamg=0.002552771009504795 rel_err=2.3492156344562726e-06 same_sig_as_B=False retraced=False n_levels=5 error=None
+[100] grf4: log10 c in [-4.00, 0.00], direct 0.05s
+[100] grf4     cg      steps_max=6204 t_warm_median=1.2439604653045535 t_setup_total=None t_pyamg=None rel_err=1.186038484417938e-06 same_sig_as_B=None retraced=False n_levels=None error=None
+[100] grf4     jacobi  steps_max=598 t_warm_median=0.13033765787258744 t_setup_total=None t_pyamg=None rel_err=1.3730801354287806e-06 same_sig_as_B=None retraced=False n_levels=None error=None
+[100] grf4     B       steps_max=1159 t_warm_median=0.5342798759229481 t_setup_total=0.0 t_pyamg=0.0 rel_err=1.1875905883534924e-07 same_sig_as_B=True retraced=False n_levels=5 error=None
+[100] grf4     B_fine  steps_max=123 t_warm_median=0.05672554671764374 t_setup_total=0.017439089715480804 t_pyamg=0.0 rel_err=2.1777979274483353e-06 same_sig_as_B=True retraced=False n_levels=5 error=None
+[100] grf4     C       steps_max=24 t_warm_median=0.011571970768272877 t_setup_total=0.07450777804479003 t_pyamg=0.021951484959572554 rel_err=2.3586798675116574e-07 same_sig_as_B=True retraced=False n_levels=5 error=None
+[100] grf4     C_t25   steps_max=178 t_warm_median=0.07704304903745651 t_setup_total=2.3020351021550596 t_pyamg=0.01770660001784563 rel_err=8.274763861737257e-07 same_sig_as_B=False retraced=True n_levels=4 error=None
+[100] grf4     D       steps_max=24 t_warm_median=0.011639771051704884 t_setup_total=0.06810232903808355 t_pyamg=0.01940385391935706 rel_err=2.4037095199793196e-07 same_sig_as_B=True retraced=False n_levels=5 error=None
+[100] grf4     E       steps_max=65 t_warm_median=0.02839360386133194 t_setup_total=0.05228239297866821 t_pyamg=0.0022994820028543472 rel_err=8.258049270976584e-07 same_sig_as_B=False retraced=False n_levels=5 error=None
+[100] grf6: log10 c in [-6.00, 0.00], direct 0.04s
+[100] grf6     cg      steps_max=20000 t_warm_median=4.015034075360745 t_setup_total=None t_pyamg=None rel_err=0.0036208324577555588 same_sig_as_B=None retraced=False n_levels=None error=None
+[100] grf6     jacobi  steps_max=626 t_warm_median=0.13603448821231723 t_setup_total=None t_pyamg=None rel_err=6.03036633651271e-07 same_sig_as_B=None retraced=False n_levels=None error=None
+[100] grf6     B       steps_max=9945 t_warm_median=4.521699292585254 t_setup_total=0.0 t_pyamg=0.0 rel_err=1.771797433212016e-07 same_sig_as_B=True retraced=False n_levels=5 error=None
+[100] grf6     B_fine  steps_max=250 t_warm_median=0.11462672101333737 t_setup_total=0.019254553597420454 t_pyamg=0.0 rel_err=9.520418403200557e-07 same_sig_as_B=True retraced=False n_levels=5 error=None
+[100] grf6     C       steps_max=29 t_warm_median=0.013711412902921438 t_setup_total=0.07681582914665341 t_pyamg=0.025385853834450245 rel_err=1.1401116474227336e-07 same_sig_as_B=True retraced=False n_levels=5 error=None
+[100] grf6     C_t25   steps_max=194 t_warm_median=0.0881290310062468 t_setup_total=2.2665116619318724 t_pyamg=0.020353001076728106 rel_err=3.049003090020806e-07 same_sig_as_B=False retraced=True n_levels=4 error=None
+[100] grf6     D       steps_max=29 t_warm_median=0.013671153225004673 t_setup_total=0.06824383838102221 t_pyamg=0.01982147293165326 rel_err=9.910399510961552e-08 same_sig_as_B=True retraced=False n_levels=5 error=None
+[100] grf6     E       steps_max=76 t_warm_median=0.03269895911216736 t_setup_total=0.05151962488889694 t_pyamg=0.0022479319013655186 rel_err=7.675006265665722e-07 same_sig_as_B=False retraced=False n_levels=5 error=None
+[100] barrier: log10 c in [-4.00, 0.00], direct 0.04s
+[100] barrier  cg      steps_max=601 t_warm_median=0.12591724283993244 t_setup_total=None t_pyamg=None rel_err=7.323857108109295e-06 same_sig_as_B=None retraced=False n_levels=None error=None
+[100] barrier  jacobi  steps_max=521 t_warm_median=0.11247968720272183 t_setup_total=None t_pyamg=None rel_err=7.354022731292505e-06 same_sig_as_B=None retraced=False n_levels=None error=None
+[100] barrier  B       steps_max=67 t_warm_median=0.030988933984190226 t_setup_total=0.0 t_pyamg=0.0 rel_err=6.139796733274976e-07 same_sig_as_B=True retraced=False n_levels=5 error=None
+[100] barrier  B_fine  steps_max=25 t_warm_median=0.012012938968837261 t_setup_total=0.017414850648492575 t_pyamg=0.0 rel_err=6.130336094323219e-07 same_sig_as_B=True retraced=False n_levels=5 error=None
+[100] barrier  C       steps_max=26 t_warm_median=0.012373178265988827 t_setup_total=0.07045927084982395 t_pyamg=0.018778325989842415 rel_err=3.315756679607431e-07 same_sig_as_B=True retraced=False n_levels=5 error=None
+[100] barrier  C_t25   steps_max=86 t_warm_median=0.04507665568962693 t_setup_total=2.7047637938521802 t_pyamg=0.019809633027762175 rel_err=1.9135937227391625e-06 same_sig_as_B=False retraced=True n_levels=5 error=None
+[100] barrier  D       steps_max=26 t_warm_median=0.012323098257184029 t_setup_total=0.07022936176508665 t_pyamg=0.01969753298908472 rel_err=3.242675672496882e-07 same_sig_as_B=True retraced=False n_levels=5 error=None
+[100] barrier  E       steps_max=53 t_warm_median=0.023326090071350336 t_setup_total=0.05233545182272792 t_pyamg=0.0024209916591644287 rel_err=3.1403589674126172e-06 same_sig_as_B=False retraced=False n_levels=5 error=None
+[100] floor: log10 c in [-6.00, 0.00], direct 0.05s
+[100] floor    cg      steps_max=20000 t_warm_median=3.974404931999743 t_setup_total=None t_pyamg=None rel_err=2.2120533842523655 same_sig_as_B=None retraced=False n_levels=None error=None
+[100] floor    jacobi  steps_max=624 t_warm_median=0.1348055717535317 t_setup_total=None t_pyamg=None rel_err=1.1948460528144005e-06 same_sig_as_B=None retraced=False n_levels=None error=None
+[100] floor    B       steps_max=3385 t_warm_median=1.542118133045733 t_setup_total=0.0 t_pyamg=0.0 rel_err=7.49609535400509e-08 same_sig_as_B=True retraced=False n_levels=5 error=None
+[100] floor    B_fine  steps_max=128 t_warm_median=0.05899982014670968 t_setup_total=0.017504210118204355 t_pyamg=0.0 rel_err=7.737745508424542e-07 same_sig_as_B=True retraced=False n_levels=5 error=None
+[100] floor    C       steps_max=30 t_warm_median=0.014184660743921995 t_setup_total=0.07654441008344293 t_pyamg=0.02479970594868064 rel_err=5.648428840366086e-08 same_sig_as_B=True retraced=False n_levels=5 error=None
+[100] floor    C_t25   steps_max=188 t_warm_median=0.08451549289748073 t_setup_total=3.0539932590909302 t_pyamg=0.02011231193318963 rel_err=5.027002102371033e-07 same_sig_as_B=False retraced=True n_levels=5 error=None
+[100] floor    D       steps_max=30 t_warm_median=0.01429325109347701 t_setup_total=0.06941298395395279 t_pyamg=0.019778511952608824 rel_err=5.4889160790319056e-08 same_sig_as_B=True retraced=False n_levels=5 error=None
+[100] floor    E       steps_max=63 t_warm_median=0.02733950736001134 t_setup_total=0.04990713018923998 t_pyamg=0.002282361965626478 rel_err=2.5396449090961835e-05 same_sig_as_B=False retraced=False n_levels=5 error=None
+[300] B cold setup 10.864s (pyamg 0.650s)
+[300] B setup total 0.309s pyamg 0.238s; levels [{'n': 89999, 'A_nse': 448795, 'P_shape': [89999, 15075], 'P_nse': 224274, 'R_nse': 224274}, {'n': 15075, 'A_nse': 134869, 'P_shape': [15075, 1676], 'P_nse': 41613, 'R_nse': 41613}, {'n': 1676, 'A_nse': 15350, 'P_shape': [1676, 187], 'P_nse': 4506, 'R_nse': 4506}, {'n': 187, 'A_nse': 1655, 'P_shape': [187, 23], 'P_nse': 505, 'R_nse': 505}, {'n': 23, 'A_nse': 195, 'P_shape': [23, 3], 'P_nse': 42, 'R_nse': 42}, {'n': 3, 'A_nse': 9}]
+[300] uniform: log10 c in [0.00, 0.00], direct 0.69s
+[300] uniform  cg      steps_max=1429 t_warm_median=1.6816375870257616 t_setup_total=None t_pyamg=None rel_err=5.699465903988632e-05 same_sig_as_B=None retraced=True n_levels=None error=None
+[300] uniform  jacobi  steps_max=1451 t_warm_median=1.8205615798942745 t_setup_total=None t_pyamg=None rel_err=5.1451577824516966e-05 same_sig_as_B=None retraced=True n_levels=None error=None
+[300] uniform  B       steps_max=25 t_warm_median=0.07401386182755232 t_setup_total=0.0 t_pyamg=0.0 rel_err=2.0902928581048185e-07 same_sig_as_B=True retraced=True n_levels=6 error=None
+[300] uniform  B_fine  steps_max=25 t_warm_median=0.07248243689537048 t_setup_total=0.14519047178328037 t_pyamg=0.0 rel_err=2.0902928040446897e-07 same_sig_as_B=True retraced=False n_levels=6 error=None
+[300] uniform  C       steps_max=25 t_warm_median=0.07256197603419423 t_setup_total=0.3979932456277311 t_pyamg=0.33152763126417994 rel_err=2.1153449043855962e-07 same_sig_as_B=True retraced=False n_levels=6 error=None
+[300] uniform  C_t25   steps_max=253 t_warm_median=0.690578262321651 t_setup_total=1.7963223876431584 t_pyamg=0.29415523121133447 rel_err=2.251012471328817e-05 same_sig_as_B=False retraced=True n_levels=4 error=None
+[300] uniform  D       steps_max=25 t_warm_median=0.07245107600465417 t_setup_total=0.32747110398486257 t_pyamg=0.25094474107027054 rel_err=2.087137740807683e-07 same_sig_as_B=True retraced=False n_levels=6 error=None
+[300] uniform  E       steps_max=86 t_warm_median=0.22356210928410292 t_setup_total=2.718422024976462 t_pyamg=0.008942151442170143 rel_err=4.140717881081009e-06 same_sig_as_B=False retraced=True n_levels=6 error=None
+[300] grf2: log10 c in [-2.00, 0.00], direct 0.69s
+[300] grf2     cg      steps_max=4962 t_warm_median=5.753934185951948 t_setup_total=None t_pyamg=None rel_err=5.777957824167204e-06 same_sig_as_B=None retraced=False n_levels=None error=None
+[300] grf2     jacobi  steps_max=1651 t_warm_median=2.068677340168506 t_setup_total=None t_pyamg=None rel_err=1.5184903362935258e-05 same_sig_as_B=None retraced=False n_levels=None error=None
+[300] grf2     B       steps_max=118 t_warm_median=0.33567978721112013 t_setup_total=0.0 t_pyamg=0.0 rel_err=2.030915144861258e-07 same_sig_as_B=True retraced=False n_levels=6 error=None
+[300] grf2     B_fine  steps_max=75 t_warm_median=0.21399732027202845 t_setup_total=0.02395017398521304 t_pyamg=0.0 rel_err=2.2446190893239352e-06 same_sig_as_B=True retraced=False n_levels=6 error=None
+[300] grf2     C       steps_max=25 t_warm_median=0.07286814507097006 t_setup_total=0.31488513527438045 t_pyamg=0.24738747207447886 rel_err=2.1219694741073204e-07 same_sig_as_B=True retraced=False n_levels=6 error=None
+[300] grf2     C_t25   steps_max=530 t_warm_median=1.3768428699113429 t_setup_total=2.8164729978889227 t_pyamg=0.2273615268059075 rel_err=1.4997995445437599e-05 same_sig_as_B=False retraced=True n_levels=5 error=None
+[300] grf2     D       steps_max=25 t_warm_median=0.07291618501767516 t_setup_total=0.3220948716625571 t_pyamg=0.2567466120235622 rel_err=2.12042734189408e-07 same_sig_as_B=True retraced=False n_levels=6 error=None
+[300] grf2     E       steps_max=97 t_warm_median=0.2536776717752218 t_setup_total=0.07380952220410109 t_pyamg=0.010091196745634079 rel_err=5.732606127764279e-06 same_sig_as_B=False retraced=False n_levels=6 error=None
+[300] grf4: log10 c in [-4.00, 0.00], direct 0.66s
+[300] grf4     cg      steps_max=20000 t_warm_median=22.97857996681705 t_setup_total=None t_pyamg=None rel_err=6.509044835071347e-06 same_sig_as_B=None retraced=False n_levels=None error=None
+[300] grf4     jacobi  steps_max=1824 t_warm_median=2.284122453071177 t_setup_total=None t_pyamg=None rel_err=1.655022814301916e-06 same_sig_as_B=None retraced=False n_levels=None error=None
+[300] grf4     B       steps_max=1057 t_warm_median=3.0003650509752333 t_setup_total=0.0 t_pyamg=0.0 rel_err=5.3426572003666443e-08 same_sig_as_B=True retraced=False n_levels=6 error=None
+[300] grf4     B_fine  steps_max=188 t_warm_median=0.5368794612586498 t_setup_total=0.03133909311145544 t_pyamg=0.0 rel_err=5.976421759499937e-06 same_sig_as_B=True retraced=False n_levels=6 error=None
+[300] grf4     C       steps_max=29 t_warm_median=0.08424137998372316 t_setup_total=0.4957410781644285 t_pyamg=0.42191499611362815 rel_err=3.976010028844075e-08 same_sig_as_B=True retraced=False n_levels=6 error=None
+[300] grf4     C_t25   steps_max=570 t_warm_median=1.4956398289650679 t_setup_total=3.076789343729615 t_pyamg=0.21393561037257314 rel_err=4.082217048643901e-06 same_sig_as_B=False retraced=True n_levels=5 error=None
+[300] grf4     D       steps_max=29 t_warm_median=0.08460280811414123 t_setup_total=0.3112538680434227 t_pyamg=0.2425762601196766 rel_err=3.991174048477255e-08 same_sig_as_B=True retraced=False n_levels=6 error=None
+[300] grf4     E       steps_max=119 t_warm_median=0.31152459792792797 t_setup_total=0.06766559090465307 t_pyamg=0.008985592983663082 rel_err=5.173062218514842e-06 same_sig_as_B=False retraced=False n_levels=6 error=None
+[300] grf6: log10 c in [-6.00, 0.00], direct 0.67s

@@ -1,0 +1,54 @@
+conductance_log10_range: [-2.0, 2.0]
+n_unknowns: 999999
+nnz: 4995995
+jaxamg_cold_setup_incl_compile_s: 0.44404228730127215
+a_apply_default_refresh_s: 0.044272222090512514
+b_apply_reuse_s: 0.007006793981418014
+c_pcg_iters: 18
+c_pcg_relres: 5.106908377592725e-07
+c_pcg_1rhs_default_s: 0.07691101869568229
+c_pcg_1rhs_reuse_s: 0.038551184348762035
+
+
+
+
+
+
+
+
+
+
+
+
+c_pcg_value_and_grad_20rhs_resetup_per_solve_s: 3.0037832027301192
+c_pcg_value_and_grad_20rhs_setup_once_s: 1.5796383456327021
+amjax_host_setup_heterogeneous_s: 17.7189862257801
+
+
+
+
+
+
+
+
+
+
+
+
+amjax_refreshed_cg_iters: 25
+
+
+
+
+
+
+
+
+
+
+
+
+amjax_refreshed_time_20rhs_s: 0.7671447386965156
+amjax_frozen_cg_iters: 673
+amjax_frozen_converged: True
+exit=0

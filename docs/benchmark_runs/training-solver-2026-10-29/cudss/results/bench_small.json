@@ -1,0 +1,54 @@
+[
+ {
+  "n": 100,
+  "N": 9999,
+  "host_structure_s": 0.0062458692118525505,
+  "nnz": 49595,
+  "analysis_s": 0.054128711111843586,
+  "factorize_first_incl_compile_s": 0.2228399720042944,
+  "refactorize_s": 0.001314534805715084,
+  "refactorize_rebuilds": 0,
+  "factorize_s": 0.0014994950033724308,
+  "cholmod_cpu_analyze_factor_s": 0.03631673427298665,
+  "solve_20rhs_s": 0.0009419266134500504,
+  "cholmod_cpu_solve_20rhs_s": 0.003987116273492575,
+  "relerr_vs_cholmod_20rhs": 7.576259381603867e-13,
+  "relres_20rhs": 1.5979679415456603e-12,
+  "scipy_spsolve_s": 0.04282708978280425,
+  "relerr_vs_scipy_20rhs": 3.069727881018155e-12,
+  "solve_100rhs_s": 0.0018631629645824432,
+  "cholmod_cpu_solve_100rhs_s": 0.01992784021422267,
+  "relerr_vs_cholmod_100rhs": 7.466762878535461e-13,
+  "relres_100rhs": 1.6027017913266345e-12,
+  "cond_range": [
+   0.01,
+   100.0
+  ]
+ },
+ {
+  "n": 300,
+  "N": 89999,
+  "host_structure_s": 0.05455303005874157,
+  "nnz": 448795,
+  "analysis_s": 0.36945807142183185,
+  "factorize_first_incl_compile_s": 0.3005155911669135,
+  "refactorize_s": 0.0061478991992771626,
+  "refactorize_rebuilds": 0,
+  "factorize_s": 0.006537276785820723,
+  "cholmod_cpu_analyze_factor_s": 0.6011255527846515,
+  "solve_20rhs_s": 0.004298754967749119,
+  "cholmod_cpu_solve_20rhs_s": 0.05087154312059283,
+  "relerr_vs_cholmod_20rhs": 6.841655786374216e-12,
+  "relres_20rhs": 6.900346349691473e-12,
+  "scipy_spsolve_s": 0.5708761471323669,
+  "relerr_vs_scipy_20rhs": 2.378180691197192e-12,
+  "solve_100rhs_s": 0.016182773280888796,
+  "cholmod_cpu_solve_100rhs_s": 0.25688418420031667,
+  "relerr_vs_cholmod_100rhs": 6.902688208793264e-12,
+  "relres_100rhs": 6.881050403263922e-12,
+  "cond_range": [
+   0.01,
+   100.0
+  ]
+ }
+]

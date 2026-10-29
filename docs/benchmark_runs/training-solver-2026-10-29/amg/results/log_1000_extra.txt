@@ -1,0 +1,14 @@
+[1000] B cold setup 17.756s (pyamg 2.765s)
+[1000] B setup total 3.104s pyamg 2.891s; levels [{'n': 999999, 'A_nse': 4995995, 'P_shape': [999999, 166999], 'P_nse': 2498076, 'R_nse': 2498076}, {'n': 166999, 'A_nse': 1499321, 'P_shape': [166999, 18579], 'P_nse': 462750, 'R_nse': 462750}, {'n': 18579, 'A_nse': 167051, 'P_shape': [18579, 2086], 'P_nse': 51228, 'R_nse': 51228}, {'n': 2086, 'A_nse': 18870, 'P_shape': [2086, 233], 'P_nse': 5666, 'R_nse': 5666}, {'n': 233, 'A_nse': 2109, 'P_shape': [233, 28], 'P_nse': 608, 'R_nse': 608}, {'n': 28, 'A_nse': 248, 'P_shape': [28, 3], 'P_nse': 48, 'R_nse': 48}, {'n': 3, 'A_nse': 9}]
+[1000] grf2: log10 c in [-2.00, 0.00], direct 16.46s
+[1000] grf2     B       steps_max=145 t_warm_median=4.329355829861015 t_setup_total=0.0 t_pyamg=0.0 rel_err=3.0940290351023735e-07 same_sig_as_B=True retraced=True n_levels=7 error=None
+[1000] grf2     B_fine  steps_max=90 t_warm_median=2.7055774959735572 t_setup_total=0.29509065579622984 t_pyamg=0.0 rel_err=7.967428404299209e-07 same_sig_as_B=True retraced=False n_levels=7 error=None
+[1000] grf2     C       steps_max=22 t_warm_median=0.6800321498885751 t_setup_total=3.1288765599019825 t_pyamg=2.9097759472206235 rel_err=1.3224781374185739e-07 same_sig_as_B=True retraced=False n_levels=7 error=None
+[1000] grf2     D       steps_max=22 t_warm_median=0.6804574322886765 t_setup_total=3.1100220577791333 t_pyamg=2.846308086067438 rel_err=1.307828615357988e-07 same_sig_as_B=True retraced=False n_levels=7 error=None
+[1000] grf2     E       steps_max=175 t_warm_median=4.783468442037702 t_setup_total=3.3668960938230157 t_pyamg=0.1262998590245843 rel_err=7.666197127114715e-06 same_sig_as_B=False retraced=True n_levels=7 error=None
+[1000] barrier: log10 c in [-4.00, 0.00], direct 17.84s
+[1000] barrier  B       steps_max=393 t_warm_median=11.735403127036989 t_setup_total=0.0 t_pyamg=0.0 rel_err=2.740915565445858e-05 same_sig_as_B=True retraced=False n_levels=7 error=None
+[1000] barrier  B_fine  steps_max=82 t_warm_median=2.472011970821768 t_setup_total=0.10032550059258938 t_pyamg=0.0 rel_err=1.7453864466850202e-05 same_sig_as_B=True retraced=False n_levels=7 error=None
+[1000] barrier  C       steps_max=40 t_warm_median=1.219367363024503 t_setup_total=3.7651588995940983 t_pyamg=3.5592939439229667 rel_err=5.347269209040323e-07 same_sig_as_B=True retraced=False n_levels=7 error=None
+[1000] barrier  D       steps_max=40 t_warm_median=1.2183110872283578 t_setup_total=3.6994695090688765 t_pyamg=3.49551873607561 rel_err=5.308511917674222e-07 same_sig_as_B=True retraced=False n_levels=7 error=None
+[1000] barrier  E       steps_max=332 t_warm_median=9.08026237692684 t_setup_total=0.2783276969566941 t_pyamg=0.11001790221780539 rel_err=5.361476883130122e-06 same_sig_as_B=False retraced=False n_levels=7 error=None

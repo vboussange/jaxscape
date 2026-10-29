@@ -1,0 +1,5 @@
+conductance_log10_range: [-2.0, 2.0]
+n_unknowns: 89999
+nnz: 448795
+0 {'apply_s': 0.015550669515505433, 'cg_iters': 13}
+-1 {'apply_s': 0.005222667939960957, 'cg_iters': 20}

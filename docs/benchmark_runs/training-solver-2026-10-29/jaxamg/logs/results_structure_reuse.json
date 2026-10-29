@@ -1,0 +1,10 @@
+{
+  "structure_reuse_levels=0": {
+    "apply_s": 0.015550669515505433,
+    "cg_iters": 13
+  },
+  "structure_reuse_levels=-1": {
+    "apply_s": 0.005222667939960957,
+    "cg_iters": 20
+  }
+}

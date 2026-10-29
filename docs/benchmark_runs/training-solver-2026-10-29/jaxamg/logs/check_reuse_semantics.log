@@ -1,0 +1,8 @@
+conductance_log10_range: [-2.0, 2.0]
+n_unknowns: 89999
+nnz: 448795
+rel(het_on_uni_hierarchy, het_fresh) = 0.7554988019575383
+rel(het_on_uni_hierarchy, uni_fresh) = 0.005458590661351722
+rel(het_reuse, het_fresh)            = 0.0
+frozen-uniform AmgX hierarchy: CG iters 8 true relres 3.7828001461925806
+het AmgX hierarchy:            CG iters 13 true relres 4.589272903877423e-06

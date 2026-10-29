@@ -1,0 +1,87 @@
+=== 300 rest 08:03:35
+[300] B cold setup 11.476s (pyamg 0.260s)
+[300] B setup total 0.312s pyamg 0.240s; levels [{'n': 89999, 'A_nse': 448795, 'P_shape': [89999, 15075], 'P_nse': 224274, 'R_nse': 224274}, {'n': 15075, 'A_nse': 134869, 'P_shape': [15075, 1676], 'P_nse': 41613, 'R_nse': 41613}, {'n': 1676, 'A_nse': 15350, 'P_shape': [1676, 187], 'P_nse': 4506, 'R_nse': 4506}, {'n': 187, 'A_nse': 1655, 'P_shape': [187, 23], 'P_nse': 505, 'R_nse': 505}, {'n': 23, 'A_nse': 195, 'P_shape': [23, 3], 'P_nse': 42, 'R_nse': 42}, {'n': 3, 'A_nse': 9}]
+[300] grf6: log10 c in [-6.00, 0.00], direct 0.67s
+[300] grf6     cg      steps_max=5000 t_warm_median=5.8566534062847495 t_setup_total=None t_pyamg=None rel_err=0.3985060137631736 same_sig_as_B=None retraced=True n_levels=None error=None
+[300] grf6     jacobi  steps_max=1922 t_warm_median=2.3879001918248832 t_setup_total=None t_pyamg=None rel_err=8.269144196246388e-07 same_sig_as_B=None retraced=True n_levels=None error=None
+[300] grf6     B       steps_max=5000 t_warm_median=14.09337509283796 t_setup_total=0.0 t_pyamg=0.0 rel_err=4.823353896900409e-06 same_sig_as_B=True retraced=True n_levels=6 error=None
+[300] grf6     B_fine  steps_max=436 t_warm_median=1.2323185396380723 t_setup_total=0.16947908094152808 t_pyamg=0.0 rel_err=8.137455448402559e-07 same_sig_as_B=True retraced=False n_levels=6 error=None
+[300] grf6     C       steps_max=39 t_warm_median=0.11245151283219457 t_setup_total=0.3181571648456156 t_pyamg=0.23999798018485308 rel_err=6.137860163962329e-08 same_sig_as_B=True retraced=False n_levels=6 error=None
+[300] grf6     C_t25   steps_max=594 t_warm_median=1.560707783792168 t_setup_total=2.947533972095698 t_pyamg=0.21267126128077507 rel_err=7.46071110774129e-07 same_sig_as_B=False retraced=True n_levels=5 error=None
+[300] grf6     D       steps_max=39 t_warm_median=0.11214353330433369 t_setup_total=0.3131459397263825 t_pyamg=0.23447280609980226 rel_err=6.240728535938053e-08 same_sig_as_B=True retraced=False n_levels=6 error=None
+[300] grf6     E       steps_max=141 t_warm_median=0.3657540320418775 t_setup_total=2.850624202284962 t_pyamg=0.009465321898460388 rel_err=1.3298905707535534e-06 same_sig_as_B=False retraced=True n_levels=6 error=None
+[300] barrier: log10 c in [-4.00, 0.00], direct 0.66s
+[300] barrier  cg      steps_max=2797 t_warm_median=3.277297261171043 t_setup_total=None t_pyamg=None rel_err=5.8991260377500226e-06 same_sig_as_B=None retraced=False n_levels=None error=None
+[300] barrier  jacobi  steps_max=2031 t_warm_median=2.527334413025528 t_setup_total=None t_pyamg=None rel_err=1.726515040007713e-05 same_sig_as_B=None retraced=False n_levels=None error=None
+[300] barrier  B       steps_max=309 t_warm_median=0.8738618069328368 t_setup_total=0.0 t_pyamg=0.0 rel_err=7.16138262113476e-06 same_sig_as_B=True retraced=False n_levels=6 error=None
+[300] barrier  B_fine  steps_max=73 t_warm_median=0.2086019441485405 t_setup_total=0.021870285272598267 t_pyamg=0.0 rel_err=9.039994420547406e-06 same_sig_as_B=True retraced=False n_levels=6 error=None
+[300] barrier  C       steps_max=46 t_warm_median=0.13203281396999955 t_setup_total=0.3144537559710443 t_pyamg=0.24413823708891869 rel_err=1.6145293352822227e-07 same_sig_as_B=True retraced=False n_levels=6 error=None
+[300] barrier  C_t25   steps_max=353 t_warm_median=0.9916389333084226 t_setup_total=3.514120250940323 t_pyamg=0.24504205491393805 rel_err=3.011765050574247e-06 same_sig_as_B=False retraced=True n_levels=5 error=None
+[300] barrier  D       steps_max=46 t_warm_median=0.13206565380096436 t_setup_total=0.3263778700493276 t_pyamg=0.25304791983217 rel_err=1.6142538039324604e-07 same_sig_as_B=True retraced=False n_levels=6 error=None
+[300] barrier  E       steps_max=180 t_warm_median=0.46762370597571135 t_setup_total=0.07953604077920318 t_pyamg=0.011437076143920422 rel_err=2.4010184316142797e-06 same_sig_as_B=False retraced=False n_levels=6 error=None
+[300] floor: log10 c in [-6.00, 0.00], direct 0.64s
+[300] floor    cg      steps_max=5000 t_warm_median=5.841436034068465 t_setup_total=None t_pyamg=None rel_err=0.9642057788970398 same_sig_as_B=None retraced=False n_levels=None error=None
+[300] floor    jacobi  steps_max=1998 t_warm_median=2.4860525969415903 t_setup_total=None t_pyamg=None rel_err=4.099297991576712e-06 same_sig_as_B=None retraced=False n_levels=None error=None
+[300] floor    B       steps_max=4918 t_warm_median=13.882178980857134 t_setup_total=0.0 t_pyamg=0.0 rel_err=1.7696032251269916e-07 same_sig_as_B=True retraced=False n_levels=6 error=None
+[300] floor    B_fine  steps_max=300 t_warm_median=0.8523240890353918 t_setup_total=0.026679891161620617 t_pyamg=0.0 rel_err=5.9008635956928415e-06 same_sig_as_B=True retraced=False n_levels=6 error=None
+[300] floor    C       steps_max=40 t_warm_median=0.11582080274820328 t_setup_total=1.6208517071790993 t_pyamg=1.489069998729974 rel_err=2.8828985532048425e-08 same_sig_as_B=True retraced=False n_levels=6 error=None
+[300] floor    C_t25   steps_max=568 t_warm_median=1.5701631093397737 t_setup_total=3.858149810228497 t_pyamg=0.5011536739766598 rel_err=2.1452794928417375e-06 same_sig_as_B=False retraced=True n_levels=5 error=None
+[300] floor    D       steps_max=41 t_warm_median=0.11795294983312488 t_setup_total=0.33715631905943155 t_pyamg=0.2576270750723779 rel_err=3.833311418346588e-08 same_sig_as_B=True retraced=False n_levels=6 error=None
+[300] floor    E       steps_max=115 t_warm_median=0.2996660997159779 t_setup_total=0.07588544487953186 t_pyamg=0.009429322089999914 rel_err=9.92433222903238e-06 same_sig_as_B=False retraced=False n_levels=6 error=None
+=== recompile 100 08:06:22
+{'design': 'state', 'call': 'fwd: state_B1 first', 'time_s': 3.731251204852015, 'retraced': True}
+{'design': 'state', 'call': 'fwd: state_B1 again', 'time_s': 0.5203124047257006, 'retraced': False}
+{'design': 'state', 'call': 'fwd: state_B2 (identical values, rebuilt)', 'time_s': 3.0047769607044756, 'retraced': True}
+{'design': 'state', 'call': 'fwd: state_C (rebuilt from current)', 'time_s': 2.7023026780225337, 'retraced': True}
+same leaf signature B vs C: True
+{'design': 'ml', 'call': 'fwd: ml_B1 first', 'time_s': 3.1195526402443647, 'retraced': True}
+{'design': 'ml', 'call': 'fwd: ml_B1 again', 'time_s': 0.5300082466565073, 'retraced': False}
+{'design': 'ml', 'call': 'fwd: ml_B2 (identical values, rebuilt)', 'time_s': 0.528679349925369, 'retraced': False}
+{'design': 'ml', 'call': 'fwd: ml_C (rebuilt from current)', 'time_s': 0.012904581613838673, 'retraced': False}
+{'design': 'state', 'call': 'grad: state_B1 first', 'time_s': 3.4828199120238423, 'retraced': True}
+{'design': 'state', 'call': 'grad: state_B1 again', 'time_s': 0.540363266132772, 'retraced': False}
+{'design': 'state', 'call': 'grad: state_B2 (identical values, rebuilt)', 'time_s': 3.395326181780547, 'retraced': True}
+{'design': 'state', 'call': 'grad: state_C (rebuilt from current)', 'time_s': 2.800515976268798, 'retraced': True}
+same leaf signature B vs C: True
+{'design': 'ml', 'call': 'grad: ml_B1 first', 'time_s': 3.4461734197102487, 'retraced': True}
+{'design': 'ml', 'call': 'grad: ml_B1 again', 'time_s': 0.5433686673641205, 'retraced': False}
+{'design': 'ml', 'call': 'grad: ml_B2 (identical values, rebuilt)', 'time_s': 0.541541192214936, 'retraced': False}
+{'design': 'ml', 'call': 'grad: ml_C (rebuilt from current)', 'time_s': 0.012917730957269669, 'retraced': False}
+=== ejax 300 08:07:07
+[300] host plan 0.064s, levels [{'n': 89999, 'A_nse': 448795, 'P_shape': [89999, 15075], 'P_nse': 89999, 'R_nse': 89999}, {'n': 15075, 'A_nse': 104229, 'P_shape': [15075, 1676], 'P_nse': 15075, 'R_nse': 15075}, {'n': 1676, 'A_nse': 11424, 'P_shape': [1676, 187], 'P_nse': 1676, 'R_nse': 1676}, {'n': 187, 'A_nse': 1197, 'P_shape': [187, 23], 'P_nse': 187, 'R_nse': 187}, {'n': 23, 'A_nse': 125, 'P_shape': [23, 3], 'P_nse': 23, 'R_nse': 23}, {'n': 3, 'A_nse': 7}]
+{'size': 300, 'surface': 'uniform', 'variant': 'E_jax', 't_refresh_first': 0.27012919820845127, 't_refresh_warm_median': 0.0012532370164990425, 't_host_plan': 0.0640532597899437, 'same_sig_as_template': True, 'level_relmaxdiff_vs_pyamg': [0.0, 5.551115123125783e-16, 1.0248212535001444e-15, 1.1481498981371972e-15, 1.923019824187384e-15, 5.026560973486299e-15], 'steps_max': 86, 'n_hit_max': 0, 't_warm_median': 0.22388997580856085, 'retraced': None, 'rel_err': 4.140717828005046e-06}
+{'size': 300, 'surface': 'grf4', 'variant': 'E_jax', 't_refresh_first': 0.0030998908914625645, 't_refresh_warm_median': 0.0011692163534462452, 't_host_plan': 0.0640532597899437, 'same_sig_as_template': True, 'level_relmaxdiff_vs_pyamg': [0.0, 4.469481031039617e-16, 5.566837931803418e-16, 3.5114738212307213e-16, 8.01649995270345e-16, 2.4456229619162026e-15], 'steps_max': 119, 'n_hit_max': 0, 't_warm_median': 0.30865011271089315, 'retraced': False, 'rel_err': 5.17306301842035e-06}
+{'size': 300, 'surface': 'grf6', 'variant': 'E_jax', 't_refresh_first': 0.0022168136201798916, 't_refresh_warm_median': 0.001215736847370863, 't_host_plan': 0.0640532597899437, 'same_sig_as_template': True, 'level_relmaxdiff_vs_pyamg': [0.0, 3.3628570113016604e-16, 3.274003390987785e-16, 5.203513822069918e-16, 9.419975911845783e-16, 3.7560332053935427e-14], 'steps_max': 141, 'n_hit_max': 0, 't_warm_median': 0.36591388285160065, 'retraced': False, 'rel_err': 1.3302680315555064e-06}
+{'size': 300, 'surface': 'floor', 'variant': 'E_jax', 't_refresh_first': 0.002278383821249008, 't_refresh_warm_median': 0.0011874660849571228, 't_host_plan': 0.0640532597899437, 'same_sig_as_template': True, 'level_relmaxdiff_vs_pyamg': [0.0, 4.476570887296865e-16, 4.870537946929085e-16, 7.153873071520594e-16, 1.0045052665399828e-15, 2.717984441161159e-15], 'steps_max': 115, 'n_hit_max': 0, 't_warm_median': 0.3003514977172017, 'retraced': False, 'rel_err': 1.0004549495457399e-05}
+=== 1000 08:07:34
+[1000] B cold setup 17.313s (pyamg 2.748s)
+[1000] B setup total 6.168s pyamg 5.922s; levels [{'n': 999999, 'A_nse': 4995995, 'P_shape': [999999, 166999], 'P_nse': 2498076, 'R_nse': 2498076}, {'n': 166999, 'A_nse': 1499321, 'P_shape': [166999, 18579], 'P_nse': 462750, 'R_nse': 462750}, {'n': 18579, 'A_nse': 167051, 'P_shape': [18579, 2086], 'P_nse': 51228, 'R_nse': 51228}, {'n': 2086, 'A_nse': 18870, 'P_shape': [2086, 233], 'P_nse': 5666, 'R_nse': 5666}, {'n': 233, 'A_nse': 2109, 'P_shape': [233, 28], 'P_nse': 608, 'R_nse': 608}, {'n': 28, 'A_nse': 248, 'P_shape': [28, 3], 'P_nse': 48, 'R_nse': 48}, {'n': 3, 'A_nse': 9}]
+[1000] uniform: log10 c in [0.00, 0.00], direct 16.35s
+[1000] uniform  B       steps_max=21 t_warm_median=0.6513229012489319 t_setup_total=0.0 t_pyamg=0.0 rel_err=3.3816036048483593e-07 same_sig_as_B=True retraced=True n_levels=7 error=None
+[1000] uniform  B_fine  steps_max=21 t_warm_median=0.649945305660367 t_setup_total=0.22571426909416914 t_pyamg=0.0 rel_err=3.3816026141751895e-07 same_sig_as_B=True retraced=False n_levels=7 error=None
+[1000] uniform  C       steps_max=21 t_warm_median=0.6488581108860672 t_setup_total=2.895839520264417 t_pyamg=2.688675885088742 rel_err=3.390409666932504e-07 same_sig_as_B=True retraced=False n_levels=7 error=None
+[1000] uniform  D       steps_max=21 t_warm_median=0.6493201591074467 t_setup_total=2.8598961662501097 t_pyamg=2.6528761531226337 rel_err=3.3842565812351865e-07 same_sig_as_B=True retraced=False n_levels=7 error=None
+[1000] uniform  E       steps_max=158 t_warm_median=4.307963337749243 t_setup_total=3.1921858987770975 t_pyamg=0.10700411163270473 rel_err=7.580011196854915e-06 same_sig_as_B=False retraced=True n_levels=7 error=None
+[1000] grf4: log10 c in [-4.00, 0.00], direct 16.88s
+[1000] grf4     B       steps_max=1164 t_warm_median=34.82548123272136 t_setup_total=0.0 t_pyamg=0.0 rel_err=1.652537588720019e-07 same_sig_as_B=True retraced=False n_levels=7 error=None
+[1000] grf4     B_fine  steps_max=310 t_warm_median=9.312709600199014 t_setup_total=0.09675568342208862 t_pyamg=0.0 rel_err=2.0912048374373134e-06 same_sig_as_B=True retraced=False n_levels=7 error=None
+[1000] grf4     C       steps_max=24 t_warm_median=0.743607699405402 t_setup_total=2.9362831548787653 t_pyamg=2.7380304629914463 rel_err=1.47132484823716e-07 same_sig_as_B=True retraced=False n_levels=7 error=None
+[1000] grf4     D       steps_max=24 t_warm_median=0.7431512102484703 t_setup_total=2.888808688148856 t_pyamg=2.6879962300881743 rel_err=1.4686672982465236e-07 same_sig_as_B=True retraced=False n_levels=7 error=None
+[1000] grf4     E       steps_max=239 t_warm_median=6.5495768818072975 t_setup_total=0.27259634202346206 t_pyamg=0.1056144880130887 rel_err=6.180780903647914e-06 same_sig_as_B=False retraced=False n_levels=7 error=None
+[1000] grf6: log10 c in [-6.00, 0.00], direct 16.71s
+[1000] grf6     B       steps_max=1200 t_warm_median=35.94277356658131 t_setup_total=0.0 t_pyamg=0.0 rel_err=0.0037116793625618727 same_sig_as_B=True retraced=False n_levels=7 error=None
+[1000] grf6     B_fine  steps_max=686 t_warm_median=20.69911605818197 t_setup_total=0.09705410292372108 t_pyamg=0.0 rel_err=3.1126417860728286e-06 same_sig_as_B=True retraced=False n_levels=7 error=None
+[1000] grf6     C       steps_max=29 t_warm_median=0.8913984573446214 t_setup_total=7.740614979062229 t_pyamg=7.545225135050714 rel_err=6.789421730034e-08 same_sig_as_B=True retraced=False n_levels=7 error=None
+[1000] grf6     D       steps_max=29 t_warm_median=0.8904491290450096 t_setup_total=3.223024216014892 t_pyamg=2.9641508189961314 rel_err=6.798524625173315e-08 same_sig_as_B=True retraced=False n_levels=7 error=None
+[1000] grf6     E       steps_max=286 t_warm_median=7.831374536734074 t_setup_total=0.28497971734032035 t_pyamg=0.10567797208204865 rel_err=7.326936941848426e-07 same_sig_as_B=False retraced=False n_levels=7 error=None
+[1000] floor: log10 c in [-6.00, 0.00], direct 16.77s
+[1000] floor    B       steps_max=1200 t_warm_median=35.94872586103156 t_setup_total=0.0 t_pyamg=0.0 rel_err=6.12992758030966e-05 same_sig_as_B=True retraced=False n_levels=7 error=None
+[1000] floor    B_fine  steps_max=677 t_warm_median=20.326474708970636 t_setup_total=0.16584342392161489 t_pyamg=0.0 rel_err=2.2305527363056306e-07 same_sig_as_B=True retraced=False n_levels=7 error=None
+[1000] floor    C       steps_max=31 t_warm_median=0.9534054831601679 t_setup_total=4.618720409926027 t_pyamg=4.229163801763207 rel_err=8.818091924494722e-08 same_sig_as_B=True retraced=False n_levels=7 error=None
+[1000] floor    D       steps_max=31 t_warm_median=0.952413666062057 t_setup_total=3.1711012637242675 t_pyamg=2.9322426267899573 rel_err=8.803235295418284e-08 same_sig_as_B=True retraced=False n_levels=7 error=None
+[1000] floor    E       steps_max=255 t_warm_median=6.985566115938127 t_setup_total=0.32680552266538143 t_pyamg=0.12332657631486654 rel_err=2.9919372990086283e-06 same_sig_as_B=False retraced=False n_levels=7 error=None
+=== ejax 1000 08:16:10
+[1000] host plan 0.957s, levels [{'n': 999999, 'A_nse': 4995995, 'P_shape': [999999, 166999], 'P_nse': 999999, 'R_nse': 999999}, {'n': 166999, 'A_nse': 1165163, 'P_shape': [166999, 18579], 'P_nse': 166999, 'R_nse': 166999}, {'n': 18579, 'A_nse': 129021, 'P_shape': [18579, 2086], 'P_nse': 18579, 'R_nse': 18579}, {'n': 2086, 'A_nse': 14232, 'P_shape': [2086, 233], 'P_nse': 2086, 'R_nse': 2086}, {'n': 233, 'A_nse': 1513, 'P_shape': [233, 28], 'P_nse': 233, 'R_nse': 233}, {'n': 28, 'A_nse': 150, 'P_shape': [28, 3], 'P_nse': 28, 'R_nse': 28}, {'n': 3, 'A_nse': 7}]
+{'size': 1000, 'surface': 'uniform', 'variant': 'E_jax', 't_refresh_first': 0.31488690013065934, 't_refresh_warm_median': 0.0020280927419662476, 't_host_plan': 0.9567210231907666, 'same_sig_as_template': True, 'level_relmaxdiff_vs_pyamg': [0.0, 9.251858538542972e-16, 1.0248212535001444e-15, 1.501444471397832e-15, 2.5629498523471803e-15, 6.294689371947226e-15, 2.0001494085004107e-14], 'steps_max': 158, 'n_hit_max': 0, 't_warm_median': 4.312952862121165, 'retraced': None, 'rel_err': 7.580011336593036e-06}
+{'size': 1000, 'surface': 'grf6', 'variant': 'E_jax', 't_refresh_first': 0.004713156260550022, 't_refresh_warm_median': 0.002088744193315506, 't_host_plan': 0.9567210231907666, 'same_sig_as_template': True, 'level_relmaxdiff_vs_pyamg': [0.0, 4.450446892304478e-16, 7.648263178574681e-16, 4.809941184528e-16, 1.00007964482611e-15, 1.6811302679155375e-15, 5.050321459405667e-15], 'steps_max': 286, 'n_hit_max': 0, 't_warm_median': 7.81499779317528, 'retraced': False, 'rel_err': 7.326937565488463e-07}
+=== ALL DONE 08:18:04
