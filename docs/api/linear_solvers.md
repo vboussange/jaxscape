@@ -254,7 +254,7 @@ To keep a CUDA 12 JAX stack, build spineax from source and leave out the
 
 ```bash
 # A Python 3.12 (or newer) environment on Linux x86-64.
-pip install 'jaxscape[cuda]'  # JAX with its CUDA 12 plugin
+pip install 'jaxscape[cuda]'  # JAX 0.11 or newer with its CUDA 12 plugin
 pip install 'cmake>=3.26' nanobind scikit-build-core 'nvidia-cudss-cu12>=0.8,<1'
 git clone https://github.com/johnviljoen/spineax.git
 git -C spineax checkout 97dae03f54c3d0698c9a714471cc64f471b5aedd  # v0.0.5
@@ -295,9 +295,11 @@ The evidence report ran the CUDA 12 build:
 | Python | 3.12 |
 | GPU and driver | NVIDIA GeForce RTX 3090 (24 GiB), driver 580.178.04 |
 
-The `cudss` extra installs the CUDA 13 wheel of the same spineax release, with
-`nvidia-cudss-cu13` below 1.0. That combination follows spineax's published
-requirements; the evidence run did not include it.
+JAXScape requires JAX 0.11 or newer, so a CUDA 12 build today pairs spineax
+with JAX 0.11 or newer and its CUDA 12 plugin. The `cudss` extra installs the
+CUDA 13 wheel of the same spineax release, with `nvidia-cudss-cu13` below 1.0.
+That combination follows spineax's published requirements; the evidence run did
+not include it.
 
 ### GPU memory
 
