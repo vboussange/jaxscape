@@ -17,6 +17,7 @@ class ResistanceProfile:
     solver_factory: Callable[[], Any] | None = None
     method_factory: Callable[[], Any] | None = None
     gpu_capable: bool = False
+    gpu_only: bool = False
     requires_preparation: bool = False
     dtype: Any = jnp.float32
 
@@ -64,15 +65,59 @@ def make_amjaxcg_solver() -> Any:
     )
 
 
+def make_cudss_solver() -> Any:
+    from jaxscape.solvers import CuDSSSolver
+
+    return CuDSSSolver()
+
+
+CUDSS_RESISTANCE_PROFILES = (
+    ResistanceProfile(
+        "cudss_f32",
+        "JAXScape / CuDSSSolver / f32",
+        solver_factory=make_cudss_solver,
+        gpu_capable=True,
+        gpu_only=True,
+        dtype=jnp.float32,
+    ),
+    ResistanceProfile(
+        "cudss_f64",
+        "JAXScape / CuDSSSolver / f64",
+        solver_factory=make_cudss_solver,
+        gpu_capable=True,
+        gpu_only=True,
+        dtype=jnp.float64,
+    ),
+)
+
+
 def make_spielman_method() -> Any:
     return SpielmanApproximation(epsilon=RESISTANCE_APPROXIMATION_EPSILON, seed=0)
+
+
+def profile_unavailable_reason(profile: ResistanceProfile, backend: str) -> str | None:
+    """Why `profile` cannot run on `backend`, found without running a workload.
+
+    GPU-only profiles never fall back to another solver or device, so an
+    environment that lacks what they need records them as skipped.
+    """
+    if not profile.gpu_only:
+        return None
+    if backend != "gpu":
+        return f"{profile.tool} runs only on an NVIDIA GPU; it has no CPU fallback."
+    assert profile.solver_factory is not None
+    try:
+        profile.solver_factory()
+    except (ImportError, RuntimeError) as error:
+        return f"{profile.tool} needs an NVIDIA GPU with spineax and cuDSS: {error}"
+    return None
 
 
 def profile_metadata(profile: ResistanceProfile, backend: str) -> dict[str, Any]:
     """Interpretation metadata, independent of timing and native cache internals."""
     metadata = {"dtype": str(jnp.dtype(profile.dtype)), "backend": backend}
     if profile.requires_preparation:
-        metadata["hierarchy_behavior"] = (
-            "AMJax hierarchy prepared outside timing and frozen"
-        )
+        metadata[
+            "hierarchy_behavior"
+        ] = "AMJax hierarchy prepared outside timing and frozen"
     return metadata

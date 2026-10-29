@@ -53,11 +53,13 @@ from benchmark.benchmark_distances import (
     skip_record,
 )
 from benchmark.jaxscape.resistance_profile_support import (
+    CUDSS_RESISTANCE_PROFILES,
     make_amjaxcg_solver,
     make_cholmod_solver,
     make_pyamg_solver,
     make_spielman_method,
     profile_metadata,
+    profile_unavailable_reason,
     ResistanceProfile,
 )
 
@@ -79,6 +81,7 @@ JAXSCAPE_RESISTANCE_PROFILES = (
         solver_factory=make_cholmod_solver,
         dtype=jnp.float64,
     ),
+    *CUDSS_RESISTANCE_PROFILES,
     ResistanceProfile(
         "amjaxcg_f32",
         "JAXScape / AMJaxCGSolver / f32",
@@ -267,6 +270,9 @@ def run_worker(payload: dict[str, Any]) -> BenchmarkRecord:
         if backend == "cpu" and not profile.gpu_capable
         else backend_tool_label(profile.tool, backend)
     )
+    unavailable = profile_unavailable_reason(profile, backend)
+    if unavailable is not None:
+        return skip_record(case.task, tool_label, "JAXScape", case.name, unavailable)
     device = device_for_backend(backend)
     return _run_resistance_profile_direct(
         case,
@@ -336,16 +342,17 @@ def collect_jaxscape_resistance_results(
     records: list[BenchmarkRecord] = []
     for profile in selected_profiles(profile_keys):
         if profile.gpu_capable:
-            records.append(
-                run_jaxscape_resistance_profile(
-                    case,
-                    config,
-                    backend_tool_label(profile.tool, "cpu"),
-                    device=config.cpu_device,
-                    solver_factory=profile.solver_factory,
-                    requires_preparation=profile.requires_preparation,
+            if not profile.gpu_only:
+                records.append(
+                    run_jaxscape_resistance_profile(
+                        case,
+                        config,
+                        backend_tool_label(profile.tool, "cpu"),
+                        device=config.cpu_device,
+                        solver_factory=profile.solver_factory,
+                        requires_preparation=profile.requires_preparation,
+                    )
                 )
-            )
             if config.gpu_device is None:
                 records.append(gpu_placeholder_record(case, profile.tool, "JAXScape"))
             else:

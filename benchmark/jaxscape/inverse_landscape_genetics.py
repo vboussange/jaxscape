@@ -57,10 +57,12 @@ from benchmark.benchmark_distances import (
 )
 from benchmark.inverse_benchmark_settings import load_inverse_benchmark_settings
 from benchmark.jaxscape.resistance_profile_support import (
+    CUDSS_RESISTANCE_PROFILES,
     make_amjaxcg_solver,
     make_cholmod_solver,
     make_spielman_method,
     profile_metadata,
+    profile_unavailable_reason,
     ResistanceProfile,
 )
 
@@ -92,6 +94,7 @@ JAXSCAPE_INVERSE_PROFILES = (
         solver_factory=make_cholmod_solver,
         dtype=jnp.float32,
     ),
+    *CUDSS_RESISTANCE_PROFILES,
     ResistanceProfile(
         "amjaxcg_f32",
         "JAXScape / AMJaxCGSolver / f32",
@@ -167,9 +170,9 @@ def _permeability_from_inverse_params(
     scaled_resistance = _resistancega_scale(base_resistance)
     shape = _positive_parameter(params[0], MONOMOLECULAR_SHAPE_MIN)
     max_resistance = _positive_parameter(params[1], MONOMOLECULAR_MAX_MIN)
-    transformed_resistance = max_resistance * (
-        1.0 - jnp.exp(-scaled_resistance / shape)
-    ) + 1.0
+    transformed_resistance = (
+        max_resistance * (1.0 - jnp.exp(-scaled_resistance / shape)) + 1.0
+    )
     transformed_resistance = jnp.clip(
         transformed_resistance,
         1.0,
@@ -184,10 +187,9 @@ def _permeability_from_inverse_params(
 def _initial_inverse_params(base_resistance: jax.Array) -> jax.Array:
     dtype = base_resistance.dtype
     init_shape = jnp.array(MONOMOLECULAR_INIT_SHAPE, dtype=dtype)
-    init_max = (
-        jnp.maximum(jnp.max(base_resistance) - 1.0, jnp.array(1e-3, dtype=dtype))
-        / (1.0 - jnp.exp(-MONOMOLECULAR_SCALE_MAX / init_shape))
-    )
+    init_max = jnp.maximum(
+        jnp.max(base_resistance) - 1.0, jnp.array(1e-3, dtype=dtype)
+    ) / (1.0 - jnp.exp(-MONOMOLECULAR_SCALE_MAX / init_shape))
     return jnp.stack(
         [
             _positive_parameter_inverse(init_shape, MONOMOLECULAR_SHAPE_MIN),
@@ -392,14 +394,10 @@ def _run_inverse_profile_direct(
                             (predicted_distances - target_effective_distances) ** 2
                         )
                     ),
-                    "converged": bool(
-                        solution.result == optimistix.RESULTS.successful
-                    ),
+                    "converged": bool(solution.result == optimistix.RESULTS.successful),
                     "iteration_count": int(solution.stats["num_steps"]),
                     "iteration_limit": inverse_settings.max_steps,
-                    "solver_preconditioner_reused": bool(
-                        profile.requires_preparation
-                    ),
+                    "solver_preconditioner_reused": bool(profile.requires_preparation),
                     "solver_cg_state_refreshed": bool(profile.requires_preparation),
                     "solver_preconditioner_refresh_count": 1
                     if profile.requires_preparation
@@ -407,14 +405,10 @@ def _run_inverse_profile_direct(
                     "parameterization": "monomolecular_base_resistance",
                     "parameter_count": 2,
                     "final_shape_parameter": float(
-                        _positive_parameter(
-                            solution.value[0], MONOMOLECULAR_SHAPE_MIN
-                        )
+                        _positive_parameter(solution.value[0], MONOMOLECULAR_SHAPE_MIN)
                     ),
                     "final_max_parameter": float(
-                        _positive_parameter(
-                            solution.value[1], MONOMOLECULAR_MAX_MIN
-                        )
+                        _positive_parameter(solution.value[1], MONOMOLECULAR_MAX_MIN)
                     ),
                     "dtype": str(jnp.dtype(profile.dtype)),
                     "backend": device.platform,
@@ -502,9 +496,7 @@ def inverse_worker_payload(
     }
 
 
-def inverse_worker_walltime_seconds(
-    profile: ResistanceProfile, backend: str
-) -> float:
+def inverse_worker_walltime_seconds(profile: ResistanceProfile, backend: str) -> float:
     walltime_seconds = benchmark_walltime_seconds()
     if profile.requires_preparation and backend == "cpu":
         return max(walltime_seconds, INVERSE_AMJAX_CPU_WALLTIME_SECONDS)
@@ -521,6 +513,11 @@ def run_worker(payload: dict[str, Any]) -> BenchmarkRecord:
         if backend == "cpu" and not profile.gpu_capable
         else backend_tool_label(profile.tool, backend)
     )
+    unavailable = profile_unavailable_reason(profile, backend)
+    if unavailable is not None:
+        return skip_record(
+            case.task, tool_label, "JAXScape + Optimistix", case.name, unavailable
+        )
     return _run_inverse_profile_direct(
         case,
         profile,
@@ -569,14 +566,15 @@ def collect_jaxscape_inverse_results(
     records: list[BenchmarkRecord] = []
     for profile in selected_profiles(profile_keys):
         if profile.gpu_capable:
-            records.append(
-                run_jaxscape_inverse_profile(
-                    case,
-                    config,
-                    backend_tool_label(profile.tool, "cpu"),
-                    device=config.cpu_device,
+            if not profile.gpu_only:
+                records.append(
+                    run_jaxscape_inverse_profile(
+                        case,
+                        config,
+                        backend_tool_label(profile.tool, "cpu"),
+                        device=config.cpu_device,
+                    )
                 )
-            )
             if config.gpu_device is None:
                 records.append(
                     gpu_placeholder_record(case, profile.tool, "JAXScape + Optimistix")
