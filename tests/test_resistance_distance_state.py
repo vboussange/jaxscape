@@ -4,6 +4,7 @@ from importlib.util import find_spec
 from typing import final
 
 import equinox as eqx
+import jax
 import jax.numpy as jnp
 import lineax as lx
 import numpy as np
@@ -183,3 +184,52 @@ def test_state_returning_query_returns_refreshed_state(name, method):
         np.testing.assert_allclose(
             distances, query(reference, name, graph, None), rtol=1e-10, atol=1e-12
         )
+
+
+def _sum_inexact_leaves(tree):
+    leaves = jax.tree.leaves(eqx.filter(tree, eqx.is_inexact_array))
+    return sum((jnp.sum(leaf) for leaf in leaves), jnp.zeros(()))
+
+
+DIFFERENTIATED_CASES = [
+    *SUPPLIED_STATE_CASES,
+    pytest.param(lx.CG(rtol=1e-10, atol=1e-10), _no_state, id="cg-initialized"),
+    pytest.param(
+        CholmodSolver() if CHOLMOD_AVAILABLE else None,
+        _no_state,
+        id="cholmod-initialized",
+        marks=pytest.mark.skipif(not CHOLMOD_AVAILABLE, reason="needs cholespy"),
+    ),
+    pytest.param(_RefreshCountingSolver(), _full_state, id="refreshing"),
+    pytest.param(_RefreshCountingSolver(), _no_state, id="refreshing-initialized"),
+]
+
+
+@pytest.mark.parametrize("method", METHODS.values(), ids=METHODS.keys())
+@pytest.mark.parametrize("name", QUERY_ARGS)
+@pytest.mark.parametrize("solver, make_state", DIFFERENTIATED_CASES)
+def test_state_returning_query_gradients_ignore_returned_state(
+    solver, make_state, name, method
+):
+    distance = ResistanceDistance(solver=solver, method=method)
+    state = make_state(distance, grid_graph(permeability()))
+
+    def loss(values, state):
+        return jnp.sum(query(distance, name, grid_graph(values), state) ** 2)
+
+    def loss_with_state(values, state):
+        distances, state = query_and_state(distance, name, grid_graph(values), state)
+        # Any gradient through the returned state would change the total.
+        return jnp.sum(distances**2) + _sum_inexact_leaves(state), state
+
+    values = permeability(2.0)
+    gradient, returned_state = eqx.filter_jit(
+        eqx.filter_grad(loss_with_state, has_aux=True)
+    )(values, state)
+    expected_gradient = eqx.filter_jit(eqx.filter_grad(loss))(values, state)
+
+    np.testing.assert_array_equal(gradient, expected_gradient)
+    _, expected_state = eqx.filter_jit(query_and_state)(
+        distance, name, grid_graph(values), state
+    )
+    assert eqx.tree_equal(returned_state, expected_state)
