@@ -154,17 +154,20 @@ INITIALIZING_CASES = [
 @pytest.mark.parametrize("method", METHODS.values(), ids=METHODS.keys())
 @pytest.mark.parametrize("name", QUERY_ARGS)
 @pytest.mark.parametrize("solver", INITIALIZING_CASES)
-def test_state_returning_query_without_state_returns_initialized_state(
-    solver, name, method
-):
+def test_state_returning_query_without_state_starts_from_init(solver, name, method):
     distance = ResistanceDistance(solver=solver, method=method)
     graph = grid_graph(permeability())
 
     distances, returned_state = query_and_state(distance, name, graph, None)
 
+    # As `distance(graph)` does, the query starts from `distance.init(graph)`.
+    expected, expected_state = query_and_state(
+        distance, name, graph, distance.init(graph)
+    )
+    np.testing.assert_array_equal(distances, expected)
     np.testing.assert_array_equal(distances, query(distance, name, graph, None))
-    # Queries are compiled, so they initialize the state from traced values.
-    assert eqx.tree_equal(returned_state, eqx.filter_jit(distance.init)(graph))
+    # Array for array: a host factorization is a new object at each `init`.
+    assert eqx.tree_equal(array_leaves(returned_state), array_leaves(expected_state))
 
 
 @pytest.mark.parametrize("method", METHODS.values(), ids=METHODS.keys())
@@ -184,6 +187,10 @@ def test_state_returning_query_returns_refreshed_state(name, method):
         np.testing.assert_allclose(
             distances, query(reference, name, graph, None), rtol=1e-10, atol=1e-12
         )
+
+
+def array_leaves(tree):
+    return [leaf for leaf in jax.tree.leaves(tree) if eqx.is_array(leaf)]
 
 
 def _sum_inexact_leaves(tree):

@@ -12,7 +12,7 @@ from jaxscape.graph import AbstractGraph
 from jaxscape.solvers import BCOOLinearOperator
 from jaxscape.solvers.operator import (
     _batched_linear_solve_impl,
-    _solver_state,
+    _solver_states,
     _stop_gradient_operator,
 )
 
@@ -347,7 +347,7 @@ def _selected_inverse_fwd(
     if solver is None:
         potentials = jnp.linalg.solve(operator.todense(), basis)
     else:
-        state = _solver_state(operator, solver, None, state)
+        state, _ = _solver_states(operator, solver, None, state)
         potentials = _batched_linear_solve_impl(operator, basis, solver, state=state)
     potentials = eqx.error_if(
         potentials,
