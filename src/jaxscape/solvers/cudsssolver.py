@@ -310,11 +310,12 @@ _PATTERN_MISMATCH = (
 
 
 def _checked_pattern(matrix: BCOO, state: CuDSSSolverState) -> Array:
-    """Return the values of `matrix`, raising when its indices differ from the
-    pattern of `state`.
+    """Return the values of `matrix` after checking its sparse indices.
 
     Each stored entry must sit where the value map of `state` puts it: at the
     row and column of its CSR value, or out of bounds for padding entries.
+    Otherwise it raises, at trace time for another number of stored entries
+    and at run time for other indices.
     """
     if matrix.indices.shape != (state.value_map.shape[0], 2):
         raise ValueError(_PATTERN_MISMATCH)

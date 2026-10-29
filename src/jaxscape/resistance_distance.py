@@ -315,10 +315,21 @@ def lineax_solver_nodes_to_nodes_resistance_distance(
     solver: lx.AbstractLinearSolver,
     state: Any = None,
 ) -> Array:
-    """
-    Computes pairwise resistance distance from `nodes` to `nodes`, returning a
-    |`nodes`| x |`nodes`| matrix, using a lineax `solver`.
-    Requires |`nodes`| linear solves.
+    """Compute pairwise resistance distances among `nodes` with a Lineax solver.
+
+    It requires one linear solve per node.
+
+    **Arguments:**
+
+    - `A`: Sparse BCOO adjacency matrix with shape `(n, n)` of an undirected graph.
+    - `nodes`: Vertex indices with shape `(k,)`.
+    - `solver`: Lineax solver for the grounded Laplacian.
+    - `state`: Optional solver state from `ResistanceDistance.init`, or `None`
+      to initialize one.
+
+    **Returns:**
+
+    Resistance distance matrix with shape `(k, k)`.
 
     !!! warning
         The graph must be undirected.
@@ -346,6 +357,20 @@ def spielman_resistance_distance(
     `W**0.5 @ B` by a Johnson-Lindenstrauss/Rademacher sketch `Q W**0.5 B`
     and computes node embeddings `Z = Q W**0.5 B L^+`; squared Euclidean
     distances between columns of `Z` approximate resistance distances.
+
+    **Arguments:**
+
+    - `A`: Sparse BCOO adjacency matrix with shape `(n, n)` of an undirected graph.
+    - `epsilon`: Accuracy parameter of the projections.
+    - `seed`: Random seed of the Rademacher projections.
+    - `solver`: Optional Lineax solver for the grounded Laplacian; `None`
+      solves densely.
+    - `state`: Optional solver state from `ResistanceDistance.init`, or `None`
+      to initialize one.
+
+    **Returns:**
+
+    Approximate resistance distance matrix with shape `(n, n)`.
     """
     method = SpielmanApproximation(epsilon=epsilon, seed=seed)
     distance = ResistanceDistance(solver=solver, method=method)
@@ -363,7 +388,24 @@ def spielman_nodes_to_nodes_resistance_distance(
     *,
     projection_batch_size: int = 64,
 ) -> Array:
-    """Approximate pairwise resistance distances among selected nodes."""
+    """Approximate pairwise resistance distances among selected nodes.
+
+    **Arguments:**
+
+    - `A`: Sparse BCOO adjacency matrix with shape `(n, n)` of an undirected graph.
+    - `nodes`: Vertex indices with shape `(k,)`.
+    - `epsilon`: Accuracy parameter of the projections.
+    - `seed`: Random seed of the Rademacher projections.
+    - `solver`: Optional Lineax solver for the grounded Laplacian; `None`
+      solves densely.
+    - `state`: Optional solver state from `ResistanceDistance.init`, or `None`
+      to initialize one.
+    - `projection_batch_size`: Number of projection rows evaluated together.
+
+    **Returns:**
+
+    Approximate resistance distance matrix with shape `(k, k)`.
+    """
     method = SpielmanApproximation(epsilon, seed, projection_batch_size)
     distance = ResistanceDistance(solver=solver, method=method)
     return _distance_and_state(distance, A, state, nodes)[0]
@@ -381,7 +423,25 @@ def spielman_sources_to_targets_resistance_distance(
     *,
     projection_batch_size: int = 64,
 ) -> Array:
-    """Approximate resistance distances from sources to targets."""
+    """Approximate resistance distances from sources to targets.
+
+    **Arguments:**
+
+    - `A`: Sparse BCOO adjacency matrix with shape `(n, n)` of an undirected graph.
+    - `sources`: Source vertex indices with shape `(s,)`.
+    - `targets`: Target vertex indices with shape `(t,)`.
+    - `epsilon`: Accuracy parameter of the projections.
+    - `seed`: Random seed of the Rademacher projections.
+    - `solver`: Optional Lineax solver for the grounded Laplacian; `None`
+      solves densely.
+    - `state`: Optional solver state from `ResistanceDistance.init`, or `None`
+      to initialize one.
+    - `projection_batch_size`: Number of projection rows evaluated together.
+
+    **Returns:**
+
+    Approximate resistance distance matrix with shape `(s, t)`.
+    """
     method = SpielmanApproximation(epsilon, seed, projection_batch_size)
     distance = ResistanceDistance(solver=solver, method=method)
     return _distance_and_state(distance, A, state, sources, targets)[0]

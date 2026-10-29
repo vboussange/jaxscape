@@ -37,7 +37,18 @@ GPU_ONLY = ("gpu",)
 
 
 def backend_labels(label: str, backends: tuple[str, ...]) -> dict[str, str]:
-    """The label of `label` on each of `backends`."""
+    """Return the record label of a tool on each of its backends.
+
+    **Arguments:**
+
+    - `label`: The tool label.
+    - `backends`: The backends the tool runs on.
+
+    **Returns:**
+
+    A map from each backend to its label: the plain label for a CPU-only
+    tool, and otherwise the label with a `(CPU)` or `(GPU)` suffix.
+    """
     if backends == CPU_ONLY:
         return {"cpu": label}
     return {backend: backend_tool_label(label, backend) for backend in backends}
