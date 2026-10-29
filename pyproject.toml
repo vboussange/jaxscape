@@ -95,6 +95,10 @@ include = ["src", "tests"]
 reportIncompatibleMethodOverride = true
 
 [tool.pytest.ini_options]
+# Tests marked `gpu` need an NVIDIA GPU with spineax and cuDSS; the default run
+# leaves them out. Run them with `pytest -m gpu`, or every test with `-m ""`.
+addopts = "-m 'not gpu'"
+markers = ["gpu: needs an NVIDIA GPU with spineax and cuDSS"]
 # Benchmark correctness tests import the repository-local benchmark package.
 pythonpath = ["."]
 

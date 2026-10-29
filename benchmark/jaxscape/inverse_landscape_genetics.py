@@ -31,6 +31,7 @@ from benchmark.jaxscape.utils import (
 
 configure_standalone_environment()
 
+import equinox as eqx
 import jax
 import jax.nn as jnn
 import jax.numpy as jnp
@@ -306,6 +307,105 @@ def _inverse_loss_and_state(
     return jnp.mean((predicted - target_distances) ** 2), state
 
 
+@eqx.filter_jit
+def _minimise_carrying_state(
+    objective: Callable[[jax.Array, tuple[Any, Any]], tuple[jax.Array, Any]],
+    optimizer: Any,
+    y0: jax.Array,
+    args: Any,
+    state: Any,
+    *,
+    max_steps: int,
+) -> Any:
+    """Minimise as `optimistix.minimise` does, carrying a solver state.
+
+    The loop runs the public `init`, `step`, `terminate` and `postprocess`
+    methods of `optimizer`, as `optimistix.minimise` does with `throw=False`.
+    Each step receives, with `args`, the solver state that the previous step
+    returned as its auxiliary output. A quasi-Newton step returns the
+    auxiliary output of the last accepted step before it, so the loop keeps
+    two factorizations alive and a step receives a used-up state, which
+    spineax analyses afresh, once early in each optimization and one step
+    after each rejected line-search step.
+
+    **Arguments:**
+
+    - `objective`: `objective(params, (args, state))` returns the loss and the
+      solver state refreshed for `params`.
+    - `optimizer`: An Optimistix minimiser, such as `optimistix.LBFGS`.
+    - `y0`: Initial parameters.
+    - `args`: Fixed arguments of `objective`.
+    - `state`: Solver state of the first step.
+    - `max_steps`: Largest number of steps.
+
+    **Returns:**
+
+    An `optimistix.Solution` whose `aux` is the last solver state, to pass to
+    the next call, and whose `stats` count `num_steps` and `rejected_steps`.
+    """
+    assert optx is not None
+    options: dict[str, Any] = {}
+    tags: frozenset[object] = frozenset()
+    f_struct, aux_struct = eqx.filter_eval_shape(objective, y0, (args, state))
+    opt_state = optimizer.init(
+        objective, y0, (args, state), options, f_struct, aux_struct, tags
+    )
+    dynamic_opt_state, static_opt_state = eqx.partition(opt_state, eqx.is_array)
+
+    def terminate_and_result(y, dynamic_opt_state, state):
+        opt_state = eqx.combine(dynamic_opt_state, static_opt_state)
+        terminate, result = optimizer.terminate(
+            objective, y, (args, state), options, opt_state, tags
+        )
+        finite = jnp.all(jnp.isfinite(y))
+        return terminate, optx.RESULTS.where(finite, result, optx.RESULTS.nonfinite)
+
+    def cond_fun(carry):
+        y, dynamic_opt_state, state, num_steps, _ = carry
+        terminate, result = terminate_and_result(y, dynamic_opt_state, state)
+        successful = result == optx.RESULTS.successful
+        return ~terminate & successful & (num_steps < max_steps)
+
+    def body_fun(carry):
+        y, dynamic_opt_state, state, num_steps, rejected_steps = carry
+        opt_state = eqx.combine(dynamic_opt_state, static_opt_state)
+        new_y, opt_state, state = optimizer.step(
+            objective, y, (args, state), options, opt_state, tags
+        )
+        # A rejected line-search step keeps the last accepted parameters.
+        rejected = (num_steps > 0) & jnp.all(new_y == y)
+        dynamic_opt_state, _ = eqx.partition(opt_state, eqx.is_array)
+        return new_y, dynamic_opt_state, state, num_steps + 1, rejected_steps + rejected
+
+    y, dynamic_opt_state, state, num_steps, rejected_steps = jax.lax.while_loop(
+        cond_fun,
+        body_fun,
+        (y0, dynamic_opt_state, state, jnp.array(0), jnp.array(0)),
+    )
+    terminate, result = terminate_and_result(y, dynamic_opt_state, state)
+    result = optx.RESULTS.where(
+        (result == optx.RESULTS.successful) & ~terminate,
+        optx.RESULTS.nonlinear_max_steps_reached,
+        result,
+    )
+    opt_state = eqx.combine(dynamic_opt_state, static_opt_state)
+    y, state, stats = optimizer.postprocess(
+        objective, y, state, (args, state), options, opt_state, tags, result
+    )
+    return optx.Solution(
+        value=y,
+        result=result,
+        aux=state,
+        stats={
+            "num_steps": num_steps,
+            "max_steps": max_steps,
+            "rejected_steps": rejected_steps,
+            **stats,
+        },
+        state=opt_state,
+    )
+
+
 def _run_inverse_profile_direct(
     case: BenchmarkCase,
     profile: ResistanceProfile,
@@ -400,9 +500,9 @@ def _run_inverse_profile_direct(
 
             def objective_and_state(
                 params: jax.Array,
-                args: tuple[jax.Array, jax.Array, jax.Array, Any],
+                args_and_state: tuple[tuple[jax.Array, jax.Array, jax.Array], Any],
             ) -> tuple[jax.Array, Any]:
-                reference_resistance, coords, targets, state = args
+                (reference_resistance, coords, targets), state = args_and_state
                 return _inverse_loss_and_state(
                     params,
                     reference_resistance,
@@ -413,28 +513,21 @@ def _run_inverse_profile_direct(
                 )
 
             def solve_and_state(start_params: jax.Array, state: Any):
-                solution = optimistix.minimise(
+                solution = _minimise_carrying_state(
                     objective_and_state,
                     solver,
                     start_params,
-                    args=(
-                        base_resistance,
-                        sample_coords,
-                        target_effective_distances,
-                        state,
-                    ),
-                    has_aux=True,
+                    (base_resistance, sample_coords, target_effective_distances),
+                    state,
                     max_steps=inverse_settings.max_steps,
-                    throw=False,
                 )
                 return solution, solution.aux
 
             if profile.passes_state:
                 # Analysis runs once, outside timing. Each optimization starts
-                # from the solver state the previous one returned as its aux.
-                # Every objective evaluation receives that same state, so
-                # spineax repeats the analysis after the first evaluation;
-                # `spineax_rebuilds` records how often.
+                # from the solver state the previous one returned, and each
+                # step from the state of the step before it;
+                # `spineax_rebuilds` records the analyses spineax repeated.
                 initial_state = distance.init(
                     _inverse_grid(
                         _permeability_from_inverse_params(init_params, base_resistance)
@@ -543,8 +636,10 @@ def _run_inverse_profile_direct(
 
     metrics.update(profile_metadata(profile, device.platform))
     if rebuilds is not None:
-        # Analyses spineax repeated across the warm-up and timed optimizations.
+        # Analyses spineax repeated across the warm-up and timed optimizations,
+        # and the rejected line-search steps of the last one.
         metrics["spineax_rebuilds"] = rebuilds
+        metrics["rejected_steps"] = int(solution.stats["rejected_steps"])
     record = ok_record_with_metrics(
         case.task,
         tool_label,

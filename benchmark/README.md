@@ -84,12 +84,15 @@ naming what is missing. Their records carry the spineax version and the cuDSS
 runtime package (`spineax_version`, `cudss_version`), and the environment
 report lists both. Analysis runs once, outside timing. The resistance profile
 then refactorizes the solver state that the previous call returned. The
-inverse profile runs `optimistix.minimise` with LBFGS, as the other profiles
-do: each optimization starts from the solver state that the previous one
-returned as its auxiliary output, and every objective evaluation of one
-optimization receives that state, so spineax repeats the analysis for each
-evaluation after the first. The records count the analyses spineax repeated
-during the warm-up and timed runs as `spineax_rebuilds`.
+inverse profile runs LBFGS in a short loop over Optimistix's public solver
+methods (`init`, `step`, `terminate`, `postprocess`), which takes the same
+steps as `optimistix.minimise` and hands each step the solver state that the
+step before it returned. Optimistix returns the auxiliary output of the last
+accepted step, so spineax repeats the analysis once early in each
+optimization and once for each rejected line-search step, and two
+factorizations stay in GPU memory. The records count the analyses spineax
+repeated during the warm-up and timed runs as `spineax_rebuilds`, and the
+rejected steps of the last optimization as `rejected_steps`.
 
 To run the representative smoke benchmark and render isolated smoke artifacts:
 
