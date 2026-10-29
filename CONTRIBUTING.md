@@ -29,6 +29,14 @@ Make your changes and update tests where needed. Run the existing test suite:
 uv run pytest tests
 ```
 
+The default run leaves out the tests marked `gpu`, which need an NVIDIA GPU
+with the `cudss` extra. On such a machine, run them alone, or run every test:
+
+```bash
+uv run pytest -m gpu tests   # GPU tests only
+uv run pytest -m "" tests    # every test
+```
+
 Commit your changes, push them to your fork, and open a pull request:
 
 ```bash

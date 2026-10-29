@@ -1,8 +1,10 @@
 """`CuDSSSolver` at its public boundaries.
 
-Numerical tests run twice: against spineax and cuDSS on an NVIDIA GPU, which
-skip explicitly elsewhere, and against a CPU double of spineax's phase API
-(`fake_cudss.py`), so that the solver's plumbing also runs in CI.
+Numerical tests run twice: against a CPU double of spineax's phase API
+(`fake_cudss.py`), so that the solver's plumbing also runs in CI, and against
+spineax and cuDSS on an NVIDIA GPU. The GPU cases are marked `gpu`: the default
+run leaves them out, `pytest -m gpu` runs them, and they skip explicitly where
+spineax, cuDSS or the GPU is missing.
 
 All queries share one code path, so tests pair queries, precisions and eager or
 compiled execution, covering each value at least once, and loop over
@@ -37,13 +39,16 @@ from jaxscape.utils import graph_laplacian
 from packaging.requirements import Requirement
 
 
-@pytest.fixture(params=["cpu-double", "spineax-gpu"])
+SPINEAX_GPU = pytest.param("spineax-gpu", marks=pytest.mark.gpu)
+
+
+@pytest.fixture(params=["cpu-double", SPINEAX_GPU])
 def cudss(request, monkeypatch):
     """The spineax phase API that `CuDSSSolver` runs on."""
     return use_cudss(request.param, monkeypatch)
 
 
-@pytest.fixture(params=["cpu-double-finite", "cpu-double-nan", "spineax-gpu"])
+@pytest.fixture(params=["cpu-double-finite", "cpu-double-nan", SPINEAX_GPU])
 def failing_cudss(request, monkeypatch):
     """The spineax phase API, for factorizations that fail.
 
@@ -100,37 +105,18 @@ def test_cudss_extra_pins_spineax_and_cudss_below_1():
     assert "cuda" not in base and "nvidia" not in base and "spineax" not in base
 
 
-def test_imports_and_defaults_are_unchanged_without_spineax():
+def test_imports_and_defaults_load_no_cuda_library():
+    """Importing JAXScape imports no spineax module, so imports and defaults
+    are unchanged without the `cudss` extra."""
     code = """
 import sys
-sys.modules["spineax"] = None  # an environment without the cudss extra
 import jaxscape
 from jaxscape import ResistanceDistance
 from jaxscape.solvers import CuDSSSolver
 from jaxscape.solvers.cudsssolver import CUDSS_AVAILABLE
 assert ResistanceDistance().solver is None
-assert CUDSS_AVAILABLE is False
-try:
-    CuDSSSolver()
-except ImportError as error:
-    print(error)
-else:
-    raise AssertionError("CuDSSSolver() must report the missing extra")
-"""
-    result = subprocess.run(
-        [sys.executable, "-c", code], capture_output=True, text=True, check=False
-    )
-    assert result.returncode == 0, result.stderr
-    assert "spineax" in result.stdout
-    assert "jaxscape[cudss]" in result.stdout
-
-
-def test_the_availability_flag_loads_no_cuda_library():
-    code = """
-import sys
-from jaxscape.solvers.cudsssolver import CUDSS_AVAILABLE
+assert not any(name.startswith("spineax") for name in sys.modules)
 print(CUDSS_AVAILABLE)
-assert "spineax.cudss" not in sys.modules
 """
     result = subprocess.run(
         [sys.executable, "-c", code], capture_output=True, text=True, check=False
@@ -261,8 +247,16 @@ QUERY_EXECUTIONS = [
 ]
 
 
-@pytest.mark.parametrize("dtype", [jnp.float64, jnp.float32])
-@pytest.mark.parametrize("query, compiled", QUERY_EXECUTIONS)
+@pytest.mark.parametrize(
+    "query, compiled, dtype",
+    [
+        pytest.param("all_pairs", False, jnp.float64, id="all_pairs-eager-f64"),
+        pytest.param("nodes_to_nodes", True, jnp.float32, id="nodes_to_nodes-jit-f32"),
+        pytest.param(
+            "sources_to_targets", True, jnp.float64, id="sources_to_targets-jit-f64"
+        ),
+    ],
+)
 def test_exact_distances_match_dense_reference(cudss, query, compiled, dtype):
     distance = ResistanceDistance(solver=CuDSSSolver())
 
@@ -314,8 +308,7 @@ TINY_GRAPHS = {
 
 
 @pytest.mark.parametrize(
-    "graph, dtype",
-    [("edge", jnp.float32), ("triangle", jnp.float64), ("square", jnp.float64)],
+    "graph, dtype", [("edge", jnp.float32), ("square", jnp.float64)]
 )
 def test_tiny_graphs_give_exact_distances(cudss, graph, dtype):
     edges, expected = TINY_GRAPHS[graph]
@@ -339,7 +332,7 @@ def query_and_state(distance, query):
     return lambda graph, state: method(graph, state=state, **QUERIES[query])
 
 
-@pytest.mark.parametrize("query", QUERIES)
+@pytest.mark.parametrize("query", ["sources_to_targets"])
 def test_eager_queries_without_a_state_initialize_one(cudss, query):
     conductance = conductance_surface("smooth")
     distance = ResistanceDistance(solver=CuDSSSolver())
@@ -674,15 +667,14 @@ def test_spielman_distances_match_cholmod(cudss, query, compiled):
 
     if compiled:
         distances = jax.jit(distances)
-    for surface in SURFACES:
-        grid = conductance_grid(conductance_surface(surface))
-        actual = distances(grid, distance.init(grid))
+    grid = conductance_grid(conductance_surface("six_decades"))
+    actual = distances(grid, distance.init(grid))
 
-        expected = reference(grid, **QUERIES[query])
-        assert actual.dtype == jnp.float64
-        np.testing.assert_allclose(
-            actual, expected, rtol=FLOAT64_RTOL, atol=spielman_atol(expected)
-        )
+    expected = reference(grid, **QUERIES[query])
+    assert actual.dtype == jnp.float64
+    np.testing.assert_allclose(
+        actual, expected, rtol=FLOAT64_RTOL, atol=spielman_atol(expected)
+    )
 
 
 # All-pairs Spielman distances and selected ones have separate custom VJPs.

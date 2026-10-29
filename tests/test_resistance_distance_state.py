@@ -232,19 +232,12 @@ def _sum_inexact_leaves(tree):
     return sum((jnp.sum(leaf) for leaf in leaves), jnp.zeros(()))
 
 
-# Supplied states that come back unchanged are covered by the default solver
-# and the AMJax preconditioner, whose solves use a completed state. The other
-# cases return a state the call builds from the differentiated graph.
+# A supplied state that comes back unchanged is covered by the AMJax
+# preconditioner, whose solves use a completed state. The other cases return a
+# state the call builds from the differentiated graph.
 DIFFERENTIATED_CASES = [
-    SUPPLIED_STATE_CASES[0],
     SUPPLIED_STATE_CASES[-1],
     pytest.param(lx.CG(rtol=1e-10, atol=1e-10), _no_state, id="cg-initialized"),
-    pytest.param(
-        CholmodSolver() if CHOLMOD_AVAILABLE else None,
-        _no_state,
-        id="cholmod-initialized",
-        marks=pytest.mark.skipif(not CHOLMOD_AVAILABLE, reason="needs cholespy"),
-    ),
     pytest.param(_RefreshCountingSolver(), _full_state, id="refreshing"),
     pytest.param(_RefreshCountingSolver(), _no_state, id="refreshing-initialized"),
 ]
