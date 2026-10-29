@@ -282,7 +282,8 @@ def test_the_inverse_loop_takes_the_steps_of_optimistix_minimise(cpu_double_of_c
     )
     assert int(solution.stats["num_steps"]) == int(expected.stats["num_steps"]) > 1
     assert solution.result == expected.result
-    np.testing.assert_array_equal(solution.value, expected.value)
+    # Equal to rounding: GPU scatter-adds sum in varying order.
+    np.testing.assert_allclose(solution.value, expected.value, rtol=1e-10)
     # A step receives the state returned by the step before it: the auxiliary
     # output of the last accepted step before that one. It was used up after
     # the first step and after each rejected step.
