@@ -72,6 +72,13 @@ class ResistanceDistance(AbstractDistance):
         updated_grid = GridGraph(updated_permeability, fun=lambda x, y: (x + y) / 2)
         dist = distance(updated_grid, state=preconditioner_state)
 
+        # Query forms ending in `_and_state` also return the solver state
+        # to pass to the next call, e.g. the next step of an optimization.
+        nodes = jnp.array([0, 4, 8])
+        dist, preconditioner_state = distance.nodes_to_nodes_distance_and_state(
+            updated_grid, nodes, preconditioner_state
+        )
+
         # Approximate resistance distance
         distance = ResistanceDistance(
             method=SpielmanApproximation(epsilon=0.05),
@@ -150,6 +157,24 @@ class ResistanceDistance(AbstractDistance):
     def all_pairs_distance_and_state(
         self, graph: AbstractGraph, state: Any = None
     ) -> tuple[Array, Any]:
+        """Compute resistance distances between all vertices, and the solver state.
+
+        **Arguments:**
+
+        - `graph`: Undirected graph with `graph.nv` vertices.
+        - `state`: Optional solver state from `init`, `init_preconditioner` or
+          an earlier state-returning query. `None` initializes state for
+          `graph`.
+
+        **Returns:**
+
+        A tuple `(distances, state)`. `distances` has shape
+        `(graph.nv, graph.nv)` and equals `all_pairs_distance(graph, state)`.
+        `state` is the solver state to pass to the next call: the state an
+        `AbstractRefreshingSolver` refreshed for `graph`, the state this call
+        initialized when none was supplied, and otherwise the supplied state.
+        It carries no gradient.
+        """
         A = graph.get_adjacency_matrix()
         solve_state, state = _resistance_solver_states(A, self.solver, state)
         if isinstance(self.method, SpielmanApproximation):
@@ -179,6 +204,20 @@ class ResistanceDistance(AbstractDistance):
     def nodes_to_nodes_distance_and_state(
         self, graph: AbstractGraph, nodes: Array, state: Any = None
     ) -> tuple[Array, Any]:
+        """Compute resistance distances among `nodes`, and the solver state.
+
+        **Arguments:**
+
+        - `graph`: Undirected graph.
+        - `nodes`: Vertex indices with shape `(k,)`, possibly repeated.
+        - `state`: Optional solver state, as for `all_pairs_distance_and_state`.
+
+        **Returns:**
+
+        A tuple `(distances, state)`. `distances` has shape `(k, k)` and equals
+        `nodes_to_nodes_distance(graph, nodes, state)`. `state` is the solver
+        state to pass to the next call, as for `all_pairs_distance_and_state`.
+        """
         A = graph.get_adjacency_matrix()
         solve_state, state = _resistance_solver_states(A, self.solver, state)
         if isinstance(self.method, SpielmanApproximation):
@@ -214,6 +253,23 @@ class ResistanceDistance(AbstractDistance):
         targets: Array,
         state: Any = None,
     ) -> tuple[Array, Any]:
+        """Compute resistance distances from `sources` to `targets`, and the
+        solver state.
+
+        **Arguments:**
+
+        - `graph`: Undirected graph.
+        - `sources`: Source vertex indices with shape `(s,)`.
+        - `targets`: Target vertex indices with shape `(t,)`.
+        - `state`: Optional solver state, as for `all_pairs_distance_and_state`.
+
+        **Returns:**
+
+        A tuple `(distances, state)`. `distances` has shape `(s, t)` and equals
+        `sources_to_targets_distance(graph, sources, targets, state)`. `state`
+        is the solver state to pass to the next call, as for
+        `all_pairs_distance_and_state`.
+        """
         if not isinstance(self.method, SpielmanApproximation):
             R, state = self.all_pairs_distance_and_state(graph, state)
             return R[sources[:, None], targets[None, :]], state
@@ -419,8 +475,8 @@ def _resistance_solver_states(
 
     Returns the state the solves use and the state the query returns. The
     refresh sees only stop-gradient matrix values and runs outside the custom
-    VJPs, so it is never differentiated and the returned state carries no
-    gradient.
+    VJPs, so it is never differentiated and the states it builds carry no
+    gradient. The backward passes reuse the state the solves used.
     """
     if solver is None:
         return None, state
