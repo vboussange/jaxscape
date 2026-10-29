@@ -2,6 +2,8 @@ from importlib.util import find_spec
 
 import jax
 import jax.numpy as jnp
+import lineax as lx
+import numpy as np
 import pytest
 from jax.experimental.sparse import BCOO
 from jaxscape.solvers import (
@@ -48,6 +50,43 @@ def test_bcoo_linear_operator_mv():
     result_sparse = operator.mv(vector)
     result_dense = dense_matrix @ vector
     assert jnp.allclose(result_sparse, result_dense, rtol=1e-6)
+
+
+gradient_solvers: dict[str, lx.AbstractLinearSolver] = {
+    "cg": lx.CG(rtol=1e-13, atol=1e-13, max_steps=1000)
+}
+if CHOLMOD_AVAILABLE:
+    gradient_solvers["cholmod"] = CholmodSolver()
+
+
+@pytest.mark.parametrize("batched", [False, True], ids=["single", "batched"])
+@pytest.mark.parametrize("solver", gradient_solvers.values(), ids=gradient_solvers)
+def test_sparse_solve_gradients_match_dense_reference(solver, batched):
+    """Gradients with respect to the stored matrix values, padding included,
+    and to the right-hand sides, through single and vmapped solves."""
+    n = 8
+    rng = np.random.default_rng(0)
+    factor = rng.standard_normal((n, n))
+    dense = factor @ factor.T + n * np.eye(n)
+    A = BCOO.fromdense(jnp.asarray(dense), nse=n * n + 3)
+    rhs_shape = (n, 3) if batched else (n,)
+    b = jnp.asarray(rng.standard_normal(rhs_shape))
+    weights = jnp.asarray(rng.standard_normal(rhs_shape))
+    sparse_solve = _batched_linear_solve if batched else _linear_solve
+
+    def gradients(solve):
+        def objective(data, b):
+            x = solve(BCOO((data, A.indices), shape=A.shape), b)
+            return jnp.sum(weights * x)
+
+        return jax.grad(objective, argnums=(0, 1))(A.data, b)
+
+    data_gradient, rhs_gradient = gradients(lambda A, b: sparse_solve(A, b, solver))
+
+    expected = gradients(lambda A, b: jnp.linalg.solve(A.todense(), b))
+    np.testing.assert_allclose(data_gradient, expected[0], rtol=1e-9, atol=1e-12)
+    np.testing.assert_allclose(rhs_gradient, expected[1], rtol=1e-9, atol=1e-12)
+    np.testing.assert_array_equal(data_gradient[n * n :], 0.0)
 
 
 def solver_state(solver, A):
