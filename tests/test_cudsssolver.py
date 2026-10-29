@@ -461,3 +461,22 @@ def test_compiled_gradient_steps_carry_the_returned_state(cudss, query):
         )
     assert compiled_executables(step) == 1
     assert cudss.rebuild_count() == rebuilds
+
+
+@pytest.mark.parametrize("query", QUERIES)
+def test_an_outdated_state_still_gives_exact_distances(cudss, query):
+    distance = ResistanceDistance(solver=CuDSSSolver())
+    outdated = distance.init(conductance_grid(conductance_surface("smooth")))
+    step = compiled_step(distance, query)
+    # This step uses up the factorization of the initial state.
+    step(conductance_surface("six_decades"), outdated)
+
+    rebuilds = cudss.rebuild_count()
+    for surface in ("barrier_with_floor", "six_decades"):
+        conductance = conductance_surface(surface)
+        distances, _ = step(conductance, outdated)
+
+        expected = ResistanceDistance()(conductance_grid(conductance), **QUERIES[query])
+        np.testing.assert_allclose(distances, expected, rtol=FLOAT64_RTOL, atol=1e-12)
+    # spineax repeated the analysis for the outdated state.
+    assert cudss.rebuild_count() > rebuilds
