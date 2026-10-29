@@ -34,7 +34,8 @@ class ResistanceDistance(AbstractDistance):
 
     - `solver`: Optional `lineax.AbstractLinearSolver`. Must be compatible with
       BCOO matrices. We currently support `jaxscape.solvers.CholmodSolver`,
-      `jaxscape.solvers.PyAMGSolver`, and `jaxscape.solvers.AMJaxCGSolver`.
+      `jaxscape.solvers.PyAMGSolver`, `jaxscape.solvers.AMJaxCGSolver`, and
+      `jaxscape.solvers.CuDSSSolver` (NVIDIA GPUs).
       If None, uses the pseudo-inverse method, which is very memory intensive
       for exact all-pairs distances (densifies the Laplacian matrix), or dense
       solves for approximate distances.
@@ -103,7 +104,21 @@ class ResistanceDistance(AbstractDistance):
 
         This is primarily useful for solvers such as `AMJaxCGSolver`, which
         build reusable state once outside the traced solve path so repeated
-        resistance solves remain JIT-compatible and differentiable.
+        resistance solves remain JIT-compatible and differentiable. For
+        `CuDSSSolver`, it runs cuDSS analysis and factorization, reads concrete
+        sparse indices, and must run outside `jax.jit`. Queries then
+        refactorize the state for the edge weights of any graph with the same
+        sparsity pattern.
+
+        **Arguments:**
+
+        - `graph`: Undirected graph whose grounded Laplacian the state is built
+          for.
+
+        **Returns:**
+
+        Solver state to pass as `state` to distance queries, or `None` when
+        `solver` is `None`.
         """
         if self.solver is None:
             return None

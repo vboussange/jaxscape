@@ -59,40 +59,63 @@ class CuDSSSolver(AbstractRefreshingSolver):
     !!! example
 
         ```python
+        # Runs on an NVIDIA GPU with the `cudss` extra installed.
         import jax
+
+        jax.config.update("jax_enable_x64", True)
+        import jax.numpy as jnp
         from jaxscape import GridGraph, ResistanceDistance
         from jaxscape.solvers import CuDSSSolver
 
+
+        def landscape(permeability):
+            return GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
+
+
         distance = ResistanceDistance(solver=CuDSSSolver())
-        state = distance.init(grid)  # analysis and factorization
+        nodes = jnp.array([0, 45, 99])
+        # Analysis and factorization, outside `jax.jit`.
+        state = distance.init(landscape(jnp.ones((10, 10))))
+
 
         @jax.jit
         def step(permeability, state):
-            grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
             # Refactorizes `state` and returns the refactorized state.
-            return distance.nodes_to_nodes_distance_and_state(grid, nodes, state)
+            return distance.nodes_to_nodes_distance_and_state(
+                landscape(permeability), nodes, state
+            )
 
-        for permeability in permeabilities:
+
+        for seed in range(3):
+            key = jax.random.key(seed)
+            permeability = jax.random.uniform(key, (10, 10), minval=1e-3)
             distances, state = step(permeability, state)
         ```
 
     !!! warning
 
-        `CuDSSSolver` requires an NVIDIA GPU, CUDA-enabled JAX and the `cudss`
-        extra, `pip install 'jaxscape[cudss]'`, which installs spineax 0.0.5
-        and cuDSS below 1.0 on Linux x86-64 with Python 3.12 or newer.
-        Constructing it elsewhere raises an error naming what is missing; it
-        has no CPU fallback.
+        `CuDSSSolver` requires an NVIDIA GPU, CUDA-enabled JAX and spineax with
+        cuDSS below 1.0. The `cudss` extra, `pip install 'jaxscape[cudss]'`,
+        installs spineax 0.0.5, its CUDA 13 build, and cuDSS below 1.0 on Linux
+        x86-64 with Python 3.12 or newer. The
+        [linear solvers guide](https://vboussange.github.io/jaxscape/api/linear_solvers/)
+        describes a spineax build for CUDA 12. Constructing `CuDSSSolver`
+        elsewhere raises an error naming what is missing; it has no CPU
+        fallback.
 
     !!! warning
 
         `init` reads concrete sparse indices, so create the state outside
         `jax.jit`. A state belongs to one sparsity pattern, i.e. one graph
-        geometry with any conductances. A query uses up the factorization of
-        the state it is given, because cuDSS handles cannot be copied (spineax
-        issue #27). Pass the state that a `*_distance_and_state` query returns
-        to the next call. Passing a used-up state again gives correct results
-        and repeats the analysis.
+        geometry with any conductances; `refresh_state` maps values onto that
+        pattern by position and does not compare sparse indices. A query uses
+        up the factorization of the state it is given, because cuDSS handles
+        cannot be copied (spineax issue #27). Pass the state that a
+        `*_distance_and_state` query returns to the next call. Passing a
+        used-up state again gives correct results and repeats the analysis.
+        Query forms that return distances only, such as
+        `distance(graph, state=state)`, discard the refactorized state, so
+        each further call with the same `state` repeats the analysis.
     """
 
     def __check_init__(self):
