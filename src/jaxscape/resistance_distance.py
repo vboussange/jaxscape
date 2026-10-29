@@ -104,7 +104,21 @@ class ResistanceDistance(AbstractDistance):
 
         This is primarily useful for solvers such as `AMJaxCGSolver`, which
         build reusable state once outside the traced solve path so repeated
-        resistance solves remain JIT-compatible and differentiable.
+        resistance solves remain JIT-compatible and differentiable. For
+        `CuDSSSolver`, it runs cuDSS analysis and factorization, reads concrete
+        sparse indices, and must run outside `jax.jit`. Queries then
+        refactorize the state for the edge weights of any graph with the same
+        sparsity pattern.
+
+        **Arguments:**
+
+        - `graph`: Undirected graph whose grounded Laplacian the state is built
+          for.
+
+        **Returns:**
+
+        Solver state to pass as `state` to distance queries, or `None` when
+        `solver` is `None`.
         """
         if self.solver is None:
             return None
