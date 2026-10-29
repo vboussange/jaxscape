@@ -1,3 +1,4 @@
+import abc
 from typing import Any
 
 import equinox as eqx
@@ -30,6 +31,39 @@ class BCOOLinearOperator(lx.MatrixLinearOperator):
 @lx.is_positive_semidefinite.register(BCOOLinearOperator)
 def _(op: BCOOLinearOperator) -> bool:
     return True
+
+
+class AbstractRefreshingSolver(lx.AbstractLinearSolver):
+    """Lineax solver whose state is rebuilt for each operator it solves.
+
+    Use this for solvers whose state depends on the matrix values, such as a
+    sparse factorization. Before solving, a resistance-distance query passes
+    the supplied state to `refresh_state` with the current grounded Laplacian.
+    The query solves with the refreshed state, and its state-returning form
+    hands that state back, so the next call can start from it.
+    """
+
+    @abc.abstractmethod
+    def refresh_state(
+        self,
+        operator: lx.AbstractLinearOperator,
+        options: dict[str, Any],
+        state: Any,
+    ) -> Any:
+        """Refresh `state` for `operator`.
+
+        **Arguments:**
+
+        - `operator`: The operator to solve, with the same structure as the one
+          `state` was built for and possibly different values. It carries no
+          gradient.
+        - `options`: Solver options, as passed to `init`.
+        - `state`: A state returned by `init` or `refresh_state`.
+
+        **Returns:**
+
+        The state to solve `operator` with, and to pass to the next call.
+        """
 
 
 def _linear_solve(
@@ -145,6 +179,9 @@ def _refresh_supplied_state(
     options: dict[str, Any],
     state: Any,
 ) -> tuple[Any, Any]:
+    if isinstance(solver, AbstractRefreshingSolver):
+        state = solver.refresh_state(operator, options, state)
+        return state, state
     # `materialize_state` completes a state for this operator only, e.g. CG
     # state around a reusable AMJax preconditioner; the supplied state is the
     # one to carry forward.

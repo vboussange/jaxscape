@@ -1,15 +1,18 @@
 """State-returning resistance-distance queries."""
 
 from importlib.util import find_spec
+from typing import final
 
 import equinox as eqx
 import jax.numpy as jnp
 import lineax as lx
 import numpy as np
 import pytest
+from jax import Array
 from jaxscape import ExactResistance, GridGraph, SpielmanApproximation
 from jaxscape.resistance_distance import ResistanceDistance
 from jaxscape.solvers import AMJaxCGSolver, CholmodSolver
+from jaxscape.solvers.operator import AbstractRefreshingSolver
 
 
 CHOLMOD_AVAILABLE = find_spec("cholespy") is not None
@@ -33,8 +36,8 @@ def grid_graph(permeability):
     return GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
 
 
-def permeability(scale=1.0):
-    return scale * jnp.linspace(0.5, 2.0, 9, dtype=jnp.float64).reshape(3, 3)
+def permeability(power=1.0):
+    return jnp.linspace(0.5, 2.0, 9, dtype=jnp.float64).reshape(3, 3) ** power
 
 
 def query(distance, name, graph, state):
@@ -45,6 +48,38 @@ def query(distance, name, graph, state):
 def query_and_state(distance, name, graph, state):
     method = getattr(distance, f"{name}_distance_and_state")
     return method(graph, *QUERY_ARGS[name], state)
+
+
+@final
+class _CountingState(eqx.Module):
+    matrix: Array
+    refreshes: Array
+
+
+@final
+class _RefreshCountingSolver(AbstractRefreshingSolver):
+    """Dense solver whose refresh step builds a new state for each operator."""
+
+    def init(self, operator, options):
+        del options
+        return _CountingState(operator.as_matrix().todense(), jnp.array(0))
+
+    def refresh_state(self, operator, options, state):
+        del options
+        return _CountingState(operator.as_matrix().todense(), state.refreshes + 1)
+
+    def compute(self, state, vector, options):
+        del options
+        return jnp.linalg.solve(state.matrix, vector), lx.RESULTS.successful, {}
+
+    def transpose(self, state, options):
+        return _CountingState(state.matrix.T, state.refreshes), options
+
+    def conj(self, state, options):
+        return state, options
+
+    def assume_full_rank(self):
+        return True
 
 
 def _no_state(distance, graph):
@@ -111,6 +146,7 @@ INITIALIZING_CASES = [
         id="cholmod",
         marks=pytest.mark.skipif(not CHOLMOD_AVAILABLE, reason="needs cholespy"),
     ),
+    pytest.param(_RefreshCountingSolver(), id="refreshing"),
 ]
 
 
@@ -128,3 +164,22 @@ def test_state_returning_query_without_state_returns_initialized_state(
     np.testing.assert_array_equal(distances, query(distance, name, graph, None))
     # Queries are compiled, so they initialize the state from traced values.
     assert eqx.tree_equal(returned_state, eqx.filter_jit(distance.init)(graph))
+
+
+@pytest.mark.parametrize("method", METHODS.values(), ids=METHODS.keys())
+@pytest.mark.parametrize("name", QUERY_ARGS)
+def test_state_returning_query_returns_refreshed_state(name, method):
+    distance = ResistanceDistance(solver=_RefreshCountingSolver(), method=method)
+    reference = ResistanceDistance(method=method)
+    state = distance.init(grid_graph(permeability()))
+
+    for step, power in enumerate([2.0, -1.0], start=1):
+        graph = grid_graph(permeability(power))
+        distances, state = query_and_state(distance, name, graph, state)
+
+        # Solves use the state refreshed for the current graph, not the
+        # supplied one, and the query hands that refreshed state back.
+        assert state.refreshes == step
+        np.testing.assert_allclose(
+            distances, query(reference, name, graph, None), rtol=1e-10, atol=1e-12
+        )
