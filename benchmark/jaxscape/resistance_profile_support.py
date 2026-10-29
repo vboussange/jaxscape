@@ -119,7 +119,10 @@ def profile_unavailable_reason(profile: ResistanceProfile, backend: str) -> str 
 
 def profile_metadata(profile: ResistanceProfile, backend: str) -> dict[str, Any]:
     """Interpretation metadata, independent of timing and native cache internals."""
-    metadata = {"dtype": str(jnp.dtype(profile.dtype)), "backend": backend}
+    metadata: dict[str, Any] = {
+        "dtype": str(jnp.dtype(profile.dtype)),
+        "backend": backend,
+    }
     if profile.requires_preparation:
         metadata[
             "hierarchy_behavior"

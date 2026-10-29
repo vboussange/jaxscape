@@ -264,8 +264,9 @@ def test_passing_the_state_keeps_the_lbfgs_steps_of_optimistix_minimise(
         optimizer = optx.LBFGS(rtol=1e-5, atol=1e-5)
 
         def objective_and_state(params, args, state):
+            base, coords, targets = args
             return runner._inverse_loss_and_state(
-                params, *args, state, distance=distance
+                params, base, coords, targets, state, distance=distance
             )
 
         solution = runner._minimise_passing_state(
