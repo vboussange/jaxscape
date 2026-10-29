@@ -217,9 +217,8 @@ gave the same garbage, whatever the conductances.
 - **Each solve** checks its solution `x` of a right-hand side `b`: it fails
   when `x` is not finite, or when `max|b - A x|` exceeds `max|b|` times 10⁻⁴
   in float64 or 10⁻¹ in float32. This catches singular matrices whose
-  factorization passes, for the right-hand sides they make inconsistent, so
-  a query of vertices that all stay connected to the ground vertex succeeds
-  with exact distances.
+  factorization passes its check, for the right-hand sides they make
+  inconsistent.
 
 A failed solve, including every solve with a failed factorization, returns
 NaN values and reports `lineax.RESULTS.singular` through Lineax's result:

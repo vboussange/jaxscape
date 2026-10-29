@@ -186,7 +186,9 @@ def cudss_calls(cudss, run):
     """Count the numeric factorizations and solve calls that `run` makes.
 
     The CPU double records them as they run; with spineax, they are the cuDSS
-    calls in the compiled program.
+    calls in the compiled program. There, a refresh also holds a fresh
+    analysis and factorization, in the branch that runs only after a failed
+    factorization, so each analysis discounts one factorization.
     """
     if cudss is FAKE_CUDSS:
         factorizations = cudss.factorizations
@@ -194,8 +196,10 @@ def cudss_calls(cudss, run):
         jax.block_until_ready(run())
         return cudss.factorizations - factorizations, len(cudss.solve_calls)
     program = jax.jit(run).lower().as_text()
-    numeric = program.count("spineax_token_factorize") + program.count(
-        "spineax_token_refactorize"
+    numeric = (
+        program.count("spineax_token_factorize")
+        + program.count("spineax_token_refactorize")
+        - program.count("spineax_token_analyze")
     )
     return numeric, program.count("spineax_token_solve")
 

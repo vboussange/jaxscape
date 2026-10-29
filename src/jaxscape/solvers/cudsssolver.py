@@ -79,9 +79,9 @@ class CuDSSSolver(AbstractRefreshingSolver):
     float32, which catches singular matrices for the right-hand sides they
     make inconsistent. A failed solve returns NaN and reports
     `lineax.RESULTS.singular`, so it raises with `throw=True` and returns a
-    failed result with `throw=False`. The checks cost one single right-hand
-    side solve and two sparse matrix-vector products per factorization, and
-    one sparse matrix-vector product per right-hand side.
+    failed result with `throw=False`. The checks cost one solve of one
+    right-hand side and two sparse matrix-vector products per factorization,
+    and one sparse matrix-vector product per right-hand side.
 
     !!! example
 
