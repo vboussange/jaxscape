@@ -305,6 +305,50 @@ def test_sparse_solve_of_single_and_multiple_right_hand_sides(cudss, n_rhs):
     assert cudss_calls(cudss, solve) == (1, 1)
 
 
+@pytest.mark.parametrize("n_rhs", [None, 1, 4])
+def test_sparse_solve_gradients_match_dense_reference(cudss, n_rhs):
+    """Gradients with respect to the stored matrix values and right-hand sides,
+    for a single right-hand side and for vmapped batches of them."""
+    n = 9
+    matrix = (
+        np.diag(np.linspace(2.5, 4.0, n))
+        - np.diag(np.full(n - 1, 1.0), 1)
+        - np.diag(np.full(n - 1, 1.0), -1)
+    )
+    A = sparse_layout(matrix)
+    solver = CuDSSSolver()
+    state = solver.init(BCOOLinearOperator(A), {})
+    rng = np.random.default_rng(3)
+    rhs_shape = (n,) if n_rhs is None else (n, n_rhs)
+    b = jnp.asarray(rng.standard_normal(rhs_shape))
+    weights = jnp.asarray(rng.standard_normal(rhs_shape))
+
+    def sparse_solve(A, b):
+        if n_rhs is None:
+            return _linear_solve(A, b, solver, state=state)
+        return _batched_linear_solve(A, b, solver, state=state)
+
+    def dense_solve(A, b):
+        return jnp.linalg.solve(A.todense(), b)
+
+    def gradients(solve):
+        def objective(data, b):
+            x = solve(BCOO((data, A.indices), shape=A.shape), b)
+            return jnp.sum(weights * x)
+
+        return jax.grad(objective, argnums=(0, 1))(A.data, b)
+
+    data_gradient, rhs_gradient = gradients(sparse_solve)
+
+    expected_data_gradient, expected_rhs_gradient = gradients(dense_solve)
+    np.testing.assert_allclose(
+        data_gradient, expected_data_gradient, rtol=1e-10, atol=1e-12
+    )
+    np.testing.assert_allclose(
+        rhs_gradient, expected_rhs_gradient, rtol=1e-10, atol=1e-12
+    )
+
+
 def test_queries_allocate_no_dense_matrix(cudss):
     n = 900
     conductance = jnp.linspace(0.5, 2.0, n).reshape(30, 30)
