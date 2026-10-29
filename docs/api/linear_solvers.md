@@ -44,7 +44,7 @@ See the [Lineax documentation](https://docs.kidger.site/lineax/) for the full li
 | `CholmodSolver` | CPU host callback | Direct factorization for fixed sparse systems; efficient reuse when factorization memory fits. GPU arrays cross the host-device boundary. |
 | `PyAMGSolver` | CPU host callback | AMG-preconditioned CG when factorization storage is too costly. Multiple right-hand sides are solved serially. |
 | `AMJaxCGSolver` | CPU setup; JAX solve on CPU or GPU | Reusable multigrid preconditioner for repeated solves, with fresh CG state when the operator changes. No per-solve host callback. |
-| `CuDSSSolver` | NVIDIA GPU only, through cuDSS and spineax | Sparse Cholesky for `ResistanceDistance`, with cost and accuracy independent of conductance contrast. Analysis once per graph geometry, refactorization when conductances change, one multi-RHS solve per query. Linux x86-64 and Python 3.12 or newer; the factorization must fit in GPU memory. |
+| `CuDSSSolver` | NVIDIA GPU only, through cuDSS and spineax | Sparse Cholesky for `ResistanceDistance`, with cost and accuracy independent of conductance contrast. Analysis once per graph geometry, refactorization when conductances change, one multi-RHS solve per query, in float32 or float64. Failed factorizations are reported through the Lineax result. Linux x86-64 and Python 3.12 or newer; the factorization must fit in GPU memory. |
 
 **Installation:**
 
@@ -174,6 +174,58 @@ Gradients never pass through analysis or factorization:
 
     The report measured neither JAXScape's value mapping and state handling
     nor memory use.
+
+### Precision
+
+`CuDSSSolver` factorizes and solves in the dtype of the conductances, float32
+or float64, and a state keeps the dtype it was initialized with. Float64
+needs `jax.config.update("jax_enable_x64", True)` and float64 conductances.
+
+- **float64** gives resistance distances to direct-solver precision, within
+  2.3·10⁻⁹ of CHOLMOD on every surface of the evidence report.
+- **float32** halves the memory of factor values and solutions, and
+  conductance contrast consumes its seven significant digits. In CPU
+  measurements of float32 Cholesky solves, the relative error of resistance
+  distances grew from about 10⁻⁵ on small grids to 10⁻² on 300×300 grids at
+  6 orders of magnitude of contrast, and reached 10⁻¹ with a 10⁻⁶ conductance
+  floor. Use float64 for high-contrast surfaces.
+
+### Failed factorizations
+
+A Cholesky factorization fails when the grounded Laplacian is not positive
+definite, for example with a negative conductance, or is numerically
+singular, for example when zero conductances cut vertices off from the ground
+vertex, the graph's last vertex. spineax reports no factorization status, and
+a failed cuDSS factorization can leave NaN or finite solutions that do not
+solve the system. `CuDSSSolver` therefore checks each solution `x` of a
+right-hand side `b` against the matrix `A` it factorized. The solve fails
+when `x` is not finite, or when `max|b - A x|` exceeds `max|b|` times 10⁻⁴ in
+float64 or 10⁻¹ in float32. A failed solve returns NaN values and reports
+`lineax.RESULTS.singular` through Lineax's result:
+
+- resistance-distance queries solve with `throw=True` and raise, for the state
+  from `init` and after a query refactorizes for new conductances, eagerly
+  and inside `jax.jit`. Lineax raises reliably on CPUs; on GPUs it may only
+  print the error, and the failed distances are then NaN;
+- a direct Lineax solve with `throw=False` returns the failed result.
+
+```python
+import lineax as lx
+from jaxscape.solvers import BCOOLinearOperator, CuDSSSolver
+
+operator = BCOOLinearOperator(A)  # A: a BCOO grounded Laplacian
+solver = CuDSSSolver()
+state = solver.init(operator, {})
+solution = lx.linear_solve(operator, b, solver, state=state, throw=False)
+failed = solution.result != lx.RESULTS.successful
+```
+
+The check costs one sparse matrix-vector product with `A` per right-hand side
+and runs no further factorization or solve. It judges the solutions a query
+computes, so a query of vertices that all stay connected to the ground vertex
+succeeds with exact distances. In float32, a surface whose solves miss the
+float32 tolerance is reported as failed, as a 10⁻⁶ conductance floor on a
+100×100 grid was in CPU measurements; solve it in float64.
 
 ### Installing cuDSS support
 

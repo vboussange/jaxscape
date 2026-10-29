@@ -56,6 +56,16 @@ class CuDSSSolver(AbstractRefreshingSolver):
     factorization, because the matrix is symmetric and the solver is its own
     transpose. No gradient is taken through analysis or factorization.
 
+    It factorizes and solves in the dtype of the matrix, float32 or float64.
+    spineax reports no factorization status, so each solve checks its solution
+    `x` against the factorized matrix `A`: a solution that is not finite, or
+    whose residual `max|b - A x|` exceeds `max|b|` times 1e-4 in float64 or
+    1e-1 in float32, becomes NaN and reports `lineax.RESULTS.singular`. A
+    matrix that is not positive definite, or is numerically singular,
+    therefore makes the solve raise with `throw=True` and return a failed
+    result with `throw=False`. The check costs one sparse matrix-vector
+    product per right-hand side.
+
     !!! example
 
         ```python
