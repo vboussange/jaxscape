@@ -438,6 +438,9 @@ def dependency_versions() -> dict[str, str | None]:
         "amjax",
         "pyamg",
         "cholespy",
+        "spineax",
+        "nvidia-cudss-cu12",
+        "nvidia-cudss-cu13",
     ):
         try:
             versions[package] = version(package)

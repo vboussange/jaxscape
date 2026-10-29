@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 import jax.numpy as jnp
@@ -120,4 +121,32 @@ def profile_metadata(profile: ResistanceProfile, backend: str) -> dict[str, Any]
         metadata[
             "hierarchy_behavior"
         ] = "AMJax hierarchy prepared outside timing and frozen"
+    if profile.solver_factory is make_cudss_solver:
+        metadata.update(cudss_versions())
     return metadata
+
+
+# spineax 0.0.5 wheels pull the CUDA 13 runtime; CUDA 12 builds of spineax use
+# the CUDA 12 one.
+CUDSS_RUNTIME_PACKAGES = ("nvidia-cudss-cu13", "nvidia-cudss-cu12")
+
+
+def cudss_versions() -> dict[str, str | None]:
+    """Installed spineax version and cuDSS runtime package, as `name==version`."""
+    cudss_version = None
+    for package in CUDSS_RUNTIME_PACKAGES:
+        package_version = _installed_version(package)
+        if package_version is not None:
+            cudss_version = f"{package}=={package_version}"
+            break
+    return {
+        "spineax_version": _installed_version("spineax"),
+        "cudss_version": cudss_version,
+    }
+
+
+def _installed_version(package: str) -> str | None:
+    try:
+        return version(package)
+    except PackageNotFoundError:
+        return None

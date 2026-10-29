@@ -112,3 +112,54 @@ def test_cudss_collection_without_a_gpu_records_only_skipped_gpu_series(task):
     ]
     assert all(record.status == "skipped" for record in records)
     assert all(record.timings_seconds == [] for record in records)
+
+
+def test_report_environment_lists_spineax_and_cudss_versions():
+    from benchmark.benchmark_distances import (
+        default_jaxscape_config,
+        environment_payload,
+    )
+    from benchmark.generate_benchmark_docs import environment_table
+
+    environment = environment_payload(default_jaxscape_config())
+    versions = environment["dependency_versions"]
+
+    assert isinstance(versions, dict)
+    assert {"spineax", "nvidia-cudss-cu12", "nvidia-cudss-cu13"} <= versions.keys()
+    rendered = environment_table({"environment": environment})
+    assert "spineax=" in rendered
+    assert "nvidia-cudss-cu13=" in rendered
+
+
+@pytest.mark.parametrize(
+    "installed, cudss_version",
+    [
+        (
+            {"spineax": "0.0.5", "nvidia-cudss-cu13": "0.8.0.10"},
+            "nvidia-cudss-cu13==0.8.0.10",
+        ),
+        (
+            {"spineax": "0.0.5", "nvidia-cudss-cu12": "0.8.0.10"},
+            "nvidia-cudss-cu12==0.8.0.10",
+        ),
+    ],
+)
+def test_cudss_records_carry_spineax_and_cudss_versions(
+    installed, cudss_version, monkeypatch
+):
+    from importlib.metadata import PackageNotFoundError
+
+    from benchmark.jaxscape import resistance_profile_support
+
+    def installed_version(package):
+        if package not in installed:
+            raise PackageNotFoundError(package)
+        return installed[package]
+
+    monkeypatch.setattr(resistance_profile_support, "version", installed_version)
+
+    for key in CUDSS_PROFILE_KEYS:
+        profile = resistance_distance.PROFILE_BY_KEY[key]
+        metadata = resistance_profile_support.profile_metadata(profile, "gpu")
+        assert metadata["spineax_version"] == "0.0.5"
+        assert metadata["cudss_version"] == cudss_version
