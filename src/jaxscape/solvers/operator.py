@@ -3,6 +3,7 @@ from typing import Any
 
 import equinox as eqx
 import jax
+import jax.numpy as jnp
 import lineax as lx
 from jax import Array
 from jax.experimental.sparse import BCOO
@@ -20,7 +21,22 @@ class BCOOLinearOperator(lx.MatrixLinearOperator):
             raise ValueError("The operator must be a BCOO matrix.")
 
     def mv(self, vector: Array) -> Array:
-        return self.matrix @ vector
+        matrix = self.matrix
+        assert isinstance(matrix, BCOO)
+        if matrix.n_batch or matrix.n_dense:
+            return matrix @ vector
+        # Gather and scatter-add, as `BCOO @ vector` does without cuSPARSE.
+        # Under `grad` of a solve vmapped over right-hand sides, JAX before
+        # 0.11 transposes the batched `BCOO @ vector` to a per-right-hand-side
+        # cotangent for the shared matrix values, which raises. Padding
+        # entries, whose indices are out of bounds, contribute nothing.
+        rows, columns = matrix.indices[:, 0], matrix.indices[:, 1]
+        products = matrix.data * vector.at[columns].get(mode="fill", fill_value=0)
+        return (
+            jnp.zeros(matrix.shape[0], products.dtype)
+            .at[rows]
+            .add(products, mode="drop")
+        )
 
     def transpose(self) -> "BCOOLinearOperator":
         matrix_transpose = self.matrix.T

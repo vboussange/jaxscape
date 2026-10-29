@@ -49,7 +49,10 @@ class CuDSSSolver(AbstractRefreshingSolver):
     cuDSS solve. The `*_distance_and_state` queries return the new state, so
     an optimization loop passes it from one step to the next and only pays
     for refactorization. Gradients of exact resistance distances reuse the
-    forward solutions.
+    forward solutions. Gradients of Spielman approximate distances and of
+    sparse linear solves solve the adjoint system with the forward
+    factorization, because the matrix is symmetric and the solver is its own
+    transpose. No gradient is taken through analysis or factorization.
 
     !!! example
 
