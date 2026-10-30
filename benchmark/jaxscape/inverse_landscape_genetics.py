@@ -284,7 +284,7 @@ def _inverse_loss_and_state(
     *,
     distance: ResistanceDistance,
 ) -> tuple[jax.Array, Any]:
-    """Return `_inverse_loss` and the solver state refreshed for `params`.
+    """Return `_inverse_loss` and the solver state reinitialized for `params`.
 
     **Arguments:**
 
@@ -292,18 +292,19 @@ def _inverse_loss_and_state(
     - `base_resistance`: Base resistance surface that `params` transform.
     - `sample_coords`: Sampled sites as raster coordinates.
     - `target_distances`: Target resistance distances among the sites.
-    - `state`: Solver state to refresh, or `None` to initialize one.
+    - `state`: Solver state to reinitialize.
     - `distance`: The resistance distance to fit with.
 
     **Returns:**
 
-    The mean squared error of the distances, and the solver state that
-    `distance` returns.
+    The mean squared error of the distances, and the solver state of the grid
+    of `params`.
     """
     permeability = _permeability_from_inverse_params(params, base_resistance)
     grid = _inverse_grid(permeability)
     nodes = grid.coord_to_index(sample_coords[:, 0], sample_coords[:, 1])
-    predicted, state = distance.nodes_to_nodes_distance_and_state(grid, nodes, state)
+    state = distance.reinit(grid, state)
+    predicted = distance.nodes_to_nodes_distance(grid, nodes, state)
     return jnp.mean((predicted - target_distances) ** 2), state
 
 
@@ -331,7 +332,7 @@ def _minimise_carrying_state(
     **Arguments:**
 
     - `objective`: `objective(params, (args, state))` returns the loss and the
-      solver state refreshed for `params`.
+      solver state reinitialized for `params`.
     - `optimizer`: An Optimistix minimiser, such as `optimistix.LBFGS`.
     - `y0`: Initial parameters.
     - `args`: Fixed arguments of `objective`.

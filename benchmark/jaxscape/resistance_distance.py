@@ -316,7 +316,8 @@ def _jaxscape_resistance_and_state(
 ) -> tuple[jax.Array, Any]:
     grid = GridGraph(permeability, fun=cost_conductance)
     node_indices = grid.coord_to_index(nodes[:, 0], nodes[:, 1])
-    return distance.nodes_to_nodes_distance_and_state(grid, node_indices, state)
+    state = distance.reinit(grid, state)
+    return distance.nodes_to_nodes_distance(grid, node_indices, state), state
 
 
 @eqx.filter_jit

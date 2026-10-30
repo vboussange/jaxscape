@@ -1,18 +1,18 @@
 import math
-from typing import Any
+from typing import Any, Optional
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import lineax as lx
-from jax import Array, lax
+from jax import Array
+from jax import lax
 from jax.experimental.sparse import BCOO
 from jax.numpy.linalg import pinv
 
-from jaxscape.distance import AbstractDistance
+from jaxscape.distance import AbstractSolverDistance
 from jaxscape.graph import AbstractGraph
-from jaxscape.solvers import BCOOLinearOperator
-from jaxscape.solvers.operator import _batched_linear_solve_impl, _solver_states
+from jaxscape.solvers.operator import _batched_linear_solve_impl, _solver_state
 from jaxscape.utils import graph_laplacian
 
 
@@ -22,7 +22,7 @@ from jaxscape.utils import graph_laplacian
 SPIELMAN_DENSE_PROJECTION_MAX_SIGN_ENTRIES = 200_000_000
 
 
-class ResistanceDistance(AbstractDistance):
+class ResistanceDistance(AbstractSolverDistance):
     """
     Compute the resistance distances.
 
@@ -31,7 +31,7 @@ class ResistanceDistance(AbstractDistance):
     - `solver`: Optional `lineax.AbstractLinearSolver`. Must be compatible with
       BCOO matrices. We currently support `jaxscape.solvers.CholmodSolver`,
       `jaxscape.solvers.PyAMGSolver`, `jaxscape.solvers.AMJaxCGSolver`, and
-      `jaxscape.solvers.CuDSSSolver` (NVIDIA GPUs).
+      `jaxscape.solvers.CuDSSSolver`.
       If None, uses the pseudo-inverse method, which is very memory intensive
       for exact all-pairs distances (densifies the Laplacian matrix), or dense
       solves for approximate distances.
@@ -69,12 +69,9 @@ class ResistanceDistance(AbstractDistance):
         updated_grid = GridGraph(updated_permeability, fun=lambda x, y: (x + y) / 2)
         dist = distance(updated_grid, state=preconditioner_state)
 
-        # Query forms ending in `_and_state` also return the solver state
-        # to pass to the next call, e.g. the next step of an optimization.
-        nodes = jnp.array([0, 4, 8])
-        dist, preconditioner_state = distance.nodes_to_nodes_distance_and_state(
-            updated_grid, nodes, preconditioner_state
-        )
+        # Carry a state from one graph to the next, as an optimization loop does.
+        state = distance.reinit(updated_grid, state)
+        dist = distance(updated_grid, state=state)
 
         # Approximate resistance distance
         distance = ResistanceDistance(
@@ -90,66 +87,53 @@ class ResistanceDistance(AbstractDistance):
         The graph must be undirected for resistance distance to be well-defined.
     """
 
-    solver: lx.AbstractLinearSolver | None = None
+    solver: Optional[lx.AbstractLinearSolver] = None
     method: "AbstractResistanceMethod" = eqx.field(
         default_factory=lambda: ExactResistance()
     )
 
-    def init(self, graph: AbstractGraph) -> Any:
-        """Initialize matrix-dependent solver state for `graph`.
+    def system_matrix(self, graph: AbstractGraph) -> BCOO:
+        """Return the grounded Laplacian of `graph`."""
+        return graph_laplacian(graph.get_adjacency_matrix())[:-1, :-1]
 
-        This is primarily useful for solvers such as `AMJaxCGSolver`, which
-        build reusable state once outside the traced solve path so repeated
-        resistance solves remain JIT-compatible and differentiable. For
-        `CuDSSSolver`, it runs cuDSS analysis and factorization, reads concrete
-        sparse indices, and must run outside `jax.jit`. Queries then
-        refactorize the state for the edge weights of any graph with the same
-        sparsity pattern.
-
-        **Arguments:**
-
-        - `graph`: Undirected graph whose grounded Laplacian the state is built
-          for.
-
-        **Returns:**
-
-        Solver state to pass as `state` to distance queries, or `None` when
-        `solver` is `None`.
-        """
-        if self.solver is None:
-            return None
-
-        A = graph.get_adjacency_matrix()
-        L_reduced = graph_laplacian(A)[:-1, :-1]
-        return self.solver.init(BCOOLinearOperator(L_reduced), {})
-
-    def init_preconditioner(self, graph: AbstractGraph) -> Any:
-        """Initialize reusable preconditioner state for `graph` when supported.
-
-        For `AMJaxCGSolver`, this builds the AMJax hierarchy without binding the
-        state to the current Laplacian values. Passing the returned state to
-        distance calls lets JAXScape materialize fresh CG state for each graph
-        while reusing the preconditioner.
-        """
-        if self.solver is None:
-            return None
-
-        init_preconditioner = getattr(self.solver, "init_preconditioner", None)
-        if init_preconditioner is None:
-            return self.init(graph)
-
-        A = graph.get_adjacency_matrix()
-        L_reduced = graph_laplacian(A)[:-1, :-1]
-        return init_preconditioner(BCOOLinearOperator(L_reduced), {})
-
+    @eqx.filter_jit
     def all_pairs_distance(self, graph: AbstractGraph, state: Any = None) -> Array:
-        return self.all_pairs_distance_and_state(graph, state)[0]
+        A = graph.get_adjacency_matrix()
+        if isinstance(self.method, SpielmanApproximation):
+            return spielman_resistance_distance(
+                A, self.method.epsilon, self.method.seed, self.solver, state
+            )
+        if self.solver is None:
+            return p_inv_resistance_distance(A)
+        else:
+            nodes = jnp.arange(graph.nv)
+            return lineax_solver_nodes_to_nodes_resistance_distance(
+                A, nodes, self.solver, state
+            )
 
+    @eqx.filter_jit
     def nodes_to_nodes_distance(
         self, graph: AbstractGraph, nodes: Array, state: Any = None
     ) -> Array:
-        return self.nodes_to_nodes_distance_and_state(graph, nodes, state)[0]
+        A = graph.get_adjacency_matrix()
+        if isinstance(self.method, SpielmanApproximation):
+            return spielman_nodes_to_nodes_resistance_distance(
+                A,
+                nodes,
+                self.method.epsilon,
+                self.method.seed,
+                self.solver,
+                state,
+                projection_batch_size=self.method.projection_batch_size,
+            )
+        if self.solver is None:
+            return p_inv_resistance_distance(A)[nodes[:, None], nodes[None, :]]
+        else:
+            return lineax_solver_nodes_to_nodes_resistance_distance(
+                A, nodes, self.solver, state
+            )
 
+    @eqx.filter_jit
     def sources_to_targets_distance(
         self,
         graph: AbstractGraph,
@@ -157,90 +141,20 @@ class ResistanceDistance(AbstractDistance):
         targets: Array,
         state: Any = None,
     ) -> Array:
-        return self.sources_to_targets_distance_and_state(
-            graph, sources, targets, state
-        )[0]
-
-    def all_pairs_distance_and_state(
-        self, graph: AbstractGraph, state: Any = None
-    ) -> tuple[Array, Any]:
-        """Compute resistance distances between all vertices, and the solver state.
-
-        **Arguments:**
-
-        - `graph`: Undirected graph with `graph.nv` vertices.
-        - `state`: Optional solver state from `init`, `init_preconditioner` or
-          an earlier state-returning query. Without it, the call first
-          initializes one with `init`, as `distance(graph)` does. A solver
-          that reads concrete sparse indices, such as `CuDSSSolver`, then
-          needs the call to run outside `jax.jit`.
-
-        **Returns:**
-
-        A tuple `(distances, state)`. `distances` has shape
-        `(graph.nv, graph.nv)` and equals `all_pairs_distance(graph, state)`.
-        `state` is the solver state to pass to the next call: the state an
-        `AbstractRefreshingSolver` refreshed for `graph`, and otherwise the
-        supplied or initialized state. It carries no gradient.
-        """
-        return self._distance_and_state(graph, state)
-
-    def nodes_to_nodes_distance_and_state(
-        self, graph: AbstractGraph, nodes: Array, state: Any = None
-    ) -> tuple[Array, Any]:
-        """Compute resistance distances among `nodes`, and the solver state.
-
-        **Arguments:**
-
-        - `graph`: Undirected graph.
-        - `nodes`: Vertex indices with shape `(k,)`, possibly repeated.
-        - `state`: Optional solver state, as for `all_pairs_distance_and_state`.
-
-        **Returns:**
-
-        A tuple `(distances, state)`. `distances` has shape `(k, k)` and equals
-        `nodes_to_nodes_distance(graph, nodes, state)`. `state` is the solver
-        state to pass to the next call, as for `all_pairs_distance_and_state`.
-        """
-        return self._distance_and_state(graph, state, nodes)
-
-    def sources_to_targets_distance_and_state(
-        self,
-        graph: AbstractGraph,
-        sources: Array,
-        targets: Array,
-        state: Any = None,
-    ) -> tuple[Array, Any]:
-        """Compute distances from `sources` to `targets`, and the solver state.
-
-        **Arguments:**
-
-        - `graph`: Undirected graph.
-        - `sources`: Source vertex indices with shape `(s,)`.
-        - `targets`: Target vertex indices with shape `(t,)`.
-        - `state`: Optional solver state, as for `all_pairs_distance_and_state`.
-
-        **Returns:**
-
-        A tuple `(distances, state)`. `distances` has shape `(s, t)` and equals
-        `sources_to_targets_distance(graph, sources, targets, state)`. `state`
-        is the solver state to pass to the next call, as for
-        `all_pairs_distance_and_state`.
-        """
-        return self._distance_and_state(graph, state, sources, targets)
-
-    def _distance_and_state(
-        self,
-        graph: AbstractGraph,
-        state: Any,
-        nodes: Array | None = None,
-        targets: Array | None = None,
-    ) -> tuple[Array, Any]:
-        if state is None:
-            # As in `AbstractDistance.__call__`: an eager call initializes the
-            # state outside `jax.jit`, from graph values without gradient.
-            state = self.init(jax.tree.map(jax.lax.stop_gradient, graph))
-        return _graph_distance_and_state(self, graph, state, nodes, targets)
+        if isinstance(self.method, SpielmanApproximation):
+            A = graph.get_adjacency_matrix()
+            return spielman_sources_to_targets_resistance_distance(
+                A,
+                sources,
+                targets,
+                self.method.epsilon,
+                self.method.seed,
+                self.solver,
+                state,
+                projection_batch_size=self.method.projection_batch_size,
+            )
+        R = self.all_pairs_distance(graph, state)
+        return R[sources[:, None], targets[None, :]]
 
 
 class AbstractResistanceMethod(eqx.Module):
@@ -315,27 +229,24 @@ def lineax_solver_nodes_to_nodes_resistance_distance(
     solver: lx.AbstractLinearSolver,
     state: Any = None,
 ) -> Array:
-    """Compute pairwise resistance distances among `nodes` with a Lineax solver.
-
-    It requires one linear solve per node.
-
-    **Arguments:**
-
-    - `A`: Sparse BCOO adjacency matrix with shape `(n, n)` of an undirected graph.
-    - `nodes`: Vertex indices with shape `(k,)`.
-    - `solver`: Lineax solver for the grounded Laplacian.
-    - `state`: Optional solver state from `ResistanceDistance.init`, or `None`
-      to initialize one.
-
-    **Returns:**
-
-    Resistance distance matrix with shape `(k, k)`.
+    """
+    Computes pairwise resistance distance from `nodes` to `nodes`, returning a
+    |`nodes`| x |`nodes`| matrix, using a lineax `solver`.
+    Requires |`nodes`| linear solves.
 
     !!! warning
         The graph must be undirected.
     """
-    distance = ResistanceDistance(solver=solver)
-    return _distance_and_state(distance, A, state, nodes)[0]
+    selected_inverse = _exact_selected_inverse(
+        A.data, A.indices, A.shape, nodes.astype(A.indices.dtype), solver, state
+    )
+    diagonal = jnp.diag(selected_inverse)
+    return (
+        diagonal[:, None]
+        + diagonal[None, :]
+        - selected_inverse
+        - selected_inverse.T
+    )
 
 
 @eqx.filter_jit
@@ -343,7 +254,7 @@ def spielman_resistance_distance(
     A: BCOO,
     epsilon: float = 0.1,
     seed: int = 0,
-    solver: lx.AbstractLinearSolver | None = None,
+    solver: Optional[lx.AbstractLinearSolver] = None,
     state: Any = None,
 ) -> Array:
     """
@@ -357,24 +268,10 @@ def spielman_resistance_distance(
     `W**0.5 @ B` by a Johnson-Lindenstrauss/Rademacher sketch `Q W**0.5 B`
     and computes node embeddings `Z = Q W**0.5 B L^+`; squared Euclidean
     distances between columns of `Z` approximate resistance distances.
-
-    **Arguments:**
-
-    - `A`: Sparse BCOO adjacency matrix with shape `(n, n)` of an undirected graph.
-    - `epsilon`: Accuracy parameter of the projections.
-    - `seed`: Random seed of the Rademacher projections.
-    - `solver`: Optional Lineax solver for the grounded Laplacian; `None`
-      solves densely.
-    - `state`: Optional solver state from `ResistanceDistance.init`, or `None`
-      to initialize one.
-
-    **Returns:**
-
-    Approximate resistance distance matrix with shape `(n, n)`.
     """
-    method = SpielmanApproximation(epsilon=epsilon, seed=seed)
-    distance = ResistanceDistance(solver=solver, method=method)
-    return _distance_and_state(distance, A, state)[0]
+    return _spielman_resistance_distance_from_data(
+        A.data, A.indices, A.shape, epsilon, seed, solver, state
+    )
 
 
 @eqx.filter_jit
@@ -383,32 +280,23 @@ def spielman_nodes_to_nodes_resistance_distance(
     nodes: Array,
     epsilon: float = 0.1,
     seed: int = 0,
-    solver: lx.AbstractLinearSolver | None = None,
+    solver: Optional[lx.AbstractLinearSolver] = None,
     state: Any = None,
     *,
     projection_batch_size: int = 64,
 ) -> Array:
-    """Approximate pairwise resistance distances among selected nodes.
-
-    **Arguments:**
-
-    - `A`: Sparse BCOO adjacency matrix with shape `(n, n)` of an undirected graph.
-    - `nodes`: Vertex indices with shape `(k,)`.
-    - `epsilon`: Accuracy parameter of the projections.
-    - `seed`: Random seed of the Rademacher projections.
-    - `solver`: Optional Lineax solver for the grounded Laplacian; `None`
-      solves densely.
-    - `state`: Optional solver state from `ResistanceDistance.init`, or `None`
-      to initialize one.
-    - `projection_batch_size`: Number of projection rows evaluated together.
-
-    **Returns:**
-
-    Approximate resistance distance matrix with shape `(k, k)`.
-    """
-    method = SpielmanApproximation(epsilon, seed, projection_batch_size)
-    distance = ResistanceDistance(solver=solver, method=method)
-    return _distance_and_state(distance, A, state, nodes)[0]
+    """Approximate pairwise resistance distances among selected nodes."""
+    return _spielman_nodes_to_nodes_resistance_distance_from_data(
+        A.data,
+        A.indices,
+        A.shape,
+        nodes.astype(A.indices.dtype),
+        epsilon,
+        seed,
+        solver,
+        state,
+        projection_batch_size,
+    )
 
 
 @eqx.filter_jit
@@ -418,139 +306,23 @@ def spielman_sources_to_targets_resistance_distance(
     targets: Array,
     epsilon: float = 0.1,
     seed: int = 0,
-    solver: lx.AbstractLinearSolver | None = None,
+    solver: Optional[lx.AbstractLinearSolver] = None,
     state: Any = None,
     *,
     projection_batch_size: int = 64,
 ) -> Array:
-    """Approximate resistance distances from sources to targets.
-
-    **Arguments:**
-
-    - `A`: Sparse BCOO adjacency matrix with shape `(n, n)` of an undirected graph.
-    - `sources`: Source vertex indices with shape `(s,)`.
-    - `targets`: Target vertex indices with shape `(t,)`.
-    - `epsilon`: Accuracy parameter of the projections.
-    - `seed`: Random seed of the Rademacher projections.
-    - `solver`: Optional Lineax solver for the grounded Laplacian; `None`
-      solves densely.
-    - `state`: Optional solver state from `ResistanceDistance.init`, or `None`
-      to initialize one.
-    - `projection_batch_size`: Number of projection rows evaluated together.
-
-    **Returns:**
-
-    Approximate resistance distance matrix with shape `(s, t)`.
-    """
-    method = SpielmanApproximation(epsilon, seed, projection_batch_size)
-    distance = ResistanceDistance(solver=solver, method=method)
-    return _distance_and_state(distance, A, state, sources, targets)[0]
-
-
-@eqx.filter_jit
-def _graph_distance_and_state(
-    distance: ResistanceDistance,
-    graph: AbstractGraph,
-    state: Any,
-    nodes: Array | None,
-    targets: Array | None,
-) -> tuple[Array, Any]:
-    A = graph.get_adjacency_matrix()
-    return _distance_and_state(distance, A, state, nodes, targets)
-
-
-def _distance_and_state(
-    distance: ResistanceDistance,
-    A: BCOO,
-    state: Any,
-    nodes: Array | None = None,
-    targets: Array | None = None,
-) -> tuple[Array, Any]:
-    """Resistance distances of the graph with adjacency `A`, and the solver state.
-
-    The distances are between all vertices without `nodes`, among `nodes`
-    without `targets`, and from `nodes` to `targets` otherwise. The solver
-    state is refreshed once per query against the grounded Laplacian of `A`;
-    `_solver_states` gives the state the solves use and the state returned.
-    The refresh sees only stop-gradient matrix values and runs outside the
-    custom VJPs, so it is never differentiated and the states it builds carry
-    no gradient. The backward passes reuse the state the solves used.
-    """
-    solve_state = None
-    if distance.solver is not None:
-        solve_state, state = _solver_states(
-            _reduced_laplacian(A.data, A.indices, A.shape),
-            distance.solver,
-            None,
-            state,
-        )
-    return _distances(distance, A, solve_state, nodes, targets), state
-
-
-def _distances(
-    distance: ResistanceDistance,
-    A: BCOO,
-    solve_state: Any,
-    nodes: Array | None,
-    targets: Array | None,
-) -> Array:
-    """The distances of `_distance_and_state`, solved with `solve_state`."""
-    method, solver = distance.method, distance.solver
-    if isinstance(method, SpielmanApproximation):
-        return _spielman_distances(A, method, solver, solve_state, nodes, targets)
-    if targets is not None:
-        assert nodes is not None
-        all_pairs = _distances(distance, A, solve_state, None, None)
-        return all_pairs[nodes[:, None], targets[None, :]]
-    if solver is None:
-        all_pairs = p_inv_resistance_distance(A)
-        if nodes is None:
-            return all_pairs
-        return all_pairs[nodes[:, None], nodes[None, :]]
-    if nodes is None:
-        nodes = jnp.arange(A.shape[0])
-    selected_inverse = _exact_selected_inverse(
-        A.data, A.indices, A.shape, nodes.astype(A.indices.dtype), solver, solve_state
-    )
-    diagonal = jnp.diag(selected_inverse)
-    return diagonal[:, None] + diagonal[None, :] - selected_inverse - selected_inverse.T
-
-
-def _spielman_distances(
-    A: BCOO,
-    method: "SpielmanApproximation",
-    solver: lx.AbstractLinearSolver | None,
-    solve_state: Any,
-    nodes: Array | None,
-    targets: Array | None,
-) -> Array:
-    """Spielman-Srivastava distances, selected as in `_distance_and_state`."""
-    if nodes is None:
-        features_reduced = _spielman_features_reduced(
-            A.data, A.indices, A.shape, method.epsilon, method.seed, solver, solve_state
-        )
-        return _distances_from_features_reduced(features_reduced)
-    sources = nodes.astype(A.indices.dtype)
-    selected = sources
-    if targets is not None:
-        selected = jnp.concatenate([sources, targets.astype(A.indices.dtype)])
-    features = _spielman_selected_features(
+    """Approximate resistance distances from sources to targets."""
+    return _spielman_sources_to_targets_resistance_distance_from_data(
         A.data,
         A.indices,
         A.shape,
-        selected,
-        method.epsilon,
-        method.seed,
+        sources.astype(A.indices.dtype),
+        targets.astype(A.indices.dtype),
+        epsilon,
+        seed,
         solver,
-        solve_state,
-        method.projection_batch_size,
-    )
-    if targets is None:
-        distances = _distances_from_selected_features(features, features)
-        return distances.at[jnp.diag_indices(sources.shape[0])].set(0)
-    n_sources = sources.shape[0]
-    return _distances_from_selected_features(
-        features[:, :n_sources], features[:, n_sources:]
+        state,
+        projection_batch_size,
     )
 
 
@@ -571,15 +343,23 @@ def _projection_size(n: int, epsilon: float) -> int:
     return max(1, math.ceil(math.log(max(n, 2)) / epsilon**2))
 
 
-def _reduced_laplacian(data: Array, indices: Array, shape: tuple[int, ...]) -> BCOO:
-    """Grounded Laplacian: the Laplacian without the last vertex's row and column."""
-    return graph_laplacian(BCOO((data, indices), shape=shape))[:-1, :-1]
+def _prepare_reduced_laplacian(
+    data: Array,
+    indices: Array,
+    shape: tuple[int, ...],
+    solver: Optional[lx.AbstractLinearSolver],
+    state: Any,
+) -> tuple[BCOO, Any]:
+    reduced = graph_laplacian(BCOO((data, indices), shape=shape))[:-1, :-1]
+    if solver is not None:
+        state = _solver_state(reduced, solver, None, state)
+    return reduced, state
 
 
 def _solve_reduced_laplacian(
     L_reduced: BCOO,
     rhs: Array,
-    solver: lx.AbstractLinearSolver | None,
+    solver: Optional[lx.AbstractLinearSolver],
     state: Any,
     options: dict[str, Any] | None = None,
 ) -> Array:
@@ -594,7 +374,7 @@ def _solve_reduced_laplacian(
 def _solve_adjoint(
     L_reduced: BCOO,
     rhs: Array,
-    solver: lx.AbstractLinearSolver | None,
+    solver: Optional[lx.AbstractLinearSolver],
     state: Any,
 ) -> Array:
     options = None
@@ -606,7 +386,7 @@ def _solve_adjoint(
 def _node_potentials(
     L_reduced: BCOO,
     nodes: Array,
-    solver: lx.AbstractLinearSolver | None,
+    solver: Optional[lx.AbstractLinearSolver],
     state: Any,
 ) -> Array:
     # The ground-node column of E is zero; duplicate nodes retain duplicate RHS.
@@ -653,19 +433,17 @@ def _exact_selected_inverse(
     indices: Array,
     shape: tuple[int, ...],
     nodes: Array,
-    solver: lx.AbstractLinearSolver | None,
-    solve_state: Any,
+    solver: Optional[lx.AbstractLinearSolver],
+    state: Any,
 ) -> Array:
     return _exact_selected_inverse_fwd(
-        None, data, indices, shape, nodes, solver, solve_state
+        None, data, indices, shape, nodes, solver, state
     )[0]
 
 
-def _exact_selected_inverse_fwd(
-    perturbed, data, indices, shape, nodes, solver, solve_state
-):
+def _exact_selected_inverse_fwd(perturbed, data, indices, shape, nodes, solver, state):
     del perturbed
-    reduced = _reduced_laplacian(data, indices, shape)
+    reduced, solve_state = _prepare_reduced_laplacian(data, indices, shape, solver, state)
     potentials = _node_potentials(reduced, nodes, solver, solve_state)
     return _grounded_values(potentials, nodes), potentials
 
@@ -675,9 +453,9 @@ _exact_selected_inverse.def_fwd(_exact_selected_inverse_fwd)
 
 @_exact_selected_inverse.def_bwd
 def _exact_selected_inverse_bwd(
-    potentials, cotangent, perturbed, data, indices, shape, nodes, solver, solve_state
+    potentials, cotangent, perturbed, data, indices, shape, nodes, solver, state
 ):
-    del data, nodes, solver, solve_state
+    del data, nodes, solver, state
     if cotangent is None or not perturbed:
         return None
     # Let q = n - 1 be the number of ungrounded vertices and m the site count.
@@ -739,22 +517,22 @@ def _spielman_features_reduced(
     shape: tuple[int, ...],
     epsilon: float,
     seed: int,
-    solver: lx.AbstractLinearSolver | None,
-    solve_state: Any,
+    solver: Optional[lx.AbstractLinearSolver],
+    state: Any,
 ) -> Array:
     return _spielman_features_reduced_fwd(
-        None, data, indices, shape, epsilon, seed, solver, solve_state
+        None, data, indices, shape, epsilon, seed, solver, state
     )[0]
 
 
 def _spielman_features_reduced_fwd(
-    perturbed, data, indices, shape, epsilon, seed, solver, solve_state
+    perturbed, data, indices, shape, epsilon, seed, solver, state
 ):
     del perturbed
-    reduced = _reduced_laplacian(data, indices, shape)
+    reduced, solve_state = _prepare_reduced_laplacian(data, indices, shape, solver, state)
     projection = _spielman_projection(data, indices, shape, epsilon, seed)[:, :-1]
     potentials = _solve_reduced_laplacian(reduced, projection.T, solver, solve_state)
-    return potentials.T, (potentials, reduced)
+    return potentials.T, (potentials, reduced, solve_state)
 
 
 _spielman_features_reduced.def_fwd(_spielman_features_reduced_fwd)
@@ -762,20 +540,12 @@ _spielman_features_reduced.def_fwd(_spielman_features_reduced_fwd)
 
 @_spielman_features_reduced.def_bwd
 def _spielman_features_reduced_bwd(
-    residuals,
-    cotangent,
-    perturbed,
-    data,
-    indices,
-    shape,
-    epsilon,
-    seed,
-    solver,
-    solve_state,
+    residuals, cotangent, perturbed, data, indices, shape, epsilon, seed, solver, state
 ):
+    del state
     if cotangent is None or not perturbed:
         return None
-    potentials, reduced = residuals
+    potentials, reduced, solve_state = residuals
     # Let A be the (q, q) grounded Laplacian, q = n - 1, and P the (k, q)
     # weighted projection with its ground column removed. Its signs are fixed,
     # but its weights depend on data. Forward: A Y = P.T, F = Y.T.
@@ -797,7 +567,9 @@ def _spielman_features_reduced_bwd(
     )
     # The projection helper returns all n columns; the removed ground column
     # did not affect F, so its cotangent must be zero.
-    (projection_gradient,) = projection_pullback(jnp.pad(adjoint.T, ((0, 0), (0, 1))))
+    (projection_gradient,) = projection_pullback(
+        jnp.pad(adjoint.T, ((0, 0), (0, 1)))
+    )
     return (
         _laplacian_data_pullback(adjoint, potentials, indices, shape)
         + projection_gradient
@@ -807,8 +579,9 @@ def _spielman_features_reduced_bwd(
 def _edge_potential_deltas(
     potentials: Array, indices: Array, shape: tuple[int, ...]
 ) -> Array:
-    deltas = _grounded_values(potentials, indices[:, 0]) - _grounded_values(
-        potentials, indices[:, 1]
+    deltas = (
+        _grounded_values(potentials, indices[:, 0])
+        - _grounded_values(potentials, indices[:, 1])
     )
     valid = jnp.all(indices < jnp.asarray(shape), axis=1)
     return jnp.where(valid[:, None], deltas, 0)
@@ -869,43 +642,27 @@ def _spielman_selected_features(
     nodes: Array,
     epsilon: float,
     seed: int,
-    solver: lx.AbstractLinearSolver | None,
-    solve_state: Any,
+    solver: Optional[lx.AbstractLinearSolver],
+    state: Any,
     projection_batch_size: int,
 ) -> Array:
     return _spielman_selected_features_fwd(
-        None,
-        data,
-        indices,
-        shape,
-        nodes,
-        epsilon,
-        seed,
-        solver,
-        solve_state,
+        None, data, indices, shape, nodes, epsilon, seed, solver, state,
         projection_batch_size,
     )[0]
 
 
 def _spielman_selected_features_fwd(
-    perturbed,
-    data,
-    indices,
-    shape,
-    nodes,
-    epsilon,
-    seed,
-    solver,
-    solve_state,
+    perturbed, data, indices, shape, nodes, epsilon, seed, solver, state,
     projection_batch_size,
 ):
     del perturbed
-    reduced = _reduced_laplacian(data, indices, shape)
+    reduced, solve_state = _prepare_reduced_laplacian(data, indices, shape, solver, state)
     potentials = _node_potentials(reduced, nodes, solver, solve_state)
     features = _spielman_project_potentials(
         data, indices, shape, potentials, epsilon, seed, projection_batch_size
     )
-    return features, (potentials, reduced)
+    return features, (potentials, reduced, solve_state)
 
 
 _spielman_selected_features.def_fwd(_spielman_selected_features_fwd)
@@ -913,23 +670,13 @@ _spielman_selected_features.def_fwd(_spielman_selected_features_fwd)
 
 @_spielman_selected_features.def_bwd
 def _spielman_selected_features_bwd(
-    residuals,
-    cotangent,
-    perturbed,
-    data,
-    indices,
-    shape,
-    nodes,
-    epsilon,
-    seed,
-    solver,
-    solve_state,
-    projection_batch_size,
+    residuals, cotangent, perturbed, data, indices, shape, nodes, epsilon, seed,
+    solver, state, projection_batch_size,
 ):
-    del nodes
+    del nodes, state
     if cotangent is None or not perturbed:
         return None
-    potentials, reduced = residuals
+    potentials, reduced, solve_state = residuals
     # Let A be the (q, q) grounded Laplacian, q = n - 1, E the fixed (q, m)
     # site basis, and P the (k, q) weighted projection with fixed random signs.
     # Forward: A X = E, Z = P X. Here potentials = X and the incoming cotangent
@@ -963,6 +710,46 @@ def _spielman_selected_features_bwd(
     )
 
 
+def _spielman_sources_to_targets_resistance_distance_from_data(
+    data: Array,
+    indices: Array,
+    shape: tuple[int, ...],
+    sources: Array,
+    targets: Array,
+    epsilon: float,
+    seed: int,
+    solver: Optional[lx.AbstractLinearSolver],
+    state: Any,
+    projection_batch_size: int,
+) -> Array:
+    nodes = jnp.concatenate([sources, targets])
+    features = _spielman_selected_features(
+        data, indices, shape, nodes, epsilon, seed, solver, state, projection_batch_size
+    )
+    n_sources = sources.shape[0]
+    return _distances_from_selected_features(
+        features[:, :n_sources], features[:, n_sources:]
+    )
+
+
+def _spielman_nodes_to_nodes_resistance_distance_from_data(
+    data: Array,
+    indices: Array,
+    shape: tuple[int, ...],
+    nodes: Array,
+    epsilon: float,
+    seed: int,
+    solver: Optional[lx.AbstractLinearSolver],
+    state: Any,
+    projection_batch_size: int,
+) -> Array:
+    features = _spielman_selected_features(
+        data, indices, shape, nodes, epsilon, seed, solver, state, projection_batch_size
+    )
+    distances = _distances_from_selected_features(features, features)
+    return distances.at[jnp.diag_indices(nodes.shape[0])].set(0)
+
+
 def _distances_from_features_reduced(features_reduced: Array) -> Array:
     """Pairwise approximate resistance distances from reduced embeddings."""
     features = jnp.pad(features_reduced, ((0, 0), (0, 1)))
@@ -973,3 +760,18 @@ def _distances_from_features_reduced(features_reduced: Array) -> Array:
         + feature_norms[None, :]
         - 2 * _matmul(features.T, features)
     )
+
+
+def _spielman_resistance_distance_from_data(
+    data: Array,
+    indices: Array,
+    shape: tuple[int, ...],
+    epsilon: float,
+    seed: int,
+    solver: Optional[lx.AbstractLinearSolver],
+    state: Any,
+) -> Array:
+    features_reduced = _spielman_features_reduced(
+        data, indices, shape, epsilon, seed, solver, state
+    )
+    return _distances_from_features_reduced(features_reduced)

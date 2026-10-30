@@ -33,24 +33,26 @@ def _(op: BCOOLinearOperator) -> bool:
     return True
 
 
-class AbstractRefreshingSolver(lx.AbstractLinearSolver):
-    """Lineax solver whose state is refreshed for each operator it solves.
+class AbstractReusableStateSolver(lx.AbstractLinearSolver):
+    """Lineax solver whose state can serve another operator of the same sparsity.
 
-    Subclass it for a solver whose state depends on the matrix values, such
-    as a sparse factorization, and implement `refresh_state`. Before solving,
-    every resistance-distance query refreshes the state it receives for the
-    current grounded Laplacian, solves with the refreshed state, and returns
-    that state from its `*_distance_and_state` form.
+    Subclass it when part of a state outlives the matrix values, such as a sparse
+    analysis or a multigrid hierarchy, and implement `reinit`. Distance queries
+    call `reinit` on the state they receive before solving, so they solve the
+    graph they are given with any state of the same sparsity pattern.
     """
 
     @abc.abstractmethod
-    def refresh_state(
+    def reinit(
         self,
         operator: lx.AbstractLinearOperator,
         options: dict[str, Any],
         state: Any,
     ) -> Any:
-        """Refresh `state` for the values of `operator`.
+        """Return the state that solves `operator`, reusing what it can from `state`.
+
+        It runs inside `jax.jit`. A query calls it on every state it receives, so
+        it should do no expensive work when `state` already solves `operator`.
 
         **Arguments:**
 
@@ -58,11 +60,12 @@ class AbstractRefreshingSolver(lx.AbstractLinearSolver):
           operator `state` was built for, possibly different values, and no
           gradient.
         - `options`: Solver options, as passed to `init`.
-        - `state`: A state returned by `init` or `refresh_state`.
+        - `state`: A state returned by `init` or `reinit`.
 
         **Returns:**
 
-        The state to solve `operator` with, and to pass to the next call.
+        The state to solve `operator` with, with the structure of a state from
+        `init`, so that a compiled loop can carry it.
         """
 
 
@@ -75,7 +78,7 @@ def _linear_solve(
     state: Any = None,
 ) -> Array:
     options = _solver_options(options)
-    solve_state, _ = _solver_states(A, solver, options, state)
+    solve_state = _solver_state(A, solver, options, state)
     return lx.linear_solve(
         BCOOLinearOperator(A), b, solver=solver, options=options, state=solve_state
     ).value
@@ -90,7 +93,7 @@ def _batched_linear_solve(
     state: Any = None,
 ) -> Array:
     """Prepare the current operator once, then solve independent RHS columns."""
-    solve_state, _ = _solver_states(A, solver, options, state)
+    solve_state = _solver_state(A, solver, options, state)
     return _batched_linear_solve_impl(A, B, solver, options=options, state=solve_state)
 
 
@@ -120,34 +123,25 @@ def _batched_linear_solve_impl(
     )(B)
 
 
-def _solver_states(
+def _solver_state(
     A: BCOO,
     solver: lx.AbstractLinearSolver,
     options: dict[str, Any] | None,
     state: Any,
-) -> tuple[Any, Any]:
-    """Return the state that solves `A` and the state to carry to the next call.
+) -> Any:
+    """Return the state that solves `A`, built from its values without gradient.
 
-    Both are built from the values of `A` without gradient. Without a supplied
-    `state`, both are the state `solver.init` builds for `A`. An
-    `AbstractRefreshingSolver` refreshes the supplied state, and both are the
-    refreshed state. A solver with `materialize_state`, such as
-    `AMJaxCGSolver`, completes the supplied state for `A` to solve with, and
-    carries the supplied state forward. Any other solver solves with the
-    supplied state and carries it forward.
+    Without a supplied `state`, it is the state `solver.init` builds. An
+    `AbstractReusableStateSolver` reinitializes the supplied state for `A`. Any
+    other solver solves with the supplied state, which must belong to `A`.
     """
     options = _solver_options(options)
-    operator = _stop_gradient_operator(BCOOLinearOperator(A))
+    operator = _stop_gradient(BCOOLinearOperator(A))
     if state is None:
-        state = solver.init(operator, options)
-        return state, state
-    if isinstance(solver, AbstractRefreshingSolver):
-        state = solver.refresh_state(operator, options, state)
-        return state, state
-    materialize_state = getattr(solver, "materialize_state", None)
-    if materialize_state is None:
-        return state, state
-    return materialize_state(operator, options, state), state
+        return solver.init(operator, options)
+    if isinstance(solver, AbstractReusableStateSolver):
+        return solver.reinit(operator, options, state)
+    return state
 
 
 def _solver_options(options: dict[str, Any] | None) -> dict[str, Any]:
@@ -156,8 +150,7 @@ def _solver_options(options: dict[str, Any] | None) -> dict[str, Any]:
     return options
 
 
-def _stop_gradient_operator(
-    operator: lx.AbstractLinearOperator,
-) -> lx.AbstractLinearOperator:
-    dynamic_operator, static_operator = eqx.partition(operator, eqx.is_array)
-    return eqx.combine(jax.lax.stop_gradient(dynamic_operator), static_operator)
+def _stop_gradient(tree: Any) -> Any:
+    """Stop gradients through the arrays of `tree`, which may hold other leaves."""
+    dynamic, static = eqx.partition(tree, eqx.is_array)
+    return eqx.combine(jax.lax.stop_gradient(dynamic), static)

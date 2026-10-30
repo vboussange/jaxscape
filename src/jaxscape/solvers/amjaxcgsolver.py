@@ -5,9 +5,11 @@ import equinox as eqx
 import lineax as lx
 from jax.experimental.sparse import BCOO, BCSR
 from jaxtyping import Array, PyTree
-from lineax import AbstractLinearOperator, AbstractLinearSolver, RESULTS
+from lineax import AbstractLinearOperator, RESULTS
 
 from jaxscape.utils import zero_copy_jax_csr_to_scipy_csr
+
+from .operator import AbstractReusableStateSolver
 
 
 try:
@@ -111,7 +113,7 @@ def build_amjax_solver(
     return _MultilevelSolver.from_pyamg(pyamg_hierarchy, **from_pyamg_kwargs)
 
 
-class AMJaxCGSolver(AbstractLinearSolver):
+class AMJaxCGSolver(AbstractReusableStateSolver):
     """
     A Lineax CG solver with an AMJax algebraic multigrid preconditioner.
 
@@ -222,6 +224,19 @@ class AMJaxCGSolver(AbstractLinearSolver):
         return AMJaxCGSolverState(
             cg_state=cg_state,
             preconditioner=state.preconditioner,
+        )
+
+    def reinit(
+        self,
+        operator: AbstractLinearOperator,
+        options: dict[str, Any],
+        state: Any,
+    ) -> AMJaxCGSolverState:
+        """Bind CG to `operator` and keep the preconditioner of `state`."""
+        self._check_options(options)
+        return AMJaxCGSolverState(
+            cg_state=self._cg_solver().init(operator, options),
+            preconditioner=self._normalise_state(state).preconditioner,
         )
 
     def _init_preconditioner(
