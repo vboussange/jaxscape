@@ -35,4 +35,4 @@ repos:
     rev: v1.1.330
     hooks:
     - id: pyright
-      additional_dependencies: ["jax", "equinox", "pytest"]
+      additional_dependencies: ["jax", "equinox", "lineax", "pytest"]

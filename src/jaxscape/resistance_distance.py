@@ -1,12 +1,11 @@
 import math
-from typing import Any, Optional
+from typing import Any
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import lineax as lx
-from jax import Array
-from jax import lax
+from jax import Array, lax
 from jax.experimental.sparse import BCOO
 from jax.numpy.linalg import pinv
 
@@ -84,7 +83,7 @@ class ResistanceDistance(AbstractSolverDistance):
         The graph must be undirected for resistance distance to be well-defined.
     """
 
-    solver: Optional[lx.AbstractLinearSolver] = None
+    solver: lx.AbstractLinearSolver | None = None
     method: "AbstractResistanceMethod" = eqx.field(
         default_factory=lambda: ExactResistance()
     )
@@ -238,12 +237,7 @@ def lineax_solver_nodes_to_nodes_resistance_distance(
         A.data, A.indices, A.shape, nodes.astype(A.indices.dtype), solver, state
     )
     diagonal = jnp.diag(selected_inverse)
-    return (
-        diagonal[:, None]
-        + diagonal[None, :]
-        - selected_inverse
-        - selected_inverse.T
-    )
+    return diagonal[:, None] + diagonal[None, :] - selected_inverse - selected_inverse.T
 
 
 @eqx.filter_jit
@@ -251,7 +245,7 @@ def spielman_resistance_distance(
     A: BCOO,
     epsilon: float = 0.1,
     seed: int = 0,
-    solver: Optional[lx.AbstractLinearSolver] = None,
+    solver: lx.AbstractLinearSolver | None = None,
     state: Any = None,
 ) -> Array:
     """
@@ -277,7 +271,7 @@ def spielman_nodes_to_nodes_resistance_distance(
     nodes: Array,
     epsilon: float = 0.1,
     seed: int = 0,
-    solver: Optional[lx.AbstractLinearSolver] = None,
+    solver: lx.AbstractLinearSolver | None = None,
     state: Any = None,
     *,
     projection_batch_size: int = 64,
@@ -303,7 +297,7 @@ def spielman_sources_to_targets_resistance_distance(
     targets: Array,
     epsilon: float = 0.1,
     seed: int = 0,
-    solver: Optional[lx.AbstractLinearSolver] = None,
+    solver: lx.AbstractLinearSolver | None = None,
     state: Any = None,
     *,
     projection_batch_size: int = 64,
@@ -334,7 +328,7 @@ def _prepare_reduced_laplacian(
     data: Array,
     indices: Array,
     shape: tuple[int, ...],
-    solver: Optional[lx.AbstractLinearSolver],
+    solver: lx.AbstractLinearSolver | None,
     state: Any,
 ) -> tuple[BCOO, Any]:
     reduced = graph_laplacian(BCOO((data, indices), shape=shape))[:-1, :-1]
@@ -346,7 +340,7 @@ def _prepare_reduced_laplacian(
 def _solve_reduced_laplacian(
     L_reduced: BCOO,
     rhs: Array,
-    solver: Optional[lx.AbstractLinearSolver],
+    solver: lx.AbstractLinearSolver | None,
     state: Any,
     options: dict[str, Any] | None = None,
 ) -> Array:
@@ -361,19 +355,19 @@ def _solve_reduced_laplacian(
 def _solve_adjoint(
     L_reduced: BCOO,
     rhs: Array,
-    solver: Optional[lx.AbstractLinearSolver],
+    solver: lx.AbstractLinearSolver | None,
     state: Any,
 ) -> Array:
     options = None
     if solver is not None:
         state, options = solver.transpose(state, {})
-    return _solve_reduced_laplacian(L_reduced.T, rhs, solver, state, options)
+    return _solve_reduced_laplacian(L_reduced.transpose(), rhs, solver, state, options)
 
 
 def _node_potentials(
     L_reduced: BCOO,
     nodes: Array,
-    solver: Optional[lx.AbstractLinearSolver],
+    solver: lx.AbstractLinearSolver | None,
     state: Any,
 ) -> Array:
     # The ground-node column of E is zero; duplicate nodes retain duplicate RHS.
@@ -420,7 +414,7 @@ def _exact_selected_inverse(
     indices: Array,
     shape: tuple[int, ...],
     nodes: Array,
-    solver: Optional[lx.AbstractLinearSolver],
+    solver: lx.AbstractLinearSolver | None,
     state: Any,
 ) -> Array:
     return _exact_selected_inverse_fwd(
@@ -430,7 +424,9 @@ def _exact_selected_inverse(
 
 def _exact_selected_inverse_fwd(perturbed, data, indices, shape, nodes, solver, state):
     del perturbed
-    reduced, solve_state = _prepare_reduced_laplacian(data, indices, shape, solver, state)
+    reduced, solve_state = _prepare_reduced_laplacian(
+        data, indices, shape, solver, state
+    )
     potentials = _node_potentials(reduced, nodes, solver, solve_state)
     return _grounded_values(potentials, nodes), potentials
 
@@ -504,7 +500,7 @@ def _spielman_features_reduced(
     shape: tuple[int, ...],
     epsilon: float,
     seed: int,
-    solver: Optional[lx.AbstractLinearSolver],
+    solver: lx.AbstractLinearSolver | None,
     state: Any,
 ) -> Array:
     return _spielman_features_reduced_fwd(
@@ -516,7 +512,9 @@ def _spielman_features_reduced_fwd(
     perturbed, data, indices, shape, epsilon, seed, solver, state
 ):
     del perturbed
-    reduced, solve_state = _prepare_reduced_laplacian(data, indices, shape, solver, state)
+    reduced, solve_state = _prepare_reduced_laplacian(
+        data, indices, shape, solver, state
+    )
     projection = _spielman_projection(data, indices, shape, epsilon, seed)[:, :-1]
     potentials = _solve_reduced_laplacian(reduced, projection.T, solver, solve_state)
     return potentials.T, (potentials, reduced, solve_state)
@@ -554,9 +552,7 @@ def _spielman_features_reduced_bwd(
     )
     # The projection helper returns all n columns; the removed ground column
     # did not affect F, so its cotangent must be zero.
-    (projection_gradient,) = projection_pullback(
-        jnp.pad(adjoint.T, ((0, 0), (0, 1)))
-    )
+    (projection_gradient,) = projection_pullback(jnp.pad(adjoint.T, ((0, 0), (0, 1))))
     return (
         _laplacian_data_pullback(adjoint, potentials, indices, shape)
         + projection_gradient
@@ -566,9 +562,8 @@ def _spielman_features_reduced_bwd(
 def _edge_potential_deltas(
     potentials: Array, indices: Array, shape: tuple[int, ...]
 ) -> Array:
-    deltas = (
-        _grounded_values(potentials, indices[:, 0])
-        - _grounded_values(potentials, indices[:, 1])
+    deltas = _grounded_values(potentials, indices[:, 0]) - _grounded_values(
+        potentials, indices[:, 1]
     )
     valid = jnp.all(indices < jnp.asarray(shape), axis=1)
     return jnp.where(valid[:, None], deltas, 0)
@@ -629,22 +624,40 @@ def _spielman_selected_features(
     nodes: Array,
     epsilon: float,
     seed: int,
-    solver: Optional[lx.AbstractLinearSolver],
+    solver: lx.AbstractLinearSolver | None,
     state: Any,
     projection_batch_size: int,
 ) -> Array:
     return _spielman_selected_features_fwd(
-        None, data, indices, shape, nodes, epsilon, seed, solver, state,
+        None,
+        data,
+        indices,
+        shape,
+        nodes,
+        epsilon,
+        seed,
+        solver,
+        state,
         projection_batch_size,
     )[0]
 
 
 def _spielman_selected_features_fwd(
-    perturbed, data, indices, shape, nodes, epsilon, seed, solver, state,
+    perturbed,
+    data,
+    indices,
+    shape,
+    nodes,
+    epsilon,
+    seed,
+    solver,
+    state,
     projection_batch_size,
 ):
     del perturbed
-    reduced, solve_state = _prepare_reduced_laplacian(data, indices, shape, solver, state)
+    reduced, solve_state = _prepare_reduced_laplacian(
+        data, indices, shape, solver, state
+    )
     potentials = _node_potentials(reduced, nodes, solver, solve_state)
     features = _spielman_project_potentials(
         data, indices, shape, potentials, epsilon, seed, projection_batch_size
@@ -657,8 +670,18 @@ _spielman_selected_features.def_fwd(_spielman_selected_features_fwd)
 
 @_spielman_selected_features.def_bwd
 def _spielman_selected_features_bwd(
-    residuals, cotangent, perturbed, data, indices, shape, nodes, epsilon, seed,
-    solver, state, projection_batch_size,
+    residuals,
+    cotangent,
+    perturbed,
+    data,
+    indices,
+    shape,
+    nodes,
+    epsilon,
+    seed,
+    solver,
+    state,
+    projection_batch_size,
 ):
     del nodes, state
     if cotangent is None or not perturbed:
@@ -705,7 +728,7 @@ def _spielman_sources_to_targets_resistance_distance_from_data(
     targets: Array,
     epsilon: float,
     seed: int,
-    solver: Optional[lx.AbstractLinearSolver],
+    solver: lx.AbstractLinearSolver | None,
     state: Any,
     projection_batch_size: int,
 ) -> Array:
@@ -726,7 +749,7 @@ def _spielman_nodes_to_nodes_resistance_distance_from_data(
     nodes: Array,
     epsilon: float,
     seed: int,
-    solver: Optional[lx.AbstractLinearSolver],
+    solver: lx.AbstractLinearSolver | None,
     state: Any,
     projection_batch_size: int,
 ) -> Array:
@@ -755,7 +778,7 @@ def _spielman_resistance_distance_from_data(
     shape: tuple[int, ...],
     epsilon: float,
     seed: int,
-    solver: Optional[lx.AbstractLinearSolver],
+    solver: lx.AbstractLinearSolver | None,
     state: Any,
 ) -> Array:
     features_reduced = _spielman_features_reduced(
