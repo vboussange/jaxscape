@@ -17,7 +17,7 @@ uv add jaxscape
 
 The default installation is CPU-only. For NVIDIA GPUs, use `uv add 'jaxscape[cuda]'`, or install JAX following the [official JAX installation guide](https://jax.readthedocs.io/en/latest/installation.html). JAXScape will automatically use the JAX backend you have configured.
 
-You may be required to install optional linear solvers for large-scale resistance and free-energy distance computations. `CholmodSolver`, `PyAMGSolver`, `AMJaxCGSolver`, and `CuDSSSolver` are documented on the [linear solver page](api/linear_solvers.md), including the one-time `init_preconditioner(...)` workflow used by `AMJaxCGSolver` for JIT-compiled and differentiable repeated solves. `CuDSSSolver` computes exact resistance distances on NVIDIA GPUs with a sparse direct factorization; the linear solver page covers its CUDA 13 and CUDA 12 installation and how to pass its state from one optimization step to the next.
+You may be required to install optional linear solvers for large-scale resistance and free-energy distance computations. `CholmodSolver`, `PyAMGSolver`, `AMJaxCGSolver`, and `CuDSSSolver` are documented on the [linear solver page](https://vboussange.github.io/jaxscape/api/linear_solvers), including how to reuse solver state for JIT-compiled and differentiable repeated solves.
 
 ## Resistance distance methods
 
@@ -129,7 +129,7 @@ But what's really cool about jaxscape is that you can autodiff through thoses di
 ## Features and roadmap 🚀
 See issues; most notably:
 
-- [x] Support for direct and iterative linear sparse solvers on GPU: `CuDSSSolver` through [spineax](https://github.com/johnviljoen/spineax), Lineax CG and `AMJaxCGSolver`
+- [x] Support for direct and iterative linear sparse solvers on GPU (cf [spineax](https://github.com/johnviljoen/spineax))
 - [ ] Benchmark against `CircuitScape`, `ConScape.jl` and [`radish`](https://github.com/nspope/radish).
 
 ## License

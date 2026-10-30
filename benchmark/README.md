@@ -70,8 +70,8 @@ uv sync --extra benchmark --extra amjax
 ```
 
 To benchmark `CuDSSSolver`, enable the `cudss` extra on Linux x86-64 with an
-NVIDIA GPU and switch the device flag. The linear solvers page of the
-documentation describes the CUDA 12 build of spineax.
+NVIDIA GPU and switch the device flag. The `CuDSSSolver` documentation points to
+the CUDA 12 build of spineax.
 
 ```bash
 uv sync --extra benchmark --extra cholespy --extra cudss

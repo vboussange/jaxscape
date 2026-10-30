@@ -2,7 +2,15 @@
 
 ::: jaxscape.distance.AbstractDistance
     options:
-      members: false
+      members:
+        - reinit
+
+::: jaxscape.distance.AbstractSolverDistance
+    options:
+      members:
+        - system_matrix
+        - init
+        - init_preconditioner
 
 ::: jaxscape.euclidean_distance.EuclideanDistance
     options:
@@ -14,11 +22,7 @@
 
 ::: jaxscape.resistance_distance.ResistanceDistance
     options:
-      members:
-        - init
-        - all_pairs_distance_and_state
-        - nodes_to_nodes_distance_and_state
-        - sources_to_targets_distance_and_state
+      members: false
 
 ::: jaxscape.resistance_distance.ExactResistance
     options:

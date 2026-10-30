@@ -4,6 +4,7 @@ site_author: Victor Boussange
 site_url: https://vboussange.github.io/jaxscape
 strict: true
 exclude_docs: |
+  adr/
   agents/
 
 repo_name: vboussange/jaxscape
