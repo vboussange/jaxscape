@@ -1,5 +1,6 @@
 from importlib.util import find_spec
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import lineax as lx
@@ -14,7 +15,11 @@ from jaxscape.solvers import (
     CholmodSolver,
     PyAMGSolver,
 )
-from jaxscape.solvers.operator import _batched_linear_solve, _linear_solve
+from jaxscape.solvers.operator import (
+    _batched_linear_solve,
+    _linear_solve,
+    _solver_state,
+)
 
 
 # Check availability of optional solvers
@@ -87,6 +92,19 @@ def test_sparse_solve_gradients_match_dense_reference(solver, batched):
     np.testing.assert_allclose(data_gradient, expected[0], rtol=1e-9, atol=1e-12)
     np.testing.assert_allclose(rhs_gradient, expected[1], rtol=1e-9, atol=1e-12)
     np.testing.assert_array_equal(data_gradient[n * n :], 0.0)
+
+
+def test_solver_state_carries_no_gradient():
+    A = BCOO.fromdense(jnp.array([[2.0, -1.0], [-1.0, 2.0]]))
+
+    def sum_of_state(data):
+        matrix = BCOO((data, A.indices), shape=A.shape)
+        state = _solver_state(matrix, lx.CG(rtol=1e-6, atol=1e-6), None, None)
+        leaves = jax.tree.leaves(eqx.filter(state, eqx.is_inexact_array))
+        return sum(jnp.sum(leaf) for leaf in leaves)
+
+    assert sum_of_state(A.data) != 0
+    np.testing.assert_array_equal(jax.grad(sum_of_state)(A.data), 0.0)
 
 
 def solver_state(solver, A):

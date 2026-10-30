@@ -6,6 +6,7 @@ an NVIDIA GPU with the `gpu` marker. The second skips where the GPU is missing.
 
 import itertools
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import lineax as lx
@@ -366,6 +367,36 @@ def test_a_failed_refactorization_raises_mid_optimization(kind, name, dtype):
         jax.block_until_ready(step(surface(name).astype(dtype), state))
 
 
+def test_solves_fail_with_a_failed_state_or_a_large_residual():
+    solver = DenseCholesky()
+    operator = BCOOLinearOperator(grounded_laplacian(surface("smooth")))
+    state = solver.init(operator, {})
+    b = jnp.ones(operator.in_size())
+    _, result, _ = solver.compute(state, b, {})
+    assert result == lx.RESULTS.successful
+
+    # Each solution here solves the factorized matrix, so only the check rejects it.
+    failed = eqx.tree_at(lambda s: s.failed, state, jnp.array(True))
+    other_matrix = eqx.tree_at(lambda s: s.values, state, 2 * state.values)
+    for rejected in (failed, other_matrix):
+        solution, result, _ = solver.compute(rejected, b, {})
+        assert result == lx.RESULTS.singular
+        assert np.all(np.isnan(solution))
+
+
+def test_reinit_of_a_failed_state_analyses_new_values_afresh():
+    solver = DenseCholesky()
+    smooth = surface("smooth")
+    state = solver.init(BCOOLinearOperator(grounded_laplacian(smooth)), {})
+    # Its handle still refactorizes, so only the flag asks for a new analysis.
+    failed = eqx.tree_at(lambda s: s.failed, state, jnp.array(True))
+
+    new_operator = BCOOLinearOperator(grounded_laplacian(2 * smooth))
+    state = solver.reinit(new_operator, {}, failed)
+
+    assert not state.failed and state.factorization.refactorizations == 0
+
+
 def test_a_failed_refactorization_is_retried_on_a_fresh_analysis():
     """A factorization can pass its check and still leave its handle unusable. The
     next refactorization then fails its check, and is retried on a new analysis."""
@@ -418,6 +449,8 @@ def test_without_throw_a_failure_returns_a_failed_result_and_recovers(
 
     assert result != lx.RESULTS.successful
     assert np.all(np.isnan(value))
+    # A non-positive pivot always fails the check of its factorization.
+    assert state.failed or name != "negative"
     # The next factorization, of valid values, is exact.
     value, result = solve(valid, reinit(valid, state))
     assert result == lx.RESULTS.successful
