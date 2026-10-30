@@ -69,30 +69,11 @@ To benchmark `AMJaxCGSolver`, also enable the `amjax` extra:
 uv sync --extra benchmark --extra amjax
 ```
 
-To benchmark `CuDSSSolver`, enable the `cudss` extra on Linux x86-64 with an
-NVIDIA GPU and switch the device flag. The `CuDSSSolver` documentation points to
-the CUDA 12 build of spineax.
+To benchmark `CuDSSSolver`, on an NVIDIA GPU, also enable the `cudss` extra:
 
 ```bash
 uv sync --extra benchmark --extra cholespy --extra cudss
-./benchmark/run_benchmarks.sh --device gpu
 ```
-
-The cuDSS profiles run only on NVIDIA GPUs and have no CPU series. Without
-spineax, cuDSS or an NVIDIA GPU, each one is recorded as skipped, with a note
-naming what is missing. Their records carry the spineax version and the cuDSS
-runtime package (`spineax_version`, `cudss_version`), and the environment
-report lists both. Analysis runs once, outside timing. The resistance profile
-then refactorizes the solver state that the previous call returned. The
-inverse profile runs LBFGS in a short loop over Optimistix's public solver
-methods (`init`, `step`, `terminate`, `postprocess`), which takes the same
-steps as `optimistix.minimise` and hands each step the solver state that the
-step before it returned. Optimistix returns the auxiliary output of the last
-accepted step, so spineax repeats the analysis once early in each
-optimization and once for each rejected line-search step, and two
-factorizations stay in GPU memory. The records count the analyses spineax
-repeated during the warm-up and timed runs as `spineax_rebuilds`, and the
-rejected steps of the last optimization as `rejected_steps`.
 
 To run the representative smoke benchmark and render isolated smoke artifacts:
 
