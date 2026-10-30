@@ -1,12 +1,16 @@
+import warnings
 from abc import abstractmethod
 from typing import Any
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import lineax as lx
 from jax import Array
+from jax.experimental.sparse import BCOO
 
 from .graph import AbstractGraph
+from .solvers.operator import _solver_state
 
 
 class AbstractDistance(eqx.Module):
@@ -124,6 +128,23 @@ class AbstractDistance(eqx.Module):
     def init(self, graph: AbstractGraph) -> Any:
         pass
 
+    def reinit(self, graph: AbstractGraph, state: Any) -> Any:
+        """Return the state for `graph`, reusing what the solver can from `state`.
+
+        Queries on `graph` take the returned state, and so does the next `reinit`.
+
+        **Arguments:**
+
+        - `graph`: Graph of the next queries.
+        - `state`: State from `init` or an earlier `reinit`.
+
+        **Returns:**
+
+        State for `graph`, without gradient.
+        """
+        del state
+        return self.init(graph)
+
     @abstractmethod
     def nodes_to_nodes_distance(
         self, graph: AbstractGraph, nodes: Array, state: Any = None
@@ -143,3 +164,60 @@ class AbstractDistance(eqx.Module):
     @abstractmethod
     def all_pairs_distance(self, graph: AbstractGraph, state: Any = None) -> Array:
         pass
+
+
+class AbstractSolverDistance(AbstractDistance):
+    """Distance whose queries solve linear systems with one sparse matrix per graph.
+
+    Subclass it with `solver` and `system_matrix` to get the solver state lifecycle
+    of `init` and `reinit`.
+
+    **Attributes:**
+
+    - `solver`: Lineax solver for the system matrix, or `None` for a dense solve.
+    """
+
+    solver: eqx.AbstractVar[lx.AbstractLinearSolver | None]
+
+    @abstractmethod
+    def system_matrix(self, graph: AbstractGraph) -> BCOO:
+        """Return the sparse matrix that queries on `graph` solve with.
+
+        **Arguments:**
+
+        - `graph`: Graph of the queries.
+
+        **Returns:**
+
+        Sparse symmetric positive definite matrix.
+        """
+
+    def init(self, graph: AbstractGraph) -> Any:
+        """Build the solver state for `graph`.
+
+        Some solvers read concrete sparse indices or build a preconditioner on the
+        host, so call it outside `jax.jit`.
+
+        **Arguments:**
+
+        - `graph`: Graph whose system matrix the state is built for.
+
+        **Returns:**
+
+        State to pass to queries and to `reinit`, or `None` without a solver.
+        """
+        return self.reinit(graph, None)
+
+    def reinit(self, graph: AbstractGraph, state: Any) -> Any:
+        if self.solver is None:
+            return None
+        return _solver_state(self.system_matrix(graph), self.solver, None, state)
+
+    def init_preconditioner(self, graph: AbstractGraph) -> Any:
+        """Deprecated alias of `init`, which queries now reinitialize for any graph."""
+        warnings.warn(
+            "`init_preconditioner` is deprecated; use `init`.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.init(graph)

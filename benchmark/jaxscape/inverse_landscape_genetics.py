@@ -31,6 +31,7 @@ from benchmark.jaxscape.utils import (
 
 configure_standalone_environment()
 
+import equinox as eqx
 import jax
 import jax.nn as jnn
 import jax.numpy as jnp
@@ -48,20 +49,26 @@ from benchmark.benchmark_distances import (
     edge_weight,
     failed_record,
     fit_error_metrics,
-    gpu_placeholder_record,
     lower_triangle_values,
     measure_runtime,
     MIN_PERMEABILITY,
     ok_record_with_metrics,
     skip_record,
 )
+from benchmark.benchmark_registry import CPU_AND_GPU
 from benchmark.inverse_benchmark_settings import load_inverse_benchmark_settings
 from benchmark.jaxscape.resistance_profile_support import (
+    collect_profile_records,
+    CUDSS_RESISTANCE_PROFILES,
     make_amjaxcg_solver,
     make_cholmod_solver,
     make_spielman_method,
     profile_metadata,
+    profile_tool_label,
     ResistanceProfile,
+    spineax_rebuild_count,
+    stateful_closure,
+    unavailable_profile_record,
 )
 
 
@@ -92,11 +99,12 @@ JAXSCAPE_INVERSE_PROFILES = (
         solver_factory=make_cholmod_solver,
         dtype=jnp.float32,
     ),
+    *CUDSS_RESISTANCE_PROFILES,
     ResistanceProfile(
         "amjaxcg_f32",
         "JAXScape / AMJaxCGSolver / f32",
         solver_factory=make_amjaxcg_solver,
-        gpu_capable=True,
+        backends=CPU_AND_GPU,
         requires_preparation=True,
         dtype=jnp.float32,
     ),
@@ -104,7 +112,7 @@ JAXSCAPE_INVERSE_PROFILES = (
         "amjaxcg_f64",
         "JAXScape / AMJaxCGSolver / f64",
         solver_factory=make_amjaxcg_solver,
-        gpu_capable=True,
+        backends=CPU_AND_GPU,
         requires_preparation=True,
         dtype=jnp.float64,
     ),
@@ -112,14 +120,14 @@ JAXSCAPE_INVERSE_PROFILES = (
         "approx_pinv_f32",
         "JAXScape / approx pinv / f32",
         method_factory=make_spielman_method,
-        gpu_capable=True,
+        backends=CPU_AND_GPU,
         dtype=jnp.float32,
     ),
     ResistanceProfile(
         "approx_pinv_f64",
         "JAXScape / approx pinv / f64",
         method_factory=make_spielman_method,
-        gpu_capable=True,
+        backends=CPU_AND_GPU,
         dtype=jnp.float64,
     ),
 )
@@ -167,9 +175,9 @@ def _permeability_from_inverse_params(
     scaled_resistance = _resistancega_scale(base_resistance)
     shape = _positive_parameter(params[0], MONOMOLECULAR_SHAPE_MIN)
     max_resistance = _positive_parameter(params[1], MONOMOLECULAR_MAX_MIN)
-    transformed_resistance = max_resistance * (
-        1.0 - jnp.exp(-scaled_resistance / shape)
-    ) + 1.0
+    transformed_resistance = (
+        max_resistance * (1.0 - jnp.exp(-scaled_resistance / shape)) + 1.0
+    )
     transformed_resistance = jnp.clip(
         transformed_resistance,
         1.0,
@@ -184,10 +192,9 @@ def _permeability_from_inverse_params(
 def _initial_inverse_params(base_resistance: jax.Array) -> jax.Array:
     dtype = base_resistance.dtype
     init_shape = jnp.array(MONOMOLECULAR_INIT_SHAPE, dtype=dtype)
-    init_max = (
-        jnp.maximum(jnp.max(base_resistance) - 1.0, jnp.array(1e-3, dtype=dtype))
-        / (1.0 - jnp.exp(-MONOMOLECULAR_SCALE_MAX / init_shape))
-    )
+    init_max = jnp.maximum(
+        jnp.max(base_resistance) - 1.0, jnp.array(1e-3, dtype=dtype)
+    ) / (1.0 - jnp.exp(-MONOMOLECULAR_SCALE_MAX / init_shape))
     return jnp.stack(
         [
             _positive_parameter_inverse(init_shape, MONOMOLECULAR_SHAPE_MIN),
@@ -268,6 +275,138 @@ def _inverse_loss(
     return jnp.mean((predicted - target_distances) ** 2)
 
 
+def _inverse_loss_and_state(
+    params: jax.Array,
+    base_resistance: jax.Array,
+    sample_coords: jax.Array,
+    target_distances: jax.Array,
+    state: Any,
+    *,
+    distance: ResistanceDistance,
+) -> tuple[jax.Array, Any]:
+    """Return `_inverse_loss` and the solver state reinitialized for `params`.
+
+    **Arguments:**
+
+    - `params`: Transform parameters.
+    - `base_resistance`: Base resistance surface that `params` transform.
+    - `sample_coords`: Sampled sites as raster coordinates.
+    - `target_distances`: Target resistance distances among the sites.
+    - `state`: Solver state to reinitialize.
+    - `distance`: The resistance distance to fit with.
+
+    **Returns:**
+
+    The mean squared error of the distances, and the solver state of the grid
+    of `params`.
+    """
+    permeability = _permeability_from_inverse_params(params, base_resistance)
+    grid = _inverse_grid(permeability)
+    nodes = grid.coord_to_index(sample_coords[:, 0], sample_coords[:, 1])
+    state = distance.reinit(grid, state)
+    predicted = distance.nodes_to_nodes_distance(grid, nodes, state)
+    return jnp.mean((predicted - target_distances) ** 2), state
+
+
+@eqx.filter_jit
+def _minimise_carrying_state(
+    objective: Callable[[jax.Array, tuple[Any, Any]], tuple[jax.Array, Any]],
+    optimizer: Any,
+    y0: jax.Array,
+    args: Any,
+    state: Any,
+    *,
+    max_steps: int,
+) -> Any:
+    """Minimise as `optimistix.minimise` does, carrying a solver state.
+
+    The loop runs the public `init`, `step`, `terminate` and `postprocess`
+    methods of `optimizer`, as `optimistix.minimise` does with `throw=False`.
+    Each step receives, with `args`, the solver state that the previous step
+    returned as its auxiliary output. A quasi-Newton step returns the
+    auxiliary output of the last accepted step before it, so the loop keeps
+    two factorizations alive and a step receives a used-up state, which
+    spineax analyses afresh, once early in each optimization and one step
+    after each rejected line-search step.
+
+    **Arguments:**
+
+    - `objective`: `objective(params, (args, state))` returns the loss and the
+      solver state reinitialized for `params`.
+    - `optimizer`: An Optimistix minimiser, such as `optimistix.LBFGS`.
+    - `y0`: Initial parameters.
+    - `args`: Fixed arguments of `objective`.
+    - `state`: Solver state of the first step.
+    - `max_steps`: Largest number of steps.
+
+    **Returns:**
+
+    An `optimistix.Solution` whose `aux` is the last solver state, to pass to
+    the next call, and whose `stats` count `num_steps` and `rejected_steps`.
+    """
+    assert optx is not None
+    options: dict[str, Any] = {}
+    tags: frozenset[object] = frozenset()
+    f_struct, aux_struct = eqx.filter_eval_shape(objective, y0, (args, state))
+    opt_state = optimizer.init(
+        objective, y0, (args, state), options, f_struct, aux_struct, tags
+    )
+    dynamic_opt_state, static_opt_state = eqx.partition(opt_state, eqx.is_array)
+
+    def terminate_and_result(y, dynamic_opt_state, state):
+        opt_state = eqx.combine(dynamic_opt_state, static_opt_state)
+        terminate, result = optimizer.terminate(
+            objective, y, (args, state), options, opt_state, tags
+        )
+        finite = jnp.all(jnp.isfinite(y))
+        return terminate, optx.RESULTS.where(finite, result, optx.RESULTS.nonfinite)
+
+    def cond_fun(carry):
+        y, dynamic_opt_state, state, num_steps, _ = carry
+        terminate, result = terminate_and_result(y, dynamic_opt_state, state)
+        successful = result == optx.RESULTS.successful
+        return ~terminate & successful & (num_steps < max_steps)
+
+    def body_fun(carry):
+        y, dynamic_opt_state, state, num_steps, rejected_steps = carry
+        opt_state = eqx.combine(dynamic_opt_state, static_opt_state)
+        new_y, opt_state, state = optimizer.step(
+            objective, y, (args, state), options, opt_state, tags
+        )
+        # A rejected line-search step keeps the last accepted parameters.
+        rejected = (num_steps > 0) & jnp.all(new_y == y)
+        dynamic_opt_state, _ = eqx.partition(opt_state, eqx.is_array)
+        return new_y, dynamic_opt_state, state, num_steps + 1, rejected_steps + rejected
+
+    y, dynamic_opt_state, state, num_steps, rejected_steps = jax.lax.while_loop(
+        cond_fun,
+        body_fun,
+        (y0, dynamic_opt_state, state, jnp.array(0), jnp.array(0)),
+    )
+    terminate, result = terminate_and_result(y, dynamic_opt_state, state)
+    result = optx.RESULTS.where(
+        (result == optx.RESULTS.successful) & ~terminate,
+        optx.RESULTS.nonlinear_max_steps_reached,
+        result,
+    )
+    opt_state = eqx.combine(dynamic_opt_state, static_opt_state)
+    y, state, stats = optimizer.postprocess(
+        objective, y, state, (args, state), options, opt_state, tags, result
+    )
+    return optx.Solution(
+        value=y,
+        result=result,
+        aux=state,
+        stats={
+            "num_steps": num_steps,
+            "max_steps": max_steps,
+            "rejected_steps": rejected_steps,
+            **stats,
+        },
+        state=opt_state,
+    )
+
+
 def _run_inverse_profile_direct(
     case: BenchmarkCase,
     profile: ResistanceProfile,
@@ -294,6 +433,7 @@ def _run_inverse_profile_direct(
     assert optx is not None
     optimistix = optx
     inverse_settings = load_inverse_benchmark_settings().jaxscape
+    rebuilds = None
 
     try:
         distance = _distance_for_profile(
@@ -329,7 +469,7 @@ def _run_inverse_profile_direct(
                 # Match the ResistanceGA benchmark setup: both tools optimise a
                 # transformed version of the same base surface, so AMJax can
                 # safely reuse a hierarchy built from the initial transform.
-                fixed_state = distance.init_preconditioner(
+                fixed_state = distance.init(
                     _inverse_grid(
                         _permeability_from_inverse_params(init_params, base_resistance)
                     )
@@ -359,7 +499,50 @@ def _run_inverse_profile_direct(
                     throw=False,
                 )
 
-            timings, solution = measure_runtime(solve, init_params, repeats=repeats)
+            def objective_and_state(
+                params: jax.Array,
+                args_and_state: tuple[tuple[jax.Array, jax.Array, jax.Array], Any],
+            ) -> tuple[jax.Array, Any]:
+                (reference_resistance, coords, targets), state = args_and_state
+                return _inverse_loss_and_state(
+                    params,
+                    reference_resistance,
+                    coords,
+                    targets,
+                    state,
+                    distance=distance,
+                )
+
+            def solve_and_state(start_params: jax.Array, state: Any):
+                solution = _minimise_carrying_state(
+                    objective_and_state,
+                    solver,
+                    start_params,
+                    (base_resistance, sample_coords, target_effective_distances),
+                    state,
+                    max_steps=inverse_settings.max_steps,
+                )
+                return solution, solution.aux
+
+            if profile.passes_state:
+                # Analysis runs once, outside timing. Each optimization starts
+                # from the solver state the previous one returned, and each
+                # step from the state of the step before it;
+                # `spineax_rebuilds` records the analyses spineax repeated.
+                initial_state = distance.init(
+                    _inverse_grid(
+                        _permeability_from_inverse_params(init_params, base_resistance)
+                    )
+                )
+                rebuilds = spineax_rebuild_count()
+                timings, solution = measure_runtime(
+                    stateful_closure(solve_and_state, initial_state),
+                    init_params,
+                    repeats=repeats,
+                )
+                rebuilds = spineax_rebuild_count() - rebuilds
+            else:
+                timings, solution = measure_runtime(solve, init_params, repeats=repeats)
 
             fitted_permeability = _permeability_from_inverse_params(
                 solution.value,
@@ -392,14 +575,10 @@ def _run_inverse_profile_direct(
                             (predicted_distances - target_effective_distances) ** 2
                         )
                     ),
-                    "converged": bool(
-                        solution.result == optimistix.RESULTS.successful
-                    ),
+                    "converged": bool(solution.result == optimistix.RESULTS.successful),
                     "iteration_count": int(solution.stats["num_steps"]),
                     "iteration_limit": inverse_settings.max_steps,
-                    "solver_preconditioner_reused": bool(
-                        profile.requires_preparation
-                    ),
+                    "solver_preconditioner_reused": bool(profile.requires_preparation),
                     "solver_cg_state_refreshed": bool(profile.requires_preparation),
                     "solver_preconditioner_refresh_count": 1
                     if profile.requires_preparation
@@ -407,14 +586,10 @@ def _run_inverse_profile_direct(
                     "parameterization": "monomolecular_base_resistance",
                     "parameter_count": 2,
                     "final_shape_parameter": float(
-                        _positive_parameter(
-                            solution.value[0], MONOMOLECULAR_SHAPE_MIN
-                        )
+                        _positive_parameter(solution.value[0], MONOMOLECULAR_SHAPE_MIN)
                     ),
                     "final_max_parameter": float(
-                        _positive_parameter(
-                            solution.value[1], MONOMOLECULAR_MAX_MIN
-                        )
+                        _positive_parameter(solution.value[1], MONOMOLECULAR_MAX_MIN)
                     ),
                     "dtype": str(jnp.dtype(profile.dtype)),
                     "backend": device.platform,
@@ -461,6 +636,11 @@ def _run_inverse_profile_direct(
         )
 
     metrics.update(profile_metadata(profile, device.platform))
+    if rebuilds is not None:
+        # Analyses spineax repeated across the warm-up and timed optimizations,
+        # and the rejected line-search steps of the last one.
+        metrics["spineax_rebuilds"] = rebuilds
+        metrics["rejected_steps"] = int(solution.stats["rejected_steps"])
     record = ok_record_with_metrics(
         case.task,
         tool_label,
@@ -502,9 +682,7 @@ def inverse_worker_payload(
     }
 
 
-def inverse_worker_walltime_seconds(
-    profile: ResistanceProfile, backend: str
-) -> float:
+def inverse_worker_walltime_seconds(profile: ResistanceProfile, backend: str) -> float:
     walltime_seconds = benchmark_walltime_seconds()
     if profile.requires_preparation and backend == "cpu":
         return max(walltime_seconds, INVERSE_AMJAX_CPU_WALLTIME_SECONDS)
@@ -516,17 +694,17 @@ def run_worker(payload: dict[str, Any]) -> BenchmarkRecord:
     profile = PROFILE_BY_KEY[payload["profile_key"]]
     backend = payload["backend"]
     repeats = int(payload["repeats"])
-    tool_label = (
-        profile.tool
-        if backend == "cpu" and not profile.gpu_capable
-        else backend_tool_label(profile.tool, backend)
+    unavailable = unavailable_profile_record(
+        case, profile, backend, "JAXScape + Optimistix"
     )
+    if unavailable is not None:
+        return unavailable
     return _run_inverse_profile_direct(
         case,
         profile,
         device=device_for_backend(backend),
         repeats=repeats,
-        tool_label=tool_label,
+        tool_label=profile_tool_label(profile, backend),
     )
 
 
@@ -568,37 +746,17 @@ def collect_jaxscape_inverse_results(
 ) -> list[BenchmarkRecord]:
     records: list[BenchmarkRecord] = []
     for profile in selected_profiles(profile_keys):
-        if profile.gpu_capable:
-            records.append(
-                run_jaxscape_inverse_profile(
-                    case,
-                    config,
-                    backend_tool_label(profile.tool, "cpu"),
-                    device=config.cpu_device,
-                )
+        records.extend(
+            collect_profile_records(
+                case,
+                config,
+                profile,
+                "JAXScape + Optimistix",
+                lambda label, device: run_jaxscape_inverse_profile(
+                    case, config, label, device=device
+                ),
             )
-            if config.gpu_device is None:
-                records.append(
-                    gpu_placeholder_record(case, profile.tool, "JAXScape + Optimistix")
-                )
-            else:
-                records.append(
-                    run_jaxscape_inverse_profile(
-                        case,
-                        config,
-                        backend_tool_label(profile.tool, "gpu"),
-                        device=config.gpu_device,
-                    )
-                )
-        else:
-            records.append(
-                run_jaxscape_inverse_profile(
-                    case,
-                    config,
-                    profile.tool,
-                    device=config.cpu_device,
-                )
-            )
+        )
     return records
 
 

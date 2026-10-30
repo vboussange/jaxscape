@@ -10,11 +10,10 @@ from jax import lax
 from jax.experimental.sparse import BCOO
 from jax.numpy.linalg import pinv
 
-from jaxscape.distance import AbstractDistance
+from jaxscape.distance import AbstractSolverDistance
 from jaxscape.graph import AbstractGraph
-from jaxscape.solvers import BCOOLinearOperator
 from jaxscape.solvers.operator import _batched_linear_solve_impl, _solver_state
-from jaxscape.utils import graph_laplacian
+from jaxscape.utils import _matmul, graph_laplacian
 
 
 # Building the full Rademacher projection matrix is faster for moderate sizes,
@@ -23,7 +22,7 @@ from jaxscape.utils import graph_laplacian
 SPIELMAN_DENSE_PROJECTION_MAX_SIGN_ENTRIES = 200_000_000
 
 
-class ResistanceDistance(AbstractDistance):
+class ResistanceDistance(AbstractSolverDistance):
     """
     Compute the resistance distances.
 
@@ -31,7 +30,8 @@ class ResistanceDistance(AbstractDistance):
 
     - `solver`: Optional `lineax.AbstractLinearSolver`. Must be compatible with
       BCOO matrices. We currently support `jaxscape.solvers.CholmodSolver`,
-      `jaxscape.solvers.PyAMGSolver`, and `jaxscape.solvers.AMJaxCGSolver`.
+      `jaxscape.solvers.PyAMGSolver`, `jaxscape.solvers.AMJaxCGSolver`, and
+      `jaxscape.solvers.CuDSSSolver`.
       If None, uses the pseudo-inverse method, which is very memory intensive
       for exact all-pairs distances (densifies the Laplacian matrix), or dense
       solves for approximate distances.
@@ -63,11 +63,12 @@ class ResistanceDistance(AbstractDistance):
 
         dist = distance(grid, state=state)
 
-        # Or reuse only the AMJax preconditioner across related graphs.
-        preconditioner_state = distance.init_preconditioner(grid)
+        # Carry a state from one graph to the next, as an optimization loop does.
+        # AMJax keeps its hierarchy.
         updated_permeability = permeability * 1.1
         updated_grid = GridGraph(updated_permeability, fun=lambda x, y: (x + y) / 2)
-        dist = distance(updated_grid, state=preconditioner_state)
+        state = distance.reinit(updated_grid, state)
+        dist = distance(updated_grid, state=state)
 
         # Approximate resistance distance
         distance = ResistanceDistance(
@@ -88,38 +89,9 @@ class ResistanceDistance(AbstractDistance):
         default_factory=lambda: ExactResistance()
     )
 
-    def init(self, graph: AbstractGraph) -> Any:
-        """Initialize matrix-dependent solver state for `graph`.
-
-        This is primarily useful for solvers such as `AMJaxCGSolver`, which
-        build reusable state once outside the traced solve path so repeated
-        resistance solves remain JIT-compatible and differentiable.
-        """
-        if self.solver is None:
-            return None
-
-        A = graph.get_adjacency_matrix()
-        L_reduced = graph_laplacian(A)[:-1, :-1]
-        return self.solver.init(BCOOLinearOperator(L_reduced), {})
-
-    def init_preconditioner(self, graph: AbstractGraph) -> Any:
-        """Initialize reusable preconditioner state for `graph` when supported.
-
-        For `AMJaxCGSolver`, this builds the AMJax hierarchy without binding the
-        state to the current Laplacian values. Passing the returned state to
-        distance calls lets JAXScape materialize fresh CG state for each graph
-        while reusing the preconditioner.
-        """
-        if self.solver is None:
-            return None
-
-        init_preconditioner = getattr(self.solver, "init_preconditioner", None)
-        if init_preconditioner is None:
-            return self.init(graph)
-
-        A = graph.get_adjacency_matrix()
-        L_reduced = graph_laplacian(A)[:-1, :-1]
-        return init_preconditioner(BCOOLinearOperator(L_reduced), {})
+    def system_matrix(self, graph: AbstractGraph) -> BCOO:
+        """Return the grounded Laplacian of `graph`."""
+        return graph_laplacian(graph.get_adjacency_matrix())[:-1, :-1]
 
     @eqx.filter_jit
     def all_pairs_distance(self, graph: AbstractGraph, state: Any = None) -> Array:
@@ -487,7 +459,7 @@ def _exact_selected_inverse_bwd(
     # This uses the saved forward solutions: no backward solve is needed.
     # G need not be symmetric; the formula uses X G, not X G.T. The shared
     # helper applies the remaining chain rule from A to the stored edge data.
-    adjoint = potentials @ cotangent
+    adjoint = _matmul(potentials, cotangent)
     return _laplacian_data_pullback(adjoint, potentials, indices, shape)
 
 
@@ -619,7 +591,7 @@ def _spielman_project_potentials(
         signs = _rademacher_projection_signs(k, data.shape[0], seed, data.dtype)
         # Scale the (edges, sites) differences once instead of weighting every
         # entry of the (projections, edges) sign matrix before the contraction.
-        return signs @ (scaled_weights[:, None] * edge_deltas)
+        return _matmul(signs, scaled_weights[:, None] * edge_deltas)
 
     key = jax.random.PRNGKey(seed)
 
@@ -627,7 +599,7 @@ def _spielman_project_potentials(
     def project_one(projection_index):
         projection_key = jax.random.fold_in(key, projection_index)
         signs = jax.random.rademacher(projection_key, data.shape).astype(data.dtype)
-        return (signs * scaled_weights) @ edge_deltas
+        return _matmul(signs * scaled_weights, edge_deltas)
 
     # lax.map handles a final partial batch with the same global fold_in keys.
     # Checkpointing each row recomputes signs in reverse mode instead of saving
@@ -645,7 +617,7 @@ def _distances_from_selected_features(
     return (
         source_norms[:, None]
         + target_norms[None, :]
-        - 2 * source_features.T @ target_features
+        - 2 * _matmul(source_features.T, target_features)
     )
 
 
@@ -770,7 +742,11 @@ def _distances_from_features_reduced(features_reduced: Array) -> Array:
     features = jnp.pad(features_reduced, ((0, 0), (0, 1)))
     feature_norms = jnp.sum(features**2, axis=0)
     # Pairwise squared distances: ||u - v||^2 = ||u||^2 + ||v||^2 - 2 u*v.
-    return feature_norms[:, None] + feature_norms[None, :] - 2 * features.T @ features
+    return (
+        feature_norms[:, None]
+        + feature_norms[None, :]
+        - 2 * _matmul(features.T, features)
+    )
 
 
 def _spielman_resistance_distance_from_data(

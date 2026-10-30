@@ -7,7 +7,14 @@ from .amjaxcgsolver import (
     build_amjax_solver as build_amjax_solver,
 )
 from .cholmodsolver import CholmodSolver as CholmodSolver
+from .cudsssolver import CuDSSSolver as CuDSSSolver
 from .operator import (
+    AbstractReusableStateSolver as AbstractReusableStateSolver,
     BCOOLinearOperator as BCOOLinearOperator,
 )
 from .pyamgsolver import PyAMGSolver as PyAMGSolver
+from .sparsedirectsolver import (
+    AbstractSparseDirectSolver as AbstractSparseDirectSolver,
+    CSRPattern as CSRPattern,
+    SparseDirectState as SparseDirectState,
+)

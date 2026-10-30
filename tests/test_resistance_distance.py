@@ -166,9 +166,7 @@ def test_approximate_resistance_distance_differentiability():
 
     assert isinstance(gradient, jax.Array)
     assert jnp.all(jnp.isfinite(gradient))
-    assert jnp.allclose(
-        gradient[0, 0], finite_difference, atol=EXPECTED_GRADIENT_ERROR
-    )
+    assert jnp.allclose(gradient[0, 0], finite_difference, atol=EXPECTED_GRADIENT_ERROR)
 
 
 def test_approximate_nodes_to_nodes_resistance_distance_differentiability():
@@ -256,7 +254,7 @@ def test_solver_resistance_differentiability(solver):
     graph = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
     distance = ResistanceDistance(solver=solver)
     reference = ResistanceDistance()
-    state = distance.init_preconditioner(graph)
+    state = distance.init(graph)
     tolerances = solver_tolerances(solver)
     nodes = jnp.array([0, 7, 24, 7], dtype=jnp.int32)
 
@@ -266,12 +264,19 @@ def test_solver_resistance_differentiability(solver):
             current = GridGraph(values, fun=lambda x, y: (x + y) / 2)
             return jnp.sum(distance(current, state=state, **query) ** 2)
 
+        # The dense reference runs in float64: a float32 pseudo-inverse on a
+        # GPU leaves gradient errors of about 1e-4.
         def reference_objective(values):
-            current = GridGraph(values, fun=lambda x, y: (x + y) / 2)
+            current = GridGraph(
+                values.astype(jnp.float64), fun=lambda x, y: (x + y) / 2
+            )
             return jnp.sum(reference(current, **query) ** 2)
 
         actual = distance(graph, state=state, **query)
-        expected = reference(graph, **query)
+        expected = reference(
+            GridGraph(permeability.astype(jnp.float64), fun=lambda x, y: (x + y) / 2),
+            **query,
+        )
         assert jnp.allclose(
             actual,
             expected,

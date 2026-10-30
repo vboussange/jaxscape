@@ -1,3 +1,4 @@
+import warnings
 from collections.abc import Callable
 from typing import Any, final
 
@@ -5,9 +6,11 @@ import equinox as eqx
 import lineax as lx
 from jax.experimental.sparse import BCOO, BCSR
 from jaxtyping import Array, PyTree
-from lineax import AbstractLinearOperator, AbstractLinearSolver, RESULTS
+from lineax import AbstractLinearOperator, RESULTS
 
 from jaxscape.utils import zero_copy_jax_csr_to_scipy_csr
+
+from .operator import AbstractReusableStateSolver
 
 
 try:
@@ -23,19 +26,11 @@ except ImportError:
 
 @final
 class AMJaxCGSolverState(eqx.Module):
-    """State for `AMJaxCGSolver`.
+    """State for `AMJaxCGSolver`: CG bound to one operator, and a preconditioner
+    that `reinit` keeps for other operators of the same sparsity pattern."""
 
-    `cg_state=None` means that only the AMJax preconditioner has been initialized.
-    `ResistanceDistance` completes such a state against the current
-    operator before dispatching to Lineax.
-    """
-
-    cg_state: PyTree[Any] | None
+    cg_state: PyTree[Any]
     preconditioner: AbstractLinearOperator
-
-    @property
-    def has_cg_state(self) -> bool:
-        return self.cg_state is not None
 
 
 def amjax_preconditioner_operator(
@@ -111,7 +106,7 @@ def build_amjax_solver(
     return _MultilevelSolver.from_pyamg(pyamg_hierarchy, **from_pyamg_kwargs)
 
 
-class AMJaxCGSolver(AbstractLinearSolver):
+class AMJaxCGSolver(AbstractReusableStateSolver):
     """
     A Lineax CG solver with an AMJax algebraic multigrid preconditioner.
 
@@ -129,6 +124,10 @@ class AMJaxCGSolver(AbstractLinearSolver):
         solver = AMJaxCGSolver(rtol=1e-6, atol=1e-6, max_steps=1_000)
         state = solver.init(BCOOLinearOperator(A), {})
         x = lx.linear_solve(BCOOLinearOperator(A), b, solver, state=state).value
+
+        # Keep the hierarchy for a matrix of the same sparsity with other values.
+        state = solver.reinit(BCOOLinearOperator(A1), {}, state)
+        x = lx.linear_solve(BCOOLinearOperator(A1), b, solver, state=state).value
         ```
 
     !!! warning
@@ -185,44 +184,54 @@ class AMJaxCGSolver(AbstractLinearSolver):
             max_steps=self.max_steps,
         )
 
+    def init(
+        self, operator: AbstractLinearOperator, options: dict[str, Any]
+    ) -> AMJaxCGSolverState:
+        self._check_options(options)
+        return AMJaxCGSolverState(
+            cg_state=self._cg_solver().init(operator, options),
+            preconditioner=self._init_preconditioner(operator, options),
+        )
+
+    def reinit(
+        self,
+        operator: AbstractLinearOperator,
+        options: dict[str, Any],
+        state: AMJaxCGSolverState,
+    ) -> AMJaxCGSolverState:
+        """Bind CG to `operator` and keep the preconditioner of `state`."""
+        self._check_options(options)
+        return AMJaxCGSolverState(
+            cg_state=self._cg_solver().init(operator, options),
+            preconditioner=state.preconditioner,
+        )
+
     def init_preconditioner(
         self,
         operator: AbstractLinearOperator,
         options: dict[str, Any] | None = None,
     ) -> AMJaxCGSolverState:
-        """Initialize only the AMJax preconditioner for `operator`.
-
-        The returned state intentionally leaves `cg_state` unset, so callers can
-        reuse the preconditioner with later operators that have the same
-        structure but different values.
-        """
-        options = {} if options is None else options
-        self._check_options(options)
-        preconditioner = self._init_preconditioner(operator, options)
-        return AMJaxCGSolverState(cg_state=None, preconditioner=preconditioner)
-
-    def init(
-        self, operator: AbstractLinearOperator, options: dict[str, Any]
-    ) -> AMJaxCGSolverState:
-        self._check_options(options)
-        state = self.init_preconditioner(operator, options)
-        return self.materialize_state(operator, options, state)
+        """Deprecated alias of `init`, as `reinit` serves any operator."""
+        warnings.warn(
+            "`init_preconditioner` is deprecated; use `init`.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.init(operator, {} if options is None else options)
 
     def materialize_state(
         self,
         operator: AbstractLinearOperator,
         options: dict[str, Any],
-        state: Any,
-    ) -> Any:
-        """Fill in operator-dependent CG state when given preconditioner state."""
-        state = self._normalise_state(state)
-        if state.has_cg_state:
-            return state
-        cg_state = self._cg_solver().init(operator, options)
-        return AMJaxCGSolverState(
-            cg_state=cg_state,
-            preconditioner=state.preconditioner,
+        state: AMJaxCGSolverState,
+    ) -> AMJaxCGSolverState:
+        """Deprecated alias of `reinit`."""
+        warnings.warn(
+            "`materialize_state` is deprecated; use `reinit`.",
+            DeprecationWarning,
+            stacklevel=2,
         )
+        return self.reinit(operator, options, state)
 
     def _init_preconditioner(
         self, operator: AbstractLinearOperator, options: dict[str, Any]
@@ -260,14 +269,6 @@ class AMJaxCGSolver(AbstractLinearSolver):
         options: dict[str, Any],
     ) -> tuple[PyTree[Array], RESULTS, dict[str, Any]]:
         self._check_options(options)
-        state = self._normalise_state(state)
-        if state.cg_state is None:
-            raise ValueError(
-                "AMJaxCGSolver received preconditioner-only state without "
-                "operator-specific CG state. Use `ResistanceDistance`, or call "
-                "`solver.materialize_state(operator, options, state)` before "
-                "passing the state to `lineax.linear_solve` directly."
-            )
         cg_options = dict(options)
         cg_options["preconditioner"] = state.preconditioner
         return self._cg_solver().compute(state.cg_state, vector, cg_options)
@@ -276,11 +277,6 @@ class AMJaxCGSolver(AbstractLinearSolver):
         self, state: AMJaxCGSolverState, options: dict[str, Any]
     ) -> tuple[AMJaxCGSolverState, dict[str, Any]]:
         self._check_options(options)
-        state = self._normalise_state(state)
-        if state.cg_state is None:
-            raise ValueError(
-                "Cannot transpose preconditioner-only AMJaxCGSolver state."
-            )
         cg_options = {"preconditioner": state.preconditioner}
         transposed_cg_state, transposed_options = self._cg_solver().transpose(
             state.cg_state,
@@ -299,11 +295,6 @@ class AMJaxCGSolver(AbstractLinearSolver):
         self, state: AMJaxCGSolverState, options: dict[str, Any]
     ) -> tuple[AMJaxCGSolverState, dict[str, Any]]:
         self._check_options(options)
-        state = self._normalise_state(state)
-        if state.cg_state is None:
-            raise ValueError(
-                "Cannot conjugate preconditioner-only AMJaxCGSolver state."
-            )
         cg_options = {"preconditioner": state.preconditioner}
         conj_cg_state, conj_options = self._cg_solver().conj(state.cg_state, cg_options)
         conj_preconditioner = conj_options["preconditioner"]
@@ -327,21 +318,6 @@ class AMJaxCGSolver(AbstractLinearSolver):
             raise TypeError(
                 "`preconditioner` must be a lineax.AbstractLinearOperator."
             )
-
-    @staticmethod
-    def _normalise_state(state: Any) -> AMJaxCGSolverState:
-        if isinstance(state, AMJaxCGSolverState):
-            return state
-        if isinstance(state, tuple) and len(state) == 2:
-            cg_state, preconditioner = state
-            return AMJaxCGSolverState(
-                cg_state=cg_state,
-                preconditioner=preconditioner,
-            )
-        raise TypeError(
-            "AMJaxCGSolver state must be an AMJaxCGSolverState returned by "
-            "`init` or `init_preconditioner`."
-        )
 
 
 def _unbatched_bcoo(matrix: BCOO) -> BCOO:

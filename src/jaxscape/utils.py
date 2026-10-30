@@ -12,6 +12,16 @@ from scipy import sparse as ssp
 from scipy.sparse import coo_array, csr_array
 
 
+def _matmul(a: Array, b: Array) -> Array:
+    """Matrix product in full precision.
+
+    On GPUs, JAX's default precision multiplies float32 matrices in TF32,
+    with about three significant digits, which loses the accuracy of float32
+    distances and their gradients.
+    """
+    return jnp.matmul(a, b, precision=jax.lax.Precision.HIGHEST)
+
+
 def graph_laplacian(A: BCOO) -> BCOO:
     """Compute graph Laplacian L = D - A where D is the degree matrix.
 

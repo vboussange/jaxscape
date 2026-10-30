@@ -236,7 +236,7 @@ def test_sparse_solvers_state_and_joint_gradients(solver_name, dtype):
             atol=tolerance,
         )
     differentiable_state = (
-        distance.init_preconditioner(graph(weights))
+        distance.init(graph(weights))
         if isinstance(solver, AMJaxCGSolver)
         else None
     )
@@ -267,12 +267,12 @@ def test_sparse_solvers_state_and_joint_gradients(solver_name, dtype):
         np.testing.assert_allclose(a, e, rtol=tolerance, atol=tolerance)
 
 
-def test_amjax_preconditioner_only_state_reuses_current_operator():
+def test_amjax_state_serves_the_current_operator():
     pytest.importorskip("amjax")
     pytest.importorskip("pyamg")
     weights = jnp.asarray(WEIGHTS)
     solver = AMJaxCGSolver(rtol=1e-12, atol=1e-12, max_steps=100)
-    state = FreeEnergyDistance(0.7, solver=solver).init_preconditioner(graph(weights))
+    state = FreeEnergyDistance(0.7, solver=solver).init(graph(weights))
     current_weights = weights * 1.15
     nodes = jnp.array([0, 3])
     actual = jax.jit(

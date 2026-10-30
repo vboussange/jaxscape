@@ -338,7 +338,7 @@ def _run_jaxscape_centrality_direct(
             ) in _resistance_solver_candidates(case):
                 try:
                     solver = candidate_factory()
-                    state = ResistanceDistance(solver=solver).init_preconditioner(
+                    state = ResistanceDistance(solver=solver).init(
                         GridGraph(cost_surface, fun=cost_conductance)
                     )
                     timings, gradient = measure_runtime(

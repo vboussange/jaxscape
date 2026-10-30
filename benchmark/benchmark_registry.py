@@ -29,20 +29,40 @@ class BenchmarkTaskSpec:
     scorecard_asset_name: str
 
 
+# The backends a tool runs on. A CPU-only tool keeps its plain label; the
+# others carry a "(CPU)" or "(GPU)" suffix for each backend.
+CPU_ONLY = ("cpu",)
+CPU_AND_GPU = ("cpu", "gpu")
+GPU_ONLY = ("gpu",)
+
+
+def backend_labels(label: str, backends: tuple[str, ...]) -> dict[str, str]:
+    """Return the record label of a tool on each of its backends.
+
+    **Arguments:**
+
+    - `label`: The tool label.
+    - `backends`: The backends the tool runs on.
+
+    **Returns:**
+
+    A map from each backend to its label: the plain label for a CPU-only
+    tool, and otherwise the label with a `(CPU)` or `(GPU)` suffix.
+    """
+    if backends == CPU_ONLY:
+        return {"cpu": label}
+    return {backend: backend_tool_label(label, backend) for backend in backends}
+
+
 @dataclass(frozen=True)
 class ToolSpec:
     label: str
-    gpu_capable: bool = False
+    backends: tuple[str, ...] = CPU_ONLY
     required: bool = True
     automated: bool = True
 
     def display_labels(self) -> tuple[str, ...]:
-        if self.gpu_capable:
-            return (
-                backend_tool_label(self.label, "cpu"),
-                backend_tool_label(self.label, "gpu"),
-            )
-        return (self.label,)
+        return tuple(backend_labels(self.label, self.backends).values())
 
 
 SIZE_LABELS = ("small", "medium", "large")
@@ -95,8 +115,18 @@ TASK_SPECS_BY_GROUP = {spec.group_name: spec for spec in BENCHMARK_TASK_SPECS}
 TASK_SPECS_BY_TASK = {spec.task: spec for spec in BENCHMARK_TASK_SPECS}
 TASK_LABELS = {spec.task: spec.title for spec in BENCHMARK_TASK_SPECS}
 
+# cuDSS runs only on NVIDIA GPUs, so these profiles have no CPU series.
+CUDSS_TOOL_LABELS = {
+    "f32": "JAXScape / CuDSSSolver / f32",
+    "f64": "JAXScape / CuDSSSolver / f64",
+}
+CUDSS_TOOL_SPECS = tuple(
+    ToolSpec(label, backends=GPU_ONLY, required=False, automated=False)
+    for label in CUDSS_TOOL_LABELS.values()
+)
+
 TOOL_SPECS_BY_TASK = {
-    "free_energy_distance": (ToolSpec("JAXScape / CG / f64", gpu_capable=True),),
+    "free_energy_distance": (ToolSpec("JAXScape / CG / f64", backends=CPU_AND_GPU),),
     "resistance_distance": (
         # Resistance pinv-family profiles are kept out of the full suite because
         # the large resistance case is not a scientifically useful dense-pinv
@@ -104,27 +134,28 @@ TOOL_SPECS_BY_TASK = {
         ToolSpec("JAXScape / PyAMG", required=False),
         ToolSpec("JAXScape / CholmodSolver / f32", required=False, automated=False),
         ToolSpec("JAXScape / CholmodSolver / f64", required=False, automated=False),
+        *CUDSS_TOOL_SPECS,
         ToolSpec(
             "JAXScape / AMJaxCGSolver / f32",
-            gpu_capable=True,
+            backends=CPU_AND_GPU,
             required=False,
             automated=False,
         ),
         ToolSpec(
             "JAXScape / AMJaxCGSolver / f64",
-            gpu_capable=True,
+            backends=CPU_AND_GPU,
             required=False,
             automated=False,
         ),
         ToolSpec(
             "JAXScape / approx AMJaxCGSolver / f32",
-            gpu_capable=True,
+            backends=CPU_AND_GPU,
             required=False,
             automated=False,
         ),
         ToolSpec(
             "JAXScape / approx AMJaxCGSolver / f64",
-            gpu_capable=True,
+            backends=CPU_AND_GPU,
             required=False,
             automated=False,
         ),
@@ -144,22 +175,23 @@ TOOL_SPECS_BY_TASK = {
         ToolSpec("Conefor", required=False, automated=False),
     ),
     "least_cost_path": (
-        ToolSpec("JAXScape", gpu_capable=True),
+        ToolSpec("JAXScape", backends=CPU_AND_GPU),
         ToolSpec("gdistance / costDistance"),
         ToolSpec("Conefor", required=False, automated=False),
     ),
     "sensitivity_analysis": (
-        ToolSpec("JAXScape / shortest-path gradient", gpu_capable=True),
+        ToolSpec("JAXScape / shortest-path gradient", backends=CPU_AND_GPU),
         ToolSpec("gdistance / shortestPath"),
-        ToolSpec("JAXScape / resistance gradient", gpu_capable=True),
+        ToolSpec("JAXScape / resistance gradient", backends=CPU_AND_GPU),
         ToolSpec("gdistance / passage"),
     ),
     "inverse_landscape_genetics": (
         ToolSpec("JAXScape / CholmodSolver / f32", required=False),
-        ToolSpec("JAXScape / AMJaxCGSolver / f32", gpu_capable=True),
-        ToolSpec("JAXScape / AMJaxCGSolver / f64", gpu_capable=True),
-        ToolSpec("JAXScape / approx pinv / f32", gpu_capable=True, required=False),
-        ToolSpec("JAXScape / approx pinv / f64", gpu_capable=True, required=False),
+        *CUDSS_TOOL_SPECS,
+        ToolSpec("JAXScape / AMJaxCGSolver / f32", backends=CPU_AND_GPU),
+        ToolSpec("JAXScape / AMJaxCGSolver / f64", backends=CPU_AND_GPU),
+        ToolSpec("JAXScape / approx pinv / f32", backends=CPU_AND_GPU, required=False),
+        ToolSpec("JAXScape / approx pinv / f64", backends=CPU_AND_GPU, required=False),
         ToolSpec("ResistanceGA"),
     ),
 }
@@ -170,7 +202,7 @@ REQUIRED_BASE_TOOL_LABELS_BY_TASK = {
 }
 
 GPU_CAPABLE_TOOL_LABELS_BY_TASK = {
-    task: {tool.label for tool in tool_specs if tool.gpu_capable}
+    task: {tool.label for tool in tool_specs if "gpu" in tool.backends}
     for task, tool_specs in TOOL_SPECS_BY_TASK.items()
 }
 
@@ -197,6 +229,7 @@ TOOL_FAMILY_COLORS = {
     "JAXScape / approx pinv": "#5B8FF9",
     "JAXScape / PyAMG": "#17BECF",
     "JAXScape / CholmodSolver": "#9467BD",
+    "JAXScape / CuDSSSolver": "#E45756",
     "JAXScape / AMJaxCGSolver": "#4C78A8",
     "JAXScape / approx AMJaxCGSolver": "#72B7B2",
     "JAXScape / approx CholmodSolver": "#B279A2",

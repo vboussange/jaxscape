@@ -1,3 +1,4 @@
+import abc
 from typing import Any
 
 import equinox as eqx
@@ -32,6 +33,43 @@ def _(op: BCOOLinearOperator) -> bool:
     return True
 
 
+class AbstractReusableStateSolver(lx.AbstractLinearSolver):
+    """Lineax solver whose state can serve another operator of the same sparsity.
+
+    Subclass it when part of a state outlives the matrix values, such as a sparse
+    analysis, a factorization or a multigrid hierarchy, and implement `reinit`.
+    Distance queries call `reinit` on the state they receive before solving. Other
+    Lineax solvers run `init` for each query, which suits iterative solvers, whose
+    `init` only records the operator.
+    """
+
+    @abc.abstractmethod
+    def reinit(
+        self,
+        operator: lx.AbstractLinearOperator,
+        options: dict[str, Any],
+        state: Any,
+    ) -> Any:
+        """Return the state that solves `operator`, reusing what it can from `state`.
+
+        It runs inside `jax.jit`. A query calls it on every state it receives, so
+        it should do no expensive work when `state` already solves `operator`.
+
+        **Arguments:**
+
+        - `operator`: The operator to solve. It has the sparsity pattern of the
+          operator `state` was built for, possibly different values, and no
+          gradient.
+        - `options`: Solver options, as passed to `init`.
+        - `state`: A state returned by `init` or `reinit`.
+
+        **Returns:**
+
+        The state to solve `operator` with, with the structure of a state from
+        `init`, so that a compiled loop can carry it.
+        """
+
+
 def _linear_solve(
     A: BCOO,
     b: Array,
@@ -40,17 +78,10 @@ def _linear_solve(
     options: dict[str, Any] | None = None,
     state: Any = None,
 ) -> Array:
-    operator = BCOOLinearOperator(A)
     options = _solver_options(options)
-    solve_state = _solver_state_from_operator(operator, solver, options, state)
-    if solve_state is None:
-        return lx.linear_solve(operator, b, solver=solver, options=options).value
+    solve_state = _solver_state(A, solver, options, state)
     return lx.linear_solve(
-        operator,
-        b,
-        solver=solver,
-        options=options,
-        state=solve_state,
+        BCOOLinearOperator(A), b, solver=solver, options=options, state=solve_state
     ).value
 
 
@@ -99,12 +130,16 @@ def _solver_state(
     options: dict[str, Any] | None,
     state: Any,
 ) -> Any:
+    """Return the state that solves `A`, built from its values without gradient.
+
+    An `AbstractReusableStateSolver` reinitializes a supplied `state` for `A`. In
+    any other case, `solver.init` builds the state.
+    """
     options = _solver_options(options)
-    operator = BCOOLinearOperator(A)
-    solve_state = _solver_state_from_operator(operator, solver, options, state)
-    if solve_state is not None:
-        return solve_state
-    return solver.init(_stop_gradient_operator(operator), options)
+    operator = _stop_gradient(BCOOLinearOperator(A))
+    if state is not None and isinstance(solver, AbstractReusableStateSolver):
+        return solver.reinit(operator, options, state)
+    return solver.init(operator, options)
 
 
 def _solver_options(options: dict[str, Any] | None) -> dict[str, Any]:
@@ -113,22 +148,7 @@ def _solver_options(options: dict[str, Any] | None) -> dict[str, Any]:
     return options
 
 
-def _solver_state_from_operator(
-    operator: lx.AbstractLinearOperator,
-    solver: lx.AbstractLinearSolver,
-    options: dict[str, Any],
-    state: Any,
-) -> Any:
-    if state is None:
-        return None
-    materialize_state = getattr(solver, "materialize_state", None)
-    if materialize_state is None:
-        return state
-    return materialize_state(_stop_gradient_operator(operator), options, state)
-
-
-def _stop_gradient_operator(
-    operator: lx.AbstractLinearOperator,
-) -> lx.AbstractLinearOperator:
-    dynamic_operator, static_operator = eqx.partition(operator, eqx.is_array)
-    return eqx.combine(jax.lax.stop_gradient(dynamic_operator), static_operator)
+def _stop_gradient(tree: Any) -> Any:
+    """Stop gradients through the arrays of `tree`, which may hold other leaves."""
+    dynamic, static = eqx.partition(tree, eqx.is_array)
+    return eqx.combine(jax.lax.stop_gradient(dynamic), static)

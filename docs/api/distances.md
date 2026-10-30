@@ -2,7 +2,14 @@
 
 ::: jaxscape.distance.AbstractDistance
     options:
-      members: false
+      members:
+        - reinit
+
+::: jaxscape.distance.AbstractSolverDistance
+    options:
+      members:
+        - system_matrix
+        - init
 
 ::: jaxscape.euclidean_distance.EuclideanDistance
     options:

@@ -47,18 +47,24 @@ from benchmark.benchmark_distances import (
     cost_conductance,
     default_jaxscape_config,
     failed_record,
-    gpu_placeholder_record,
     measure_runtime,
     ok_record_with_metrics,
     skip_record,
 )
+from benchmark.benchmark_registry import CPU_AND_GPU
 from benchmark.jaxscape.resistance_profile_support import (
+    collect_profile_records,
+    CUDSS_RESISTANCE_PROFILES,
     make_amjaxcg_solver,
     make_cholmod_solver,
     make_pyamg_solver,
     make_spielman_method,
     profile_metadata,
+    profile_tool_label,
     ResistanceProfile,
+    spineax_rebuild_count,
+    stateful_closure,
+    unavailable_profile_record,
 )
 
 
@@ -79,11 +85,12 @@ JAXSCAPE_RESISTANCE_PROFILES = (
         solver_factory=make_cholmod_solver,
         dtype=jnp.float64,
     ),
+    *CUDSS_RESISTANCE_PROFILES,
     ResistanceProfile(
         "amjaxcg_f32",
         "JAXScape / AMJaxCGSolver / f32",
         solver_factory=make_amjaxcg_solver,
-        gpu_capable=True,
+        backends=CPU_AND_GPU,
         requires_preparation=True,
         dtype=jnp.float32,
     ),
@@ -91,7 +98,7 @@ JAXSCAPE_RESISTANCE_PROFILES = (
         "amjaxcg_f64",
         "JAXScape / AMJaxCGSolver / f64",
         solver_factory=make_amjaxcg_solver,
-        gpu_capable=True,
+        backends=CPU_AND_GPU,
         requires_preparation=True,
         dtype=jnp.float64,
     ),
@@ -101,7 +108,7 @@ JAXSCAPE_RESISTANCE_PROFILES = (
         "JAXScape / approx AMJaxCGSolver / f32",
         solver_factory=make_amjaxcg_solver,
         method_factory=make_spielman_method,
-        gpu_capable=True,
+        backends=CPU_AND_GPU,
         requires_preparation=True,
         dtype=jnp.float32,
     ),
@@ -110,7 +117,7 @@ JAXSCAPE_RESISTANCE_PROFILES = (
         "JAXScape / approx AMJaxCGSolver / f64",
         solver_factory=make_amjaxcg_solver,
         method_factory=make_spielman_method,
-        gpu_capable=True,
+        backends=CPU_AND_GPU,
         requires_preparation=True,
         dtype=jnp.float64,
     ),
@@ -142,6 +149,7 @@ def _run_resistance_profile_direct(
     solver_factory: Callable[[], Any] | None = None,
     method_factory: Callable[[], Any] | None = None,
     requires_preparation: bool = False,
+    passes_state: bool = False,
     dtype: Any = jnp.float32,
 ) -> BenchmarkRecord:
     LOGGER.info(
@@ -170,6 +178,7 @@ def _run_resistance_profile_direct(
         )
         return failed_record(case.task, tool_label, "JAXScape", case.name, str(error))
 
+    rebuilds = None
     try:
         dtype_context = jax.enable_x64() if dtype == jnp.float64 else nullcontext()
         with dtype_context:
@@ -191,6 +200,17 @@ def _run_resistance_profile_direct(
                     state,
                     repeats=repeats,
                 )
+            elif passes_state:
+                state = distance.init(GridGraph(permeability, fun=cost_conductance))
+                rebuilds = spineax_rebuild_count()
+                timings, _ = measure_runtime(
+                    stateful_closure(_jaxscape_resistance_and_state, state),
+                    distance,
+                    permeability,
+                    nodes,
+                    repeats=repeats,
+                )
+                rebuilds = spineax_rebuild_count() - rebuilds
             else:
                 timings, _ = measure_runtime(
                     _jaxscape_resistance_with_distance,
@@ -222,6 +242,9 @@ def _run_resistance_profile_direct(
 
     profile = profile_for_tool_label(tool_label)
     metrics = profile_metadata(profile, device.platform)
+    if rebuilds is not None:
+        # Analyses spineax repeated across the warm-up and timed calls.
+        metrics["spineax_rebuilds"] = rebuilds
     record = ok_record_with_metrics(
         case.task, tool_label, "JAXScape", case.name, timings, metrics=metrics
     )
@@ -262,20 +285,19 @@ def run_worker(payload: dict[str, Any]) -> BenchmarkRecord:
     profile = PROFILE_BY_KEY[payload["profile_key"]]
     backend = payload["backend"]
     repeats = int(payload["repeats"])
-    tool_label = (
-        profile.tool
-        if backend == "cpu" and not profile.gpu_capable
-        else backend_tool_label(profile.tool, backend)
-    )
+    unavailable = unavailable_profile_record(case, profile, backend, "JAXScape")
+    if unavailable is not None:
+        return unavailable
     device = device_for_backend(backend)
     return _run_resistance_profile_direct(
         case,
-        tool_label,
+        profile_tool_label(profile, backend),
         device=device,
         repeats=repeats,
         solver_factory=profile.solver_factory,
         method_factory=profile.method_factory,
         requires_preparation=profile.requires_preparation,
+        passes_state=profile.passes_state,
         dtype=profile.dtype,
     )
 
@@ -286,6 +308,16 @@ def _jaxscape_resistance_with_distance(
 ) -> jax.Array:
     grid = GridGraph(permeability, fun=cost_conductance)
     return distance(grid, nodes=nodes)
+
+
+@eqx.filter_jit
+def _jaxscape_resistance_and_state(
+    distance: ResistanceDistance, permeability: jax.Array, nodes: jax.Array, state: Any
+) -> tuple[jax.Array, Any]:
+    grid = GridGraph(permeability, fun=cost_conductance)
+    node_indices = grid.coord_to_index(nodes[:, 0], nodes[:, 1])
+    state = distance.reinit(grid, state)
+    return distance.nodes_to_nodes_distance(grid, node_indices, state), state
 
 
 @eqx.filter_jit
@@ -335,41 +367,17 @@ def collect_jaxscape_resistance_results(
 ) -> list[BenchmarkRecord]:
     records: list[BenchmarkRecord] = []
     for profile in selected_profiles(profile_keys):
-        if profile.gpu_capable:
-            records.append(
-                run_jaxscape_resistance_profile(
-                    case,
-                    config,
-                    backend_tool_label(profile.tool, "cpu"),
-                    device=config.cpu_device,
-                    solver_factory=profile.solver_factory,
-                    requires_preparation=profile.requires_preparation,
-                )
+        records.extend(
+            collect_profile_records(
+                case,
+                config,
+                profile,
+                "JAXScape",
+                lambda label, device: run_jaxscape_resistance_profile(
+                    case, config, label, device=device
+                ),
             )
-            if config.gpu_device is None:
-                records.append(gpu_placeholder_record(case, profile.tool, "JAXScape"))
-            else:
-                records.append(
-                    run_jaxscape_resistance_profile(
-                        case,
-                        config,
-                        backend_tool_label(profile.tool, "gpu"),
-                        device=config.gpu_device,
-                        solver_factory=profile.solver_factory,
-                        requires_preparation=profile.requires_preparation,
-                    )
-                )
-        else:
-            records.append(
-                run_jaxscape_resistance_profile(
-                    case,
-                    config,
-                    profile.tool,
-                    device=config.cpu_device,
-                    solver_factory=profile.solver_factory,
-                    requires_preparation=profile.requires_preparation,
-                )
-            )
+        )
     return records
 
 

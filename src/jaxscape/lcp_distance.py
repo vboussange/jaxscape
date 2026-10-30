@@ -222,9 +222,12 @@ def _bellman_ford_solve(
     present = data > 0
     safe_data = jnp.where(present, data, 1)
     reciprocal = 1 / safe_data
+    # XLA:CPU flushes subnormal reciprocals to zero; GPUs keep them, so test
+    # against the smallest normal number.
+    tiny = jnp.finfo(reciprocal.dtype).tiny
     reciprocal = eqx.error_if(
         reciprocal,
-        jnp.any(present & (~jnp.isfinite(reciprocal) | (reciprocal <= 0))),
+        jnp.any(present & (~jnp.isfinite(reciprocal) | (reciprocal < tiny))),
         "bellman-ford requires finite positive representable reciprocal "
         "conductance costs. Rescale the conductances or use float64.",
     )

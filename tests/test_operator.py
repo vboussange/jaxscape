@@ -1,7 +1,10 @@
 from importlib.util import find_spec
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
+import lineax as lx
+import numpy as np
 import pytest
 from jax.experimental.sparse import BCOO
 from jaxscape.solvers import (
@@ -12,7 +15,11 @@ from jaxscape.solvers import (
     CholmodSolver,
     PyAMGSolver,
 )
-from jaxscape.solvers.operator import _batched_linear_solve, _linear_solve
+from jaxscape.solvers.operator import (
+    _batched_linear_solve,
+    _linear_solve,
+    _solver_state,
+)
 
 
 # Check availability of optional solvers
@@ -50,9 +57,59 @@ def test_bcoo_linear_operator_mv():
     assert jnp.allclose(result_sparse, result_dense, rtol=1e-6)
 
 
+gradient_solvers: dict[str, lx.AbstractLinearSolver] = {
+    "cg": lx.CG(rtol=1e-13, atol=1e-13, max_steps=1000)
+}
+if CHOLMOD_AVAILABLE:
+    gradient_solvers["cholmod"] = CholmodSolver()
+
+
+@pytest.mark.parametrize("batched", [False, True], ids=["single", "batched"])
+@pytest.mark.parametrize("solver", gradient_solvers.values(), ids=gradient_solvers)
+def test_sparse_solve_gradients_match_dense_reference(solver, batched):
+    """Gradients with respect to the stored matrix values, padding included,
+    and to the right-hand sides, through single and vmapped solves."""
+    n = 8
+    rng = np.random.default_rng(0)
+    factor = rng.standard_normal((n, n))
+    dense = factor @ factor.T + n * np.eye(n)
+    A = BCOO.fromdense(jnp.asarray(dense), nse=n * n + 3)
+    rhs_shape = (n, 3) if batched else (n,)
+    b = jnp.asarray(rng.standard_normal(rhs_shape))
+    weights = jnp.asarray(rng.standard_normal(rhs_shape))
+    sparse_solve = _batched_linear_solve if batched else _linear_solve
+
+    def gradients(solve):
+        def objective(data, b):
+            x = solve(BCOO((data, A.indices), shape=A.shape), b)
+            return jnp.sum(weights * x)
+
+        return jax.grad(objective, argnums=(0, 1))(A.data, b)
+
+    data_gradient, rhs_gradient = gradients(lambda A, b: sparse_solve(A, b, solver))
+
+    expected = gradients(lambda A, b: jnp.linalg.solve(A.todense(), b))
+    np.testing.assert_allclose(data_gradient, expected[0], rtol=1e-9, atol=1e-12)
+    np.testing.assert_allclose(rhs_gradient, expected[1], rtol=1e-9, atol=1e-12)
+    np.testing.assert_array_equal(data_gradient[n * n :], 0.0)
+
+
+def test_solver_state_carries_no_gradient():
+    A = BCOO.fromdense(jnp.array([[2.0, -1.0], [-1.0, 2.0]]))
+
+    def sum_of_state(data):
+        matrix = BCOO((data, A.indices), shape=A.shape)
+        state = _solver_state(matrix, lx.CG(rtol=1e-6, atol=1e-6), None, None)
+        leaves = jax.tree.leaves(eqx.filter(state, eqx.is_inexact_array))
+        return sum(jnp.sum(leaf) for leaf in leaves)
+
+    assert sum_of_state(A.data) != 0
+    np.testing.assert_array_equal(jax.grad(sum_of_state)(A.data), 0.0)
+
+
 def solver_state(solver, A):
     if isinstance(solver, AMJaxCGSolver):
-        return solver.init_preconditioner(BCOOLinearOperator(A), {})
+        return solver.init(BCOOLinearOperator(A), {})
     return None
 
 
@@ -81,7 +138,7 @@ def test_solver(solver):
 
 
 @pytest.mark.skipif(not AMJAX_AVAILABLE, reason="AMJax not available")
-def test_amjax_preconditioner_only_state_uses_current_operator():
+def test_amjax_state_uses_current_operator():
     A_scipy = poisson((5, 5), format="coo", dtype="float32")
     A_jax = BCOO.from_scipy_sparse(A_scipy)
     A_scaled = BCOO(
@@ -93,9 +150,7 @@ def test_amjax_preconditioner_only_state_uses_current_operator():
     b = jnp.ones(A_jax.shape[0], dtype=A_jax.data.dtype)
     solver = AMJaxCGSolver(rtol=1e-5, atol=1e-5, max_steps=500)
 
-    state = solver.init_preconditioner(BCOOLinearOperator(A_jax), {})
-    assert not state.has_cg_state
-    assert solver.init(BCOOLinearOperator(A_jax), {}).has_cg_state
+    state = solver.init(BCOOLinearOperator(A_jax), {})
 
     x = _linear_solve(A_scaled, b, solver, state=state)
     residual = A_scaled @ x - b

@@ -7,17 +7,17 @@ import lineax as lx
 from jax import Array
 from jax.experimental.sparse import BCOO
 
-from jaxscape.distance import AbstractDistance
+from jaxscape.distance import AbstractSolverDistance
 from jaxscape.graph import AbstractGraph
-from jaxscape.solvers import BCOOLinearOperator
 from jaxscape.solvers.operator import (
     _batched_linear_solve_impl,
     _solver_state,
-    _stop_gradient_operator,
+    _stop_gradient,
 )
+from jaxscape.utils import _matmul
 
 
-class FreeEnergyDistance(AbstractDistance):
+class FreeEnergyDistance(AbstractSolverDistance):
     r"""Symmetric first-hitting free-energy distance with edge costs $1/a_{ij}$.
 
     **Attributes:**
@@ -42,7 +42,7 @@ class FreeEnergyDistance(AbstractDistance):
     least-cost distance with edge costs $c_{ij}$. On a graph without self-loops
     and with `m` undirected edges, the small-`theta` limit is `m` times the
     effective resistance. Solver state depends on the conductances and on
-    `theta`; rebuild it when either changes.
+    `theta`; pass it through `reinit` when either changes.
 
     **Precision and errors:** float32 and float64 inputs are supported. Entries
     of $Z$ decay exponentially with path cost, and float64 resolves smaller
@@ -84,51 +84,8 @@ class FreeEnergyDistance(AbstractDistance):
         )
         self.solver = solver
 
-    def init(self, graph: AbstractGraph) -> Any:
-        """Initialize state bound to the current conductances and `theta`.
-
-        Rebuild the state when either changes. Gradients do not propagate
-        through solver setup.
-
-        **Arguments:**
-
-        - `graph`: Connected symmetric graph whose conductances define the
-          operator together with this distance's `theta`.
-
-        **Returns:**
-
-        Matrix-dependent solver state, or `None` for the dense default.
-        """
-        if self.solver is None:
-            return None
-        operator, _ = _operator(graph.get_adjacency_matrix(), self.theta)
-        return self.solver.init(
-            _stop_gradient_operator(BCOOLinearOperator(operator)), {}
-        )
-
-    def init_preconditioner(self, graph: AbstractGraph) -> Any:
-        """Initialize preconditioner-only state when supported by the solver.
-
-        For `AMJaxCGSolver`, the preconditioner can be reused with a fresh
-        operator, as in `ResistanceDistance`. Other solvers return full solver
-        state.
-
-        **Arguments:**
-
-        - `graph`: Connected symmetric graph used to build the preconditioner.
-
-        **Returns:**
-
-        Reusable preconditioner state when supported, otherwise full solver
-        state. Returns `None` for the dense default.
-        """
-        if self.solver is None:
-            return None
-        initialize = getattr(self.solver, "init_preconditioner", None)
-        if initialize is None:
-            return self.init(graph)
-        operator, _ = _operator(graph.get_adjacency_matrix(), self.theta)
-        return initialize(_stop_gradient_operator(BCOOLinearOperator(operator)), {})
+    def system_matrix(self, graph: AbstractGraph) -> BCOO:
+        return _operator(graph.get_adjacency_matrix(), self.theta)[0]
 
     @eqx.filter_jit
     def all_pairs_distance(self, graph: AbstractGraph, state: Any = None) -> Array:
@@ -206,7 +163,7 @@ class FreeEnergyDistance(AbstractDistance):
             operator.shape,
             nodes,
             self.solver,
-            jax.tree.map(jax.lax.stop_gradient, state),
+            _stop_gradient(state),
             jax.lax.stop_gradient(killing),
         )
         rows = jnp.arange(sources.size)
@@ -381,7 +338,7 @@ def _selected_inverse_bwd(
     # For S=E.T H^-1 E and G=dL/dS, H Lambda=E G gives
     # Lambda=X G. Reuse X from the forward solve; G need not be symmetric.
     # Contract only stored H entries: never form the dense -Lambda X.T.
-    adjoint = potentials @ cotangent[0]
+    adjoint = _matmul(potentials, cotangent[0])
     valid = jnp.all((indices >= 0) & (indices < shape[0]), axis=1)
     safe = jnp.where(valid[:, None], indices, 0)
     gradient = -jnp.sum(adjoint[safe[:, 0]] * potentials[safe[:, 1]], axis=1)

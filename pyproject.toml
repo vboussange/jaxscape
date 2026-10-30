@@ -22,7 +22,7 @@ classifiers = [
   "Topic :: Scientific/Engineering :: GIS"
 ]
 dependencies = [
-  "jax>=0.9.0",
+  "jax>=0.11",
   "equinox>=0.13.2",
   "tqdm>=4.66.1",
   "numpy>2.4.0",
@@ -33,8 +33,8 @@ keywords = ["jax", "graph", "machine-learning", "network"]
 license = {file = "LICENSE"}
 name = "jaxscape"
 readme = "README.md"
-requires-python = ">=3.11"
-version = "0.0.14"
+requires-python = ">=3.12"
+version = "0.0.15"
 
 [project.optional-dependencies]
 amjax = [
@@ -50,7 +50,13 @@ cholespy = [
   "cholespy>=2.2.0"
 ]
 cuda = [
-  "jax[cuda]>=0.9.0"
+  "jax[cuda]>=0.11"
+]
+# spineax 0.0.5 ships one CUDA 13 wheel (Linux x86-64, Python >= 3.12) built
+# against cuDSS 0.x; cuDSS 1.0 is unsupported until spineax issues #29/#30.
+cudss = [
+  "spineax==0.0.5; python_version >= '3.12' and sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "nvidia-cudss-cu13>=0.8,<1; python_version >= '3.12' and sys_platform == 'linux' and platform_machine == 'x86_64'"
 ]
 dev = [
   "ipykernel>=6.29.5"
@@ -89,6 +95,10 @@ include = ["src", "tests"]
 reportIncompatibleMethodOverride = true
 
 [tool.pytest.ini_options]
+# Tests marked `gpu` need an NVIDIA GPU with spineax and cuDSS; the default run
+# leaves them out. Run them with `pytest -m gpu`, or every test with `-m ""`.
+addopts = "-m 'not gpu'"
+markers = ["gpu: needs an NVIDIA GPU with spineax and cuDSS"]
 # Benchmark correctness tests import the repository-local benchmark package.
 pythonpath = ["."]
 
