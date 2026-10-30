@@ -58,7 +58,7 @@ class SparseDirectState(eqx.Module, Generic[_Factorization]):
     - `pattern`: The CSR pattern of the matrix.
     - `values`: The CSR values that `factorization` factorizes.
     - `failed`: Whether `factorization` failed its check. Solves with a failed
-      state fail, and the next `reinit` for other values analyses them afresh.
+      state fail, and the next `reinit` analyses its values afresh.
     """
 
     factorization: _Factorization
@@ -188,14 +188,21 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
 
         **Returns:**
 
-        `state` itself when the values are those it factorizes, up to the rounding
-        of assembling the matrix. Otherwise a state that refactorizes `state`,
-        analysing the values afresh when `state` failed its check or when the
-        refactorization fails its own.
+        `state` itself when it passed its check and the values are those it
+        factorizes, up to the rounding of assembling the matrix. Otherwise a state
+        that refactorizes `state`, analysing the values afresh when `state` failed
+        its check or when the refactorization fails its own.
         """
         del options
         pattern = state.pattern
-        values = _csr_values(self._checked_data(operator, pattern), pattern)
+        data = self._checked_data(operator, pattern)
+        if data.dtype != state.values.dtype:
+            raise ValueError(
+                f"{type(self).__name__}: the operator has dtype {data.dtype} and the "
+                f"state {state.values.dtype}. A state keeps the dtype it was "
+                "initialized with; initialize a new one for this precision."
+            )
+        values = _csr_values(data, pattern)
 
         def analysed(factorization: Any, values: Array) -> tuple[Any, Array]:
             del factorization
@@ -222,7 +229,7 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
             return SparseDirectState(factorization, pattern, values, failed)
 
         tolerance = 16 * jnp.finfo(values.dtype).eps * jnp.abs(state.values)
-        unchanged = jnp.all(jnp.abs(values - state.values) <= tolerance)
+        unchanged = ~state.failed & jnp.all(jnp.abs(values - state.values) <= tolerance)
         return jax.lax.cond(unchanged, lambda state, _: state, updated, state, values)
 
     def compute(

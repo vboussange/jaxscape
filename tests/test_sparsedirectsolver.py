@@ -279,6 +279,16 @@ def test_a_backend_needs_only_factorize_solve_and_a_tolerance():
     np.testing.assert_allclose(actual, expected, rtol=1e-8)
 
 
+def test_a_state_rejects_operators_of_another_dtype():
+    solver = DenseCholesky()
+    matrix = grounded_laplacian(surface("smooth"))
+    state = solver.init(BCOOLinearOperator(matrix), {})
+    single = BCOO((matrix.data.astype(jnp.float32), matrix.indices), shape=matrix.shape)
+
+    with pytest.raises(ValueError, match="keeps the dtype"):
+        solver.reinit(BCOOLinearOperator(single), {}, state)
+
+
 def test_operators_without_a_bcoo_matrix_are_rejected():
     operator = lx.MatrixLinearOperator(jnp.eye(2), lx.positive_semidefinite_tag)
     with pytest.raises(TypeError, match="DenseCholesky requires a BCOO"):
@@ -384,14 +394,18 @@ def test_solves_fail_with_a_failed_state_or_a_large_residual():
         assert np.all(np.isnan(solution))
 
 
-def test_reinit_of_a_failed_state_analyses_new_values_afresh():
+@pytest.mark.parametrize("scale", [2.0, 3.0], ids=["same-values", "new-values"])
+def test_reinit_of_a_failed_state_analyses_its_values_afresh(scale):
     solver = DenseCholesky()
     smooth = surface("smooth")
+    operator = BCOOLinearOperator(grounded_laplacian(2 * smooth))
     state = solver.init(BCOOLinearOperator(grounded_laplacian(smooth)), {})
+    state = solver.reinit(operator, {}, state)
+    assert state.factorization.refactorizations == 1
     # Its handle still refactorizes, so only the flag asks for a new analysis.
     failed = eqx.tree_at(lambda s: s.failed, state, jnp.array(True))
 
-    new_operator = BCOOLinearOperator(grounded_laplacian(2 * smooth))
+    new_operator = BCOOLinearOperator(grounded_laplacian(scale * smooth))
     state = solver.reinit(new_operator, {}, failed)
 
     assert not state.failed and state.factorization.refactorizations == 0

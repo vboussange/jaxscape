@@ -13,7 +13,7 @@ from jax.numpy.linalg import pinv
 from jaxscape.distance import AbstractSolverDistance
 from jaxscape.graph import AbstractGraph
 from jaxscape.solvers.operator import _batched_linear_solve_impl, _solver_state
-from jaxscape.utils import graph_laplacian
+from jaxscape.utils import _matmul, graph_laplacian
 
 
 # Building the full Rademacher projection matrix is faster for moderate sizes,
@@ -324,16 +324,6 @@ def spielman_sources_to_targets_resistance_distance(
         state,
         projection_batch_size,
     )
-
-
-def _matmul(a: Array, b: Array) -> Array:
-    """Matrix product in full precision.
-
-    On GPUs, JAX's default precision multiplies float32 matrices in TF32,
-    with about three significant digits, which loses the accuracy of float32
-    resistance distances and their gradients.
-    """
-    return jnp.matmul(a, b, precision=lax.Precision.HIGHEST)
 
 
 def _projection_size(n: int, epsilon: float) -> int:

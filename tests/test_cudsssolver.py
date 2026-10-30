@@ -227,22 +227,22 @@ def test_carrying_the_state_never_repeats_the_analysis(cudss, query):
     state = distance.init(grid_of(surface("smooth")))
 
     @jax.jit
-    def step(conductance, state):
-        def loss(conductance, state):
-            grid = grid_of(conductance)
+    def step(log_conductance, state):
+        def loss(log_conductance, state):
+            grid = grid_of(jnp.exp(log_conductance))
             state = distance.reinit(grid, state)
             return jnp.mean(distance(grid, state=state, **QUERIES[query]) ** 2), state
 
-        return jax.value_and_grad(loss, has_aux=True)(conductance, state)
+        return jax.value_and_grad(loss, has_aux=True)(log_conductance, state)
 
     rebuilds = cudss.rebuild_count()
     for scale, name in enumerate(["smooth", "six_decades", "smooth"], start=1):
-        conductance = scale * surface(name)
-        (value, state), gradient = step(conductance, state)
+        log_conductance = jnp.log(scale * surface(name))
+        (value, state), gradient = step(log_conductance, state)
 
         expected, expected_gradient = jax.value_and_grad(
-            lambda c: jnp.mean(reference(grid_of(c), **QUERIES[query]) ** 2)
-        )(conductance)
+            lambda c: jnp.mean(reference(grid_of(jnp.exp(c)), **QUERIES[query]) ** 2)
+        )(log_conductance)
         np.testing.assert_allclose(value, expected, rtol=1e-8)
         np.testing.assert_allclose(gradient, expected_gradient, rtol=1e-6, atol=1e-10)
     assert step._cache_size() == 1  # type: ignore[attr-defined]
@@ -267,7 +267,7 @@ def test_a_used_up_state_repeats_the_analysis_and_stays_exact(cudss):
     distance = ResistanceDistance(solver=CuDSSSolver())
     nodes = QUERIES["nodes_to_nodes"]["nodes"]
     used_up = distance.init(grid_of(surface("smooth")))
-    distance.reinit(grid_of(surface("six_decades")), used_up)
+    jax.block_until_ready(distance.reinit(grid_of(surface("six_decades")), used_up))
 
     rebuilds = cudss.rebuild_count()
     conductance = 2 * surface("smooth")
@@ -289,6 +289,11 @@ def test_spielman_adjoint_solves_reuse_the_forward_factorization(cudss, query):
         return distance(grid_of(conductance), state=state, **QUERIES[query])
 
     forward, pullback = jax.vjp(distances, conductance)
+    reference = ResistanceDistance(method=SPIELMAN)
+    expected = reference(grid_of(conductance), **QUERIES[query])
+    np.testing.assert_allclose(
+        forward, expected, rtol=1e-6, atol=1e-10 * float(np.max(np.abs(expected)))
+    )
     cotangent = jnp.asarray(np.random.default_rng(5).standard_normal(forward.shape))
 
     rebuilds = cudss.rebuild_count()

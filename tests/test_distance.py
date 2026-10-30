@@ -168,8 +168,12 @@ def test_state_lifecycle_matches_the_dense_reference(kind, solver, query):
     solver = make_cudss() if solver == "cudss" else make_solver(solver)
     distance = SOLVER_DISTANCES[kind](solver)
 
+    traces = []
+
     @eqx.filter_jit
     def step(values, state):
+        traces.append(1)
+
         def objective(values, state):
             state = distance.reinit(grid_of(values), state)
             return squared_distances(values, distance, query, state), state
@@ -185,7 +189,7 @@ def test_state_lifecycle_matches_the_dense_reference(kind, solver, query):
         assert_close(value, expected_value)
         assert_close(gradient, expected_gradient)
     if isinstance(solver, AbstractReusableStateSolver):
-        assert step._cached._cache_size() == 1  # type: ignore[attr-defined]
+        assert len(traces) == 1
 
 
 @pytest.mark.parametrize("kind", ["exact", "free-energy"])

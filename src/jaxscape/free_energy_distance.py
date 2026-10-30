@@ -14,6 +14,7 @@ from jaxscape.solvers.operator import (
     _solver_state,
     _stop_gradient,
 )
+from jaxscape.utils import _matmul
 
 
 class FreeEnergyDistance(AbstractSolverDistance):
@@ -337,7 +338,7 @@ def _selected_inverse_bwd(
     # For S=E.T H^-1 E and G=dL/dS, H Lambda=E G gives
     # Lambda=X G. Reuse X from the forward solve; G need not be symmetric.
     # Contract only stored H entries: never form the dense -Lambda X.T.
-    adjoint = potentials @ cotangent[0]
+    adjoint = _matmul(potentials, cotangent[0])
     valid = jnp.all((indices >= 0) & (indices < shape[0]), axis=1)
     safe = jnp.where(valid[:, None], indices, 0)
     gradient = -jnp.sum(adjoint[safe[:, 0]] * potentials[safe[:, 1]], axis=1)
