@@ -89,33 +89,15 @@ state = solver.init(BCOOLinearOperator(A), {})
 x = lx.linear_solve(BCOOLinearOperator(A), b, solver, state=state).value
 ```
 
-For related matrices whose values change but whose geometry is stable, initialize only the preconditioner and materialize fresh CG state for each current operator:
+For a matrix with the same sparsity pattern and other values, `reinit` keeps the hierarchy and binds CG to the new matrix:
 
 ```python
-solver = AMJaxCGSolver(rtol=1e-6, atol=1e-6, max_steps=1_000)
-preconditioner_state = solver.init_preconditioner(BCOOLinearOperator(A0), {})
-
 operator = BCOOLinearOperator(A1)
-state = solver.materialize_state(operator, {}, preconditioner_state)
+state = solver.reinit(operator, {}, state)
 x = lx.linear_solve(operator, b, solver, state=state).value
 ```
 
-For resistance distance, initialize preconditioner state against a reference graph so the AMJax hierarchy is built on the grounded Laplacian used internally:
-
-```python
-from jaxscape import GridGraph, ResistanceDistance
-from jaxscape.solvers import AMJaxCGSolver
-
-grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
-distance = ResistanceDistance(
-  solver=AMJaxCGSolver(rtol=1e-6, atol=1e-6, max_steps=1_000)
-)
-state = distance.init_preconditioner(grid)
-
-R = distance(grid, state=state)
-```
-
-Use `distance.init(grid)` instead when the graph is fixed and you want to reuse the full solver state.
+Distances do this for you, as [Reusing solver state](#reusing-solver-state) describes.
 
 ## Reusing solver state
 
@@ -125,7 +107,9 @@ Solver setup can cost far more than a solve, as a sparse analysis or a multigrid
   sparse indices or run host code, so call it outside `jax.jit`.
 - `distance.reinit(graph, state)` returns the state of another graph with the same
   sparsity pattern, reusing what the solver can. It runs inside `jax.jit`.
-- Queries read the state of their graph, and all queries on a graph can share it.
+- Queries take that state, and all queries on a graph can share it. A query always
+  solves the graph it is given: a state of another graph costs time and leaves the
+  distances unchanged.
 
 A loop over conductances carries the state from one step to the next. The state carries no gradient, and `has_aux=True` passes it through the gradient transformation:
 
@@ -171,13 +155,14 @@ for _ in range(10):
     log_conductance, value, state = step(log_conductance, state)
 ```
 
-What each solver reuses, and what a query does with a state of another graph:
+What a state keeps from one graph to the next:
 
-| Solver | `reinit` keeps | Query with an outdated state |
-|---|---|---|
-| `AMJaxCGSolver` | The multigrid hierarchy | Solves the graph it is given |
-| `CuDSSSolver` | The sparse analysis | Solves the graph it is given. The state does not keep that refactorization, so pass it through `reinit` to reuse it |
-| `CholmodSolver`, `PyAMGSolver`, Lineax solvers | Nothing | Solves the graph the state was built for, so always pass the state through `reinit`. `FreeEnergyDistance` raises an error when its check detects this |
+| Solver | Kept by the state |
+|---|---|
+| `AMJaxCGSolver` | The multigrid hierarchy |
+| `CuDSSSolver` | The sparse analysis, and the factorization while the values stay the same |
+| `CholmodSolver` | Its last factorization, while the values stay the same |
+| `PyAMGSolver`, Lineax solvers | Nothing: each query runs `init`, which only records the matrix |
 
 ## Writing a sparse direct solver
 

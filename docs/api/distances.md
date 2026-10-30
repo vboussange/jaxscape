@@ -10,7 +10,6 @@
       members:
         - system_matrix
         - init
-        - init_preconditioner
 
 ::: jaxscape.euclidean_distance.EuclideanDistance
     options:

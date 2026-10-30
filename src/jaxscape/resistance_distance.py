@@ -63,13 +63,10 @@ class ResistanceDistance(AbstractSolverDistance):
 
         dist = distance(grid, state=state)
 
-        # Or reuse only the AMJax preconditioner across related graphs.
-        preconditioner_state = distance.init_preconditioner(grid)
+        # Carry a state from one graph to the next, as an optimization loop does.
+        # AMJax keeps its hierarchy.
         updated_permeability = permeability * 1.1
         updated_grid = GridGraph(updated_permeability, fun=lambda x, y: (x + y) / 2)
-        dist = distance(updated_grid, state=preconditioner_state)
-
-        # Carry a state from one graph to the next, as an optimization loop does.
         state = distance.reinit(updated_grid, state)
         dist = distance(updated_grid, state=state)
 

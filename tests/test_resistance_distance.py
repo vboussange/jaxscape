@@ -254,7 +254,7 @@ def test_solver_resistance_differentiability(solver):
     graph = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
     distance = ResistanceDistance(solver=solver)
     reference = ResistanceDistance()
-    state = distance.init_preconditioner(graph)
+    state = distance.init(graph)
     tolerances = solver_tolerances(solver)
     nodes = jnp.array([0, 7, 24, 7], dtype=jnp.int32)
 

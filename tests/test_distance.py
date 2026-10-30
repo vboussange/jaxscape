@@ -18,7 +18,6 @@ from jaxscape import (
     SpielmanApproximation,
 )
 from jaxscape.solvers import (
-    AbstractReusableStateSolver,
     AMJaxCGSolver,
     CholmodSolver,
     CuDSSSolver,
@@ -128,8 +127,8 @@ def on_gpu(kind, query):
     return pytest.param(kind, "cudss", query, marks=pytest.mark.gpu)
 
 
-# Each distance with the solvers that reuse a state, and each other solver with
-# one distance. Queries take turns: they share their state handling.
+# Each distance with the solvers that reuse most of a state, and each other solver
+# with one distance. Queries take turns: they share their state handling.
 LIFECYCLE_CASES = [
     ("exact", "amjax", "all_pairs"),
     ("exact", "dense-cholesky", "sources_to_targets"),
@@ -188,15 +187,40 @@ def test_state_lifecycle_matches_the_dense_reference(kind, solver, query):
         expected_value, expected_gradient = dense_reference(kind, query, new_values)
         assert_close(value, expected_value)
         assert_close(gradient, expected_gradient)
-    if isinstance(solver, AbstractReusableStateSolver):
-        assert len(traces) == 1
+    assert len(traces) == 1
 
 
-@pytest.mark.parametrize("kind", ["exact", "free-energy"])
-def test_amjax_states_serve_any_conductances(kind):
-    distance = SOLVER_DISTANCES[kind](make_solver("amjax"))
+@pytest.mark.parametrize(
+    "kind, solver",
+    [
+        ("exact", "amjax"),
+        ("free-energy", "amjax"),
+        ("exact", "cholmod"),
+        ("free-energy", "cholmod"),
+        ("spielman", "pyamg"),
+        ("exact", "cg"),
+    ],
+)
+def test_queries_solve_the_graph_they_are_given_with_any_state(kind, solver):
+    distance = SOLVER_DISTANCES[kind](make_solver(solver))
     state = distance.init(grid_of(VALUES))
 
     actual = distance(grid_of(NEW_VALUES), nodes=NODES, state=state)
 
     assert_close(actual, SOLVER_DISTANCES[kind](None)(grid_of(NEW_VALUES), nodes=NODES))
+
+
+@pytest.mark.parametrize("solver", ["cholmod", "dense-cholesky", "cg"])
+def test_a_state_carries_through_scan(solver):
+    distance = ResistanceDistance(solver=make_solver(solver))
+
+    def step(state, values):
+        grid = grid_of(values)
+        state = distance.reinit(grid, state)
+        return state, distance.nodes_to_nodes_distance(grid, NODES, state)
+
+    values = jnp.stack([VALUES, NEW_VALUES, VALUES])
+    _, distances = jax.lax.scan(step, distance.init(grid_of(VALUES)), values)
+
+    assert_close(distances[1], ResistanceDistance()(grid_of(NEW_VALUES), nodes=NODES))
+    assert_close(distances[2], distances[0])

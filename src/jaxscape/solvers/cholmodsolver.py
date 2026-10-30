@@ -4,17 +4,18 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jax import errors as jax_errors
-from jax import Array as JaxArray
+from jax import Array as JaxArray, errors as jax_errors
 from jax.experimental.sparse import BCOO
 from jaxtyping import Array, PyTree
-from lineax import AbstractLinearOperator, AbstractLinearSolver, RESULTS
+from lineax import AbstractLinearOperator, RESULTS
 from lineax._solver.misc import (
     pack_structures,
     PackedStructures,
     transpose_packed_structures,
     unravel_solution,
 )
+
+from .operator import AbstractReusableStateSolver
 
 
 try:
@@ -34,13 +35,43 @@ class _CholespyFactor(eqx.Module):
     size: int = eqx.field(static=True)
 
 
-_CholmodSolverState: TypeAlias = tuple[BCOO, PackedStructures, _CholespyFactor | None]
+@jax.tree_util.register_static
+class _FactorCache:
+    """The last factorization of a solver state, kept on the host.
+
+    A state keeps one cache for its whole life, so its structure stays the same
+    under `jax.jit` whatever the matrix values. A factorization is a function of
+    the matrix, so caching it leaves host callbacks pure.
+    """
+
+    def __init__(self) -> None:
+        self._entry: tuple[np.ndarray, _CholespyFactor] | None = None
+
+    def factor_of(self, A_bcoo: BCOO, solve_dtype: np.dtype) -> _CholespyFactor:
+        # The first slice of any callback batch, in NumPy: this runs on every solve.
+        data = np.asarray(A_bcoo.data)
+        data = data.reshape(-1, data.shape[-1])[0]
+        entry = self._entry
+        if (
+            entry is not None
+            and entry[1].solve_dtype == solve_dtype
+            and np.array_equal(entry[0], data)
+        ):
+            return entry[1]
+        factor = _factorize_host(_unbatched_bcoo(A_bcoo), solve_dtype)
+        self._entry = (np.array(data), factor)
+        return factor
 
 
-class CholmodSolver(AbstractLinearSolver):
+_CholmodSolverState: TypeAlias = tuple[BCOO, PackedStructures, _FactorCache | None]
+
+
+class CholmodSolver(AbstractReusableStateSolver):
     """
     A linear solver that uses CHOLMOD (via cholespy) to solve a sparse linear system.
     Uses direct Cholesky factorization for symmetric positive definite matrices.
+    A state keeps its last factorization, which solves reuse while the matrix values
+    stay the same.
 
 
     !!! example
@@ -80,40 +111,29 @@ class CholmodSolver(AbstractLinearSolver):
     ) -> _CholmodSolverState:
         del options
 
-        A_bcoo = operator.as_matrix()
-        if not isinstance(A_bcoo, BCOO):
-            raise ValueError("CholmodSolver requires a BCOO-backed operator.")
+        A_bcoo = _bcoo_matrix(operator)
         packed_structures = pack_structures(operator)
-        factor = None
         # `init` may be called inside a traced Lineax solve. In that case the
         # sparse buffers are abstract values, so defer native factorization to
-        # the host callback where concrete arrays are available.
-        if self.factorize_in_init and _can_materialize_bcoo(A_bcoo):
-            solve_dtype = _factor_dtype_from_matrix(A_bcoo)
-            if solve_dtype is not None:
-                factor = _factorize_host(A_bcoo, solve_dtype)
-        return A_bcoo, packed_structures, factor
+        # the host callback where concrete arrays are available. A compiled
+        # function would keep a cache across its calls, so each solve factorizes.
+        if not _can_materialize_bcoo(A_bcoo):
+            return A_bcoo, packed_structures, None
+        cache = _FactorCache()
+        solve_dtype = _factor_dtype_from_matrix(A_bcoo)
+        if self.factorize_in_init and solve_dtype is not None:
+            cache.factor_of(A_bcoo, solve_dtype)
+        return A_bcoo, packed_structures, cache
 
-    def _compute_host(
+    def reinit(
         self,
-        A_bcoo: BCOO,
-        b_jax: JaxArray,
-    ) -> np.ndarray:
-        """
-        Solve the linear system using CHOLMOD via cholespy.
-
-        **Arguments:**
-
-        - `A_bcoo`: Sparse matrix in BCOO format.
-        - `b_jax`: Right-hand side vector(s).
-
-        **Returns:**
-
-        Solution vector(s).
-        """
-        solve_dtype = _solve_dtype_from_rhs(b_jax)
-        factor = _factorize_host(A_bcoo, solve_dtype)
-        return _solve_with_factor_host(factor, b_jax)
+        operator: AbstractLinearOperator,
+        options: dict[str, Any],
+        state: _CholmodSolverState,
+    ) -> _CholmodSolverState:
+        """Point `state` at `operator`. Solves factorize new values when they run."""
+        del options
+        return _bcoo_matrix(operator), pack_structures(operator), state[2]
 
     def compute(
         self,
@@ -126,53 +146,58 @@ class CholmodSolver(AbstractLinearSolver):
         """
         del options
         b_jax = vector
-        A_bcoo, packed_structures, factor = state
+        A_bcoo, packed_structures, cache = state
         result_shape = jax.ShapeDtypeStruct(b_jax.shape, b_jax.dtype)
 
-        if factor is not None and factor.solve_dtype == np.dtype(b_jax.dtype):
-            # Reuse the expensive symbolic/numeric factorization when callers
-            # pass state from `init`; `expand_dims` still coalesces vmapped RHS
-            # solves into one batched host callback.
-            solution = eqx.filter_pure_callback(
-                lambda rhs: _solve_with_factor_host(factor, rhs),
-                b_jax,
-                result_shape_dtypes=result_shape,
-                vmap_method="expand_dims",
-            )
-        else:
-            solution = eqx.filter_pure_callback(
-                self._compute_host,
-                A_bcoo,
-                b_jax,
-                result_shape_dtypes=result_shape,
-                vmap_method="expand_dims",
-            )
+        def solve_host(A_bcoo: BCOO, b_jax: JaxArray) -> np.ndarray:
+            solve_dtype = _solve_dtype_from_rhs(b_jax)
+            if cache is None:
+                factor = _factorize_host(_unbatched_bcoo(A_bcoo), solve_dtype)
+            else:
+                factor = cache.factor_of(A_bcoo, solve_dtype)
+            return _solve_with_factor_host(factor, b_jax)
+
+        # `expand_dims` coalesces vmapped RHS solves into one batched host callback.
+        solution = eqx.filter_pure_callback(
+            solve_host,
+            A_bcoo,
+            b_jax,
+            result_shape_dtypes=result_shape,
+            vmap_method="expand_dims",
+        )
 
         solution = unravel_solution(solution, packed_structures)
         return solution, RESULTS.successful, {}
 
     def transpose(self, state: _CholmodSolverState, options: dict[str, Any]):
         del options
-        A_bcoo, packed_structures, factor = state
+        A_bcoo, packed_structures, cache = state
         transposed_packed_structures = transpose_packed_structures(packed_structures)
         A_bcoo_T = A_bcoo.T
-        transpose_state = (A_bcoo_T, transposed_packed_structures, factor)
+        transpose_state = (A_bcoo_T, transposed_packed_structures, cache)
         return transpose_state, {}
 
     def conj(self, state: _CholmodSolverState, options: dict[str, Any]):
         del options
-        A_bcoo, packed_structures, factor = state
+        A_bcoo, packed_structures, cache = state
         A_conj = BCOO(
             (jnp.conj(A_bcoo.data), A_bcoo.indices),
             shape=A_bcoo.shape,
             indices_sorted=A_bcoo.indices_sorted,
             unique_indices=A_bcoo.unique_indices,
         )
-        conj_state = (A_conj, packed_structures, factor)
+        conj_state = (A_conj, packed_structures, cache)
         return conj_state, {}
 
     def assume_full_rank(self):
         return True
+
+
+def _bcoo_matrix(operator: AbstractLinearOperator) -> BCOO:
+    A_bcoo = operator.as_matrix()
+    if not isinstance(A_bcoo, BCOO):
+        raise ValueError("CholmodSolver requires a BCOO-backed operator.")
+    return A_bcoo
 
 
 def _can_materialize_bcoo(A_bcoo: BCOO) -> bool:

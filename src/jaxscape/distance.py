@@ -1,3 +1,4 @@
+import warnings
 from abc import abstractmethod
 from typing import Any
 
@@ -9,11 +10,7 @@ from jax import Array
 from jax.experimental.sparse import BCOO
 
 from .graph import AbstractGraph
-from .solvers.operator import (
-    _stop_gradient,
-    AbstractReusableStateSolver,
-    BCOOLinearOperator,
-)
+from .solvers.operator import _solver_state
 
 
 class AbstractDistance(eqx.Module):
@@ -173,7 +170,7 @@ class AbstractSolverDistance(AbstractDistance):
     """Distance whose queries solve linear systems with one sparse matrix per graph.
 
     Subclass it with `solver` and `system_matrix` to get the solver state lifecycle
-    of `init`, `reinit` and `init_preconditioner`.
+    of `init` and `reinit`.
 
     **Attributes:**
 
@@ -209,33 +206,18 @@ class AbstractSolverDistance(AbstractDistance):
 
         State to pass to queries and to `reinit`, or `None` without a solver.
         """
-        if self.solver is None:
-            return None
-        return self.solver.init(self._operator(graph), {})
+        return self.reinit(graph, None)
 
     def reinit(self, graph: AbstractGraph, state: Any) -> Any:
-        if state is not None and isinstance(self.solver, AbstractReusableStateSolver):
-            return self.solver.reinit(self._operator(graph), {}, state)
-        return self.init(graph)
+        if self.solver is None:
+            return None
+        return _solver_state(self.system_matrix(graph), self.solver, None, state)
 
     def init_preconditioner(self, graph: AbstractGraph) -> Any:
-        """Build preconditioner-only state for `graph` when the solver supports it.
-
-        For `AMJaxCGSolver`, it builds the multigrid hierarchy without binding the
-        state to the values of `graph`. Other solvers return the state of `init`.
-
-        **Arguments:**
-
-        - `graph`: Graph whose system matrix the preconditioner is built for.
-
-        **Returns:**
-
-        State to pass to queries, or `None` without a solver.
-        """
-        initialize = getattr(self.solver, "init_preconditioner", None)
-        if initialize is None:
-            return self.init(graph)
-        return initialize(self._operator(graph), {})
-
-    def _operator(self, graph: AbstractGraph) -> lx.AbstractLinearOperator:
-        return _stop_gradient(BCOOLinearOperator(self.system_matrix(graph)))
+        """Deprecated alias of `init`, which queries now reinitialize for any graph."""
+        warnings.warn(
+            "`init_preconditioner` is deprecated; use `init`.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.init(graph)

@@ -469,7 +469,7 @@ def _run_inverse_profile_direct(
                 # Match the ResistanceGA benchmark setup: both tools optimise a
                 # transformed version of the same base surface, so AMJax can
                 # safely reuse a hierarchy built from the initial transform.
-                fixed_state = distance.init_preconditioner(
+                fixed_state = distance.init(
                     _inverse_grid(
                         _permeability_from_inverse_params(init_params, base_resistance)
                     )

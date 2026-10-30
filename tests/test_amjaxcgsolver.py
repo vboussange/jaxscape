@@ -8,6 +8,7 @@ from jaxscape import GridGraph, ResistanceDistance
 from jaxscape.solvers import (
     amjax_preconditioner_operator,
     AMJaxCGSolver,
+    AMJaxCGSolverState,
     BCOOLinearOperator,
     build_amjax_solver,
 )
@@ -34,10 +35,7 @@ def test_hierarchy_preserves_matrix_dtype(amjax_dependencies, dtype):
                 assert leaf.dtype == dtype
 
 
-@pytest.mark.parametrize("legacy_tuple", [False, True])
-def test_frozen_preconditioner_jitted_values_and_gradients(
-    amjax_dependencies, legacy_tuple
-):
+def test_frozen_preconditioner_jitted_values_and_gradients(amjax_dependencies):
     """Current matrix solves and resistance gradients reuse a frozen hierarchy."""
     with jax.enable_x64():
         scipy_matrix = amjax_dependencies.gallery.poisson(
@@ -50,10 +48,7 @@ def test_frozen_preconditioner_jitted_values_and_gradients(
         solver = AMJaxCGSolver(
             rtol=1e-10, atol=1e-10, max_steps=500, coarse_solver="pinv"
         )
-        state = solver.init_preconditioner(BCOOLinearOperator(reference))
-        assert not state.has_cg_state
-        if legacy_tuple:
-            state = (state.cg_state, state.preconditioner)
+        state = solver.init(BCOOLinearOperator(reference), {})
 
         def solve(data, rhs):
             matrix = BCOO((data, current.indices), shape=current.shape)
@@ -70,12 +65,7 @@ def test_frozen_preconditioner_jitted_values_and_gradients(
         permeability = jnp.ones((6, 6), dtype=jnp.float64)
         distance = ResistanceDistance(solver=solver)
         graph = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
-        resistance_state = distance.init_preconditioner(graph)
-        if legacy_tuple:
-            resistance_state = (
-                resistance_state.cg_state,
-                resistance_state.preconditioner,
-            )
+        resistance_state = distance.init(graph)
         nodes = jnp.array([0, 12, 35, 12], dtype=jnp.int32)
 
         def objective(values):
@@ -112,7 +102,7 @@ def test_single_level_hierarchy_uses_cg(amjax_dependencies, size):
         )
         assert isinstance(preconditioner, lx.IdentityLinearOperator)
         solver = AMJaxCGSolver(rtol=1e-10, atol=1e-10, max_steps=50)
-        state = solver.init_preconditioner(operator)
+        state = solver.init(operator, {})
 
         @jax.jit
         def solve(rhs):
@@ -124,7 +114,7 @@ def test_single_level_hierarchy_uses_cg(amjax_dependencies, size):
         permeability = jnp.linspace(0.8, 1.4, size + 1).reshape(1, -1)
         distance = ResistanceDistance(solver=solver)
         graph = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
-        resistance_state = distance.init_preconditioner(graph)
+        resistance_state = distance.init(graph)
 
         def objective(values, distance, state=None):
             graph = GridGraph(values, fun=lambda x, y: (x + y) / 2)
@@ -147,3 +137,23 @@ def test_missing_amjax_dependency_reports_extra(monkeypatch):
         AMJaxCGSolver()
     with pytest.raises(ImportError, match=r"jaxscape\[amjax\]"):
         build_amjax_solver(None)
+
+
+def test_deprecated_state_methods_are_aliases(amjax_dependencies):
+    matrix = BCOO.from_scipy_sparse(
+        amjax_dependencies.gallery.poisson((6, 6), format="csr", dtype=np.float64)
+    )
+    operator = BCOOLinearOperator(matrix)
+    solver = AMJaxCGSolver(rtol=1e-8, atol=1e-8, max_steps=100)
+    distance = ResistanceDistance(solver=solver)
+    grid = GridGraph(jnp.ones((3, 3)), fun=lambda x, y: (x + y) / 2)
+
+    with pytest.warns(DeprecationWarning, match="use `init`"):
+        state = solver.init_preconditioner(operator)
+    with pytest.warns(DeprecationWarning, match="use `reinit`"):
+        state = solver.materialize_state(operator, {}, state)
+    with pytest.warns(DeprecationWarning, match="use `init`"):
+        distance_state = distance.init_preconditioner(grid)
+
+    assert isinstance(state, AMJaxCGSolverState)
+    assert isinstance(distance_state, AMJaxCGSolverState)

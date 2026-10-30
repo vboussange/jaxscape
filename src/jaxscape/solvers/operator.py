@@ -37,9 +37,10 @@ class AbstractReusableStateSolver(lx.AbstractLinearSolver):
     """Lineax solver whose state can serve another operator of the same sparsity.
 
     Subclass it when part of a state outlives the matrix values, such as a sparse
-    analysis or a multigrid hierarchy, and implement `reinit`. Distance queries
-    call `reinit` on the state they receive before solving, so they solve the
-    graph they are given with any state of the same sparsity pattern.
+    analysis, a factorization or a multigrid hierarchy, and implement `reinit`.
+    Distance queries call `reinit` on the state they receive before solving. Other
+    Lineax solvers run `init` for each query, which suits iterative solvers, whose
+    `init` only records the operator.
     """
 
     @abc.abstractmethod
@@ -131,17 +132,14 @@ def _solver_state(
 ) -> Any:
     """Return the state that solves `A`, built from its values without gradient.
 
-    Without a supplied `state`, it is the state `solver.init` builds. An
-    `AbstractReusableStateSolver` reinitializes the supplied state for `A`. Any
-    other solver solves with the supplied state, which must belong to `A`.
+    An `AbstractReusableStateSolver` reinitializes a supplied `state` for `A`. In
+    any other case, `solver.init` builds the state.
     """
     options = _solver_options(options)
     operator = _stop_gradient(BCOOLinearOperator(A))
-    if state is None:
-        return solver.init(operator, options)
-    if isinstance(solver, AbstractReusableStateSolver):
+    if state is not None and isinstance(solver, AbstractReusableStateSolver):
         return solver.reinit(operator, options, state)
-    return state
+    return solver.init(operator, options)
 
 
 def _solver_options(options: dict[str, Any] | None) -> dict[str, Any]:
