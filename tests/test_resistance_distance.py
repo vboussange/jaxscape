@@ -3,8 +3,8 @@ from importlib.util import find_spec
 import jax
 import jax.numpy as jnp
 import jax.random as jr
-import lineax as lx
-import networkx as nx
+import lineax as lx  # pyright: ignore[reportMissingImports]
+import networkx as nx  # pyright: ignore[reportMissingImports]
 import numpy as np
 import pytest
 from equinox import filter_grad, filter_jit
