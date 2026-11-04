@@ -44,13 +44,15 @@ class _PixelExponential(eqx.Module):
     alpha: float = eqx.field(static=True)
 
     def __call__(self, distance: Array) -> Array:
-        pixels = jnp.arange(self.profile.size, dtype=self.profile.dtype)
+        last = self.profile.size - 1
+        # Comparing with every point of the short profile is about ten times
+        # faster than `jnp.interp`, whose search is sequential.
+        k = jnp.searchsorted(self.profile, distance, "right", method="compare_all")
+        k = jnp.clip(k, 1, last)
+        lower, step = self.profile[k - 1], self.profile[k] - self.profile[k - 1]
+        between = k - 1 + (distance - lower) / jnp.where(step > 0, step, 1)
         edge = self.profile[-1]
-        r = jnp.where(
-            distance > edge,
-            distance * (pixels[-1] / edge),
-            jnp.interp(distance, self.profile, pixels),
-        )
+        r = jnp.where(distance > edge, distance * (last / edge), between)
         return jnp.exp(-r / self.alpha)
 
 
