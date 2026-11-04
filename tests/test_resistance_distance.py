@@ -312,3 +312,66 @@ def test_padded_sparse_resistance_has_zero_padding_gradient():
         [-1.25, 0.0, -0.25, 0.0, -1.25, 0.0, -0.25, 0.0, 0.0, 0.0, 0.0]
     )
     assert jnp.allclose(gradient, expected)
+
+
+SOURCES_TO_TARGETS = {
+    # One source to every vertex: the query of a moving window.
+    "one-source": (jnp.array([12]), None),
+    # The ground vertex (the last one), duplicates, and sources among targets.
+    "few-pairs": (jnp.array([24, 3, 24]), jnp.array([24, 7, 3, 0])),
+}
+SOURCES_TO_TARGETS_SOLVERS = {
+    "dense": lambda: None,
+    "cholmod": lambda: CholmodSolver(),
+    "cg": lambda: lx.CG(rtol=1e-12, atol=1e-12, max_steps=500),
+}
+
+
+@pytest.mark.parametrize("pairs", SOURCES_TO_TARGETS)
+@pytest.mark.parametrize("solver", SOURCES_TO_TARGETS_SOLVERS)
+def test_sources_to_targets_match_all_pairs(solver, pairs):
+    if solver == "cholmod":
+        pytest.importorskip("cholespy")
+    distance = ResistanceDistance(solver=SOURCES_TO_TARGETS_SOLVERS[solver]())
+    sources, targets = SOURCES_TO_TARGETS[pairs]
+    selected = jnp.arange(25) if targets is None else targets
+    rng = np.random.default_rng(0)
+    permeability = jnp.asarray(10 ** rng.uniform(-1, 0, (5, 5)))
+    weights = jnp.asarray(rng.uniform(size=(sources.size, selected.size)))
+
+    def objective(permeability):
+        grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
+        distances = distance(grid, sources=sources, targets=targets)
+        return jnp.sum(weights * distances), distances
+
+    def all_pairs(permeability):
+        grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
+        distances = ResistanceDistance()(grid)[sources[:, None], selected[None, :]]
+        return jnp.sum(weights * distances), distances
+
+    (_, actual), gradient = jax.value_and_grad(objective, has_aux=True)(permeability)
+    (_, expected), expected_gradient = jax.value_and_grad(all_pairs, has_aux=True)(
+        permeability
+    )
+    np.testing.assert_allclose(actual, expected, rtol=1e-9, atol=1e-12)
+    np.testing.assert_allclose(gradient, expected_gradient, rtol=1e-9, atol=1e-12)
+
+
+def test_few_sources_to_targets_solve_for_them_only():
+    n = 900
+    permeability = jnp.linspace(0.5, 2.0, n).reshape(30, 30)
+    distance = ResistanceDistance(solver=lx.CG(rtol=1e-8, atol=1e-8, max_steps=500))
+    sources = jnp.array([0, 100])
+    targets = jnp.array([n - 1, 450, 31])
+
+    def objective(permeability):
+        grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
+        return jnp.sum(distance(grid, sources=sources, targets=targets))
+
+    # Temporary buffers of the query and of its gradient stay far below one
+    # dense matrix of all vertices.
+    dense = n**2 * permeability.dtype.itemsize
+    for program in (jax.jit(objective), jax.jit(jax.grad(objective))):
+        memory = program.lower(permeability).compile().memory_analysis()
+        assert memory is not None
+        assert memory.temp_size_in_bytes < dense / 4

@@ -33,7 +33,10 @@ class ResistanceDistance(AbstractSolverDistance):
       `jaxscape.solvers.CuDSSSolver`.
       If None, uses the pseudo-inverse method, which is very memory intensive
       for exact all-pairs distances (densifies the Laplacian matrix), or dense
-      solves for approximate distances.
+      solves for approximate distances. Exact sources-to-targets queries
+      without a solver use a dense Cholesky factorization of the grounded
+      Laplacian, which needs a connected graph: the distances of a
+      disconnected graph are NaN.
     - `method`: A resistance distance method. Defaults to `ExactResistance()`.
       Use `SpielmanApproximation(epsilon=..., seed=...)` for the randomized
       Spielman-Srivastava approximation.
@@ -149,8 +152,16 @@ class ResistanceDistance(AbstractSolverDistance):
                 state,
                 projection_batch_size=self.method.projection_batch_size,
             )
-        R = self.all_pairs_distance(graph, state)
-        return R[sources[:, None], targets[None, :]]
+        A = graph.get_adjacency_matrix()
+        return _exact_sources_to_targets(
+            A.data,
+            A.indices,
+            A.shape,
+            sources.astype(A.indices.dtype),
+            targets.astype(A.indices.dtype),
+            self.solver,
+            state,
+        )
 
 
 class AbstractResistanceMethod(eqx.Module):
@@ -456,6 +467,91 @@ def _exact_selected_inverse_bwd(
     # G need not be symmetric; the formula uses X G, not X G.T. The shared
     # helper applies the remaining chain rule from A to the stored edge data.
     adjoint = _matmul(potentials, cotangent)
+    return _laplacian_data_pullback(adjoint, potentials, indices, shape)
+
+
+@eqx.filter_custom_vjp
+def _exact_sources_to_targets(
+    data: Array,
+    indices: Array,
+    shape: tuple[int, ...],
+    sources: Array,
+    targets: Array,
+    solver: lx.AbstractLinearSolver | None,
+    state: Any,
+) -> Array:
+    return _exact_sources_to_targets_fwd(
+        None, data, indices, shape, sources, targets, solver, state
+    )[0]
+
+
+def _exact_sources_to_targets_fwd(
+    perturbed, data, indices, shape, sources, targets, solver, state
+):
+    del perturbed
+    nodes = jnp.concatenate([sources, targets])
+    reduced, solve_state = _prepare_reduced_laplacian(
+        data, indices, shape, solver, state
+    )
+    if solver is None:
+        # The grounded Laplacian of a connected graph is positive definite.
+        factor = jnp.linalg.cholesky(reduced.todense())
+        basis = jax.nn.one_hot(nodes, reduced.shape[0], dtype=reduced.dtype).T
+        potentials = jax.scipy.linalg.cho_solve((factor, True), basis)
+    else:
+        potentials = _node_potentials(reduced, nodes, solver, solve_state)
+    # With S the grounded inverse among `nodes`, R_ij = S_ii + S_jj - S_ij - S_ji
+    # for source column i and target column j; only the diagonal and the
+    # source-target blocks of S are formed.
+    m = sources.shape[0]
+    columns = jnp.arange(nodes.shape[0])
+    rows = jnp.minimum(nodes, potentials.shape[0] - 1)
+    diagonal = jnp.where(nodes < potentials.shape[0], potentials[rows, columns], 0)
+    distances = (
+        diagonal[:m, None]
+        + diagonal[None, m:]
+        - _grounded_values(potentials[:, m:], sources)
+        - _grounded_values(potentials[:, :m], targets).T
+    )
+    return distances, potentials
+
+
+_exact_sources_to_targets.def_fwd(_exact_sources_to_targets_fwd)
+
+
+@_exact_sources_to_targets.def_bwd
+def _exact_sources_to_targets_bwd(
+    potentials,
+    cotangent,
+    perturbed,
+    data,
+    indices,
+    shape,
+    sources,
+    targets,
+    solver,
+    state,
+):
+    del data, targets, solver, state
+    if cotangent is None or not perturbed:
+        return None
+    # As in `_exact_selected_inverse_bwd`, the adjoint is X G, where X are the
+    # potentials of the source columns X_s and target columns X_t, and G is the
+    # cotangent of S. For the cotangent H of the (m, k) distances,
+    #   G = [[diag(H 1), -H], [-H.T, diag(H.T 1)]],
+    # so X G = [X_s diag(H 1) - X_t H.T, X_t diag(H.T 1) - X_s H]. This costs
+    # O(n m k) and never forms G: one source to all targets stays O(n^2).
+    m = sources.shape[0]
+    source_potentials, target_potentials = potentials[:, :m], potentials[:, m:]
+    adjoint = jnp.concatenate(
+        [
+            source_potentials * jnp.sum(cotangent, axis=1)
+            - _matmul(target_potentials, cotangent.T),
+            target_potentials * jnp.sum(cotangent, axis=0)
+            - _matmul(source_potentials, cotangent),
+        ],
+        axis=1,
+    )
     return _laplacian_data_pullback(adjoint, potentials, indices, shape)
 
 
