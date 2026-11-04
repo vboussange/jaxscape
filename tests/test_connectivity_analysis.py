@@ -10,6 +10,7 @@ from jaxscape import (
     ResistanceDistance,
     SensitivityAnalysis,
 )
+from jaxscape.distance import AbstractDistance
 from jaxscape.solvers import AMJaxCGSolver, CholmodSolver, CuDSSSolver, cudsssolver
 
 
@@ -203,15 +204,81 @@ def test_coarsened_analyses_cover_the_raster(name, request):
         assert jnp.all(jnp.isfinite(sensitivity)) and jnp.any(sensitivity != 0)
 
 
+def test_coarsening_needs_a_block_centre_inside_the_raster():
+    # Blocks of 3 x 3 pixels have their centre in the second row.
+    with pytest.raises(ValueError, match="too small"):
+        analysis(
+            ConnectivityAnalysis,
+            LCPDistance(),
+            QUALITY[:1],
+            PERMEABILITY[:1],
+            coarsening_factor=0.5,
+        )
+
+
+@pytest.mark.parametrize("name", ["lcp", "resistance-dense"])
+def test_coarsened_quality_sensitivity_is_exact_inside_a_uniform_landscape(
+    name, request
+):
+    distance = CASES[name][0](request)
+    uniform = jnp.full((20, 20), 0.7)
+
+    def sensitivity(coarsening_factor):
+        return analysis(
+            SensitivityAnalysis,
+            distance,
+            uniform,
+            uniform,
+            coarsening_factor=coarsening_factor,
+        ).run("quality")
+
+    # Blocks of 3 x 3 pixels centred on rows and columns 1, 4, 7, ...: the
+    # pixel windows and block windows that reach pixels 7 to 12 are all inside
+    # the raster.
+    interior = (slice(7, 13), slice(7, 13))
+    assert_close(sensitivity(0.5)[interior], sensitivity(0.0)[interior], 1e-10)
+
+
+class Opaque(AbstractDistance):
+    """A distance that the analyses cannot know to be symmetric."""
+
+    distance: AbstractDistance
+
+    def init(self, graph):
+        return self.distance.init(graph)
+
+    def nodes_to_nodes_distance(self, graph, nodes, state=None):
+        return self.distance.nodes_to_nodes_distance(graph, nodes, state)
+
+    def sources_to_targets_distance(self, graph, sources, targets, state=None):
+        return self.distance.sources_to_targets_distance(graph, sources, targets, state)
+
+    def all_pairs_distance(self, graph, state=None):
+        return self.distance.all_pairs_distance(graph, state)
+
+
+def test_coarsened_quality_sensitivity_of_other_distances_is_a_gradient():
+    distance = Opaque(LCPDistance())
+
+    def connectivity(quality):
+        return analysis(
+            ConnectivityAnalysis, distance, quality, coarsening_factor=0.5
+        ).run()
+
+    sensitivity = analysis(SensitivityAnalysis, distance, coarsening_factor=0.5)
+    expected = jax.grad(connectivity)(QUALITY)
+    assert_close(sensitivity.run("quality"), expected, 1e-12)
+
+
 @pytest.fixture
 def compilations():
-    """Count the programs that XLA compiles."""
+    """Name the programs that XLA compiles."""
     events = []
 
     def listener(event, duration_secs, **kwargs):
-        del duration_secs, kwargs
+        del duration_secs
         if event == "/jax/core/compile/backend_compile_duration":
-            events.append(event)
+            events.append(kwargs.get("fun_name"))
 
     jax.monitoring.register_event_duration_secs_listener(listener)
     yield events
@@ -219,14 +286,33 @@ def compilations():
 
 
 @pytest.mark.parametrize("name", ["lcp", "resistance-cholmod"])
-@pytest.mark.parametrize("kind", [ConnectivityAnalysis, SensitivityAnalysis])
-def test_all_batches_run_one_compiled_program(name, kind, compilations, request):
+@pytest.mark.parametrize(
+    "kind, args",
+    [
+        (ConnectivityAnalysis, ()),
+        (SensitivityAnalysis, ("quality",)),
+        (SensitivityAnalysis, ("permeability",)),
+    ],
+)
+@pytest.mark.parametrize("coarsening_factor", [0.0, 0.5])
+def test_all_batches_run_one_compiled_program(
+    name, kind, args, coarsening_factor, compilations, request
+):
     distance = CASES[name][0](request)
-    args = ("permeability",) if kind is SensitivityAnalysis else ()
     quality, permeability = QUALITY[:5], PERMEABILITY[:5]
-    # One batch compiles everything that does not depend on the batch count.
-    analysis(kind, distance, quality, permeability, batch_size=35).run(*args)
 
+    def run(batch_size):
+        analysis(
+            kind,
+            distance,
+            quality,
+            permeability,
+            batch_size=batch_size,
+            coarsening_factor=coarsening_factor,
+        ).run(*args)
+
+    # One batch compiles everything that does not depend on the batch count.
+    run(35)
     compilations.clear()
-    analysis(kind, distance, quality, permeability, batch_size=3).run(*args)
-    assert len(compilations) == 1
+    run(3)
+    assert compilations == ["jit(_batch)"]

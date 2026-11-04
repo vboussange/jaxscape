@@ -27,16 +27,42 @@ def _average(x: Array, y: Array) -> Array:
     return (x + y) / 2
 
 
+def _uniform_graph(size: int, permeability, dtype) -> GridGraph:
+    return GridGraph(jnp.full((size, size), permeability, dtype), fun=_average)
+
+
+def _tent(pixels: Array, block: Array, blocks: int, size: int, dtype) -> Array:
+    """Interpolation weights of the centre of `block` at `pixels`, along one axis.
+
+    Of `blocks` block centres, `size` pixels apart, the centre of `block` has
+    weight 1 and its neighbours weight 0, linear in between. Beyond the first
+    and the last centre, the nearest centre takes all the weight.
+    """
+    centre = block * size + (size - 1) // 2
+    knots = (centre + size * jnp.arange(-1, 2)).astype(dtype)
+    heights = jnp.array([block == 0, True, block == blocks - 1], dtype)
+    return jnp.interp(pixels.astype(dtype), knots, heights)
+
+
 class WindowedAnalysis(eqx.Module):
     """Base class for windowed connectivity analyses on large rasters.
 
     Every pixel is the centre of a window of `2 * dependency_range + 1` pixels
-    a side, in which distances are computed. With coarsening, one window serves
-    each block of `coarsening` pixels a side. The rasters are padded on all sides
+    a side, in which distances are computed. The rasters are padded on all sides
     so that windows of edge pixels fit: padding has quality 0 and the
     permeability floor. Permeability below the floor, `1e-4` times the maximum
     permeability, is raised to it: every window graph is connected, and
     regions of zero permeability stay nearly impassable.
+
+    With coarsening, the raster is divided into blocks of `b` pixels a side,
+    where `b` is `dependency_range * coarsening_factor` rounded up to an odd
+    integer, and only the windows centred on block centres inside the raster
+    are computed: about `b**2` times fewer windows, each the same as without
+    coarsening. Values between block centres are interpolated bilinearly: the
+    weight of a centre falls linearly from 1 at the centre to 0 at the
+    neighbouring centres, along each axis, and beyond the outermost centres
+    the nearest centre takes all the weight. The weights of all centres sum to
+    1 at every pixel.
 
     Windows run in batches of `batch_size`, one compiled program for all
     batches. Distances without solver state, such as `LCPDistance`,
@@ -59,7 +85,8 @@ class WindowedAnalysis(eqx.Module):
     - `batch_size`: Number of windows per batch. Distances without solver
       state hold all windows of a batch in memory at once.
     - `coarsening_factor`: Spatial coarsening in [0, 1]. 0 = finest resolution,
-      higher = faster.
+      higher = faster. The raster must hold a block centre along each axis,
+      `(b + 1) // 2` pixels.
 
     !!! example
 
@@ -113,6 +140,8 @@ class WindowedAnalysis(eqx.Module):
             permeability_raster = permeability_raster(quality_raster)
         if quality_raster.shape != permeability_raster.shape:
             raise ValueError("Quality and permeability rasters must have one shape.")
+        if min(quality_raster.shape) < (coarsening + 1) // 2:
+            raise ValueError("Raster too small for `coarsening_factor`.")
 
         # The floor is a constant of the analysis: sensitivities do not
         # differentiate it.
@@ -150,21 +179,46 @@ class WindowedAnalysis(eqx.Module):
         start = self.window_op.buffer_size
         return raster[start : start + self.shape[0], start : start + self.shape[1]]
 
-    def _accumulate(self, window_fn: Callable, initial: Array, *args: Any) -> Array:
-        """Accumulate `window_fn` over all windows, one batch at a time.
+    @property
+    def _blocks(self) -> tuple[int, int]:
+        """Number of block centres inside the raster along each axis."""
+        size = self.window_op.window_size
+        rows, columns = ((n - 1 - (size - 1) // 2) // size + 1 for n in self.shape)
+        return rows, columns
 
-        `window_fn(analysis, quality, permeability, inside, state, *args)` maps
-        the windows of the padded rasters, the mask of their pixels inside the
-        input raster, and the solver state, to a scalar added to `initial` or a
-        window added to the padded raster `initial`.
+    def _interpolate(self, values: Array) -> Array:
+        """Interpolate `values` at the block centres to every pixel of the raster."""
+        size = self.window_op.window_size
+
+        def along_rows(values, length):
+            centres = jnp.arange(values.shape[0]) * size + (size - 1) // 2
+            pixels = jnp.arange(length, dtype=values.dtype)
+
+            def interpolate(column):
+                return jnp.interp(pixels, centres.astype(values.dtype), column)
+
+            return jax.vmap(interpolate, in_axes=1, out_axes=1)(values)
+
+        values = along_rows(values, self.shape[0])
+        return along_rows(values.T, self.shape[1]).T
+
+    def _accumulate(self, window_fn: Callable, initial: Array, *args: Any) -> Array:
+        """Accumulate `window_fn` over the windows of all block centres.
+
+        `window_fn(analysis, quality, permeability, inside, tent, state, *args)`
+        maps the windows of the padded rasters, the mask of their pixels inside
+        the input raster, the interpolation weights of the window's block centre
+        and the solver state, to a scalar or to a window. Scalars fill
+        `initial`, of one entry per block centre in row-major order; windows
+        add to the padded raster `initial`.
         """
         size = self.window_op.total_window_size
-        null_window = jnp.ones((size, size), self.permeability_raster.dtype)
-        state = self.distance.init(GridGraph(null_window, fun=_average))
+        dtype = self.permeability_raster.dtype
+        state = self.distance.init(_uniform_graph(size, 1, dtype))
         dynamic, static = eqx.partition(state, eqx.is_array)
 
         accumulated = initial
-        n_windows = self.window_op.nb_steps
+        n_windows = math.prod(self._blocks)
         for start in tqdm(
             range(0, n_windows, self.batch_size),
             desc="Batch progress",
@@ -185,44 +239,53 @@ def _batch(inputs: tuple, accumulated: Array) -> tuple[Array, Any]:
     analysis, start, dynamic, static, window_fn, args = inputs
     op = analysis.window_op
     size = op.total_window_size
+    rows, columns = analysis._blocks
+    dtype = analysis.quality_raster.dtype
 
     # Dummy windows complete the last batch, so all batches share one program.
     index = start + jnp.arange(analysis.batch_size)
-    valid = index < op.nb_steps
-    index = jnp.minimum(index, op.nb_steps - 1)
-    xy = jnp.stack([index // op.y_steps, index % op.y_steps], axis=1) * op.window_size
+    valid = index < rows * columns
+    index = jnp.minimum(index, rows * columns - 1)
+    block = jnp.stack([index // columns, index % columns], axis=1)
+    xy = block * op.window_size
 
-    def windows(xy):
-        rows = xy[0] - op.buffer_size + jnp.arange(size)
-        columns = xy[1] - op.buffer_size + jnp.arange(size)
-        inside = ((rows >= 0) & (rows < analysis.shape[0]))[:, None] & (
-            (columns >= 0) & (columns < analysis.shape[1])
+    def windows(block):
+        xy = block * op.window_size
+        pixels = xy[:, None] - op.buffer_size + jnp.arange(size)
+        inside = ((pixels[0] >= 0) & (pixels[0] < analysis.shape[0]))[:, None] & (
+            (pixels[1] >= 0) & (pixels[1] < analysis.shape[1])
         )[None, :]
+        tent = jnp.outer(
+            _tent(pixels[0], block[0], rows, op.window_size, dtype),
+            _tent(pixels[1], block[1], columns, op.window_size, dtype),
+        )
         quality = op.extract_total_window(xy, analysis.quality_raster)
         permeability = op.extract_total_window(xy, analysis.permeability_raster)
-        return quality, permeability, inside
+        return quality, permeability, inside, tent
 
     if dynamic is None:
 
-        def window(xy):
-            return window_fn(analysis, *windows(xy), None, *args)
+        def window(block):
+            return window_fn(analysis, *windows(block), None, *args)
 
-        outputs = jax.vmap(window)(xy)
+        outputs = jax.vmap(window)(block)
     else:
         # Solvers that run on the host or hold one factorization cannot vmap:
         # windows run one after another, each reinitializing the carried state.
-        def step(dynamic, xy):
-            quality, permeability, inside = windows(xy)
+        def step(dynamic, block):
+            quality, permeability, inside, tent = windows(block)
             graph = GridGraph(lax.stop_gradient(permeability), fun=_average)
             state = analysis.distance.reinit(graph, eqx.combine(dynamic, static))
-            output = window_fn(analysis, quality, permeability, inside, state, *args)
+            output = window_fn(
+                analysis, quality, permeability, inside, tent, state, *args
+            )
             return eqx.partition(state, eqx.is_array)[0], output
 
-        dynamic, outputs = lax.scan(step, dynamic, xy)
+        dynamic, outputs = lax.scan(step, dynamic, block)
 
     outputs = jnp.where(valid.reshape((-1,) + (1,) * (outputs.ndim - 1)), outputs, 0)
-    if accumulated.ndim == 0:
-        return accumulated + jnp.sum(outputs), dynamic
+    if outputs.ndim == 1:
+        return accumulated.at[index].add(outputs), dynamic
 
     def add(raster, window):
         xy, output = window
