@@ -165,6 +165,15 @@ def test_sensitivity_is_the_gradient_of_connectivity(name, request):
         assert_close(sensitivity.run(var), expected, 1e-12)
 
 
+def test_sensitivity_is_finite_for_proximity_singular_at_zero():
+    def inverse(dist):
+        return 1 / dist
+
+    sensitivity = analysis(SensitivityAnalysis, LCPDistance(), proximity=inverse)
+    for var in ["quality", "permeability"]:
+        assert jnp.all(jnp.isfinite(sensitivity.run(var)))
+
+
 @pytest.mark.parametrize("name", ["lcp", "resistance-cholmod"])
 def test_coarsened_analyses_cover_the_raster(name, request):
     distance = CASES[name][0](request)

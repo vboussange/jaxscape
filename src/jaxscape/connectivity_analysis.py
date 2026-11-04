@@ -19,18 +19,18 @@ def _window_connectivity(
     """Connectivity between the core of a window and the rest of the window."""
     op = analysis.window_op
     size = op.total_window_size
-    centre = jnp.array([(size // 2) * size + size // 2])
-    distances = analysis.distance(
-        GridGraph(permeability, fun=_average), sources=centre, state=state
-    )
-    proximity = analysis.proximity(distances[0]).reshape(size, size)
-
     core = slice(op.buffer_size, op.buffer_size + op.window_size)
     is_core = jnp.zeros((size, size), bool).at[core, core].set(True)
+
+    centre = jnp.array([(size // 2) * size + size // 2])
+    graph = GridGraph(permeability, fun=_average)
+    distances = analysis.distance(graph, sources=centre, state=state)
+    # Pairs within the core do not count. A unit distance there keeps the
+    # gradient finite for proximities that are singular at zero.
+    distances = jnp.where(is_core, 1, distances.reshape(size, size))
     weight = quality if q_weighted else inside.astype(quality.dtype)
-    return jnp.sum(jnp.where(is_core, weight, 0)) * jnp.sum(
-        jnp.where(is_core, 0, proximity * weight)
-    )
+    outside = jnp.where(is_core, 0, analysis.proximity(distances) * weight)
+    return jnp.sum(jnp.where(is_core, weight, 0)) * jnp.sum(outside)
 
 
 def _window_sensitivity(
