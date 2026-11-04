@@ -268,6 +268,23 @@ def test_coarsened_analyses_cover_the_raster(name, request):
         assert jnp.all(jnp.isfinite(sensitivity)) and jnp.any(sensitivity != 0)
 
 
+@pytest.mark.parametrize("name", ["lcp", "resistance-dense"])
+def test_coarsened_permeability_sensitivity_is_finite_for_sparse_habitat(name, request):
+    # Habitat on two neighbouring blocks of 3 x 3 pixels, centred on (13, 13)
+    # and (13, 16), in an impassable matrix: at the raster's mean permeability,
+    # the float32 proximities of the default kernel underflow.
+    habitat = jnp.zeros((40, 40), "float32").at[12:15, 12:18].set(1)
+    sensitivity = analysis(
+        SensitivityAnalysis,
+        CASES[name][0](request),
+        habitat,
+        habitat,
+        proximity=None,
+        coarsening_factor=0.5,
+    ).run("permeability")
+    assert jnp.all(jnp.isfinite(sensitivity)) and jnp.any(sensitivity != 0)
+
+
 def test_coarsening_needs_a_block_centre_inside_the_raster():
     # Blocks of 3 x 3 pixels have their centre in the second row.
     with pytest.raises(ValueError, match="too small"):

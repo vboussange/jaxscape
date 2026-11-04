@@ -136,8 +136,8 @@ def _permeability_correction(
     On the uniform window `graph`, with quality 1: the gradient of the centre's
     proximity-weighted quality summed over a block of shifts, which is what the
     pixel windows of a block add up to, divided by `b**2` times the gradient
-    without the pairs within the block. Below a noise floor of the latter, the
-    factor is 1.
+    without the pairs within the block. At or below a noise floor of the
+    latter, which is zero where every proximity underflows, the factor is 1.
     """
     b = op.window_size
     ones = jnp.ones_like(graph.grid)
@@ -150,7 +150,7 @@ def _permeability_correction(
     pixels = jax.grad(own)(graph.grid, False)
     pixels = convolve2d(pixels, box, mode="same", precision=lax.Precision.HIGHEST)
     block = jax.grad(own)(graph.grid, True)
-    above = jnp.abs(block) >= 1e-6 * jnp.max(jnp.abs(block))
+    above = jnp.abs(block) > 1e-6 * jnp.max(jnp.abs(block))
     return jnp.where(above, pixels / (b**2 * jnp.where(above, block, 1)), 1)
 
 
@@ -274,10 +274,10 @@ class SensitivityAnalysis(WindowedAnalysis):
       $\sum_{j \neq c} K_{cj}$ and $\sum_{j \notin \text{block}} K_{cj}$, and
       $\text{box}_b$ sums over the $b \times b$ pixels around each pixel. Both
       are computed once per run, on a window of quality 1 and of the raster's
-      mean permeability, floor applied; where $|g_\text{far}|$ is below
+      mean permeability, floor applied; where $|g_\text{far}|$ is at most
       `1e-6` times its maximum, the correction is 1. In a uniform landscape,
       the corrected gradient of a block window is the sum of the gradients of
-      its $b^2$ pixel windows, except where $g_\text{far}$ is below the floor
+      its $b^2$ pixel windows, except where $g_\text{far}$ is at most the floor
       and in the band of $(b - 1) / 2$ pixels that the pixel windows reach
       beyond the block window.
 
