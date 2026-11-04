@@ -191,8 +191,9 @@ class WindowedAnalysis(eqx.Module):
         window added to the padded raster `initial`.
         """
         size = self.window_op.total_window_size
-        null_window = jnp.ones((size, size), self.permeability_raster.dtype)
-        state = self.distance.init(GridGraph(null_window, fun=_average))
+        state = self.distance.init(
+            _uniform_graph(size, 1, self.permeability_raster.dtype)
+        )
         dynamic, static = eqx.partition(state, eqx.is_array)
 
         accumulated = initial
