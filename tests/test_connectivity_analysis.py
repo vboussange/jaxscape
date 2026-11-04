@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from jax.scipy.signal import convolve2d
 from jaxscape import (
     ConnectivityAnalysis,
     EuclideanDistance,
@@ -270,6 +271,76 @@ def test_coarsened_quality_sensitivity_of_other_distances_is_a_gradient():
     assert_close(sensitivity.run("quality"), expected, 1e-12)
 
 
+def equivalent_pixels(distance, dependency_range):
+    """Proximity `exp(-r / (dependency_range / 4))`, where `r` pixels from the
+    centre of a window of permeability 1, `distance` reaches `dist`."""
+    half = dependency_range
+    size = 2 * half + 1
+    graph = GridGraph(jnp.ones((size, size)), fun=average)
+    centre = jnp.array([half * size + half])
+    profile = distance(graph, sources=centre).reshape(size, size)[half, half:]
+    pixels = jnp.arange(half + 1.0)
+    slope = 1 / (profile[-1] - profile[-2])
+
+    def proximity(dist):
+        r = jnp.where(
+            dist > profile[-1],
+            half + slope * (dist - profile[-1]),
+            jnp.interp(dist, profile, pixels),
+        )
+        return jnp.exp(-r / (half / 4))
+
+    return proximity
+
+
+def smooth(seed, shape):
+    """Gaussian-smoothed noise rescaled to [0.05, 1]."""
+    x = np.arange(-12, 13)
+    kernel = np.exp(-(x[:, None] ** 2 + x[None, :] ** 2) / 32)
+    noise = np.random.default_rng(seed).normal(size=shape)
+    field = np.asarray(convolve2d(noise, kernel / kernel.sum(), mode="same"))
+    return jnp.asarray(0.05 + 0.95 * (field - field.min()) / np.ptp(field))
+
+
+@pytest.mark.parametrize(
+    "name, min_permeability_pearson", [("lcp", 0.8), ("resistance-dense", 0.95)]
+)
+def test_coarsening_approximates_pixel_windows_on_a_smooth_landscape(
+    name, min_permeability_pearson, request
+):
+    distance = CASES[name][0](request)
+    quality, permeability = smooth(1, (64, 64)), smooth(2, (64, 64))
+
+    def run(kind, coarsening_factor, *args, q_weighted=True):
+        return kind(
+            quality_raster=quality,
+            permeability_raster=permeability,
+            distance=distance,
+            proximity=equivalent_pixels(distance, 8),
+            dependency_range=8,
+            batch_size=512,
+            coarsening_factor=coarsening_factor,
+        ).run(*args, q_weighted=q_weighted)
+
+    def pearson(a, b):
+        return np.corrcoef(np.ravel(a), np.ravel(b))[0, 1]
+
+    # Blocks of 5 x 5 pixels: 25 times fewer windows.
+    for q_weighted in [True, False]:
+        connectivity = run(ConnectivityAnalysis, 0.5, q_weighted=q_weighted)
+        expected = run(ConnectivityAnalysis, 0.0, q_weighted=q_weighted)
+        np.testing.assert_allclose(connectivity, expected, rtol=0.05)
+
+    d_quality = run(SensitivityAnalysis, 0.5, "quality")
+    expected = run(SensitivityAnalysis, 0.0, "quality")
+    assert pearson(d_quality, expected) >= 0.98
+    np.testing.assert_allclose(jnp.sum(d_quality), jnp.sum(expected), rtol=0.05)
+
+    d_permeability = run(SensitivityAnalysis, 0.5, "permeability")
+    expected = run(SensitivityAnalysis, 0.0, "permeability")
+    assert pearson(d_permeability, expected) >= min_permeability_pearson
+
+
 @pytest.fixture
 def compilations():
     """Name the programs that XLA compiles."""
@@ -315,4 +386,6 @@ def test_all_batches_run_one_compiled_program(
     run(35)
     compilations.clear()
     run(3)
-    assert compilations == ["jit(_batch)"]
+    # Each new Cholmod state also recompiles the permeability correction.
+    correction = "jit(_permeability_correction)"
+    assert [name for name in compilations if name != correction] == ["jit(_batch)"]

@@ -2,9 +2,11 @@ import math
 from collections.abc import Callable
 from typing import Any
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
-from jax import Array
+from jax import Array, lax
+from jax.scipy.signal import convolve2d
 
 from jaxscape.distance import AbstractDistance
 from jaxscape.euclidean_distance import EuclideanDistance
@@ -13,7 +15,7 @@ from jaxscape.graph import GridGraph
 from jaxscape.lcp_distance import LCPDistance
 from jaxscape.resistance_distance import ResistanceDistance
 from jaxscape.window_operation import WindowOperation
-from jaxscape.windowed_analysis import _average, WindowedAnalysis
+from jaxscape.windowed_analysis import _average, _uniform_graph, WindowedAnalysis
 
 
 # Distances that are symmetric on the window graphs, whose edges average the
@@ -102,8 +104,10 @@ def _window_sensitivity(
     state: Any,
     var: str,
     q_weighted: bool,
+    correction: Array | float,
 ) -> Array:
-    """Gradient of the window connectivity with respect to the window of `var`.
+    """Gradient of the window connectivity with respect to the window of `var`,
+    times `correction`.
 
     The permeability gradient leaves out the pairs within the block.
     """
@@ -115,7 +119,39 @@ def _window_sensitivity(
         )
 
     argnums = 1 if block else 0
-    return jax.grad(connectivity, argnums)(quality, permeability)
+    gradient = jax.grad(connectivity, argnums)(quality, permeability)
+    return correction * gradient
+
+
+@eqx.filter_jit
+def _permeability_correction(
+    distance: AbstractDistance,
+    proximity: Callable[[Array], Array],
+    op: WindowOperation,
+    graph: GridGraph,
+    state: Any,
+) -> Array:
+    """Factor that corrects block-window permeability gradients, pixel by pixel.
+
+    On the uniform window `graph`, with quality 1: the gradient of the centre's
+    proximity-weighted quality summed over a block of shifts, which is what the
+    pixel windows of a block add up to, divided by `b**2` times the gradient
+    without the pairs within the block. Below a noise floor of the latter, the
+    factor is 1.
+    """
+    b = op.window_size
+    ones = jnp.ones_like(graph.grid)
+
+    def own(permeability, block):
+        excluded = _excluded(op, block)
+        return _own(distance, proximity, ones, permeability, state, excluded)
+
+    box = jnp.ones((b, b), ones.dtype)
+    pixels = jax.grad(own)(graph.grid, False)
+    pixels = convolve2d(pixels, box, mode="same", precision=lax.Precision.HIGHEST)
+    block = jax.grad(own)(graph.grid, True)
+    above = jnp.abs(block) >= 1e-6 * jnp.max(jnp.abs(block))
+    return jnp.where(above, pixels / (b**2 * jnp.where(above, block, 1)), 1)
 
 
 class ConnectivityAnalysis(WindowedAnalysis):
@@ -205,7 +241,19 @@ class SensitivityAnalysis(WindowedAnalysis):
       the coarsened connectivity.
     - **Permeability.** The gradient of each block window's connectivity
       without the pairs within the block,
-      $\big(\sum_i T_c(i) \, q_i\big) \sum_{j \notin \text{block}} K_{cj} q_j$.
+      $\big(\sum_i T_c(i) \, q_i\big) \sum_{j \notin \text{block}} K_{cj} q_j$,
+      is multiplied pixel by pixel by a correction for the block artifacts, as
+      Omniscape's block correction: $\text{box}_b(g) / (b^2 g_\text{far})$,
+      where $g$ and $g_\text{far}$ are the permeability gradients of
+      $\sum_{j \neq c} K_{cj}$ and $\sum_{j \notin \text{block}} K_{cj}$, and
+      $\text{box}_b$ sums over the $b \times b$ pixels around each pixel. Both
+      are computed once per run, on a window of quality 1 and of the raster's
+      mean permeability, floor applied; where $|g_\text{far}|$ is below
+      `1e-6` times its maximum, the correction is 1. In a uniform landscape,
+      the corrected gradient of a block window is the sum of the gradients of
+      its $b^2$ pixel windows, except where $g_\text{far}$ is below the floor
+      and in the band of $(b - 1) / 2$ pixels that the pixel windows reach
+      beyond the block window.
 
     Parameters and windowing strategy are identical to
     [`ConnectivityAnalysis`][jaxscape.connectivity_analysis.ConnectivityAnalysis].
@@ -251,6 +299,7 @@ class SensitivityAnalysis(WindowedAnalysis):
         permeability sensitivity.
         """
         coarse = self.window_op.window_size > 1
+        correction = 1.0
         if var == "quality":
             symmetric = isinstance(self.distance, _SYMMETRIC_DISTANCES)
             if coarse and q_weighted and symmetric:
@@ -259,12 +308,14 @@ class SensitivityAnalysis(WindowedAnalysis):
                 return 2 * self._interpolate(own.reshape(self._blocks))
             raster = self.quality_raster
         elif var == "permeability":
+            if coarse:
+                correction = self._correction()
             raster = self.permeability_raster
         else:
             raise ValueError("`var` must be either 'quality' or 'permeability'")
 
         gradient = self._accumulate(
-            _window_sensitivity, jnp.zeros_like(raster), var, q_weighted
+            _window_sensitivity, jnp.zeros_like(raster), var, q_weighted, correction
         )
         gradient = self._crop(gradient)
         if var == "permeability":
@@ -272,3 +323,14 @@ class SensitivityAnalysis(WindowedAnalysis):
                 self._crop(self.permeability_raster) > self.floor, gradient, 0
             )
         return gradient
+
+    def _correction(self) -> Array:
+        """Block-artifact correction of permeability gradients, computed on a
+        uniform window at the raster's mean permeability."""
+        op = self.window_op
+        level = lax.stop_gradient(jnp.mean(self._crop(self.permeability_raster)))
+        graph = _uniform_graph(
+            op.total_window_size, level, self.permeability_raster.dtype
+        )
+        state = self.distance.init(graph)
+        return _permeability_correction(self.distance, self.proximity, op, graph, state)
