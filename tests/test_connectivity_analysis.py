@@ -152,17 +152,65 @@ def test_euclidean_connectivity_matches_all_pairs(q_weighted):
     assert_close(run(SensitivityAnalysis, "quality"), expected, 1e-12)
 
 
-@pytest.mark.parametrize("name", ["lcp", "resistance-cholmod"])
-def test_sensitivity_is_the_gradient_of_connectivity(name, request):
+@pytest.mark.parametrize(
+    "name, kernel",
+    [
+        ("lcp", proximity),
+        ("resistance-cholmod", proximity),
+        ("resistance-cholmod", None),
+    ],
+    ids=["lcp", "resistance", "resistance-default-proximity"],
+)
+def test_sensitivity_is_the_gradient_of_connectivity(name, kernel, request):
     distance = CASES[name][0](request)
 
     def connectivity(quality, permeability):
-        return analysis(ConnectivityAnalysis, distance, quality, permeability).run()
+        return analysis(
+            ConnectivityAnalysis, distance, quality, permeability, proximity=kernel
+        ).run()
 
-    sensitivity = analysis(SensitivityAnalysis, distance)
+    sensitivity = analysis(SensitivityAnalysis, distance, proximity=kernel)
     for argnums, var in enumerate(["quality", "permeability"]):
+        actual = sensitivity.run(var)
+        assert jnp.all(jnp.isfinite(actual))
         expected = jax.grad(connectivity, argnums)(QUALITY, PERMEABILITY)
-        assert_close(sensitivity.run(var), expected, 1e-12)
+        assert_close(actual, expected, 1e-12)
+
+
+@pytest.mark.parametrize("uniform", [False, True])
+@pytest.mark.parametrize("kind", [ConnectivityAnalysis, SensitivityAnalysis])
+def test_default_lcp_proximity_is_exponential_in_pixels(kind, uniform):
+    def exponential(dist):
+        return jnp.exp(-dist / (D / 4))
+
+    # At permeability 1, LCP distances are whole pixels, on the edge of the
+    # window too.
+    permeability = jnp.ones_like(QUALITY) if uniform else PERMEABILITY
+    args = ("permeability",) if kind is SensitivityAnalysis else ()
+
+    def run(proximity):
+        return analysis(
+            kind, LCPDistance(), permeability=permeability, proximity=proximity
+        ).run(*args)
+
+    assert_close(run(None), run(exponential), 1e-12)
+
+
+@pytest.mark.parametrize("r", [1, 2, D])
+def test_default_resistance_proximity_is_exponential_in_pixels(r):
+    # Two habitat pixels r apart along a row, each at the centre of a window of
+    # permeability 1, where resistance grows like the logarithm of r.
+    quality = jnp.zeros((2 * D + 1, 2 * D + 1 + r)).at[D, jnp.array([D, D + r])].set(1)
+    permeability = jnp.ones_like(quality)
+    connectivity = analysis(
+        ConnectivityAnalysis,
+        ResistanceDistance(),
+        quality,
+        permeability,
+        proximity=None,
+    ).run()
+    # Each pixel counts the other.
+    np.testing.assert_allclose(connectivity, 2 * np.exp(-r / (D / 4)), rtol=1e-10)
 
 
 @pytest.mark.gpu
@@ -230,3 +278,14 @@ def test_all_batches_run_one_compiled_program(name, kind, compilations, request)
     compilations.clear()
     analysis(kind, distance, quality, permeability, batch_size=3).run(*args)
     assert len(compilations) == 1
+
+
+@pytest.mark.parametrize("kind", [ConnectivityAnalysis, SensitivityAnalysis])
+def test_default_proximity_compiles_once_for_all_analyses(kind, compilations):
+    args = ("permeability",) if kind is SensitivityAnalysis else ()
+    analysis(kind, LCPDistance(), proximity=None).run(*args)
+    other = analysis(kind, LCPDistance(), 2 * QUALITY, 3 * PERMEABILITY, proximity=None)
+
+    compilations.clear()
+    other.run(*args)
+    assert len(compilations) == 0

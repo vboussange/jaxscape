@@ -27,6 +27,31 @@ def _average(x: Array, y: Array) -> Array:
     return (x + y) / 2
 
 
+def _uniform_graph(size: int, permeability, dtype) -> GridGraph:
+    return GridGraph(jnp.full((size, size), permeability, dtype), fun=_average)
+
+
+class _PixelExponential(eqx.Module):
+    """Negative exponential `exp(-r / alpha)` of the distance `r` in equivalent pixels.
+
+    `profile[k]` is the distance `k` pixels from the centre of a window of
+    permeability 1, along an axis. A distance converts to the pixels that give
+    it, interpolated linearly between profile points and extrapolated linearly
+    past the window edge.
+    """
+
+    profile: Array
+    alpha: float = eqx.field(static=True)
+
+    def __call__(self, distance: Array) -> Array:
+        pixels = jnp.arange(self.profile.size, dtype=self.profile.dtype)
+        edge = self.profile[-1]
+        slope = 1 / (edge - self.profile[-2])
+        beyond = jnp.where(distance > edge, slope * (distance - edge), 0)
+        r = jnp.interp(distance, self.profile, pixels) + beyond
+        return jnp.exp(-r / self.alpha)
+
+
 class WindowedAnalysis(eqx.Module):
     """Base class for windowed connectivity analyses on large rasters.
 
@@ -81,7 +106,7 @@ class WindowedAnalysis(eqx.Module):
     floor: Array
     distance: AbstractDistance
     window_op: WindowOperation
-    proximity: Callable[[Array], Array] = eqx.field(static=True)
+    proximity: Callable[[Array], Array]
     shape: tuple[int, int] = eqx.field(static=True)
     batch_size: int = eqx.field(static=True)
 
@@ -90,9 +115,9 @@ class WindowedAnalysis(eqx.Module):
         quality_raster: Array,
         permeability_raster: Array | Callable[[Array], Array],
         distance: AbstractDistance,
-        proximity: Callable[[Array], Array],
         dependency_range: int,
         batch_size: int,
+        proximity: Callable[[Array], Array] | None = None,
         coarsening_factor: float = 0.0,
     ):
         if not 0 <= coarsening_factor <= 1:
@@ -137,6 +162,13 @@ class WindowedAnalysis(eqx.Module):
             window_size=coarsening,
             buffer_size=buffer_size,
         )
+        if proximity is None:
+            size = self.window_op.total_window_size
+            graph = _uniform_graph(size, 1, self.permeability_raster.dtype)
+            centre = size // 2
+            distances = distance(graph, sources=jnp.array([centre * size + centre]))
+            profile = distances.reshape(size, size)[centre, centre:]
+            proximity = _PixelExponential(profile, dependency_range / 4)
         self.proximity = proximity
         self.shape = (height, width)
         self.batch_size = batch_size
