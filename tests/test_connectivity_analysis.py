@@ -10,7 +10,7 @@ from jaxscape import (
     ResistanceDistance,
     SensitivityAnalysis,
 )
-from jaxscape.solvers import AMJaxCGSolver, CholmodSolver, CuDSSSolver
+from jaxscape.solvers import AMJaxCGSolver, CholmodSolver, CuDSSSolver, cudsssolver
 
 
 D = 3
@@ -163,6 +163,19 @@ def test_sensitivity_is_the_gradient_of_connectivity(name, request):
     for argnums, var in enumerate(["quality", "permeability"]):
         expected = jax.grad(connectivity, argnums)(QUALITY, PERMEABILITY)
         assert_close(sensitivity.run(var), expected, 1e-12)
+
+
+@pytest.mark.gpu
+def test_cudss_windows_carry_one_analysis():
+    distance = ResistanceDistance(solver=make_cudss())
+    spineax = cudsssolver._load_cudss()
+
+    rebuilds = spineax.rebuild_count()
+    jax.block_until_ready(analysis(ConnectivityAnalysis, distance).run())
+    jax.block_until_ready(analysis(SensitivityAnalysis, distance).run("permeability"))
+    # Each window refactorizes the state of the previous one: no handle is
+    # used up twice, so no analysis repeats.
+    assert spineax.rebuild_count() == rebuilds
 
 
 def test_sensitivity_is_finite_for_proximity_singular_at_zero():
