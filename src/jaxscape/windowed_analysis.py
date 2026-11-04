@@ -15,9 +15,11 @@ from jaxscape.window_operation import WindowOperation
 
 
 # Permeability below this fraction of the maximum permeability is raised to it.
-# Every window Laplacian is then symmetric positive definite, a step through
-# no-data costs at least 1e4 steps through the best habitat, and float32 solves
-# keep a relative error of about 1e-4. Lower floors cost float32 accuracy.
+# Every window graph is then connected and its grounded Laplacian symmetric
+# positive definite with one sparsity pattern. An edge between two floored
+# pixels conducts 1e4 times less than one between pixels of maximum
+# permeability, and float32 resistances keep a relative error of about 1e-4;
+# lower floors cost float32 accuracy (3e-3 at 1e-6).
 PERMEABILITY_FLOOR = 1e-4
 
 
@@ -33,8 +35,8 @@ class WindowedAnalysis(eqx.Module):
     each block of `coarsening` pixels a side. The rasters are padded on all sides
     so that windows of edge pixels fit: padding has quality 0 and the
     permeability floor. Permeability below the floor, `1e-4` times the maximum
-    permeability, is raised to it, so that no-data pixels stay nearly
-    impassable and every window graph is connected.
+    permeability, is raised to it: every window graph is connected, and
+    regions of zero permeability stay nearly impassable.
 
     Windows run in batches of `batch_size`, one compiled program for all
     batches. Distances without solver state, such as `LCPDistance`,
