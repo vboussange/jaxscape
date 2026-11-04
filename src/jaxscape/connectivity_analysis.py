@@ -274,12 +274,13 @@ class SensitivityAnalysis(WindowedAnalysis):
       $\sum_{j \neq c} K_{cj}$ and $\sum_{j \notin \text{block}} K_{cj}$, and
       $\text{box}_b$ sums over the $b \times b$ pixels around each pixel. Both
       are computed once per run, on a window of quality 1 and of the raster's
-      mean permeability, floor applied; where $|g_\text{far}|$ is at most
-      `1e-6` times its maximum, the correction is 1. In a uniform landscape,
-      the corrected gradient of a block window is the sum of the gradients of
-      its $b^2$ pixel windows, except where $g_\text{far}$ is at most the floor
-      and in the band of $(b - 1) / 2$ pixels that the pixel windows reach
-      beyond the block window.
+      maximum permeability. The correction is 1 at or below its noise floor,
+      where $|g_\text{far}|$ is at most `1e-6` times its maximum, for example
+      where proximities underflow. In a uniform landscape, the corrected
+      gradient of a block window is the sum of the gradients of its $b^2$ pixel
+      windows, except at or below the noise floor and in the band of
+      $(b - 1) / 2$ pixels that the pixel windows reach beyond the block
+      window.
 
     Parameters and windowing strategy are identical to
     [`ConnectivityAnalysis`][jaxscape.connectivity_analysis.ConnectivityAnalysis],
@@ -352,10 +353,9 @@ class SensitivityAnalysis(WindowedAnalysis):
         return gradient
 
     def _correction(self) -> Array:
-        """Block-artifact correction of permeability gradients, computed on a
-        uniform window at the raster's mean permeability."""
+        """Block-artifact correction at the raster's maximum permeability."""
         op = self.window_op
-        level = lax.stop_gradient(jnp.mean(self._crop(self.permeability_raster)))
+        level = lax.stop_gradient(jnp.max(self.permeability_raster))
         graph = _uniform_graph(
             op.total_window_size, level, self.permeability_raster.dtype
         )

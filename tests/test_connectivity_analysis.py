@@ -269,20 +269,53 @@ def test_coarsened_analyses_cover_the_raster(name, request):
 
 
 @pytest.mark.parametrize("name", ["lcp", "resistance-dense"])
-def test_coarsened_permeability_sensitivity_is_finite_for_sparse_habitat(name, request):
-    # Habitat on two neighbouring blocks of 3 x 3 pixels, centred on (13, 13)
-    # and (13, 16), in an impassable matrix: at the raster's mean permeability,
-    # the float32 proximities of the default kernel underflow.
+def test_coarsened_permeability_sensitivity_ignores_permeability_out_of_reach(
+    name, request
+):
+    # Documented: the block correction is calibrated at the raster's maximum
+    # permeability. Lowering permeability below the maximum in columns 35 and
+    # beyond leaves alone the windows that reach columns 0 to 24.
+    quality = smooth(1, (25, 50))
+    permeability = jnp.ones_like(quality)
+    lowered = permeability.at[:, 35:].set(0.2)
+
+    def sensitivity(permeability):
+        return analysis(
+            SensitivityAnalysis,
+            CASES[name][0](request),
+            quality,
+            permeability,
+            coarsening_factor=0.5,
+        ).run("permeability")
+
+    near = (slice(None), slice(0, 25))
+    assert_close(sensitivity(lowered)[near], sensitivity(permeability)[near], 1e-12)
+
+
+@pytest.mark.parametrize("name", ["lcp", "resistance-dense"])
+def test_coarsened_permeability_sensitivity_is_finite_where_proximities_underflow(
+    name, request
+):
+    # Habitat of permeability 1e-3 on two neighbouring blocks of 3 x 3 pixels
+    # in an impassable matrix. Even at the maximum permeability, a neighbour is
+    # hundreds of equivalent pixels away: the float32 proximities of the
+    # default kernel underflow, and the block correction has no far-field
+    # gradient to divide by.
     habitat = jnp.zeros((40, 40), "float32").at[12:15, 12:18].set(1)
-    sensitivity = analysis(
-        SensitivityAnalysis,
-        CASES[name][0](request),
-        habitat,
-        habitat,
-        proximity=None,
-        coarsening_factor=0.5,
-    ).run("permeability")
-    assert jnp.all(jnp.isfinite(sensitivity)) and jnp.any(sensitivity != 0)
+
+    def sensitivity(coarsening_factor):
+        return analysis(
+            SensitivityAnalysis,
+            CASES[name][0](request),
+            habitat,
+            1e-3 * habitat,
+            proximity=None,
+            coarsening_factor=coarsening_factor,
+        ).run("permeability")
+
+    coarsened = sensitivity(0.5)
+    assert jnp.all(jnp.isfinite(coarsened))
+    np.testing.assert_array_equal(coarsened, sensitivity(0.0))
 
 
 def test_coarsening_needs_a_block_centre_inside_the_raster():
