@@ -9,6 +9,7 @@ from jaxscape import (
     LCPDistance,
     ResistanceDistance,
     SensitivityAnalysis,
+    SpielmanApproximation,
 )
 from jaxscape.solvers import AMJaxCGSolver, CholmodSolver, CuDSSSolver, cudsssolver
 
@@ -211,6 +212,20 @@ def test_default_resistance_proximity_is_exponential_in_pixels(r):
     ).run()
     # Each pixel counts the other.
     np.testing.assert_allclose(connectivity, 2 * np.exp(-r / (D / 4)), rtol=1e-10)
+
+
+def test_default_proximity_decreases_for_randomized_distances():
+    # With this seed, the randomized resistance drops from 0.80 two pixels
+    # from the centre of a window of permeability 1 to 0.55 at its edge.
+    method = SpielmanApproximation(epsilon=0.3, seed=3)
+    kernel = analysis(
+        ConnectivityAnalysis, ResistanceDistance(method=method), proximity=None
+    ).proximity
+
+    distances = jnp.linspace(0, 3, 301)
+    proximities = kernel(distances)
+    assert jnp.all(jnp.diff(proximities) <= 0) and jnp.all(proximities <= 1)
+    assert jnp.all(jnp.isfinite(jax.vmap(jax.grad(kernel))(distances)))
 
 
 @pytest.mark.gpu

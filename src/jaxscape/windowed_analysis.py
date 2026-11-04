@@ -32,11 +32,11 @@ def _uniform_graph(size: int, permeability, dtype) -> GridGraph:
 
 
 class _PixelExponential(eqx.Module):
-    """Negative exponential `exp(-r / alpha)` of the distance `r` in equivalent pixels.
+    """Negative exponential `exp(-r / alpha)` of the distance in equivalent pixels `r`.
 
-    `profile[k]` is the distance `k` pixels from the centre of a window of
-    permeability 1, along an axis. A distance converts to the pixels that give
-    it, interpolated linearly between profile points and extrapolated linearly
+    `profile[k]`, non-decreasing in `k`, is the distance `k` pixels from the
+    centre of a window of permeability 1 along an axis. A distance converts to
+    the pixels that give it: linearly between profile points, and in proportion
     past the window edge.
     """
 
@@ -46,9 +46,11 @@ class _PixelExponential(eqx.Module):
     def __call__(self, distance: Array) -> Array:
         pixels = jnp.arange(self.profile.size, dtype=self.profile.dtype)
         edge = self.profile[-1]
-        slope = 1 / (edge - self.profile[-2])
-        beyond = jnp.where(distance > edge, slope * (distance - edge), 0)
-        r = jnp.interp(distance, self.profile, pixels) + beyond
+        r = jnp.where(
+            distance > edge,
+            distance * (pixels[-1] / edge),
+            jnp.interp(distance, self.profile, pixels),
+        )
         return jnp.exp(-r / self.alpha)
 
 
@@ -167,7 +169,9 @@ class WindowedAnalysis(eqx.Module):
             graph = _uniform_graph(size, 1, self.permeability_raster.dtype)
             centre = size // 2
             distances = distance(graph, sources=jnp.array([centre * size + centre]))
-            profile = distances.reshape(size, size)[centre, centre:]
+            # Randomized distances, such as `SpielmanApproximation`, can
+            # decrease along the axis: the conversion stays monotone.
+            profile = lax.cummax(distances.reshape(size, size)[centre, centre:])
             proximity = _PixelExponential(profile, dependency_range / 4)
         self.proximity = proximity
         self.shape = (height, width)
