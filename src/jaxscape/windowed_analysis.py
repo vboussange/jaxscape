@@ -80,11 +80,17 @@ class WindowedAnalysis(eqx.Module):
       `quality -> permeability`.
     - `distance`: Distance metric (e.g., `LCPDistance()`,
       `ResistanceDistance()`).
-    - `proximity`: Distance-to-proximity transform (e.g.,
-      `lambda d: jnp.exp(-d/D)`).
-    - `dependency_range`: Spatial dependency range in pixels (window half-width).
+    - `dependency_range`: Window half-width `D` in pixels. Pairs farther apart
+      than `D` along either axis do not contribute, and the default
+      `proximity` decays over `D / 4` equivalent pixels.
     - `batch_size`: Number of windows per batch. Distances without solver
       state hold all windows of a batch in memory at once.
+    - `proximity`: Function mapping distances, in the units of `distance`, to
+      proximities. Defaults to `exp(-r / (D / 4))`, where `r` is the distance
+      in equivalent pixels: the number of pixels through habitat of
+      permeability 1 that gives the same distance. See
+      [`ConnectivityAnalysis`][jaxscape.connectivity_analysis.ConnectivityAnalysis]
+      for the units of each distance and the ecological rationale.
     - `coarsening_factor`: Spatial coarsening in [0, 1]. 0 = finest resolution,
       higher = faster.
 
