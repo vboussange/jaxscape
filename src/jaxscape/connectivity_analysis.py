@@ -162,10 +162,18 @@ class ConnectivityAnalysis(WindowedAnalysis):
 
     $$C = \sum_i \sum_{j \neq i} q_i \, K_{ij} \, q_j$$
 
-    where $q_i$ is habitat quality at pixel $i$ and $K_{ij} = f(d_{ij})$ is the
-    proximity between pixels based on distance $d_{ij}$, computed in the window
-    centred on pixel $i$. Pairs farther apart than `dependency_range` along
-    either axis do not contribute.
+    where $q_i$ is habitat quality at pixel $i$ and $K_{ij}$ is the proximity
+    between pixels $i$ and $j$, a function `proximity` of their distance
+    $d_{ij}$ computed in the window centred on pixel $i$. Pairs farther apart
+    than `dependency_range` $D$ along either axis do not contribute.
+
+    By default, $K_{ij} = e^{-r_{ij}/\alpha}$ with $\alpha = D/4$, where
+    $r_{ij}$ is the distance in equivalent pixels: the number of pixels through
+    habitat of permeability 1 that gives the distance $d_{ij}$. This is the
+    negative-exponential dispersal kernel of metapopulation theory
+    ([Hanski & Ovaskainen, 2000](https://doi.org/10.1038/35008063)). In two
+    dimensions, its mean dispersal distance is $2\alpha = D/2$, and 91 % of its
+    mass lies within distance $4\alpha = D$ of the source.
 
     With coarsening, each pixel takes the term $\sum_{j \neq c} K_{cj} q_j$ of
     block centres $c$, interpolated with the weights $T_c(i)$ of
@@ -179,19 +187,37 @@ class ConnectivityAnalysis(WindowedAnalysis):
     [`WindowedAnalysis`][jaxscape.windowed_analysis.WindowedAnalysis] for
     windowing parameters, coarsening, edge padding and the permeability floor.
 
+    !!! note "Distance units"
+        A custom `proximity` receives distances in the units of `distance`:
+
+        - `EuclideanDistance`: pixels.
+        - `LCPDistance`: edge costs `1 / permeability` summed along the path,
+          hence pixels at permeability 1.
+        - `ResistanceDistance`: effective resistance, with edge resistance
+          `1 / permeability`. It grows like the logarithm of the pixel
+          distance: at permeability 1 in a window of 41 pixels a side, it is
+          0.50, 1.28 and 1.89 at 1, 10 and 20 pixels from the centre. A kernel
+          `exp(-d / c)` of the resistance therefore decays as a power law in
+          pixels, and the window edge sets its range.
+        - `FreeEnergyDistance`: from the least-cost distance (large `theta`)
+          to a multiple of the resistance (small `theta`).
+
+        When the analysis is created, the default `proximity` reads equivalent
+        pixels off one window of permeability 1: the distances from its centre
+        along an axis, interpolated linearly between pixels and in proportion
+        past the window edge. For `EuclideanDistance` and `LCPDistance`,
+        $r_{ij} = d_{ij}$. Scale permeability so that 1 is optimal habitat.
+
     !!! example
 
         ```python
-        import jax.numpy as jnp
         from jaxscape import ConnectivityAnalysis, LCPDistance
 
-        D = 20  # Dispersal range in pixels
         conn = ConnectivityAnalysis(
             quality_raster=quality,
             permeability_raster=permeability,
             distance=LCPDistance(),
-            proximity=lambda dist: jnp.exp(-dist / D),
-            dependency_range=D,
+            dependency_range=20,  # Window half-width in pixels
             batch_size=1000,
         )
         connectivity_index = conn.run(q_weighted=True)
@@ -256,7 +282,10 @@ class SensitivityAnalysis(WindowedAnalysis):
       beyond the block window.
 
     Parameters and windowing strategy are identical to
-    [`ConnectivityAnalysis`][jaxscape.connectivity_analysis.ConnectivityAnalysis].
+    [`ConnectivityAnalysis`][jaxscape.connectivity_analysis.ConnectivityAnalysis],
+    including the units of `proximity` and its default, the negative
+    exponential of the distance in equivalent pixels with decay length
+    `dependency_range / 4`.
 
     !!! example
 
@@ -265,13 +294,11 @@ class SensitivityAnalysis(WindowedAnalysis):
         from jaxscape import ResistanceDistance, SensitivityAnalysis
         from jaxscape.solvers import CholmodSolver
 
-        D = 20
         sens = SensitivityAnalysis(
             quality_raster=quality,
             permeability_raster=permeability,
             distance=ResistanceDistance(solver=CholmodSolver()),
-            proximity=lambda dist: jnp.exp(-dist / D),
-            dependency_range=D,
+            dependency_range=20,
             batch_size=100,
         )
 

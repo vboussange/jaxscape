@@ -31,6 +31,31 @@ def _uniform_graph(size: int, permeability, dtype) -> GridGraph:
     return GridGraph(jnp.full((size, size), permeability, dtype), fun=_average)
 
 
+class _PixelExponential(eqx.Module):
+    """Negative exponential `exp(-r / alpha)` of the distance in equivalent pixels `r`.
+
+    `profile[k]`, non-decreasing in `k`, is the distance `k` pixels from the
+    centre of a window of permeability 1 along an axis. A distance converts to
+    the pixels that give it: linearly between profile points, and in proportion
+    past the window edge.
+    """
+
+    profile: Array
+    alpha: float = eqx.field(static=True)
+
+    def __call__(self, distance: Array) -> Array:
+        last = self.profile.size - 1
+        # Comparing with every point of the short profile is about ten times
+        # faster than `jnp.interp`, whose search is sequential.
+        k = jnp.searchsorted(self.profile, distance, "right", method="compare_all")
+        k = jnp.clip(k, 1, last)
+        lower, step = self.profile[k - 1], self.profile[k] - self.profile[k - 1]
+        between = k - 1 + (distance - lower) / jnp.where(step > 0, step, 1)
+        edge = self.profile[-1]
+        r = jnp.where(distance > edge, distance * (last / edge), between)
+        return jnp.exp(-r / self.alpha)
+
+
 def _tent(pixels: Array, block: Array, blocks: int, size: int, dtype) -> Array:
     """Interpolation weights of the centre of `block` at `pixels`, along one axis.
 
@@ -79,11 +104,17 @@ class WindowedAnalysis(eqx.Module):
       `quality -> permeability`.
     - `distance`: Distance metric (e.g., `LCPDistance()`,
       `ResistanceDistance()`).
-    - `proximity`: Distance-to-proximity transform (e.g.,
-      `lambda d: jnp.exp(-d/D)`).
-    - `dependency_range`: Spatial dependency range in pixels (window half-width).
+    - `dependency_range`: Window half-width `D` in pixels. Pairs farther apart
+      than `D` along either axis do not contribute, and the default
+      `proximity` decays over `D / 4` equivalent pixels.
     - `batch_size`: Number of windows per batch. Distances without solver
       state hold all windows of a batch in memory at once.
+    - `proximity`: Function mapping distances, in the units of `distance`, to
+      proximities. Defaults to `exp(-r / (D / 4))`, where `r` is the distance
+      in equivalent pixels: the number of pixels through habitat of
+      permeability 1 that gives the same distance. See
+      [`ConnectivityAnalysis`][jaxscape.connectivity_analysis.ConnectivityAnalysis]
+      for the units of each distance and the ecological rationale.
     - `coarsening_factor`: Spatial coarsening in [0, 1]. 0 = finest resolution,
       higher = faster. The raster must hold a block centre along each axis,
       `(b + 1) // 2` pixels.
@@ -108,7 +139,7 @@ class WindowedAnalysis(eqx.Module):
     floor: Array
     distance: AbstractDistance
     window_op: WindowOperation
-    proximity: Callable[[Array], Array] = eqx.field(static=True)
+    proximity: Callable[[Array], Array]
     shape: tuple[int, int] = eqx.field(static=True)
     batch_size: int = eqx.field(static=True)
 
@@ -117,9 +148,9 @@ class WindowedAnalysis(eqx.Module):
         quality_raster: Array,
         permeability_raster: Array | Callable[[Array], Array],
         distance: AbstractDistance,
-        proximity: Callable[[Array], Array],
         dependency_range: int,
         batch_size: int,
+        proximity: Callable[[Array], Array] | None = None,
         coarsening_factor: float = 0.0,
     ):
         if not 0 <= coarsening_factor <= 1:
@@ -166,6 +197,15 @@ class WindowedAnalysis(eqx.Module):
             window_size=coarsening,
             buffer_size=buffer_size,
         )
+        if proximity is None:
+            size = self.window_op.total_window_size
+            graph = _uniform_graph(size, 1, self.permeability_raster.dtype)
+            centre = size // 2
+            distances = distance(graph, sources=jnp.array([centre * size + centre]))
+            # Randomized distances, such as `SpielmanApproximation`, can
+            # decrease along the axis: the conversion stays monotone.
+            profile = lax.cummax(distances.reshape(size, size)[centre, centre:])
+            proximity = _PixelExponential(profile, dependency_range / 4)
         self.proximity = proximity
         self.shape = (height, width)
         self.batch_size = batch_size
@@ -213,8 +253,9 @@ class WindowedAnalysis(eqx.Module):
         add to the padded raster `initial`.
         """
         size = self.window_op.total_window_size
-        dtype = self.permeability_raster.dtype
-        state = self.distance.init(_uniform_graph(size, 1, dtype))
+        state = self.distance.init(
+            _uniform_graph(size, 1, self.permeability_raster.dtype)
+        )
         dynamic, static = eqx.partition(state, eqx.is_array)
 
         accumulated = initial

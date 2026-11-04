@@ -10,6 +10,7 @@ from jaxscape import (
     LCPDistance,
     ResistanceDistance,
     SensitivityAnalysis,
+    SpielmanApproximation,
 )
 from jaxscape.distance import AbstractDistance
 from jaxscape.solvers import AMJaxCGSolver, CholmodSolver, CuDSSSolver, cudsssolver
@@ -154,17 +155,79 @@ def test_euclidean_connectivity_matches_all_pairs(q_weighted):
     assert_close(run(SensitivityAnalysis, "quality"), expected, 1e-12)
 
 
-@pytest.mark.parametrize("name", ["lcp", "resistance-cholmod"])
-def test_sensitivity_is_the_gradient_of_connectivity(name, request):
+@pytest.mark.parametrize(
+    "name, kernel",
+    [
+        ("lcp", proximity),
+        ("resistance-cholmod", proximity),
+        ("resistance-cholmod", None),
+    ],
+    ids=["lcp", "resistance", "resistance-default-proximity"],
+)
+def test_sensitivity_is_the_gradient_of_connectivity(name, kernel, request):
     distance = CASES[name][0](request)
 
     def connectivity(quality, permeability):
-        return analysis(ConnectivityAnalysis, distance, quality, permeability).run()
+        return analysis(
+            ConnectivityAnalysis, distance, quality, permeability, proximity=kernel
+        ).run()
 
-    sensitivity = analysis(SensitivityAnalysis, distance)
+    sensitivity = analysis(SensitivityAnalysis, distance, proximity=kernel)
     for argnums, var in enumerate(["quality", "permeability"]):
+        actual = sensitivity.run(var)
+        assert jnp.all(jnp.isfinite(actual))
         expected = jax.grad(connectivity, argnums)(QUALITY, PERMEABILITY)
-        assert_close(sensitivity.run(var), expected, 1e-12)
+        assert_close(actual, expected, 1e-12)
+
+
+@pytest.mark.parametrize("uniform", [False, True])
+@pytest.mark.parametrize("kind", [ConnectivityAnalysis, SensitivityAnalysis])
+def test_default_lcp_proximity_is_exponential_in_pixels(kind, uniform):
+    def exponential(dist):
+        return jnp.exp(-dist / (D / 4))
+
+    # At permeability 1, LCP distances are whole pixels, on the edge of the
+    # window too.
+    permeability = jnp.ones_like(QUALITY) if uniform else PERMEABILITY
+    args = ("permeability",) if kind is SensitivityAnalysis else ()
+
+    def run(proximity):
+        return analysis(
+            kind, LCPDistance(), permeability=permeability, proximity=proximity
+        ).run(*args)
+
+    assert_close(run(None), run(exponential), 1e-12)
+
+
+@pytest.mark.parametrize("r", [1, 2, D])
+def test_default_resistance_proximity_is_exponential_in_pixels(r):
+    # Two habitat pixels r apart along a row, each at the centre of a window of
+    # permeability 1, where resistance grows like the logarithm of r.
+    quality = jnp.zeros((2 * D + 1, 2 * D + 1 + r)).at[D, jnp.array([D, D + r])].set(1)
+    permeability = jnp.ones_like(quality)
+    connectivity = analysis(
+        ConnectivityAnalysis,
+        ResistanceDistance(),
+        quality,
+        permeability,
+        proximity=None,
+    ).run()
+    # Each pixel counts the other.
+    np.testing.assert_allclose(connectivity, 2 * np.exp(-r / (D / 4)), rtol=1e-10)
+
+
+def test_default_proximity_decreases_for_randomized_distances():
+    # With this seed, the randomized resistance drops from 0.80 two pixels
+    # from the centre of a window of permeability 1 to 0.55 at its edge.
+    method = SpielmanApproximation(epsilon=0.3, seed=3)
+    kernel = analysis(
+        ConnectivityAnalysis, ResistanceDistance(method=method), proximity=None
+    ).proximity
+
+    distances = jnp.linspace(0, 3, 301)
+    proximities = kernel(distances)
+    assert jnp.all(jnp.diff(proximities) <= 0) and jnp.all(proximities <= 1)
+    assert jnp.all(jnp.isfinite(jax.vmap(jax.grad(kernel))(distances)))
 
 
 @pytest.mark.gpu
@@ -271,28 +334,6 @@ def test_coarsened_quality_sensitivity_of_other_distances_is_a_gradient():
     assert_close(sensitivity.run("quality"), expected, 1e-12)
 
 
-def equivalent_pixels(distance, dependency_range):
-    """Proximity `exp(-r / (dependency_range / 4))`, where `r` pixels from the
-    centre of a window of permeability 1, `distance` reaches `dist`."""
-    half = dependency_range
-    size = 2 * half + 1
-    graph = GridGraph(jnp.ones((size, size)), fun=average)
-    centre = jnp.array([half * size + half])
-    profile = distance(graph, sources=centre).reshape(size, size)[half, half:]
-    pixels = jnp.arange(half + 1.0)
-    slope = 1 / (profile[-1] - profile[-2])
-
-    def proximity(dist):
-        r = jnp.where(
-            dist > profile[-1],
-            half + slope * (dist - profile[-1]),
-            jnp.interp(dist, profile, pixels),
-        )
-        return jnp.exp(-r / (half / 4))
-
-    return proximity
-
-
 def smooth(seed, shape):
     """Gaussian-smoothed noise rescaled to [0.05, 1]."""
     x = np.arange(-12, 13)
@@ -316,7 +357,6 @@ def test_coarsening_approximates_pixel_windows_on_a_smooth_landscape(
             quality_raster=quality,
             permeability_raster=permeability,
             distance=distance,
-            proximity=equivalent_pixels(distance, 8),
             dependency_range=8,
             batch_size=512,
             coarsening_factor=coarsening_factor,
@@ -389,3 +429,14 @@ def test_all_batches_run_one_compiled_program(
     # Each new Cholmod state also recompiles the permeability correction.
     correction = "jit(_permeability_correction)"
     assert [name for name in compilations if name != correction] == ["jit(_batch)"]
+
+
+@pytest.mark.parametrize("kind", [ConnectivityAnalysis, SensitivityAnalysis])
+def test_default_proximity_compiles_once_for_all_analyses(kind, compilations):
+    args = ("permeability",) if kind is SensitivityAnalysis else ()
+    analysis(kind, LCPDistance(), proximity=None).run(*args)
+    other = analysis(kind, LCPDistance(), 2 * QUALITY, 3 * PERMEABILITY, proximity=None)
+
+    compilations.clear()
+    other.run(*args)
+    assert len(compilations) == 0
