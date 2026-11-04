@@ -152,6 +152,35 @@ def test_euclidean_connectivity_matches_all_pairs(q_weighted):
     assert_close(run(SensitivityAnalysis, "quality"), expected, 1e-12)
 
 
+@pytest.mark.parametrize("name", ["lcp", "resistance-cholmod"])
+def test_sensitivity_is_the_gradient_of_connectivity(name, request):
+    distance = CASES[name][0](request)
+
+    def connectivity(quality, permeability):
+        return analysis(ConnectivityAnalysis, distance, quality, permeability).run()
+
+    sensitivity = analysis(SensitivityAnalysis, distance)
+    for argnums, var in enumerate(["quality", "permeability"]):
+        expected = jax.grad(connectivity, argnums)(QUALITY, PERMEABILITY)
+        assert_close(sensitivity.run(var), expected, 1e-12)
+
+
+@pytest.mark.parametrize("name", ["lcp", "resistance-cholmod"])
+def test_coarsened_analyses_cover_the_raster(name, request):
+    distance = CASES[name][0](request)
+
+    # Blocks of 3 x 3 pixels; the last column of blocks extends past the raster.
+    def coarsened(kind):
+        return analysis(kind, distance, coarsening_factor=0.5)
+
+    connectivity = coarsened(ConnectivityAnalysis).run()
+    assert jnp.isfinite(connectivity) and connectivity > 0
+    for var in ["quality", "permeability"]:
+        sensitivity = coarsened(SensitivityAnalysis).run(var)
+        assert sensitivity.shape == QUALITY.shape
+        assert jnp.all(jnp.isfinite(sensitivity)) and jnp.any(sensitivity != 0)
+
+
 @pytest.fixture
 def compilations():
     """Count the programs that XLA compiles."""
