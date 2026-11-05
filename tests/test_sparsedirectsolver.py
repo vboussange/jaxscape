@@ -214,6 +214,30 @@ def test_sparse_solves_and_gradients_match_dense_reference(solver, n_rhs):
     np.testing.assert_allclose(actual[1], expected[1], rtol=1e-10, atol=1e-12)
 
 
+def test_float32_solves_keep_their_precision_for_tiny_right_hand_sides(solver):
+    # Gradients of proximities that nearly underflow give right-hand sides of
+    # about 1e-37 in float32, near the smallest normal number, 1.2e-38: their
+    # solutions were subnormal, lost their precision and failed the residual
+    # check of the solve, as on the Maryland land cover with cuDSS. Right-hand
+    # sides below the smallest normal number solve to 0.
+    conductance = surface("smooth", (12, 12))
+    matrix = ResistanceDistance().system_matrix(grid_of(conductance))
+    # Entries of magnitude 0.5 to 1 stay normal numbers at the scale 1e-37.
+    rng = np.random.default_rng(0)
+    b = rng.choice([-1, 1], (144, 3)) * rng.uniform(0.5, 1, (144, 3))
+    expected = np.linalg.solve(matrix.todense(), b)
+    matrix = BCOO((matrix.data.astype(jnp.float32), matrix.indices), shape=matrix.shape)
+    state = solver.init(BCOOLinearOperator(matrix), {})
+
+    def solve(b):
+        b = jnp.asarray(b, jnp.float32)
+        return _batched_linear_solve(matrix, b, solver, state=state)
+
+    for scale in [1e-37, 1.0, 1e30]:
+        np.testing.assert_allclose(solve(scale * b) / scale, expected, rtol=1e-4)
+    np.testing.assert_array_equal(solve(1e-40 * b), 0)
+
+
 def test_reinit_reuses_the_analysis_and_keeps_unchanged_values():
     solver = DenseCholesky()
     distance = ResistanceDistance(solver=solver)
@@ -426,7 +450,7 @@ def test_a_failed_refactorization_is_retried_on_a_fresh_analysis():
 
     assert not state.failed and state.factorization.refactorizations == 0
     solution = lx.linear_solve(operators[2], b, solver, state=state)
-    expected = np.linalg.solve(np.asarray(operators[2].matrix.todense()), b)
+    expected = np.linalg.solve(np.asarray(grounded_laplacian(3 * smooth).todense()), b)
     np.testing.assert_allclose(solution.value, expected, rtol=1e-8)
 
 

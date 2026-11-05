@@ -78,8 +78,9 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
     The checks assume nothing from the library. Each factorization solves
     `A x = A 1`, and fails when the backward error
     `max|A 1 - A x| / (||A||_inf max|x|)` is not finite or exceeds the square root
-    of the machine epsilon. Each solve fails when its solution `x` of `b` is not
-    finite or `max|b - A x|` exceeds `residual_tolerance` times `max|b|`. A failed
+    of the machine epsilon. Each solve scales `b` by a power of two to a largest
+    magnitude in [0.5, 1), and fails when its solution `x` of `b` is not finite
+    or `max|b - A x|` exceeds `residual_tolerance` times `max|b|`. A failed
     solve returns NaN and reports `lineax.RESULTS.singular`, so it raises with
     `throw=True` and returns a failed result with `throw=False`. On GPUs, Lineax may
     only print the error, and the failed distances are then NaN.
@@ -239,16 +240,25 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
         options: dict[str, Any],
     ) -> tuple[Array, RESULTS, dict[str, Any]]:
         del options
-        solution = self.solve(state.factorization, vector)
+        # The solve scales the right-hand side exactly, by a power of two, to a
+        # largest magnitude in [0.5, 1), so that its solution keeps the
+        # precision of the dtype: float32 right-hand sides of about 1e-37 had
+        # subnormal solutions, which failed the check below. Right-hand sides
+        # below the smallest normal number solve to 0.
+        norm = jnp.max(jnp.abs(vector))
+        exponent = jnp.frexp(norm)[1]
+        normal = norm >= jnp.finfo(vector.dtype).tiny
+        scaled = jnp.where(normal, jnp.ldexp(vector, -exponent), 0)
+        solution = self.solve(state.factorization, scaled)
         product = _product(state.pattern, state.values, solution)
         tolerance = self.residual_tolerance(solution.dtype)
         # A NaN residual compares false.
         solved = ~state.failed & (
-            jnp.max(jnp.abs(vector - product)) <= tolerance * jnp.max(jnp.abs(vector))
+            jnp.max(jnp.abs(scaled - product)) <= tolerance * jnp.max(jnp.abs(scaled))
         )
         # A failed solve can leave finite solutions. They become NaN, so that
         # their values never look valid.
-        solution = jnp.where(solved, solution, jnp.nan)
+        solution = jnp.where(solved, jnp.ldexp(solution, exponent), jnp.nan)
         return solution, RESULTS.where(solved, RESULTS.successful, RESULTS.singular), {}
 
     def transpose(self, state: SparseDirectState[_Factorization], options: dict):
