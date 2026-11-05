@@ -247,6 +247,7 @@ class WindowedAnalysis(eqx.Module):
     distance: AbstractDistance
     proximity: Callable[[Array], Array]
     state: Any
+    window_state: Any
     axes: tuple[_Axis, _Axis]
     shape: tuple[int, int] = eqx.field(static=True)
     dependency_range: int = eqx.field(static=True)
@@ -319,15 +320,21 @@ class WindowedAnalysis(eqx.Module):
         self.block_size = block_size
         self.batch_size = batch_size
         self.tile_sides = (sides[0], sides[1])
-        # The solver state of tiles, built outside any trace: tiles
-        # reinitialize it.
+        size = 2 * dependency_range + 1
+        windows = self.tile_sides == (size, size)
+        # The solver states of tiles and of windows, built outside any trace.
+        # Tiles reinitialize the first; with coarsening, the block correction
+        # of the permeability sensitivity is calibrated on a window with the
+        # second.
         self.state = distance.init(self._uniform_graph(1, self.tile_sides))
+        self.window_state = None
+        if block_size > 1:
+            self.window_state = distance.init(self._uniform_graph(1, (size, size)))
         if proximity is None:
-            size = 2 * dependency_range + 1
             # The distances from the centre of a window to the pixels on its
-            # right, up to its edge. A tile of one block centre is a window,
-            # whose state serves; other queries build their own.
-            state = self.state if self.tile_sides == (size, size) else None
+            # right, up to its edge, with a state of windows if the analysis
+            # has one. Otherwise the query builds its own.
+            state = self.state if windows else self.window_state
             row = dependency_range * size + jnp.arange(dependency_range, size)
             # Randomized distances, such as `SpielmanApproximation`, read it
             # off the exact distances that they estimate.
@@ -397,20 +404,17 @@ class WindowedAnalysis(eqx.Module):
         state = self.distance.reinit(graph, eqx.combine(dynamic, static))
         return state, eqx.partition(state, eqx.is_array)[0]
 
-    def _accumulate(
-        self, tile_fn: Callable, initial: Array, *args: Any, state: Any = None
-    ) -> Array:
+    def _accumulate(self, tile_fn: Callable, initial: Array, *args: Any) -> Array:
         """Accumulate `tile_fn` over the tiles of all block centres.
 
         `tile_fn(windowed, tile, state, *args)` maps a `_TileData` and the
         solver state to one value per block centre of the tile, in row-major
         order, or to a map of the tile. Values add to `initial`, of one entry
         per block centre, except those of repeated centres; maps add to the
-        padded raster `initial`. The first tile reinitializes the array part
-        `state` of a solver state, by default that of the analysis.
+        padded raster `initial`. The first tile reinitializes the solver state
+        of the analysis.
         """
-        if state is None:
-            state = eqx.partition(self.state, eqx.is_array)[0]
+        state = eqx.partition(self.state, eqx.is_array)[0]
         accumulated = initial
         rows, columns = self.axes
         n_tiles = rows.members.shape[0] * columns.members.shape[0]

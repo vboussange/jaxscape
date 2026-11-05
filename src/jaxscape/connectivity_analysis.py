@@ -158,16 +158,15 @@ def _block_correction(
     rows, columns = tile.weights
     height, width = tile.inside.shape
     inside = tile.inside.astype(rows.dtype)
-    # The calibration's source is at index `shape // 2` of its gradients. The
-    # interpolation weights of the raster pixels reach at most `reach` pixels
-    # beyond the tile's first and last block centres, which are at least
-    # `half` pixels from its edges.
+    # The calibration's source is at the centre of its gradients, index
+    # `half`. The interpolation weights of the raster pixels reach at most
+    # `reach` pixels beyond the tile's first and last block centres, which are
+    # at least `half` pixels from its edges.
     weights = inside * jnp.einsum("ij,iy,jx->yx", tile.valid, rows, columns)
     weights = weights[
         half - reach : height - half + reach, half - reach : width - half + reach
     ]
-    start = tuple(n // 2 - half + reach for n in pixels.shape)
-    spread = _convolve(weights, pixels, start, (height, width))
+    spread = _convolve(weights, pixels, (reach, reach), (height, width))
     # The sums of the weights, at the block centres.
     centres = (
         jnp.zeros_like(inside)
@@ -175,8 +174,7 @@ def _block_correction(
         .add(jnp.where(tile.valid, _block_sums(tile, inside), 0))
     )
     centres = centres[half : height - half, half : width - half]
-    start = tuple(n // 2 - half for n in far.shape)
-    block = _convolve(centres, far, start, (height, width))
+    block = _convolve(centres, far, (0, 0), (height, width))
     above = block != 0
     return jnp.where(above, spread / jnp.where(above, block, 1), 1)
 
@@ -207,23 +205,20 @@ def _convolve(
 
 
 @eqx.filter_jit
-def _permeability_calibration(
-    windowed: WindowedAnalysis, state: Any
-) -> tuple[tuple[Array, Array], Any]:
-    """Block correction gradients on a tile of the maximum permeability.
+def _permeability_calibration(windowed: WindowedAnalysis) -> tuple[Array, Array]:
+    """Block correction gradients on a window of the maximum permeability.
 
-    With quality 1 and one source at index `shape // 2` of the tile: the
+    With quality 1 and one source at the centre of the window: the
     permeability gradients of the proximity-weighted quality reachable from
     it, and of the same without the pairs within its block, set to 0 at or
-    below its noise floor, `1e-6` times its maximum. Returns them and the array
-    part of the solver state, reinitialized for the tile from the array part
-    `state`.
+    below its noise floor, `1e-6` times its maximum.
     """
     level = lax.stop_gradient(jnp.max(windowed.permeability_raster))
-    grid = windowed._uniform_graph(level, windowed.tile_sides).grid
-    state, dynamic = windowed._reinit(grid, state)
-    ones = jnp.ones_like(grid)
-    sources = tuple(jnp.array([n // 2]) for n in grid.shape)
+    size = 2 * windowed.dependency_range + 1
+    graph = windowed._uniform_graph(level, (size, size))
+    state = windowed.distance.reinit(graph, windowed.window_state)
+    ones = jnp.ones_like(graph.grid)
+    sources = (jnp.array([size // 2]),) * 2
 
     def reachable(permeability, block):
         excluded = _excluded(windowed, block)
@@ -231,10 +226,10 @@ def _permeability_calibration(
             windowed, windowed.distance, ones, permeability, sources, state, excluded
         )[0]
 
-    pixels = jax.grad(reachable)(grid, False)
-    far = jax.grad(reachable)(grid, True)
+    pixels = jax.grad(reachable)(graph.grid, False)
+    far = jax.grad(reachable)(graph.grid, True)
     far = jnp.where(jnp.abs(far) > 1e-6 * jnp.max(jnp.abs(far)), far, 0)
-    return (pixels, far), dynamic
+    return pixels, far
 
 
 class ConnectivityAnalysis(WindowedAnalysis):
@@ -366,7 +361,7 @@ class SensitivityAnalysis(WindowedAnalysis):
       $\sum_c g_\text{far}(\cdot - c) \sum_s w_c(s)$. Here $g$ and
       $g_\text{far}$ are the permeability gradients of
       $\sum_{j \neq c} K_{cj}$ and $\sum_{j \notin \text{block}} K_{cj}$ for one
-      block centre $c$ at the centre of a tile of quality 1 and of the
+      block centre $c$ at the centre of a window of quality 1 and of the
       raster's maximum permeability, computed once per run, and the weights
       $w_c(s) = T_c(c + s)$ of the raster pixels $c + s$ select the pixel
       windows that each block centre stands for. The correction is 1 at or
@@ -455,7 +450,7 @@ class SensitivityAnalysis(WindowedAnalysis):
         floor have zero permeability sensitivity.
         """
         coarse = self.block_size > 1
-        calibration = state = None
+        calibration = None
         if var == "quality":
             if coarse and q_weighted and self.distance.symmetric:
                 initial = jnp.zeros(self._blocks, self.quality_raster.dtype)
@@ -464,9 +459,7 @@ class SensitivityAnalysis(WindowedAnalysis):
             raster = self.quality_raster
         elif var == "permeability":
             if coarse:
-                # The windows carry on from the calibration's solver state.
-                state = eqx.partition(self.state, eqx.is_array)[0]
-                calibration, state = _permeability_calibration(self, state)
+                calibration = _permeability_calibration(self)
             raster = self.permeability_raster
         else:
             raise ValueError("`var` must be either 'quality' or 'permeability'")
@@ -477,7 +470,6 @@ class SensitivityAnalysis(WindowedAnalysis):
             var,
             q_weighted,
             calibration,
-            state=state,
         )
         gradient = self._crop(gradient)
         if var == "permeability":
