@@ -210,12 +210,13 @@ class WindowedAnalysis(eqx.Module):
         if proximity is None:
             size = self.window_op.total_window_size
             centre = size // 2
-            distances = distance(
-                graph, sources=jnp.array([centre * size + centre]), state=self.state
-            )
+            # The distances from the centre to the pixels on its right, up to
+            # the edge of the window.
+            row = centre * size + jnp.arange(centre, size)
+            distances = distance(graph, sources=row[:1], targets=row, state=self.state)
             # Randomized distances, such as `SpielmanApproximation`, can
             # decrease along the axis: the conversion stays monotone.
-            profile = lax.cummax(distances.reshape(size, size)[centre, centre:])
+            profile = lax.cummax(distances[0])
             proximity = _PixelExponential(profile, dependency_range / 4)
         self.proximity = proximity
         self.shape = (height, width)
