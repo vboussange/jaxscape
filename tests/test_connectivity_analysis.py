@@ -180,21 +180,24 @@ def padded_raster(quality, permeability, distance):
 )
 def test_one_tile_computes_distances_on_the_padded_raster(name, request):
     # Resistance queries share their work between sources: a batch of them
-    # takes the distances of a tile of 6 x 7 pixels, the whole raster.
+    # takes the distances of a tile of 5 x 7 pixels, the whole raster. Its
+    # tile, of 11 x 13 pixels, has an odd number of pixels along each axis, as
+    # all tiles do.
     distance = CASES[name][0](request)
     assert distance.sources_share_work
+    quality, permeability = QUALITY[:5], PERMEABILITY[:5]
 
     def run(kind, *args):
-        return make(kind, distance, batch_size=42).run(*args)
+        return make(kind, distance, quality, permeability, batch_size=35).run(*args)
 
     reference = CASES[name][1]
     assert_close(
         run(ConnectivityAnalysis),
-        padded_raster(QUALITY, PERMEABILITY, reference),
+        padded_raster(quality, permeability, reference),
         CASES[name][2],
     )
     for argnums, var in enumerate(["quality", "permeability"]):
-        expected = jax.grad(padded_raster, argnums)(QUALITY, PERMEABILITY, reference)
+        expected = jax.grad(padded_raster, argnums)(quality, permeability, reference)
         assert_close(run(SensitivityAnalysis, var), expected, CASES[name][2])
 
 
@@ -225,6 +228,25 @@ def test_tiles_approximate_each_pixels_own_window():
     np.testing.assert_allclose(tiles[0], windows[0], rtol=0.1)
     for tile, window in zip(tiles[1:], windows[1:]):
         assert pearson(tile, window) >= 0.999
+
+
+def test_float32_tile_sensitivity_matches_float64():
+    # Tiles of 2 x 4 pixels and a buffer of 30 floored pixels around them:
+    # resistance queries ground the tile's middle vertex, which is its central
+    # pixel, next to the sources, when the tile has an odd number of rows.
+    def sensitivity(dtype):
+        return make(
+            SensitivityAnalysis,
+            ResistanceDistance(),
+            QUALITY.astype(dtype),
+            PERMEABILITY.astype(dtype),
+            dependency_range=30,
+            proximity=lambda dist: jnp.exp(-dist / 2),
+        ).run("permeability")
+
+    expected, actual = sensitivity(jnp.float64), sensitivity(jnp.float32)
+    error = jnp.linalg.norm(actual - expected) / jnp.linalg.norm(expected)
+    assert error < 1e-3
 
 
 @pytest.mark.parametrize("q_weighted", [True, False])
@@ -375,7 +397,8 @@ def test_coarsened_permeability_sensitivity_ignores_permeability_out_of_reach(
 ):
     # Documented: the block correction is calibrated at the raster's maximum
     # permeability. Lowering permeability below the maximum in columns 35 and
-    # beyond leaves alone the windows that reach columns 0 to 24.
+    # beyond leaves alone the windows that reach columns 0 to 24, each of one
+    # block centre.
     quality = smooth(1, (25, 50))
     permeability = jnp.ones_like(quality)
     lowered = permeability.at[:, 35:].set(0.2)
@@ -386,6 +409,7 @@ def test_coarsened_permeability_sensitivity_ignores_permeability_out_of_reach(
             CASES[name][0](request),
             quality,
             permeability,
+            batch_size=1,
             coarsening_factor=0.5,
         ).run("permeability")
 
