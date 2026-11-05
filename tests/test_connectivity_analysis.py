@@ -9,6 +9,7 @@ from jax.scipy.signal import convolve2d
 from jaxscape import (
     ConnectivityAnalysis,
     EuclideanDistance,
+    FreeEnergyDistance,
     GridGraph,
     LCPDistance,
     ResistanceDistance,
@@ -118,6 +119,12 @@ CASES = {
     ),
     "euclidean": (lambda _: EuclideanDistance(), EuclideanDistance(), 1e-12),
     "lcp": (lambda _: LCPDistance(), LCPDistance(), 1e-12),
+    # Larger `theta` cannot resolve paths through the floored pixels.
+    "free-energy": (
+        lambda _: FreeEnergyDistance(theta=1e-3),
+        FreeEnergyDistance(theta=1e-3),
+        1e-10,
+    ),
     "resistance-dense": (lambda _: ResistanceDistance(), ResistanceDistance(), 1e-10),
     **{
         f"resistance-{name}": (
