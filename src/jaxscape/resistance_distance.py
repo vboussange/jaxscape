@@ -367,8 +367,8 @@ def _grounded_rows(nodes: Array, n: int) -> Array:
     The ground is the middle vertex `n // 2`, the central pixel of a grid with
     an odd number of rows. Grounding a window at its centre, where distances
     start, keeps float32 gradients accurate: potentials grounded in a corner of
-    floored padding lose all their digits. The ground and padding vertices,
-    `n` and beyond, map past the last row.
+    floored padding lose all their digits. The ground vertex, and padding
+    indices from `n` on, map to rows from `n - 1` on, past the last row.
     """
     ground = n // 2
     return jnp.where(nodes == ground, n - 1, nodes - (nodes > ground))
@@ -617,28 +617,34 @@ def _exact_sources_to_targets_fwd(
     del perturbed
     reduced, solve_state = _exact_solver_state(data, indices, shape, solver, state)
     # With S the grounded inverse, R_ij = S_ii + S_jj - 2 S_ij for source i and
-    # target j. The source columns of S give S_ii and S_ij; the target columns
-    # give their diagonal S_jj, chunk by chunk when there are many.
-    source_potentials = _exact_potentials(reduced, sources, solver, solve_state)
-
-    def target_diagonal(chunk):
-        potentials = _exact_potentials(reduced, chunk, solver, solve_state)
-        return _own_values(potentials, chunk), potentials
-
+    # target j. The source columns of S give S_ii and S_ij, the target columns
+    # their diagonal S_jj.
+    m = sources.shape[0]
     chunks = _target_chunks(targets, shape[0])
     if chunks.shape[0] == 1:
-        # The potentials of one chunk stay for the gradient.
-        diagonal, target_potentials = target_diagonal(chunks[0])
-        target_potentials = target_potentials[None]
+        # One solve for all columns, whose potentials stay for the gradient.
+        nodes = jnp.concatenate([sources, chunks[0]])
+        potentials = _exact_potentials(reduced, nodes, solver, solve_state)
+        diagonal = _own_values(potentials[:, m:], chunks[0])
+        residuals = (potentials, None)
     else:
-        diagonal = lax.map(lambda chunk: target_diagonal(chunk)[0], chunks)
-        target_potentials = None
+        # The target columns, chunk by chunk, keeping their diagonal only: the
+        # gradient solves them again.
+        potentials = _exact_potentials(reduced, sources, solver, solve_state)
+
+        def target_diagonal(chunk):
+            chunk_potentials = _exact_potentials(reduced, chunk, solver, solve_state)
+            return _own_values(chunk_potentials, chunk)
+
+        diagonal = lax.map(target_diagonal, chunks)
+        residuals = (potentials, (reduced, solve_state))
+    source_potentials = potentials[:, :m]
     distances = (
         _own_values(source_potentials, sources)[:, None]
         + diagonal.reshape(-1)[None, : targets.shape[0]]
         - 2 * _grounded_values(source_potentials, targets).T
     )
-    return distances, (source_potentials, target_potentials, reduced, solve_state)
+    return distances, residuals
 
 
 _exact_sources_to_targets.def_fwd(_exact_sources_to_targets_fwd)
@@ -657,41 +663,58 @@ def _exact_sources_to_targets_bwd(
     solver,
     state,
 ):
-    del sources, state
+    del state
     if cotangent is None or not perturbed:
         return None
-    source_potentials, target_potentials, reduced, solve_state = residuals
     # As in `_exact_selected_inverse_bwd`, the adjoint is X G, where X are the
     # potentials of the source columns X_s and target columns X_t, and G is the
     # cotangent of S. For the cotangent H of the (m, k) distances,
     #   G = [[diag(H 1), -H], [-H.T, diag(H.T 1)]],
-    # so X G = [X_s diag(H 1) - X_t H.T, X_t diag(H.T 1) - X_s H]. The
-    # data pullback sums over columns, so each chunk of target columns adds its
-    # own term and its part of X_t H.T; the forward pass kept the potentials of
-    # a single chunk, and many chunks are solved again. This costs O(n m k) and
-    # never forms G, nor all of X_t for many targets.
+    # so X G = [X_s diag(H 1) - X_t H.T, X_t diag(H.T 1) - X_s H]. This costs
+    # O(n m k) and never forms G.
+    potentials, solver_state = residuals
+    m = sources.shape[0]
+    source_potentials = potentials[:, :m]
+    if solver_state is None:
+        # The forward pass kept the target columns after the source columns.
+        target_potentials = potentials[:, m:]
+        adjoint = jnp.concatenate(
+            [
+                source_potentials * jnp.sum(cotangent, axis=1)
+                - _matmul(target_potentials, cotangent.T),
+                target_potentials * jnp.sum(cotangent, axis=0)
+                - _matmul(source_potentials, cotangent),
+            ],
+            axis=1,
+        )
+        return _laplacian_data_pullback(adjoint, potentials, indices, shape)
+
+    # The data pullback sums over columns: each chunk of target columns, solved
+    # again, adds its own term and its part of X_t H.T.
+    reduced, solve_state = solver_state
     chunks = _target_chunks(targets, shape[0])
     padding = chunks.size - targets.shape[0]
     chunk_cotangents = jnp.pad(cotangent, ((0, 0), (0, padding)))
     chunk_cotangents = chunk_cotangents.reshape(-1, *chunks.shape).swapaxes(0, 1)
 
-    def add_chunk(carry, chunk_columns):
+    def add_chunk(carry, chunk_and_cotangent):
         gradient, weighted_targets = carry
-        chunk, chunk_cotangent, potentials = chunk_columns
-        if potentials is None:
-            potentials = _exact_potentials(reduced, chunk, solver, solve_state)
-        adjoint = potentials * jnp.sum(chunk_cotangent, axis=0) - _matmul(
+        chunk, chunk_cotangent = chunk_and_cotangent
+        target_potentials = _exact_potentials(reduced, chunk, solver, solve_state)
+        adjoint = target_potentials * jnp.sum(chunk_cotangent, axis=0) - _matmul(
             source_potentials, chunk_cotangent
         )
         gradient = gradient + _laplacian_data_pullback(
-            adjoint, potentials, indices, shape
+            adjoint, target_potentials, indices, shape
         )
-        weighted_targets = weighted_targets + _matmul(potentials, chunk_cotangent.T)
+        weighted_targets = weighted_targets + _matmul(
+            target_potentials, chunk_cotangent.T
+        )
         return (gradient, weighted_targets), None
 
     carry = (jnp.zeros_like(data), jnp.zeros_like(source_potentials))
     (gradient, weighted_targets), _ = lax.scan(
-        add_chunk, carry, (chunks, chunk_cotangents, target_potentials)
+        add_chunk, carry, (chunks, chunk_cotangents)
     )
     adjoint = source_potentials * jnp.sum(cotangent, axis=1) - weighted_targets
     return gradient + _laplacian_data_pullback(
