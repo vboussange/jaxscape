@@ -253,6 +253,21 @@ def test_tiles_approximate_each_pixels_own_window():
         assert pearson(tile, window) >= 0.9999
 
 
+def test_tiles_of_a_narrow_raster_hold_about_batch_size_block_centres():
+    # With a dependency range of 40, tiles hold up to 5 x 5 block centres. On
+    # a raster of 3 columns, a batch of 16 takes tiles of 5 x 3 block centres.
+    narrow = jnp.ones((40, 3))
+    windowed = make(
+        ConnectivityAnalysis,
+        ResistanceDistance(),
+        narrow,
+        narrow,
+        batch_size=16,
+        dependency_range=40,
+    )
+    assert windowed.tile_sides == (4 + 81, 2 + 81)
+
+
 def test_float32_tile_sensitivity_matches_float64():
     # Tiles of 2 x 4 pixels and a buffer of 30 floored pixels around them:
     # resistance queries ground a pixel of near-maximum permeability next to
