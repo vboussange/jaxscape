@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -549,6 +551,25 @@ def test_coarsened_quality_sensitivity_of_other_distances_is_a_gradient():
     sensitivity = make(SensitivityAnalysis, distance, coarsening_factor=0.5)
     expected = jax.grad(connectivity)(QUALITY)
     assert_close(sensitivity.run("quality"), expected, 1e-12)
+
+
+class Symmetric(Opaque):
+    """A distance that declares itself symmetric."""
+
+    symmetric: ClassVar[bool] = True
+
+
+def test_coarsened_quality_sensitivity_of_symmetric_distances_is_interpolated():
+    # Twice the proximity-weighted quality seen from each block centre,
+    # interpolated: the same for a distance that declares its symmetry as for
+    # LCP, and not the gradient of the coarsened connectivity.
+    def sensitivity(distance):
+        windowed = make(SensitivityAnalysis, distance, coarsening_factor=0.5)
+        return windowed.run("quality")
+
+    expected = sensitivity(LCPDistance())
+    np.testing.assert_array_equal(sensitivity(Symmetric(LCPDistance())), expected)
+    assert not np.allclose(sensitivity(Opaque(LCPDistance())), expected)
 
 
 def pearson(a, b):

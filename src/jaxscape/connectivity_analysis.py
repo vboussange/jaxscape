@@ -5,23 +5,9 @@ import jax
 import jax.numpy as jnp
 from jax import Array, lax
 
-from jaxscape.euclidean_distance import EuclideanDistance
-from jaxscape.free_energy_distance import FreeEnergyDistance
 from jaxscape.graph import GridGraph
-from jaxscape.lcp_distance import LCPDistance
-from jaxscape.resistance_distance import ResistanceDistance
 from jaxscape.window_operation import WindowOperation
 from jaxscape.windowed_analysis import _average, _Tile, WindowedAnalysis
-
-
-# Distances that are symmetric on the window graphs, whose edges average the
-# permeability of their two pixels.
-_SYMMETRIC_DISTANCES = (
-    EuclideanDistance,
-    FreeEnergyDistance,
-    LCPDistance,
-    ResistanceDistance,
-)
 
 
 def _excluded(op: WindowOperation, block: bool) -> Array:
@@ -351,11 +337,12 @@ class SensitivityAnalysis(WindowedAnalysis):
     - **Quality.** For a symmetric proximity $K$, the derivative of
       $\sum_i \sum_{j \neq i} q_i K_{ij} q_j$ is twice the term
       $\sum_{j \neq i} K_{ij} q_j$, which is interpolated from the block
-      centres: one distance query per window, without differentiation.
-      `EuclideanDistance`, `LCPDistance`, `ResistanceDistance` and
-      `FreeEnergyDistance` are symmetric on the window graphs, whose edges
-      average permeability. For other distances, the result is the gradient of
-      the coarsened connectivity. Within `dependency_range` of the raster
+      centres: one distance query per window, without differentiation, for
+      distances that declare themselves symmetric (see
+      `AbstractDistance.symmetric`), as `EuclideanDistance`, `LCPDistance`,
+      `ResistanceDistance` and `FreeEnergyDistance` do on the window graphs,
+      whose edges average permeability. For other distances, the result is the
+      gradient of the coarsened connectivity. Within `dependency_range` of the raster
       edges, the term falls steeply towards the edge and the interpolation
       underestimates it: by up to 20 % in a uniform landscape with
       `dependency_range` 8, the default proximity and `b = 3` or 5.
@@ -439,8 +426,7 @@ class SensitivityAnalysis(WindowedAnalysis):
         coarse = self.window_op.window_size > 1
         calibration = state = None
         if var == "quality":
-            symmetric = isinstance(self.distance, _SYMMETRIC_DISTANCES)
-            if coarse and q_weighted and symmetric:
+            if coarse and q_weighted and self.distance.symmetric:
                 initial = jnp.zeros(self._blocks, self.quality_raster.dtype)
                 reachable = self._accumulate(_tile_reachable_quality, initial)
                 return 2 * self._interpolate(reachable)

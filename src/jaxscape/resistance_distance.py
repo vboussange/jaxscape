@@ -123,6 +123,7 @@ class ResistanceDistance(AbstractSolverDistance):
         default_factory=lambda: ExactResistance()
     )
     sources_share_work: ClassVar[bool] = True
+    symmetric: ClassVar[bool] = True
 
     def system_matrix(self, graph: AbstractGraph) -> BCOO:
         """Return the grounded Laplacian of `graph`."""

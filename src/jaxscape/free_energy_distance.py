@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, ClassVar
 
 import equinox as eqx
 import jax
@@ -70,6 +70,7 @@ class FreeEnergyDistance(AbstractSolverDistance):
 
     theta: Array
     solver: lx.AbstractLinearSolver | None = None
+    symmetric: ClassVar[bool] = True
 
     def __init__(
         self, theta: float | Array, solver: lx.AbstractLinearSolver | None = None

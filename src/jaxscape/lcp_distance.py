@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Any, final
+from typing import Any, ClassVar, final
 
 import equinox as eqx
 import jax
@@ -56,6 +56,7 @@ class LCPDistance(AbstractDistance):
     """
 
     algorithm: str = "bellman-ford"
+    symmetric: ClassVar[bool] = True
 
     def __check_init__(self):
         if self.algorithm not in ("bellman-ford", "floyd-warshall"):

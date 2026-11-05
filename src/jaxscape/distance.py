@@ -40,6 +40,10 @@ class AbstractDistance(eqx.Module):
       than one query per source, as when linear solves share one factorization.
       Windowed analyses then compute the distances of many sources on one tile
       graph. Defaults to `False`.
+    - `symmetric`: Whether the distance from `i` to `j` equals the distance
+      from `j` to `i` on graphs whose adjacency matrix is symmetric, as those
+      of windowed analyses are. Their quality sensitivity then needs no
+      gradient. Defaults to `False`.
 
     **Returns:**
 
@@ -78,6 +82,7 @@ class AbstractDistance(eqx.Module):
     """
 
     sources_share_work: ClassVar[bool] = False
+    symmetric: ClassVar[bool] = False
 
     def __call__(
         self,

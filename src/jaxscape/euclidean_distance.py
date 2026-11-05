@@ -1,11 +1,11 @@
-from typing import Any
+from typing import Any, ClassVar
 
 import equinox as eqx
 import jax.numpy as jnp
 from jax import Array
 
 from jaxscape.distance import AbstractDistance
-from jaxscape.graph import GridGraph
+from jaxscape.graph import AbstractGraph, GridGraph
 
 
 class EuclideanDistance(AbstractDistance):
@@ -22,32 +22,41 @@ class EuclideanDistance(AbstractDistance):
         ```
     """
 
-    def init(self, graph: GridGraph) -> None:
+    symmetric: ClassVar[bool] = True
+
+    def init(self, graph: AbstractGraph) -> None:
         del graph
         return None
 
     @eqx.filter_jit
     def nodes_to_nodes_distance(
-        self, graph: GridGraph, nodes: Array, state: Any = None
+        self, graph: AbstractGraph, nodes: Array, state: Any = None
     ) -> Array:
         del state
-        coords = graph.index_to_coord(nodes)
+        coords = _coordinates(graph, nodes)
         return euclidean_distance(coords, coords)
 
     @eqx.filter_jit
     def sources_to_targets_distance(
-        self, graph: GridGraph, sources: Array, targets: Array, state: Any = None
+        self, graph: AbstractGraph, sources: Array, targets: Array, state: Any = None
     ) -> Array:
         del state
-        source_coords = graph.index_to_coord(sources)
-        target_coords = graph.index_to_coord(targets)
+        source_coords = _coordinates(graph, sources)
+        target_coords = _coordinates(graph, targets)
         return euclidean_distance(source_coords, target_coords)
 
     @eqx.filter_jit
-    def all_pairs_distance(self, graph: GridGraph, state: Any = None) -> Array:
+    def all_pairs_distance(self, graph: AbstractGraph, state: Any = None) -> Array:
         del state
-        coords = graph.index_to_coord(jnp.arange(graph.nv))
+        coords = _coordinates(graph, jnp.arange(graph.nv))
         return euclidean_distance(coords, coords)
+
+
+def _coordinates(graph: AbstractGraph, nodes: Array) -> Array:
+    """The grid coordinates of `nodes`."""
+    if not isinstance(graph, GridGraph):
+        raise ValueError("`EuclideanDistance` needs a `GridGraph`.")
+    return graph.index_to_coord(nodes)
 
 
 @eqx.filter_jit
