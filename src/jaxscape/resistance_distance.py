@@ -124,6 +124,10 @@ class ResistanceDistance(AbstractSolverDistance):
         """Return the grounded Laplacian of `graph`."""
         return _grounded_laplacian(graph.get_adjacency_matrix())
 
+    def exact(self) -> "ResistanceDistance":
+        """Return the exact resistance distance, with the same solver."""
+        return ResistanceDistance(solver=self.solver)
+
     def debiased_proximity(
         self, proximity: Callable[[Array], Array], graph: AbstractGraph
     ) -> Callable[[Array], Array]:

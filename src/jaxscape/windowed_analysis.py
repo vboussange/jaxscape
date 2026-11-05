@@ -298,9 +298,11 @@ class WindowedAnalysis(eqx.Module):
             # The distances from the centre to the pixels on its right, up to
             # the edge of the window.
             row = centre * size + jnp.arange(centre, size)
-            distances = distance(graph, sources=row[:1], targets=row, state=self.state)
-            # Randomized distances, such as `SpielmanApproximation`, can
-            # decrease along the axis: the conversion stays monotone.
+            # Randomized distances, such as `SpielmanApproximation`, read it
+            # off the exact distances that they estimate.
+            distances = distance.exact()(
+                graph, sources=row[:1], targets=row, state=self.state
+            )
             profile = lax.cummax(distances[0])
             proximity = _PixelExponential(profile, dependency_range / 4)
         self.proximity = proximity

@@ -4,6 +4,7 @@
     options:
       members:
         - reinit
+        - exact
         - debiased_proximity
 
 ::: jaxscape.distance.AbstractSolverDistance
@@ -23,6 +24,7 @@
 ::: jaxscape.resistance_distance.ResistanceDistance
     options:
       members:
+        - exact
         - debiased_proximity
 
 ::: jaxscape.resistance_distance.ExactResistance

@@ -136,6 +136,14 @@ class AbstractDistance(eqx.Module):
     def init(self, graph: AbstractGraph) -> Any:
         pass
 
+    def exact(self) -> "AbstractDistance":
+        """Return the distance whose values the queries of this one estimate.
+
+        Distances that queries compute exactly return themselves. Their solver
+        states serve each other.
+        """
+        return self
+
     def debiased_proximity(
         self, proximity: Callable[[Array], Array], graph: AbstractGraph
     ) -> Callable[[Array], Array]:

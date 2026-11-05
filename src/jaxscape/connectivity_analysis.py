@@ -294,8 +294,10 @@ class ConnectivityAnalysis(WindowedAnalysis):
         When the analysis is created, the default `proximity` reads equivalent
         pixels off one window of permeability 1: the distances from its centre
         along an axis, interpolated linearly between pixels and in proportion
-        past the window edge. For `EuclideanDistance` and `LCPDistance`,
-        $r_{ij} = d_{ij}$. Scale permeability so that 1 is optimal habitat.
+        past the window edge. Randomized distances read them off the exact
+        distances that they estimate (see `AbstractDistance.exact`). For
+        `EuclideanDistance` and `LCPDistance`, $r_{ij} = d_{ij}$. Scale
+        permeability so that 1 is optimal habitat.
 
     !!! example
 

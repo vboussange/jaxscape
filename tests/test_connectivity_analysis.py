@@ -1,3 +1,4 @@
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -333,18 +334,22 @@ def test_default_resistance_proximity_is_exponential_in_pixels(r):
     np.testing.assert_allclose(connectivity, 2 * np.exp(-r / (D / 4)), rtol=1e-10)
 
 
-def test_default_proximity_decreases_for_randomized_distances():
-    # With this seed, the randomized resistance drops from 0.80 two pixels
-    # from the centre of a window of permeability 1 to 0.55 at its edge.
+@pytest.mark.parametrize("name", ["spielman", "spielman-cholmod"])
+def test_randomized_distances_take_the_default_proximity_of_exact_ones(name, request):
+    # A profile read off one randomized query is noisy: with this seed, the
+    # randomized resistance drops from 0.80 two pixels from the centre of a
+    # window of permeability 1 to 0.55 at its edge.
     method = SpielmanApproximation(epsilon=0.3, seed=3)
-    kernel = make(
-        ConnectivityAnalysis, ResistanceDistance(method=method), proximity=None
-    ).proximity
+    randomized = CASES[name][0](request)
+    randomized = eqx.tree_at(lambda d: d.method, randomized, method)
+    assert randomized.exact() == ResistanceDistance(randomized.solver)
+
+    def kernel(distance):
+        return make(ConnectivityAnalysis, distance, proximity=None).proximity
 
     distances = jnp.linspace(0, 3, 301)
-    proximities = kernel(distances)
-    assert jnp.all(jnp.diff(proximities) <= 0) and jnp.all(proximities <= 1)
-    assert jnp.all(jnp.isfinite(jax.vmap(jax.grad(kernel))(distances)))
+    expected = kernel(ResistanceDistance())(distances)
+    assert_close(kernel(randomized)(distances), expected, 1e-8)
 
 
 @pytest.mark.gpu
