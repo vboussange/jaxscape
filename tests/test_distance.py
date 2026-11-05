@@ -224,3 +224,30 @@ def test_a_state_carries_through_scan(solver):
 
     assert_close(distances[1], ResistanceDistance()(grid_of(NEW_VALUES), nodes=NODES))
     assert_close(distances[2], distances[0])
+
+
+# Three sources of a raster of 7 x 9 pixels, whose windows of 5 x 5 pixels lie
+# inside it.
+WINDOW_ROWS, WINDOW_COLUMNS = np.array([2, 3, 4]), np.array([2, 4, 6])
+
+
+def windows_of(distances, rows=WINDOW_ROWS, columns=WINDOW_COLUMNS, half=2):
+    """The windows of `half` pixels around each source, from rows of distances."""
+    grids = np.asarray(distances).reshape(len(rows), 7, 9)
+    return np.stack(
+        [
+            grid[r - half : r + half + 1, c - half : c + half + 1]
+            for grid, r, c in zip(grids, rows, columns)
+        ]
+    )
+
+
+@pytest.mark.parametrize("distance", DISTANCES, ids=lambda d: type(d).__name__)
+def test_window_query_gives_the_distances_from_each_source_to_its_window(distance):
+    grid = grid_of(jr.uniform(jr.key(1), (7, 9), minval=0.2, maxval=1.0))
+    sources = jnp.asarray(WINDOW_ROWS * 9 + WINDOW_COLUMNS)
+
+    windows = distance.sources_to_windows_distance(grid, sources, 5)
+
+    expected = windows_of(distance(grid)[sources])
+    np.testing.assert_allclose(windows, expected, rtol=1e-10, atol=1e-12)

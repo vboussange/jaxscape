@@ -208,6 +208,42 @@ class AbstractDistance(eqx.Module):
         del state
         return self.init(graph)
 
+    def sources_to_windows_distance(
+        self, graph: GridGraph, sources: Array, size: int, state: Any = None
+    ) -> Array:
+        """Return the distances from each source to the pixels of its window.
+
+        The window of a source is the square of `size` pixels a side centred on
+        it, and it must lie inside the grid. Windowed analyses query distances
+        through this method only. By default, it slices the distances from the
+        sources to every vertex. A distance may override it to hold fewer
+        values, as `ResistanceDistance` does with `SpielmanApproximation`.
+
+        **Arguments:**
+
+        - `graph`: Grid graph on which to compute distances.
+        - `sources`: Source vertex indices with shape `(m,)`.
+        - `size`: Odd number of pixels along a side of the windows.
+        - `state`: Optional solver state. Defaults to automatic initialization.
+
+        **Returns:**
+
+        Distances with shape `(m, size, size)`. For source `i` at row `r` and
+        column `c`, entry `[i, a, b]` is the distance to the pixel at row
+        `r - size // 2 + a` and column `c - size // 2 + b`.
+        """
+        if size % 2 == 0:
+            raise ValueError("`size` must be odd.")
+        distances = self(graph, sources=sources, state=state)
+        half = size // 2
+
+        def window(distances, source):
+            start = (source // graph.width - half, source % graph.width - half)
+            rows = distances.reshape(graph.height, graph.width)
+            return jax.lax.dynamic_slice(rows, start, (size, size))
+
+        return jax.vmap(window)(distances, sources)
+
     @abstractmethod
     def nodes_to_nodes_distance(
         self, graph: AbstractGraph, nodes: Array, state: Any = None
