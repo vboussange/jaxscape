@@ -153,22 +153,32 @@ class WindowedAnalysis(eqx.Module):
 
     - **Tiles**, for distances whose queries from several sources share work,
       such as `ResistanceDistance` (see `AbstractDistance.sources_share_work`).
-      A batch is a grid of block centres, consecutive along each axis:
-      `isqrt(batch_size)` rows and `batch_size // isqrt(batch_size)` columns
-      of them, or fewer on smaller rasters. Its tile is the union of their
-      windows. One query from all of
-      them, on the graph of the tile, gives each centre its distances to every
-      pixel of the tile, and each centre counts the pixels of its window. The
-      tile graph extends beyond each window, so distances on it are lower:
-      with `ResistanceDistance` and `dependency_range` 20, connectivity is
-      about 3 % higher than in windows, and the sensitivity maps have a
-      Pearson correlation above 0.999 with theirs. With `batch_size=1`, each
-      tile is a window. The query holds `batch_size` distances for each pixel
-      of the tile, and as many gradients: with `dependency_range` 100 and
-      `batch_size=400`, tiles of `20 + 200` pixels a side hold 19 million
-      distances. Each query costs about the same whatever its number of
-      sources, so the cost per centre falls as `batch_size` grows, until the
-      tile side reaches about `2 * dependency_range`.
+      A tile is a grid of block centres, consecutive along each axis and at
+      most `dependency_range // 10` pixels apart from the first to the last,
+      as square as `batch_size` and the raster allow, and a batch holds
+      `batch_size` block centres in as many tiles as fit. The graph of a tile
+      is the union of the windows of its centres. One query from all of them,
+      on the graph of the tile, gives each centre its distances to every pixel
+      of the tile, and each centre counts the pixels of its window. The tile
+      graph extends beyond each window, so its distances are lower than in
+      windows, and differ with the place of a centre in the tile. Larger
+      tiles leave seams along their edges in sensitivity maps: on the
+      Maryland land cover of the connectivity analysis example, with exact
+      `ResistanceDistance` and `dependency_range` 30, tiles of 20 x 20 pixels
+      raised connectivity by 2.5 % over windows and their permeability
+      sensitivity had a Pearson correlation of 0.991 with that of windows,
+      against 0.7 % and 0.9991 for tiles of 4 x 4 pixels, the largest
+      allowed. With `dependency_range` below 10, or with blocks of more than
+      `dependency_range // 10` pixels, or with `batch_size=1`, each tile is a
+      window. A query holds a distance from each centre to each pixel of its
+      tile, and as many gradients: with `dependency_range` 100 and
+      `batch_size=400`, three tiles of 11 x 11 centres, `10 + 201` pixels a
+      side, hold 5.4 million distances each. Each query costs about the same
+      whatever its number of sources, so the cost per centre falls as tiles
+      grow: on an RTX 3090 in float64, with `dependency_range` 30, the
+      permeability sensitivity took 4.6 ms per pixel on tiles of 4 x 4
+      pixels, against 0.76 on tiles of 20 x 20 and 116 on windows, and 2.6
+      against 0.29 in float32.
     - **Windows**, for other distances, such as `LCPDistance` and
       `EuclideanDistance`, whose queries cost about as much per source: each
       block centre has its own window, and a batch is `batch_size` windows.
@@ -194,9 +204,9 @@ class WindowedAnalysis(eqx.Module):
     - `dependency_range`: Window half-width `D` in pixels. Pairs farther apart
       than `D` along either axis do not contribute, and the default
       `proximity` decays over `D / 4` equivalent pixels.
-    - `batch_size`: Number of block centres per batch: the sources of one tile
-      query, or windows. It sets the memory, which holds all the windows of a
-      batch, or the distances of a tile query.
+    - `batch_size`: Number of block centres per batch: the sources of its tile
+      queries, or windows. It sets the memory, which holds all the windows of
+      a batch, or the distances of its tile queries.
     - `proximity`: Function mapping distances, in the units of `distance`, to
       proximities. Defaults to `exp(-r / (D / 4))`, where `r` is the distance
       in equivalent pixels: the number of pixels through habitat of

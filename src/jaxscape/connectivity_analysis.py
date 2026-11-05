@@ -385,11 +385,25 @@ class SensitivityAnalysis(WindowedAnalysis):
       to 1.00 with `b = 3`), and 0.99 to 1.00 for `LCPDistance`. Within
       `dependency_range` of the edges, where the calibration window differs
       most from the block windows, resistance sensitivity is as low as 0.7
-      times the uncoarsened one in the outer rows. Tiles keep the band, as
-      their calibration covers the whole tile; with `b = 5` and tiles of
-      8 x 8 block centres, the coarsened resistance sensitivity is 0.87 to
-      1.07 times the uncoarsened one on tiles of 8 x 8 pixels, 1.01 on
-      average.
+      times the uncoarsened one in the outer rows. Tiles hold block centres
+      at most `dependency_range // 10` pixels apart, so that blocks of more
+      pixels have their own windows, as in these measurements.
+
+    !!! warning "Limitations"
+
+        - Randomized distances give noisy permeability sensitivity where
+          permeability varies over orders of magnitude. On part of the
+          Maryland land cover of the connectivity analysis example, with
+          `dependency_range` 30, the permeability sensitivity of
+          `SpielmanApproximation(epsilon=0.1)` had a Pearson correlation of
+          0.82 with the exact one: use `epsilon` 0.05 or less there.
+        - The block correction is calibrated on a uniform landscape. With
+          barriers and blocks of several pixels, the coarsened permeability
+          sensitivity is biased and keeps a lattice through the block
+          centres: on the same land cover, with `dependency_range` 100 and
+          `b` from 3 to 21, the totals of `LCPDistance` were 29 to 45 % too
+          high, with grid lines, and `ResistanceDistance` showed "+" marks at
+          the block centres.
 
     Parameters and windowing strategy are identical to
     [`ConnectivityAnalysis`][jaxscape.connectivity_analysis.ConnectivityAnalysis],
