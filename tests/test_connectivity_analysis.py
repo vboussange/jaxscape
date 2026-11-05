@@ -38,12 +38,11 @@ def proximity(dist):
 
 def analysis(kind, distance, quality=QUALITY, permeability=PERMEABILITY, **kwargs):
     # 42 windows: five full batches and a partial one.
-    kwargs = {"proximity": proximity, "batch_size": 8, **kwargs}
+    kwargs = {"proximity": proximity, "batch_size": 8, "dependency_range": D, **kwargs}
     return kind(
         quality_raster=quality,
         permeability_raster=permeability,
         distance=distance,
-        dependency_range=D,
         **kwargs,
     )
 
@@ -256,7 +255,7 @@ def test_sensitivity_is_finite_for_proximity_singular_at_zero():
 def test_coarsened_analyses_cover_the_raster(name, request):
     distance = CASES[name][0](request)
 
-    # Blocks of 3 x 3 pixels; the last column of blocks extends past the raster.
+    # Blocks of 3 x 3 pixels, centred on rows 0, 1, 4 and 5, columns 0, 1, 4, 6.
     def coarsened(kind):
         return analysis(kind, distance, coarsening_factor=0.5)
 
@@ -318,16 +317,16 @@ def test_coarsened_permeability_sensitivity_is_finite_where_proximities_underflo
     np.testing.assert_array_equal(coarsened, sensitivity(0.0))
 
 
-def test_coarsening_needs_a_block_centre_inside_the_raster():
-    # Blocks of 3 x 3 pixels have their centre in the second row.
-    with pytest.raises(ValueError, match="too small"):
-        analysis(
-            ConnectivityAnalysis,
-            LCPDistance(),
-            QUALITY[:1],
-            PERMEABILITY[:1],
-            coarsening_factor=0.5,
+def test_coarsening_runs_on_a_raster_thinner_than_a_block():
+    # Blocks of 3 x 3 pixels, on a raster of one row: every centre is in it.
+    def coarsened(kind):
+        return analysis(
+            kind, LCPDistance(), QUALITY[:1], PERMEABILITY[:1], coarsening_factor=0.5
         )
+
+    assert coarsened(ConnectivityAnalysis).run() > 0
+    sensitivity = coarsened(SensitivityAnalysis).run("permeability")
+    assert jnp.all(jnp.isfinite(sensitivity)) and jnp.any(sensitivity != 0)
 
 
 @pytest.mark.parametrize("name", ["lcp", "resistance-dense"])
@@ -346,11 +345,48 @@ def test_coarsened_quality_sensitivity_is_exact_inside_a_uniform_landscape(
             coarsening_factor=coarsening_factor,
         ).run("quality")
 
-    # Blocks of 3 x 3 pixels centred on rows and columns 1, 4, 7, ...: the
+    # Blocks of 3 x 3 pixels centred on rows and columns 0, 1, 4, 7, ...: the
     # pixel windows and block windows that reach pixels 7 to 12 are all inside
     # the raster.
     interior = (slice(7, 13), slice(7, 13))
     assert_close(sensitivity(0.5)[interior], sensitivity(0.0)[interior], 1e-10)
+
+
+@pytest.mark.parametrize(
+    "name, var, tolerance",
+    [
+        ("lcp", "quality", 0.08),
+        ("lcp", "permeability", 0.08),
+        ("resistance-dense", "quality", 0.1),
+        ("resistance-dense", "permeability", 0.2),
+    ],
+)
+def test_coarsening_approximates_pixel_windows_at_the_edges_of_a_uniform_landscape(
+    name, var, tolerance, request
+):
+    # Measured largest errors, relative to the map maximum: 0.076, 0.072,
+    # 0.098 and 0.192 (0.37, 0.30, 0.44 and 0.19 with block centres inside
+    # the raster only, the nearest taking all the interpolation weight).
+    distance = CASES[name][0](request)
+    uniform = jnp.full((24, 25), 0.7)
+
+    def sensitivity(coarsening_factor):
+        return analysis(
+            SensitivityAnalysis,
+            distance,
+            uniform,
+            uniform,
+            dependency_range=8,
+            proximity=None,
+            batch_size=1024,
+            coarsening_factor=coarsening_factor,
+        ).run(var)
+
+    # Blocks of 3 x 3 pixels, centred on rows 0, 1, 4, ..., 22 and 23, and
+    # columns 0, 1, 4, ..., 22 and 24; the pixels within 8 of an edge.
+    edges = np.ones(uniform.shape, bool)
+    edges[8:-8, 8:-8] = False
+    assert_close(sensitivity(0.25)[edges], sensitivity(0.0)[edges], tolerance)
 
 
 class Opaque(AbstractDistance):
@@ -477,7 +513,7 @@ def test_all_batches_run_one_compiled_program(
     compilations.clear()
     run(3)
     # Each new Cholmod state also recompiles the permeability correction.
-    correction = "jit(_permeability_correction)"
+    correction = "jit(_permeability_calibration)"
     assert [name for name in compilations if name != correction] == ["jit(_batch)"]
 
 

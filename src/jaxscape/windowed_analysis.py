@@ -6,6 +6,7 @@ from typing import Any
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import numpy as np
 from jax import Array, lax
 from tqdm import tqdm
 
@@ -56,17 +57,13 @@ class _PixelExponential(eqx.Module):
         return jnp.exp(-r / self.alpha)
 
 
-def _tent(pixels: Array, block: Array, blocks: int, size: int, dtype) -> Array:
-    """Interpolation weights of the centre of `block` at `pixels`, along one axis.
+def _centres(n: int, size: int) -> np.ndarray:
+    """Block centres along an axis of `n` pixels, for blocks of `size` pixels.
 
-    Of `blocks` block centres, `size` pixels apart, the centre of `block` has
-    weight 1 and its neighbours weight 0, linear in between. Beyond the first
-    and the last centre, the nearest centre takes all the weight.
+    Every `size` pixels from `(size - 1) // 2`, and the first and last pixels.
     """
-    centre = block * size + (size - 1) // 2
-    knots = (centre + size * jnp.arange(-1, 2)).astype(dtype)
-    heights = jnp.array([block == 0, True, block == blocks - 1], dtype)
-    return jnp.interp(pixels.astype(dtype), knots, heights)
+    lattice = np.arange((size - 1) // 2, n, size)
+    return np.unique(np.concatenate([[0], lattice, [n - 1]]))
 
 
 class WindowedAnalysis(eqx.Module):
@@ -81,13 +78,14 @@ class WindowedAnalysis(eqx.Module):
 
     With coarsening, the raster is divided into blocks of `b` pixels a side,
     where `b` is `dependency_range * coarsening_factor` rounded up to an odd
-    integer, and only the windows centred on block centres inside the raster
-    are computed: about `b**2` times fewer windows, each the same as without
-    coarsening. Values between block centres are interpolated bilinearly: the
-    weight of a centre falls linearly from 1 at the centre to 0 at the
-    neighbouring centres, along each axis, and beyond the outermost centres
-    the nearest centre takes all the weight. The weights of all centres sum to
-    1 at every pixel.
+    integer, and only the windows centred on block centres are computed: about
+    `b**2` times fewer windows, each the same as without coarsening. Along each
+    axis, block centres lie every `b` pixels from `(b - 1) / 2`, and on the
+    first and last pixels, so that every pixel lies between two centres.
+    Values between block centres are interpolated bilinearly: the weight of a
+    centre falls linearly from 1 at the centre to 0 at the neighbouring
+    centres, along each axis, and the weights of all centres sum to 1 at every
+    pixel.
 
     Windows run in batches of `batch_size`, one compiled program for all
     batches. Distances without solver state, such as `LCPDistance`,
@@ -116,8 +114,7 @@ class WindowedAnalysis(eqx.Module):
       [`ConnectivityAnalysis`][jaxscape.connectivity_analysis.ConnectivityAnalysis]
       for the units of each distance and the ecological rationale.
     - `coarsening_factor`: Spatial coarsening in [0, 1]. 0 = finest resolution,
-      higher = faster. The raster must hold a block centre along each axis,
-      `(b + 1) // 2` pixels.
+      higher = faster.
 
     !!! example
 
@@ -171,8 +168,6 @@ class WindowedAnalysis(eqx.Module):
             permeability_raster = permeability_raster(quality_raster)
         if quality_raster.shape != permeability_raster.shape:
             raise ValueError("Quality and permeability rasters must have one shape.")
-        if min(quality_raster.shape) < (coarsening + 1) // 2:
-            raise ValueError("Raster too small for `coarsening_factor`.")
 
         # The floor is a constant of the analysis: sensitivities do not
         # differentiate it.
@@ -180,11 +175,15 @@ class WindowedAnalysis(eqx.Module):
         permeability_raster = jnp.where(
             permeability_raster > floor, permeability_raster, floor
         )
+        # With `dependency_range` pixels before the raster, the window of the
+        # block centre at raster index `i` starts at index `i` of the padded
+        # rasters. The padding after the raster also rounds the shape up for
+        # `WindowOperation`.
         height, width = quality_raster.shape
-        pad = (
-            (buffer_size, buffer_size + (-height) % coarsening),
-            (buffer_size, buffer_size + (-width) % coarsening),
-        )
+        pad = [
+            (dependency_range, dependency_range + (-n - coarsening + 1) % coarsening)
+            for n in (height, width)
+        ]
 
         self.quality_raster = jnp.pad(quality_raster, pad)
         self.permeability_raster = jnp.pad(
@@ -216,31 +215,36 @@ class WindowedAnalysis(eqx.Module):
 
     def _crop(self, raster: Array) -> Array:
         """Crop a padded raster to the input shape."""
-        start = self.window_op.buffer_size
+        start = self.window_op.total_window_size // 2
         return raster[start : start + self.shape[0], start : start + self.shape[1]]
 
     @property
-    def _blocks(self) -> tuple[int, int]:
-        """Number of block centres inside the raster along each axis."""
-        size = self.window_op.window_size
-        rows, columns = ((n - 1 - (size - 1) // 2) // size + 1 for n in self.shape)
+    def _centres(self) -> tuple[np.ndarray, np.ndarray]:
+        """Block centres along each axis."""
+        rows, columns = (_centres(n, self.window_op.window_size) for n in self.shape)
         return rows, columns
+
+    @property
+    def _blocks(self) -> tuple[int, int]:
+        """Number of block centres along each axis."""
+        rows, columns = self._centres
+        return len(rows), len(columns)
 
     def _interpolate(self, values: Array) -> Array:
         """Interpolate `values` at the block centres to every pixel of the raster."""
-        size = self.window_op.window_size
 
-        def along_rows(values, length):
-            centres = jnp.arange(values.shape[0]) * size + (size - 1) // 2
-            pixels = jnp.arange(length, dtype=values.dtype)
+        def along_rows(values, centres):
+            # The last centre is the last pixel.
+            pixels = jnp.arange(centres[-1] + 1, dtype=values.dtype)
 
             def interpolate(column):
                 return jnp.interp(pixels, centres.astype(values.dtype), column)
 
             return jax.vmap(interpolate, in_axes=1, out_axes=1)(values)
 
-        values = along_rows(values, self.shape[0])
-        return along_rows(values.T, self.shape[1]).T
+        rows, columns = self._centres
+        values = along_rows(values, rows)
+        return along_rows(values.T, columns).T
 
     def _accumulate(self, window_fn: Callable, initial: Array, *args: Any) -> Array:
         """Accumulate `window_fn` over the windows of all block centres.
@@ -281,40 +285,49 @@ def _batch(inputs: tuple, accumulated: Array) -> tuple[Array, Any]:
     op = analysis.window_op
     size = op.total_window_size
     rows, columns = analysis._blocks
-    dtype = analysis.quality_raster.dtype
 
     # Dummy windows complete the last batch, so all batches share one program.
     index = start + jnp.arange(analysis.batch_size)
     valid = index < rows * columns
     index = jnp.minimum(index, rows * columns - 1)
-    block = jnp.stack([index // columns, index % columns], axis=1)
-    xy = block * op.window_size
+    # The block centres of the windows along each axis, and the neighbouring
+    # centres where their interpolation weights reach 0: shape (batch, 2, 3).
+    knots = [
+        jnp.asarray(np.stack([np.r_[c[0] - 1, c[:-1]], c, np.r_[c[1:], c[-1] + 1]]))
+        for c in analysis._centres
+    ]
+    knots = jnp.stack(
+        [knots[0][:, index // columns], knots[1][:, index % columns]], axis=1
+    ).transpose(2, 1, 0)
+    # A window starts at the index of its centre in the padded rasters.
+    xy = knots[:, :, 1]
 
-    def windows(block):
-        xy = block * op.window_size
-        pixels = xy[:, None] - op.buffer_size + jnp.arange(size)
+    def windows(knots):
+        xy = knots[:, 1]
+        pixels = xy[:, None] - size // 2 + jnp.arange(size)
         inside = ((pixels[0] >= 0) & (pixels[0] < analysis.shape[0]))[:, None] & (
             (pixels[1] >= 0) & (pixels[1] < analysis.shape[1])
         )[None, :]
-        tent = jnp.outer(
-            _tent(pixels[0], block[0], rows, op.window_size, dtype),
-            _tent(pixels[1], block[1], columns, op.window_size, dtype),
-        )
+        tent = [
+            jnp.interp(pixels[axis], knots[axis], jnp.array([0, 1, 0]))
+            for axis in range(2)
+        ]
+        tent = jnp.outer(tent[0], tent[1]).astype(analysis.quality_raster.dtype)
         quality = op.extract_total_window(xy, analysis.quality_raster)
         permeability = op.extract_total_window(xy, analysis.permeability_raster)
         return quality, permeability, inside, tent
 
     if dynamic is None:
 
-        def window(block):
-            return window_fn(analysis, *windows(block), None, *args)
+        def window(knots):
+            return window_fn(analysis, *windows(knots), None, *args)
 
-        outputs = jax.vmap(window)(block)
+        outputs = jax.vmap(window)(knots)
     else:
         # Solvers that run on the host or hold one factorization cannot vmap:
         # windows run one after another, each reinitializing the carried state.
-        def step(dynamic, block):
-            quality, permeability, inside, tent = windows(block)
+        def step(dynamic, knots):
+            quality, permeability, inside, tent = windows(knots)
             graph = GridGraph(lax.stop_gradient(permeability), fun=_average)
             state = analysis.distance.reinit(graph, eqx.combine(dynamic, static))
             output = window_fn(
@@ -322,7 +335,7 @@ def _batch(inputs: tuple, accumulated: Array) -> tuple[Array, Any]:
             )
             return eqx.partition(state, eqx.is_array)[0], output
 
-        dynamic, outputs = lax.scan(step, dynamic, block)
+        dynamic, outputs = lax.scan(step, dynamic, knots)
 
     outputs = jnp.where(valid.reshape((-1,) + (1,) * (outputs.ndim - 1)), outputs, 0)
     if outputs.ndim == 1:

@@ -104,54 +104,60 @@ def _window_sensitivity(
     state: Any,
     var: str,
     q_weighted: bool,
-    correction: Array | float,
+    calibration: tuple[Array, Array] | None,
 ) -> Array:
-    """Gradient of the window connectivity with respect to the window of `var`,
-    times `correction`.
+    """Gradient of the window connectivity with respect to the window of `var`.
 
-    The permeability gradient leaves out the pairs within the block.
+    With a `calibration` of the block correction, the permeability gradient
+    leaves out the pairs within the block and is corrected for them.
     """
-    block = var == "permeability"
+    block = calibration is not None
 
     def connectivity(quality, permeability):
         return _window_connectivity(
             analysis, quality, permeability, inside, tent, state, q_weighted, block
         )
 
-    argnums = 1 if block else 0
+    argnums = 1 if var == "permeability" else 0
     gradient = jax.grad(connectivity, argnums)(quality, permeability)
-    return correction * gradient
+    if calibration is None:
+        return gradient
+    pixels, far = calibration
+    # The pixel windows that the window stands for: the raster pixels around
+    # its centre, weighted by their interpolation weights.
+    b = analysis.window_op.window_size
+    centre = tent.shape[0] // 2
+    near = slice(centre - b + 1, centre + b)
+    weights = (tent * inside)[near, near]
+    spread = convolve2d(pixels, weights, mode="same", precision=lax.Precision.HIGHEST)
+    above = far != 0
+    factor = spread / (jnp.sum(weights) * jnp.where(above, far, 1))
+    return jnp.where(above, factor, 1) * gradient
 
 
 @eqx.filter_jit
-def _permeability_correction(
+def _permeability_calibration(
     distance: AbstractDistance,
     proximity: Callable[[Array], Array],
     op: WindowOperation,
     graph: GridGraph,
     state: Any,
-) -> Array:
-    """Factor that corrects block-window permeability gradients, pixel by pixel.
+) -> tuple[Array, Array]:
+    """Permeability gradients of the uniform window `graph`, for the block correction.
 
-    On the uniform window `graph`, with quality 1: the gradient of the centre's
-    proximity-weighted quality summed over a block of shifts, which is what the
-    pixel windows of a block add up to, divided by `b**2` times the gradient
-    without the pairs within the block. At or below a noise floor of the
-    latter, which is zero where every proximity underflows, the factor is 1.
+    With quality 1: the gradient of the proximity-weighted quality reachable
+    from the centre, and that gradient without the pairs within the block, set
+    to 0 at or below its noise floor, `1e-6` times its maximum.
     """
-    b = op.window_size
     ones = jnp.ones_like(graph.grid)
 
     def own(permeability, block):
         excluded = _excluded(op, block)
         return _own(distance, proximity, ones, permeability, state, excluded)
 
-    box = jnp.ones((b, b), ones.dtype)
     pixels = jax.grad(own)(graph.grid, False)
-    pixels = convolve2d(pixels, box, mode="same", precision=lax.Precision.HIGHEST)
-    block = jax.grad(own)(graph.grid, True)
-    above = jnp.abs(block) > 1e-6 * jnp.max(jnp.abs(block))
-    return jnp.where(above, pixels / (b**2 * jnp.where(above, block, 1)), 1)
+    far = jax.grad(own)(graph.grid, True)
+    return pixels, jnp.where(jnp.abs(far) > 1e-6 * jnp.max(jnp.abs(far)), far, 0)
 
 
 class ConnectivityAnalysis(WindowedAnalysis):
@@ -268,19 +274,20 @@ class SensitivityAnalysis(WindowedAnalysis):
     - **Permeability.** The gradient of each block window's connectivity
       without the pairs within the block,
       $\big(\sum_i T_c(i) \, q_i\big) \sum_{j \notin \text{block}} K_{cj} q_j$,
-      is multiplied pixel by pixel by a correction for the block artifacts, as
-      Omniscape's block correction: $\text{box}_b(g) / (b^2 g_\text{far})$,
-      where $g$ and $g_\text{far}$ are the permeability gradients of
-      $\sum_{j \neq c} K_{cj}$ and $\sum_{j \notin \text{block}} K_{cj}$, and
-      $\text{box}_b$ sums over the $b \times b$ pixels around each pixel. Both
-      are computed once per run, on a window of quality 1 and of the raster's
-      maximum permeability. The correction is 1 at or below its noise floor,
-      where $|g_\text{far}|$ is at most `1e-6` times its maximum, for example
-      where proximities underflow. In a uniform landscape, the corrected
-      gradient of a block window is the sum of the gradients of its $b^2$ pixel
-      windows, except at or below the noise floor and in the band of
-      $(b - 1) / 2$ pixels that the pixel windows reach beyond the block
-      window.
+      is multiplied pixel by pixel by a correction for the block artifacts,
+      after Omniscape's block correction:
+      $\sum_s w_c(s) \, g(\cdot - s) \big/ \big(g_\text{far} \sum_s w_c(s)\big)$.
+      Here $g$ and $g_\text{far}$ are the permeability gradients of
+      $\sum_{j \neq c} K_{cj}$ and $\sum_{j \notin \text{block}} K_{cj}$ on a
+      window of quality 1 and of the raster's maximum permeability, computed
+      once per run, and the weights $w_c(s) = T_c(c + s)$ of the raster pixels
+      $c + s$ select the pixel windows that the block window stands for. The
+      correction is 1 at or below its noise floor, where $|g_\text{far}|$ is at
+      most `1e-6` times its maximum, for example where proximities underflow.
+      In a uniform landscape, away from its edges, the corrected gradient of a
+      block window is the weighted sum of the gradients of these pixel
+      windows, except at or below the noise floor and in the band of up to
+      $b - 1$ pixels that the pixel windows reach beyond the block window.
 
     Parameters and windowing strategy are identical to
     [`ConnectivityAnalysis`][jaxscape.connectivity_analysis.ConnectivityAnalysis],
@@ -327,7 +334,7 @@ class SensitivityAnalysis(WindowedAnalysis):
         permeability sensitivity.
         """
         coarse = self.window_op.window_size > 1
-        correction = 1.0
+        calibration = None
         if var == "quality":
             symmetric = isinstance(self.distance, _SYMMETRIC_DISTANCES)
             if coarse and q_weighted and symmetric:
@@ -337,13 +344,13 @@ class SensitivityAnalysis(WindowedAnalysis):
             raster = self.quality_raster
         elif var == "permeability":
             if coarse:
-                correction = self._correction()
+                calibration = self._calibration()
             raster = self.permeability_raster
         else:
             raise ValueError("`var` must be either 'quality' or 'permeability'")
 
         gradient = self._accumulate(
-            _window_sensitivity, jnp.zeros_like(raster), var, q_weighted, correction
+            _window_sensitivity, jnp.zeros_like(raster), var, q_weighted, calibration
         )
         gradient = self._crop(gradient)
         if var == "permeability":
@@ -352,12 +359,14 @@ class SensitivityAnalysis(WindowedAnalysis):
             )
         return gradient
 
-    def _correction(self) -> Array:
-        """Block-artifact correction at the raster's maximum permeability."""
+    def _calibration(self) -> tuple[Array, Array]:
+        """Block correction calibration at the raster's maximum permeability."""
         op = self.window_op
         level = lax.stop_gradient(jnp.max(self.permeability_raster))
         graph = _uniform_graph(
             op.total_window_size, level, self.permeability_raster.dtype
         )
         state = self.distance.init(graph)
-        return _permeability_correction(self.distance, self.proximity, op, graph, state)
+        return _permeability_calibration(
+            self.distance, self.proximity, op, graph, state
+        )
