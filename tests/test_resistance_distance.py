@@ -357,6 +357,58 @@ def test_sources_to_targets_match_all_pairs(solver, pairs):
     np.testing.assert_allclose(gradient, expected_gradient, rtol=1e-9, atol=1e-12)
 
 
+@pytest.mark.parametrize("pairs", SOURCES_TO_TARGETS)
+def test_spielman_sources_to_targets_match_its_all_pairs(pairs):
+    method = SpielmanApproximation(epsilon=0.3, seed=2)
+    distance = ResistanceDistance(method=method)
+    sources, targets = SOURCES_TO_TARGETS[pairs]
+    selected = jnp.arange(25) if targets is None else targets
+    rng = np.random.default_rng(0)
+    permeability = jnp.asarray(10 ** rng.uniform(-1, 0, (5, 5)))
+    weights = jnp.asarray(rng.uniform(size=(sources.size, selected.size)))
+
+    def objective(query, permeability):
+        grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
+        return jnp.sum(weights * query(grid))
+
+    def sources_to_targets(grid):
+        return distance(grid, sources=sources, targets=targets)
+
+    def all_pairs(grid):
+        return distance(grid)[sources[:, None], selected[None, :]]
+
+    for argnums in (None, 1):
+        actual, expected = (
+            jax.grad(objective, argnums)(query, permeability)
+            if argnums
+            else objective(query, permeability)
+            for query in (sources_to_targets, all_pairs)
+        )
+        np.testing.assert_allclose(actual, expected, rtol=1e-9, atol=1e-12)
+
+
+def test_spielman_sources_to_targets_solve_for_the_projections():
+    # One source to every vertex, as in a window: the projections need
+    # ceil(log(3600) / 0.5**2) = 33 solves, the node potentials 3600.
+    n = 3600
+    permeability = jnp.linspace(0.5, 2.0, n).reshape(60, 60)
+    method = SpielmanApproximation(epsilon=0.5)
+    solver = lx.CG(rtol=1e-8, atol=1e-8, max_steps=500)
+    distance = ResistanceDistance(solver=solver, method=method)
+
+    def objective(permeability):
+        grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
+        return jnp.sum(distance(grid, sources=jnp.array([1830])))
+
+    # No dense matrix of all vertices: the random signs of the projections
+    # take most of the memory.
+    dense = n**2 * permeability.dtype.itemsize
+    for program in (jax.jit(objective), jax.jit(jax.grad(objective))):
+        memory = program.lower(permeability).compile().memory_analysis()
+        assert memory is not None
+        assert memory.temp_size_in_bytes < dense / 2
+
+
 def test_few_sources_to_targets_solve_for_them_only():
     n = 900
     permeability = jnp.linspace(0.5, 2.0, n).reshape(30, 30)

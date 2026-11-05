@@ -150,7 +150,6 @@ class ResistanceDistance(AbstractSolverDistance):
                 self.method.seed,
                 self.solver,
                 state,
-                projection_batch_size=self.method.projection_batch_size,
             )
         A = graph.get_adjacency_matrix()
         return _exact_sources_to_targets(
@@ -310,22 +309,19 @@ def spielman_sources_to_targets_resistance_distance(
     seed: int = 0,
     solver: lx.AbstractLinearSolver | None = None,
     state: Any = None,
-    *,
-    projection_batch_size: int = 64,
 ) -> Array:
-    """Approximate resistance distances from sources to targets."""
-    return _spielman_sources_to_targets_resistance_distance_from_data(
-        A.data,
-        A.indices,
-        A.shape,
-        sources.astype(A.indices.dtype),
-        targets.astype(A.indices.dtype),
-        epsilon,
-        seed,
-        solver,
-        state,
-        projection_batch_size,
+    """Approximate resistance distances from sources to targets.
+
+    Embeds every vertex with `ceil(log(n_vertices) / epsilon**2)` solves, and as
+    many adjoint solves for the gradient, whatever the numbers of sources and
+    targets.
+    """
+    features = _spielman_features_reduced(
+        A.data, A.indices, A.shape, epsilon, seed, solver, state
     )
+    # The ground vertex, the last one, has zero features.
+    features = jnp.pad(features, ((0, 0), (0, 1)))
+    return _distances_from_selected_features(features[:, sources], features[:, targets])
 
 
 def _projection_size(n: int, epsilon: float) -> int:
@@ -823,28 +819,6 @@ def _spielman_selected_features_bwd(
     return (
         _laplacian_data_pullback(adjoint, potentials, indices, shape)
         + projection_gradient
-    )
-
-
-def _spielman_sources_to_targets_resistance_distance_from_data(
-    data: Array,
-    indices: Array,
-    shape: tuple[int, ...],
-    sources: Array,
-    targets: Array,
-    epsilon: float,
-    seed: int,
-    solver: lx.AbstractLinearSolver | None,
-    state: Any,
-    projection_batch_size: int,
-) -> Array:
-    nodes = jnp.concatenate([sources, targets])
-    features = _spielman_selected_features(
-        data, indices, shape, nodes, epsilon, seed, solver, state, projection_batch_size
-    )
-    n_sources = sources.shape[0]
-    return _distances_from_selected_features(
-        features[:, :n_sources], features[:, n_sources:]
     )
 
 
