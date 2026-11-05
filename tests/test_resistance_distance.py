@@ -20,7 +20,7 @@ from jaxscape.resistance_distance import (
     p_inv_resistance_distance,
     ResistanceDistance,
 )
-from jaxscape.solvers import AMJaxCGSolver, CholmodSolver, PyAMGSolver
+from jaxscape.solvers import AMJaxCGSolver, CholmodSolver, CuDSSSolver, PyAMGSolver
 
 
 # Check availability of optional solvers
@@ -567,11 +567,19 @@ def test_float32_permeability_gradients_of_a_window_on_the_floor(solver):
     assert error < 1e-3
 
 
-@pytest.mark.parametrize("solver", ["dense", "cholmod"])
+@pytest.mark.parametrize(
+    "solver", ["dense", "cholmod", pytest.param("cudss", marks=pytest.mark.gpu)]
+)
 def test_float32_queries_of_a_tile_whose_centre_is_a_barrier(solver):
     if solver == "cholmod":
         pytest.importorskip("cholespy")
-    distance = ResistanceDistance(solver=SOURCES_TO_TARGETS_SOLVERS[solver]())
+    if solver == "cudss":
+        try:
+            distance = ResistanceDistance(solver=CuDSSSolver())
+        except (ImportError, RuntimeError) as error:
+            pytest.skip(f"Needs an NVIDIA GPU, spineax and cuDSS: {error}")
+    else:
+        distance = ResistanceDistance(solver=SOURCES_TO_TARGETS_SOLVERS[solver]())
     # A tile whose central pixel, and the pixels around it, are barriers at a
     # permeability floor 1e-4 times the maximum. Measured: float32 gradients
     # within 0.16 % of float64 with the dense solve, and 4e-6 with CHOLMOD;
