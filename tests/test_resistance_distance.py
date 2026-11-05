@@ -318,12 +318,12 @@ def test_padded_sparse_resistance_has_zero_padding_gradient():
 
 
 SOURCES_TO_TARGETS = {
-    # One source to every vertex: the query of a moving window, whose 1089
+    # One source to every vertex: the query of a moving window, whose 2209
     # targets the query solves for in two chunks.
-    "one-source": (33, jnp.array([544]), None),
+    "one-source": (47, jnp.array([1104]), None),
     # Many sources to every vertex, as on a tile: the ground vertex (the middle
     # one), the last one and duplicates among the sources.
-    "many-sources": (33, jnp.array([1088, 544, 0, 544, 37]), None),
+    "many-sources": (47, jnp.array([2208, 1104, 0, 1104, 37]), None),
     # The ground vertex, the last one, duplicates, and sources among targets.
     "few-pairs": (5, jnp.array([24, 12, 3, 24]), jnp.array([12, 7, 3, 0, 24])),
 }

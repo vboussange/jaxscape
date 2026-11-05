@@ -20,9 +20,12 @@ from jaxscape.utils import _matmul, graph_laplacian
 # enough that the streamed scan path is the safer default.
 SPIELMAN_DENSE_PROJECTION_MAX_SIGN_ENTRIES = 200_000_000
 
-# Exact sources-to-targets queries solve the target columns this many at a time,
-# and hold the potentials of one chunk of targets at most. Sparse direct solvers
-# reach their full throughput from a few hundred columns on.
+# Exact sources-to-targets queries solve all target columns at once, and keep
+# them for the gradient, when their potentials hold at most this many values.
+_UNCHUNKED_POTENTIALS = 2**22
+# Otherwise they solve the target columns this many at a time, and again for the
+# gradient. Sparse direct solvers reach their full throughput from a few hundred
+# columns on.
 _TARGET_CHUNK_SIZE = 1024
 
 
@@ -98,10 +101,11 @@ class ResistanceDistance(AbstractSolverDistance):
         vertex, in a corner of the window, they were off by up to 17 times
         their norm.
 
-        Exact sources-to-targets queries solve the target columns in chunks of
-        1024. With `n` vertices and `m` sources, they hold at most
-        `n * (m + 1024)` potentials, and their gradient solves each target
-        column once more.
+        Exact sources-to-targets queries on `n` vertices, from `m` sources to
+        `k` targets, hold the potentials of all targets when `n * k` is at most
+        `2**22`, as in windows of up to 45 x 45 pixels. Beyond, they solve the
+        targets in chunks of 1024 and hold at most `n * (m + 1024)` potentials,
+        and their gradient solves each target once more.
 
     !!! warning
 
@@ -538,13 +542,15 @@ def _exact_selected_inverse_bwd(
 
 
 def _target_chunks(targets: Array, n: int) -> Array:
-    """Split `targets` of a graph of `n` vertices into equal chunks.
+    """Split `targets` of a graph of `n` vertices into chunks solved together.
 
-    Chunks hold at most `_TARGET_CHUNK_SIZE` targets. The last chunk is padded
-    with the ground vertex, whose potentials are zero.
+    One chunk when the potentials of all targets hold at most
+    `_UNCHUNKED_POTENTIALS` values, otherwise equal chunks of at most
+    `_TARGET_CHUNK_SIZE`. The last chunk is padded with the ground vertex, whose
+    potentials are zero.
     """
     k = targets.shape[0]
-    n_chunks = max(1, -(-k // _TARGET_CHUNK_SIZE))
+    n_chunks = 1 if n * k <= _UNCHUNKED_POTENTIALS else -(-k // _TARGET_CHUNK_SIZE)
     padding = n_chunks * -(-k // n_chunks) - k
     return jnp.pad(targets, (0, padding), constant_values=n // 2).reshape(n_chunks, -1)
 
@@ -612,21 +618,27 @@ def _exact_sources_to_targets_fwd(
     reduced, solve_state = _exact_solver_state(data, indices, shape, solver, state)
     # With S the grounded inverse, R_ij = S_ii + S_jj - 2 S_ij for source i and
     # target j. The source columns of S give S_ii and S_ij; the target columns
-    # are solved chunk by chunk, keeping only their diagonal S_jj.
+    # give their diagonal S_jj, chunk by chunk when there are many.
     source_potentials = _exact_potentials(reduced, sources, solver, solve_state)
 
     def target_diagonal(chunk):
         potentials = _exact_potentials(reduced, chunk, solver, solve_state)
-        return _own_values(potentials, chunk)
+        return _own_values(potentials, chunk), potentials
 
     chunks = _target_chunks(targets, shape[0])
-    diagonal = lax.map(target_diagonal, chunks)
+    if chunks.shape[0] == 1:
+        # The potentials of one chunk stay for the gradient.
+        diagonal, target_potentials = target_diagonal(chunks[0])
+        target_potentials = target_potentials[None]
+    else:
+        diagonal = lax.map(lambda chunk: target_diagonal(chunk)[0], chunks)
+        target_potentials = None
     distances = (
         _own_values(source_potentials, sources)[:, None]
         + diagonal.reshape(-1)[None, : targets.shape[0]]
         - 2 * _grounded_values(source_potentials, targets).T
     )
-    return distances, (source_potentials, reduced, solve_state)
+    return distances, (source_potentials, target_potentials, reduced, solve_state)
 
 
 _exact_sources_to_targets.def_fwd(_exact_sources_to_targets_fwd)
@@ -648,24 +660,26 @@ def _exact_sources_to_targets_bwd(
     del sources, state
     if cotangent is None or not perturbed:
         return None
-    source_potentials, reduced, solve_state = residuals
+    source_potentials, target_potentials, reduced, solve_state = residuals
     # As in `_exact_selected_inverse_bwd`, the adjoint is X G, where X are the
     # potentials of the source columns X_s and target columns X_t, and G is the
     # cotangent of S. For the cotangent H of the (m, k) distances,
     #   G = [[diag(H 1), -H], [-H.T, diag(H.T 1)]],
     # so X G = [X_s diag(H 1) - X_t H.T, X_t diag(H.T 1) - X_s H]. The
-    # data pullback sums over columns, so the target columns are solved again
-    # chunk by chunk, each adding its own term and its part of X_t H.T. This
-    # costs O(n m k) and never forms G or all of X_t.
+    # data pullback sums over columns, so each chunk of target columns adds its
+    # own term and its part of X_t H.T; the forward pass kept the potentials of
+    # a single chunk, and many chunks are solved again. This costs O(n m k) and
+    # never forms G, nor all of X_t for many targets.
     chunks = _target_chunks(targets, shape[0])
     padding = chunks.size - targets.shape[0]
     chunk_cotangents = jnp.pad(cotangent, ((0, 0), (0, padding)))
     chunk_cotangents = chunk_cotangents.reshape(-1, *chunks.shape).swapaxes(0, 1)
 
-    def add_chunk(carry, chunk_and_cotangent):
+    def add_chunk(carry, chunk_columns):
         gradient, weighted_targets = carry
-        chunk, chunk_cotangent = chunk_and_cotangent
-        potentials = _exact_potentials(reduced, chunk, solver, solve_state)
+        chunk, chunk_cotangent, potentials = chunk_columns
+        if potentials is None:
+            potentials = _exact_potentials(reduced, chunk, solver, solve_state)
         adjoint = potentials * jnp.sum(chunk_cotangent, axis=0) - _matmul(
             source_potentials, chunk_cotangent
         )
@@ -677,7 +691,7 @@ def _exact_sources_to_targets_bwd(
 
     carry = (jnp.zeros_like(data), jnp.zeros_like(source_potentials))
     (gradient, weighted_targets), _ = lax.scan(
-        add_chunk, carry, (chunks, chunk_cotangents)
+        add_chunk, carry, (chunks, chunk_cotangents, target_potentials)
     )
     adjoint = source_potentials * jnp.sum(cotangent, axis=1) - weighted_targets
     return gradient + _laplacian_data_pullback(
