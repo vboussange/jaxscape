@@ -305,11 +305,14 @@ def test_padded_sparse_resistance_has_zero_padding_gradient():
         return jnp.sum(distance(graph) ** 2)
 
     gradient = jax.jit(jax.grad(objective))(values)
-    # On this two-edge tree, R01=1/2+1/4, R02=1/2, R12=1/4.
-    # Each duplicated outgoing coefficient has the same derivative; the ground
-    # row, self-loop and padding do not contribute to the grounded Laplacian.
+    # On this two-edge tree, R01=1/2+1/4, R02=1/2, R12=1/4. With the ground at
+    # the middle vertex 1 and the directed conductances a = a02, b = a20 and
+    # c = a21, R01 = 1/a + b/(a c), R02 = 1/a and R12 = 1/c, so the loss
+    # 2 (R01^2 + R02^2 + R12^2) has the derivatives -1.625, 0.375 and -0.25.
+    # Each duplicated coefficient has the same derivative; the ground row
+    # (a12), self-loop and padding do not contribute to the grounded Laplacian.
     expected = jnp.array(
-        [-1.25, 0.0, -0.25, 0.0, -1.25, 0.0, -0.25, 0.0, 0.0, 0.0, 0.0]
+        [-1.625, 0.375, 0.0, -0.25, -1.625, 0.375, 0.0, -0.25, 0.0, 0.0, 0.0]
     )
     assert jnp.allclose(gradient, expected)
 
@@ -318,11 +321,11 @@ SOURCES_TO_TARGETS = {
     # One source to every vertex: the query of a moving window, whose 1089
     # targets the query solves for in two chunks.
     "one-source": (33, jnp.array([544]), None),
-    # Many sources to every vertex, as on a tile: the ground vertex (the last
-    # one) and duplicates among the sources.
+    # Many sources to every vertex, as on a tile: the ground vertex (the middle
+    # one), the last one and duplicates among the sources.
     "many-sources": (33, jnp.array([1088, 544, 0, 544, 37]), None),
-    # The ground vertex, duplicates, and sources among targets.
-    "few-pairs": (5, jnp.array([24, 3, 24]), jnp.array([24, 7, 3, 0])),
+    # The ground vertex, the last one, duplicates, and sources among targets.
+    "few-pairs": (5, jnp.array([24, 12, 3, 24]), jnp.array([12, 7, 3, 0, 24])),
 }
 SOURCES_TO_TARGETS_SOLVERS = {
     "dense": lambda: None,
@@ -331,8 +334,17 @@ SOURCES_TO_TARGETS_SOLVERS = {
 }
 
 
-@pytest.mark.parametrize("pairs", SOURCES_TO_TARGETS)
-@pytest.mark.parametrize("solver", SOURCES_TO_TARGETS_SOLVERS)
+@pytest.mark.parametrize(
+    "solver, pairs",
+    [
+        (solver, pairs)
+        for solver in SOURCES_TO_TARGETS_SOLVERS
+        for pairs in SOURCES_TO_TARGETS
+        # CG takes a minute on the large graphs, whose chunks do not depend on
+        # the solver.
+        if solver != "cg" or SOURCES_TO_TARGETS[pairs][0] == 5
+    ],
+)
 def test_sources_to_targets_match_all_pairs(solver, pairs):
     if solver == "cholmod":
         pytest.importorskip("cholespy")
@@ -401,3 +413,32 @@ def test_one_source_to_all_targets_streams_the_targets():
         memory = program.lower(permeability).compile().memory_analysis()
         assert memory is not None
         assert memory.temp_size_in_bytes < dense / 4
+
+
+@pytest.mark.parametrize("solver", ["dense", "cholmod"])
+def test_float32_permeability_gradients_of_a_window_on_the_floor(solver):
+    if solver == "cholmod":
+        pytest.importorskip("cholespy")
+    distance = ResistanceDistance(solver=SOURCES_TO_TARGETS_SOLVERS[solver]())
+    # The window of a pixel near a corner of a raster, whose padding has a
+    # permeability floor 1e-4 times the maximum, as in windowed analyses.
+    side = 41
+    rng = np.random.default_rng(0)
+    permeability = 10 ** rng.uniform(-1, 0, (side, side))
+    permeability[-12:, :] = 1e-4
+    permeability[:, -12:] = 1e-4
+    quality = jnp.asarray(rng.uniform(size=(side, side)) * (permeability > 1e-3))
+    centre = jnp.array([side**2 // 2])
+
+    def gradient(dtype):
+        def connectivity(permeability):
+            grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
+            distances = distance(grid, sources=centre)[0]
+            return jnp.sum(jnp.exp(-distances / 2) * quality.ravel())
+
+        return jax.grad(connectivity)(jnp.asarray(permeability, dtype))
+
+    expected = gradient(jnp.float64)
+    actual = gradient(jnp.float32)
+    error = jnp.linalg.norm(actual - expected) / jnp.linalg.norm(expected)
+    assert error < 1e-3
