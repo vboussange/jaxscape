@@ -1,7 +1,7 @@
 import warnings
 from abc import abstractmethod
 from collections.abc import Callable
-from typing import Any
+from typing import Any, ClassVar
 
 import equinox as eqx
 import jax
@@ -33,6 +33,13 @@ class AbstractDistance(eqx.Module):
 
     Specify either: `nodes` alone, `sources` and/or `targets`, or neither
     (for all-pairs).
+
+    **Class attributes:**
+
+    - `sources_share_work`: Whether a query from several sources costs much less
+      than one query per source, as when linear solves share one factorization.
+      Windowed analyses then compute the distances of many sources on one tile
+      graph. Defaults to `False`.
 
     **Returns:**
 
@@ -69,6 +76,8 @@ class AbstractDistance(eqx.Module):
         D = distance(grid, nodes=jnp.array([0, 5, 10]))  # Shape: (3, 3)
         ```
     """
+
+    sources_share_work: ClassVar[bool] = False
 
     def __call__(
         self,

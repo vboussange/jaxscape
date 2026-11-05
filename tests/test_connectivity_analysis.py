@@ -70,7 +70,8 @@ def own_windows(quality, permeability, distance, q_weighted=True):
     def window(i, j):
         w = jax.lax.dynamic_slice(weight, (i, j), (size, size)).ravel()
         p = jax.lax.dynamic_slice(permeability, (i, j), (size, size))
-        K = proximity(distance(GridGraph(p, fun=average))[centre])
+        grid = GridGraph(p, fun=average)
+        K = distance.debiased_proximity(proximity, grid)(distance(grid)[centre])
         return w[centre] * (K.at[centre].set(0) @ w)
 
     rows, columns = np.indices(quality.shape).reshape(2, -1)
@@ -97,8 +98,21 @@ def solver(name, request):
     return make_cudss()
 
 
+# A randomized resistance: its all-pairs query on the same graph is the
+# reference.
+SPIELMAN = SpielmanApproximation(epsilon=0.3, seed=1)
 # Each distance, its dense all-pairs reference, and the tolerance it reaches.
 CASES = {
+    "spielman": (
+        lambda _: ResistanceDistance(method=SPIELMAN),
+        ResistanceDistance(method=SPIELMAN),
+        1e-10,
+    ),
+    "spielman-cholmod": (
+        lambda request: ResistanceDistance(solver("cholmod", request), method=SPIELMAN),
+        ResistanceDistance(method=SPIELMAN),
+        1e-8,
+    ),
     "euclidean": (lambda _: EuclideanDistance(), EuclideanDistance(), 1e-12),
     "lcp": (lambda _: LCPDistance(), LCPDistance(), 1e-12),
     "resistance-dense": (lambda _: ResistanceDistance(), ResistanceDistance(), 1e-10),
@@ -123,14 +137,65 @@ CASES = {
 def test_analyses_match_each_pixels_own_window(name, request):
     make_distance, reference, rtol = CASES[name]
     distance = make_distance(request)
+    # Batches of one source compute each pixel in its own window, as distances
+    # whose sources do not share work do in batches of any size.
+    batch_size = 1 if distance.sources_share_work else 8
 
-    connectivity = make(ConnectivityAnalysis, distance).run()
+    connectivity = make(ConnectivityAnalysis, distance, batch_size=batch_size).run()
     assert_close(connectivity, own_windows(QUALITY, PERMEABILITY, reference), rtol)
 
-    sensitivity = make(SensitivityAnalysis, distance)
+    sensitivity = make(SensitivityAnalysis, distance, batch_size=batch_size)
     for argnums, var in enumerate(["quality", "permeability"]):
         expected = jax.grad(own_windows, argnums)(QUALITY, PERMEABILITY, reference)
         assert_close(sensitivity.run(var), expected, rtol)
+
+
+def padded_raster(quality, permeability, distance):
+    """Connectivity with the distances on the graph of the padded raster.
+
+    The raster is padded by `D` on all sides with quality 0 and the
+    permeability floor, and each pixel counts the pixels of its own window.
+    """
+    height, width = quality.shape
+    size = 2 * D + 1
+    permeability = jnp.where(permeability > FLOOR, permeability, FLOOR)
+    permeability = jnp.pad(permeability, D, constant_values=FLOOR)
+    weight = jnp.pad(quality, D)
+    grid = GridGraph(permeability, fun=average)
+    K = distance.debiased_proximity(proximity, grid)
+    distances = distance(grid).reshape(height + 2 * D, width + 2 * D, -1)
+
+    def pixel(i, j):
+        row = distances[i + D, j + D].reshape(height + 2 * D, width + 2 * D)
+        d = jax.lax.dynamic_slice(row, (i, j), (size, size)).ravel()
+        w = jax.lax.dynamic_slice(weight, (i, j), (size, size)).ravel()
+        return w[D * size + D] * (K(d).at[D * size + D].set(0) @ w)
+
+    rows, columns = np.indices(quality.shape).reshape(2, -1)
+    return jnp.sum(jax.vmap(pixel)(rows, columns))
+
+
+@pytest.mark.parametrize(
+    "name", ["resistance-dense", "resistance-cholmod", "spielman", "spielman-cholmod"]
+)
+def test_one_tile_computes_distances_on_the_padded_raster(name, request):
+    # Resistance queries share their work between sources: a batch of them
+    # takes the distances of a tile of 6 x 7 pixels, the whole raster.
+    distance = CASES[name][0](request)
+    assert distance.sources_share_work
+
+    def run(kind, *args):
+        return make(kind, distance, batch_size=42).run(*args)
+
+    reference = CASES[name][1]
+    assert_close(
+        run(ConnectivityAnalysis),
+        padded_raster(QUALITY, PERMEABILITY, reference),
+        CASES[name][2],
+    )
+    for argnums, var in enumerate(["quality", "permeability"]):
+        expected = jax.grad(padded_raster, argnums)(QUALITY, PERMEABILITY, reference)
+        assert_close(run(SensitivityAnalysis, var), expected, CASES[name][2])
 
 
 @pytest.mark.parametrize("q_weighted", [True, False])
@@ -201,7 +266,8 @@ def test_default_lcp_proximity_is_exponential_in_pixels(kind, uniform):
 @pytest.mark.parametrize("r", [1, 2, D])
 def test_default_resistance_proximity_is_exponential_in_pixels(r):
     # Two habitat pixels r apart along a row, each at the centre of a window of
-    # permeability 1, where resistance grows like the logarithm of r.
+    # permeability 1, where resistance grows like the logarithm of r. Batches
+    # of one source compute each pixel in its own window.
     quality = jnp.zeros((2 * D + 1, 2 * D + 1 + r)).at[D, jnp.array([D, D + r])].set(1)
     permeability = jnp.ones_like(quality)
     connectivity = make(
@@ -210,6 +276,7 @@ def test_default_resistance_proximity_is_exponential_in_pixels(r):
         quality,
         permeability,
         proximity=None,
+        batch_size=1,
     ).run()
     # Each pixel counts the other.
     np.testing.assert_allclose(connectivity, 2 * np.exp(-r / (D / 4)), rtol=1e-10)
@@ -342,12 +409,14 @@ def test_coarsened_quality_sensitivity_is_exact_inside_a_uniform_landscape(
     distance = CASES[name][0](request)
     uniform = jnp.full((20, 20), 0.7)
 
+    # Batches of one block centre compute it in its own window.
     def sensitivity(coarsening_factor):
         return make(
             SensitivityAnalysis,
             distance,
             uniform,
             uniform,
+            batch_size=1,
             coarsening_factor=coarsening_factor,
         ).run("quality")
 
@@ -502,26 +571,18 @@ def test_all_batches_and_runs_share_one_compiled_program(
     name, kind, args, coarsening_factor, compilations, request
 ):
     distance = CASES[name][0](request)
-    quality, permeability = QUALITY[:5], PERMEABILITY[:5]
-
-    def batched(batch_size):
-        return make(
-            kind,
-            distance,
-            quality,
-            permeability,
-            batch_size=batch_size,
-            coarsening_factor=coarsening_factor,
-        )
-
-    # One batch compiles everything that does not depend on the batch count.
-    batched(35).run(*args)
+    # Batches of three windows, or of one tile of three pixels for resistance.
+    windowed = make(
+        kind,
+        distance,
+        QUALITY[:5],
+        PERMEABILITY[:5],
+        batch_size=3,
+        coarsening_factor=coarsening_factor,
+    )
     compilations.clear()
-    windowed = batched(3)
     windowed.run(*args)
-    # Each new Cholmod state also recompiles the permeability calibration.
-    calibration = "jit(_permeability_calibration)"
-    assert [name for name in compilations if name != calibration] == ["jit(_batch)"]
+    assert compilations.count("jit(_batch)") == 1
 
     # The analysis keeps its solver state: another run compiles nothing.
     compilations.clear()

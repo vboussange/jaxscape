@@ -42,9 +42,11 @@ class _PixelExponential(eqx.Module):
 
     def __call__(self, distance: Array) -> Array:
         last = self.profile.size - 1
-        # Comparing with every point of the short profile is about ten times
-        # faster than `jnp.interp`, whose search is sequential.
-        k = jnp.searchsorted(self.profile, distance, "right", method="compare_all")
+        # Comparing with every point of a short profile is about ten times
+        # faster than `jnp.interp`, whose search is sequential. Past about 30
+        # points, a binary search is faster.
+        method = "compare_all" if self.profile.size <= 32 else "scan"
+        k = jnp.searchsorted(self.profile, distance, "right", method=method)
         k = jnp.clip(k, 1, last)
         lower, step = self.profile[k - 1], self.profile[k] - self.profile[k - 1]
         between = k - 1 + (distance - lower) / jnp.where(step > 0, step, 1)
@@ -60,6 +62,45 @@ def _centres(n: int, size: int) -> np.ndarray:
     """
     lattice = np.arange((size - 1) // 2, n, size)
     return np.unique(np.concatenate([[0], lattice, [n - 1]]))
+
+
+def _tiles(n: int, size: int, count: int) -> tuple[np.ndarray, np.ndarray]:
+    """Block centres along an axis of `n` pixels, in tiles of `count` centres.
+
+    Returns the knots of each centre, with shape `(tiles, count, 3)`: the
+    previous centre, the centre and the next centre, where the interpolation
+    weight of the centre falls to 0. The last tile repeats its last centre, and
+    the mask of the other centres, with shape `(tiles, count)`, is returned too.
+    """
+    centres = _centres(n, size)
+    knots = np.stack(
+        [np.r_[centres[0] - 1, centres[:-1]], centres, np.r_[centres[1:], n]], axis=1
+    )
+    tiles = -(-len(centres) // count)
+    index = np.arange(tiles * count)
+    valid = index < len(centres)
+    knots = knots[np.minimum(index, len(centres) - 1)]
+    return knots.reshape(tiles, count, 3), valid.reshape(tiles, count)
+
+
+def _tile_shape(
+    distance: AbstractDistance, batch_size: int, blocks: tuple[int, ...]
+) -> tuple[int, int]:
+    """Block centres along each axis of a tile.
+
+    `batch_size` centres, as square as `blocks` allow, if the queries of
+    `distance` share work between sources, or one centre.
+    """
+    if not distance.sources_share_work:
+        return 1, 1
+    rows = min(math.isqrt(batch_size), blocks[0])
+    return rows, min(batch_size // rows, blocks[1])
+
+
+def _tile_side(knots: np.ndarray, dependency_range: int) -> int:
+    """Pixels along an axis of the tiles of `knots`, from `_tiles`."""
+    span = np.max(knots[:, -1, 1] - knots[:, 0, 1])
+    return int(span) + 2 * dependency_range + 1
 
 
 class WindowedAnalysis(eqx.Module):
@@ -183,15 +224,21 @@ class WindowedAnalysis(eqx.Module):
         permeability_raster = jnp.where(
             permeability_raster > floor, permeability_raster, floor
         )
-        # With `dependency_range` pixels before the raster, the window of the
-        # block centre at raster index `i` starts at index `i` of the padded
-        # rasters. The padding after the raster also rounds the shape up for
-        # `WindowOperation`.
+        # With `dependency_range` pixels before the raster, the tile whose first
+        # block centre is at raster index `i` starts at index `i` of the padded
+        # rasters. The padding after the raster fits the last tiles, in steps
+        # that keep the shape a valid one for `WindowOperation`.
         height, width = quality_raster.shape
-        pad = [
-            (dependency_range, dependency_range + (-n - coarsening + 1) % coarsening)
-            for n in (height, width)
-        ]
+        blocks = tuple(len(_centres(n, coarsening)) for n in (height, width))
+        tile_shape = _tile_shape(distance, batch_size, blocks)
+        pad = []
+        for n, count in zip((height, width), tile_shape):
+            knots, _ = _tiles(n, coarsening, count)
+            after = dependency_range + (-n - coarsening + 1) % coarsening
+            end = knots[-1, 0, 1] + _tile_side(knots, dependency_range)
+            missing = max(0, end - dependency_range - n - after)
+            steps = math.ceil(missing / coarsening)
+            pad.append((dependency_range, after + steps * coarsening))
 
         self.quality_raster = jnp.pad(quality_raster, pad)
         self.permeability_raster = jnp.pad(
@@ -199,6 +246,8 @@ class WindowedAnalysis(eqx.Module):
         )
         self.floor = floor
         self.distance = distance
+        self.shape = (height, width)
+        self.batch_size = batch_size
         self.window_op = WindowOperation(
             shape=(self.quality_raster.shape[0], self.quality_raster.shape[1]),
             window_size=coarsening,
@@ -218,8 +267,9 @@ class WindowedAnalysis(eqx.Module):
             profile = lax.cummax(distances.reshape(size, size)[centre, centre:])
             proximity = _PixelExponential(profile, dependency_range / 4)
         self.proximity = proximity
-        self.shape = (height, width)
-        self.batch_size = batch_size
+        if self._tile_sides != graph.grid.shape:
+            # Tiles of several block centres have a sparsity pattern of their own.
+            self.state = distance.init(self._uniform_graph(1, self._tile_sides))
 
     @abstractmethod
     def run(self) -> Array:
@@ -258,128 +308,205 @@ class WindowedAnalysis(eqx.Module):
         values = along_rows(values, rows)
         return along_rows(values.T, columns).T
 
-    def _uniform_graph(self, permeability: Array | float) -> GridGraph:
-        """Window graph of uniform `permeability`."""
-        size = self.window_op.total_window_size
-        grid = jnp.full((size, size), permeability, self.permeability_raster.dtype)
+    @property
+    def _tiles(self) -> tuple[tuple[np.ndarray, np.ndarray], ...]:
+        """Knots of the block centres of the tiles along each axis, and their mask.
+
+        See `_tiles` (the function).
+        """
+        shape = _tile_shape(self.distance, self.batch_size, self._blocks)
+        size = self.window_op.window_size
+        return tuple(_tiles(n, size, count) for n, count in zip(self.shape, shape))
+
+    @property
+    def _tile_sides(self) -> tuple[int, int]:
+        """Pixels along each axis of a tile."""
+        dependency_range = self.window_op.total_window_size // 2
+        rows, columns = (
+            _tile_side(knots, dependency_range) for knots, _ in self._tiles
+        )
+        return rows, columns
+
+    @property
+    def _tiles_per_batch(self) -> int:
+        """Number of tiles in a batch of `batch_size` block centres or fewer."""
+        (rows, _), (columns, _) = self._tiles
+        sources = rows.shape[1] * columns.shape[1]
+        return max(1, min(self.batch_size // sources, len(rows) * len(columns)))
+
+    def _uniform_graph(
+        self, permeability: Array | float, shape: tuple[int, ...] | None = None
+    ) -> GridGraph:
+        """Graph of uniform `permeability`, of `shape` or of one window."""
+        if shape is None:
+            shape = (self.window_op.total_window_size,) * 2
+        grid = jnp.full(shape, permeability, self.permeability_raster.dtype)
         return GridGraph(grid, fun=_average)
 
     def _accumulate(
-        self, window_fn: Callable, initial: Array, *args: Any, state: Any = None
+        self, tile_fn: Callable, initial: Array, *args: Any, state: Any = None
     ) -> Array:
-        """Accumulate `window_fn` over the windows of all block centres.
+        """Accumulate `tile_fn` over the tiles of all block centres.
 
-        `window_fn(windowed, quality, permeability, inside, tent, state, *args)`
-        maps the windows of the padded rasters, the mask of their pixels inside
-        the input raster, the interpolation weights of the window's block centre
-        and the solver state, to a scalar or to a window. Scalars fill
-        `initial`, of one entry per block centre in row-major order; windows
-        add to the padded raster `initial`. The first window reinitializes the
-        array part `state` of a solver state, by default that of the analysis.
+        `tile_fn(windowed, tile, state, *args)` maps a `_Tile` and the solver
+        state to one value per block centre of the tile, in row-major order, or
+        to a map of the tile. Values add to `initial`, of one entry per block
+        centre; maps add to the padded raster `initial`. The first tile
+        reinitializes the array part `state` of a solver state, by default that
+        of the analysis.
         """
         if state is None:
             state = eqx.partition(self.state, eqx.is_array)[0]
         accumulated = initial
-        n_windows = math.prod(self._blocks)
+        (rows, _), (columns, _) = self._tiles
+        n_tiles = len(rows) * len(columns)
+        per_batch = self._tiles_per_batch
         for start in tqdm(
-            range(0, n_windows, self.batch_size),
+            range(0, n_tiles, per_batch),
             desc="Batch progress",
-            miniters=max(1, n_windows // self.batch_size // 100),
+            miniters=max(1, n_tiles // per_batch // 100),
         ):
-            batch = _Batch(self, jnp.asarray(start), state, window_fn, args)
+            batch = _Batch(self, jnp.asarray(start), state, tile_fn, args)
             accumulated, state = _batch(batch, accumulated)
         return accumulated
 
 
-class _Batch(eqx.Module):
-    """A batch of windows: the inputs of `_batch` that it does not donate.
+class _Tile(eqx.Module):
+    """A tile of the padded rasters, and the block centres whose windows it holds.
+
+    A tile spans the windows of a grid of block centres, consecutive along each
+    axis: the pixels from `dependency_range` before the first centre to
+    `dependency_range` after the last, and more after the raster's last
+    centres, so that all tiles have one shape. A window is a tile of one block
+    centre.
 
     **Attributes:**
 
-    - `windowed`: The windowed windowed.
-    - `start`: Index of the first window of the batch.
-    - `state`: Array part of the solver state that the first window
+    - `quality`, `permeability`: The tile of each padded raster.
+    - `inside`: Mask of the tile's pixels inside the input raster.
+    - `weights`: The interpolation weights of the block centres over the tile,
+      along rows and along columns: shapes `(rows, tile rows)` and
+      `(columns, tile columns)`.
+    - `sources`: The tile rows and the tile columns of the block centres.
+    - `valid`: Mask of the block centres of the raster, with shape
+      `(rows, columns)`: the other centres repeat the last one.
+    """
+
+    quality: Array
+    permeability: Array
+    inside: Array
+    weights: tuple[Array, ...]
+    sources: tuple[Array, ...]
+    valid: Array
+
+
+def _tile(
+    windowed: WindowedAnalysis, knots: tuple[Array, Array], valid: Array
+) -> _Tile:
+    """The tile of the block centres of `knots` along each axis, from `_tiles`."""
+    dtype = windowed.quality_raster.dtype
+    dependency_range = windowed.window_op.total_window_size // 2
+    sides = windowed._tile_sides
+    # A tile starts at the raster index of its first block centre in the padded
+    # rasters, and at `dependency_range` pixels before it in the raster.
+    origin = tuple(k[0, 1] for k in knots)
+    pixels = [o - dependency_range + jnp.arange(side) for o, side in zip(origin, sides)]
+    inside = [(p >= 0) & (p < n) for p, n in zip(pixels, windowed.shape)]
+
+    def weights(pixels, knots):
+        tent = jnp.array([0, 1, 0], dtype)
+        return jnp.interp(pixels.astype(dtype), knots.astype(dtype), tent)
+
+    return _Tile(
+        quality=lax.dynamic_slice(windowed.quality_raster, origin, sides),
+        permeability=lax.dynamic_slice(windowed.permeability_raster, origin, sides),
+        inside=inside[0][:, None] & inside[1][None, :],
+        weights=tuple(
+            jax.vmap(weights, in_axes=(None, 0))(p, k) for p, k in zip(pixels, knots)
+        ),
+        sources=tuple(k[:, 1] - o + dependency_range for k, o in zip(knots, origin)),
+        valid=valid,
+    )
+
+
+class _Batch(eqx.Module):
+    """A batch of tiles: the inputs of `_batch` that it does not donate.
+
+    **Attributes:**
+
+    - `windowed`: The windowed analysis.
+    - `start`: Index of the first tile of the batch.
+    - `state`: Array part of the solver state that the first tile
       reinitializes.
-    - `window_fn`, `args`: As in `WindowedAnalysis._accumulate`.
+    - `tile_fn`, `args`: As in `WindowedAnalysis._accumulate`.
     """
 
     windowed: WindowedAnalysis
     start: Array
     state: Any
-    window_fn: Callable
+    tile_fn: Callable
     args: tuple
 
 
 @eqx.filter_jit(donate="all-except-first")
 def _batch(batch: _Batch, accumulated: Array) -> tuple[Array, Any]:
-    """Add the windows of `batch` to `accumulated`, whose buffer it reuses.
+    """Add the tiles of `batch` to `accumulated`, whose buffer it reuses.
 
     Returns the accumulated value and the array part of the solver state after
     the batch.
     """
-    windowed, window_fn, args = batch.windowed, batch.window_fn, batch.args
+    windowed, tile_fn, args = batch.windowed, batch.tile_fn, batch.args
     dynamic, static = batch.state, eqx.partition(windowed.state, eqx.is_array)[1]
-    op = windowed.window_op
-    size = op.total_window_size
-    rows, columns = windowed._blocks
+    (row_knots, row_valid), (column_knots, column_valid) = windowed._tiles
+    n_tiles = len(row_knots) * len(column_knots)
 
-    # Dummy windows complete the last batch, so all batches share one program.
-    index = batch.start + jnp.arange(windowed.batch_size)
-    valid = index < rows * columns
-    index = jnp.minimum(index, rows * columns - 1)
-    # The block centres of the windows along each axis, and the neighbouring
-    # centres where their interpolation weights reach 0: shape (batch, 2, 3).
-    knots = [
-        jnp.asarray(np.stack([np.r_[c[0] - 1, c[:-1]], c, np.r_[c[1:], c[-1] + 1]]))
-        for c in windowed._centres
-    ]
-    knots = jnp.stack(
-        [knots[0][:, index // columns], knots[1][:, index % columns]], axis=1
-    ).transpose(2, 1, 0)
-    # A window starts at the index of its centre in the padded rasters.
-    xy = knots[:, :, 1]
-
-    def windows(knots):
-        xy = knots[:, 1]
-        pixels = xy[:, None] - size // 2 + jnp.arange(size)
-        inside = ((pixels[0] >= 0) & (pixels[0] < windowed.shape[0]))[:, None] & (
-            (pixels[1] >= 0) & (pixels[1] < windowed.shape[1])
-        )[None, :]
-        tent = [
-            jnp.interp(pixels[axis], knots[axis], jnp.array([0, 1, 0]))
-            for axis in range(2)
-        ]
-        tent = jnp.outer(tent[0], tent[1]).astype(windowed.quality_raster.dtype)
-        quality = op.extract_total_window(xy, windowed.quality_raster)
-        permeability = op.extract_total_window(xy, windowed.permeability_raster)
-        return quality, permeability, inside, tent
+    # Dummy tiles complete the last batch, so all batches share one program.
+    index = batch.start + jnp.arange(windowed._tiles_per_batch)
+    valid = index < n_tiles
+    index = jnp.minimum(index, n_tiles - 1)
+    row, column = index // len(column_knots), index % len(column_knots)
+    knots = (jnp.asarray(row_knots)[row], jnp.asarray(column_knots)[column])
+    valid = (
+        valid[:, None, None]
+        & jnp.asarray(row_valid)[row][:, :, None]
+        & jnp.asarray(column_valid)[column][:, None, :]
+    )
 
     if dynamic is None:
 
-        def window(knots):
-            return window_fn(windowed, *windows(knots), None, *args)
+        def tile(knots, valid):
+            return tile_fn(windowed, _tile(windowed, knots, valid), None, *args)
 
-        outputs = jax.vmap(window)(knots)
+        outputs = jax.vmap(tile)(knots, valid)
     else:
         # Solvers that run on the host or hold one factorization cannot vmap:
-        # windows run one after another, each reinitializing the carried state.
-        def step(dynamic, knots):
-            quality, permeability, inside, tent = windows(knots)
-            graph = GridGraph(lax.stop_gradient(permeability), fun=_average)
+        # tiles run one after another, each reinitializing the carried state.
+        def step(dynamic, inputs):
+            tile = _tile(windowed, *inputs)
+            graph = GridGraph(lax.stop_gradient(tile.permeability), fun=_average)
             state = windowed.distance.reinit(graph, eqx.combine(dynamic, static))
-            output = window_fn(
-                windowed, quality, permeability, inside, tent, state, *args
-            )
+            output = tile_fn(windowed, tile, state, *args)
             return eqx.partition(state, eqx.is_array)[0], output
 
-        dynamic, outputs = lax.scan(step, dynamic, knots)
+        dynamic, outputs = lax.scan(step, dynamic, (knots, valid))
 
-    outputs = jnp.where(valid.reshape((-1,) + (1,) * (outputs.ndim - 1)), outputs, 0)
-    if outputs.ndim == 1:
-        return accumulated.at[index].add(outputs), dynamic
+    if outputs.ndim == 2:
+        # One value per block centre, zero for the repeated ones.
+        def centres(tiles, count, blocks):
+            return jnp.minimum(tiles[:, None] * count + jnp.arange(count), blocks - 1)
 
-    def add(raster, window):
-        xy, output = window
-        return op.update_raster_with_window(xy, raster, output, fun=jnp.add), None
+        _, rows, columns = valid.shape
+        blocks = windowed._blocks
+        rows = centres(row, rows, blocks[0])[:, :, None]
+        columns = centres(column, columns, blocks[1])[:, None, :]
+        values = jnp.where(valid, outputs.reshape(valid.shape), 0)
+        return accumulated.at[rows, columns].add(values), dynamic
 
-    return lax.scan(add, accumulated, (xy, outputs))[0], dynamic
+    def add(raster, inputs):
+        knots, output = inputs
+        origin = (knots[0][0, 1], knots[1][0, 1])
+        window = lax.dynamic_slice(raster, origin, output.shape)
+        return lax.dynamic_update_slice(raster, window + output, origin), None
+
+    outputs = jnp.where(jnp.any(valid, axis=(1, 2))[:, None, None], outputs, 0)
+    return lax.scan(add, accumulated, (knots, outputs))[0], dynamic

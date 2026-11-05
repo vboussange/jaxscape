@@ -1,6 +1,6 @@
 import math
 from collections.abc import Callable
-from typing import Any
+from typing import Any, ClassVar
 
 import equinox as eqx
 import jax
@@ -91,6 +91,7 @@ class ResistanceDistance(AbstractSolverDistance):
     method: "AbstractResistanceMethod" = eqx.field(
         default_factory=lambda: ExactResistance()
     )
+    sources_share_work: ClassVar[bool] = True
 
     def system_matrix(self, graph: AbstractGraph) -> BCOO:
         """Return the grounded Laplacian of `graph`."""
