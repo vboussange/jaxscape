@@ -388,8 +388,8 @@ class SensitivityAnalysis(WindowedAnalysis):
       most from the block windows, resistance sensitivity is as low as 0.7
       times the uncoarsened one in the outer rows. Tiles keep the band, as
       their calibration covers the whole tile; with `b = 5` and tiles of
-      8 x 8 block centres, the coarsened resistance sensitivity is 0.88 to
-      1.09 times the uncoarsened one on tiles of 8 x 8 pixels, 1.02 on
+      8 x 8 block centres, the coarsened resistance sensitivity is 0.87 to
+      1.07 times the uncoarsened one on tiles of 8 x 8 pixels, 1.01 on
       average.
 
     Parameters and windowing strategy are identical to
