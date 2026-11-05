@@ -20,6 +20,11 @@ from jaxscape.utils import _matmul, graph_laplacian
 # enough that the streamed scan path is the safer default.
 SPIELMAN_DENSE_PROJECTION_MAX_SIGN_ENTRIES = 200_000_000
 
+# Exact sources-to-targets queries solve the target columns this many at a time,
+# and hold the potentials of one chunk of targets at most. Sparse direct solvers
+# reach their full throughput from a few hundred columns on.
+TARGET_CHUNK_SIZE = 1024
+
 
 class ResistanceDistance(AbstractSolverDistance):
     """
@@ -476,6 +481,58 @@ def _exact_selected_inverse_bwd(
     return _laplacian_data_pullback(adjoint, potentials, indices, shape)
 
 
+def _target_chunks(targets: Array, ground: int) -> Array:
+    """Split `targets` into equal chunks of at most `TARGET_CHUNK_SIZE`.
+
+    The last chunk is padded with the `ground` vertex, whose potentials are zero.
+    """
+    n_chunks = max(1, -(-targets.shape[0] // TARGET_CHUNK_SIZE))
+    size = -(-targets.shape[0] // n_chunks)
+    padding = n_chunks * size - targets.shape[0]
+    return jnp.pad(targets, (0, padding), constant_values=ground).reshape(n_chunks, -1)
+
+
+def _exact_solver_state(
+    data: Array,
+    indices: Array,
+    shape: tuple[int, ...],
+    solver: lx.AbstractLinearSolver | None,
+    state: Any,
+) -> tuple[BCOO, Any]:
+    """The grounded Laplacian, and the solver state or dense factor that solves it."""
+    reduced, solve_state = _prepare_reduced_laplacian(
+        data, indices, shape, solver, state
+    )
+    if solver is None:
+        # The grounded Laplacian of a connected graph is positive definite: a
+        # dense Cholesky factorization solves it 1.3 times faster than the LU
+        # factorization of `_solve_reduced_laplacian`.
+        solve_state = jnp.linalg.cholesky(reduced.todense())
+    return reduced, solve_state
+
+
+def _exact_potentials(
+    reduced: BCOO,
+    nodes: Array,
+    solver: lx.AbstractLinearSolver | None,
+    solve_state: Any,
+) -> Array:
+    """Columns of the grounded inverse for `nodes`, zero for the ground vertex."""
+    if solver is None:
+        basis = _unit_vectors(reduced, nodes)
+        return jax.scipy.linalg.cho_solve((solve_state, True), basis)
+    return _node_potentials(reduced, nodes, solver, solve_state)
+
+
+def _own_values(potentials: Array, nodes: Array) -> Array:
+    """The value of each potential column at its own node."""
+
+    def own_value(column, node):
+        return _grounded_values(column[:, None], node[None])[0, 0]
+
+    return jax.vmap(own_value, in_axes=(1, 0))(potentials, nodes)
+
+
 @eqx.filter_custom_vjp
 def _exact_sources_to_targets(
     data: Array,
@@ -495,35 +552,24 @@ def _exact_sources_to_targets_fwd(
     perturbed, data, indices, shape, sources, targets, solver, state
 ):
     del perturbed
-    nodes = jnp.concatenate([sources, targets])
-    reduced, solve_state = _prepare_reduced_laplacian(
-        data, indices, shape, solver, state
-    )
-    if solver is None:
-        # The grounded Laplacian of a connected graph is positive definite: a
-        # dense Cholesky factorization solves it 1.3 times faster than the LU
-        # factorization of `_node_potentials`.
-        factor = jnp.linalg.cholesky(reduced.todense())
-        basis = _unit_vectors(reduced, nodes)
-        potentials = jax.scipy.linalg.cho_solve((factor, True), basis)
-    else:
-        potentials = _node_potentials(reduced, nodes, solver, solve_state)
-    # With S the grounded inverse among `nodes`, R_ij = S_ii + S_jj - S_ij - S_ji
-    # for source column i and target column j; only the diagonal and the
-    # source-target blocks of S are formed.
-    m = sources.shape[0]
+    reduced, solve_state = _exact_solver_state(data, indices, shape, solver, state)
+    # With S the grounded inverse, R_ij = S_ii + S_jj - 2 S_ij for source i and
+    # target j. The source columns of S give S_ii and S_ij; the target columns
+    # are solved chunk by chunk, keeping only their diagonal S_jj.
+    source_potentials = _exact_potentials(reduced, sources, solver, solve_state)
 
-    def own_value(column, node):
-        return _grounded_values(column[:, None], node[None])[0, 0]
+    def target_diagonal(chunk):
+        potentials = _exact_potentials(reduced, chunk, solver, solve_state)
+        return _own_values(potentials, chunk)
 
-    diagonal = jax.vmap(own_value, in_axes=(1, 0))(potentials, nodes)
+    chunks = _target_chunks(targets, reduced.shape[0])
+    diagonal = lax.map(target_diagonal, chunks).reshape(-1)[: targets.shape[0]]
     distances = (
-        diagonal[:m, None]
-        + diagonal[None, m:]
-        - _grounded_values(potentials[:, m:], sources)
-        - _grounded_values(potentials[:, :m], targets).T
+        _own_values(source_potentials, sources)[:, None]
+        + diagonal[None, :]
+        - 2 * _grounded_values(source_potentials, targets).T
     )
-    return distances, potentials
+    return distances, (source_potentials, reduced, solve_state)
 
 
 _exact_sources_to_targets.def_fwd(_exact_sources_to_targets_fwd)
@@ -531,7 +577,7 @@ _exact_sources_to_targets.def_fwd(_exact_sources_to_targets_fwd)
 
 @_exact_sources_to_targets.def_bwd
 def _exact_sources_to_targets_bwd(
-    potentials,
+    residuals,
     cotangent,
     perturbed,
     data,
@@ -542,27 +588,44 @@ def _exact_sources_to_targets_bwd(
     solver,
     state,
 ):
-    del data, targets, solver, state
+    del sources, state
     if cotangent is None or not perturbed:
         return None
+    source_potentials, reduced, solve_state = residuals
     # As in `_exact_selected_inverse_bwd`, the adjoint is X G, where X are the
     # potentials of the source columns X_s and target columns X_t, and G is the
     # cotangent of S. For the cotangent H of the (m, k) distances,
     #   G = [[diag(H 1), -H], [-H.T, diag(H.T 1)]],
-    # so X G = [X_s diag(H 1) - X_t H.T, X_t diag(H.T 1) - X_s H]. This costs
-    # O(n m k) and never forms G: one source to all targets stays O(n^2).
-    m = sources.shape[0]
-    source_potentials, target_potentials = potentials[:, :m], potentials[:, m:]
-    adjoint = jnp.concatenate(
-        [
-            source_potentials * jnp.sum(cotangent, axis=1)
-            - _matmul(target_potentials, cotangent.T),
-            target_potentials * jnp.sum(cotangent, axis=0)
-            - _matmul(source_potentials, cotangent),
-        ],
-        axis=1,
+    # so X G = [X_s diag(H 1) - X_t H.T, X_t diag(H.T 1) - X_s H]. The
+    # data pullback sums over columns, so the target columns are solved again
+    # chunk by chunk, each adding its own term and its part of X_t H.T. This
+    # costs O(n m k) and never forms G or all of X_t.
+    chunks = _target_chunks(targets, reduced.shape[0])
+    padding = chunks.size - targets.shape[0]
+    chunk_cotangents = jnp.pad(cotangent, ((0, 0), (0, padding)))
+    chunk_cotangents = chunk_cotangents.reshape(-1, *chunks.shape).swapaxes(0, 1)
+
+    def add_chunk(carry, chunk_and_cotangent):
+        gradient, weighted_targets = carry
+        chunk, chunk_cotangent = chunk_and_cotangent
+        potentials = _exact_potentials(reduced, chunk, solver, solve_state)
+        adjoint = potentials * jnp.sum(chunk_cotangent, axis=0) - _matmul(
+            source_potentials, chunk_cotangent
+        )
+        gradient = gradient + _laplacian_data_pullback(
+            adjoint, potentials, indices, shape
+        )
+        weighted_targets = weighted_targets + _matmul(potentials, chunk_cotangent.T)
+        return (gradient, weighted_targets), None
+
+    carry = (jnp.zeros_like(data), jnp.zeros_like(source_potentials))
+    (gradient, weighted_targets), _ = lax.scan(
+        add_chunk, carry, (chunks, chunk_cotangents)
     )
-    return _laplacian_data_pullback(adjoint, potentials, indices, shape)
+    adjoint = source_potentials * jnp.sum(cotangent, axis=1) - weighted_targets
+    return gradient + _laplacian_data_pullback(
+        adjoint, source_potentials, indices, shape
+    )
 
 
 def _rademacher_projection_signs(

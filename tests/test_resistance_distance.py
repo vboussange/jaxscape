@@ -315,10 +315,14 @@ def test_padded_sparse_resistance_has_zero_padding_gradient():
 
 
 SOURCES_TO_TARGETS = {
-    # One source to every vertex: the query of a moving window.
-    "one-source": (jnp.array([12]), None),
-    # The ground vertex (the last one), duplicates, and sources among targets.
-    "few-pairs": (jnp.array([24, 3, 24]), jnp.array([24, 7, 3, 0])),
+    # One source to every vertex: the query of a moving window, whose 1089
+    # targets the query solves for in two chunks.
+    "one-source": (33, jnp.array([544]), None),
+    # Many sources to every vertex, as on a tile: the ground vertex (the last
+    # one) and duplicates among the sources.
+    "many-sources": (33, jnp.array([1088, 544, 0, 544, 37]), None),
+    # The ground vertex, duplicates, and sources among targets.
+    "few-pairs": (5, jnp.array([24, 3, 24]), jnp.array([24, 7, 3, 0])),
 }
 SOURCES_TO_TARGETS_SOLVERS = {
     "dense": lambda: None,
@@ -333,10 +337,10 @@ def test_sources_to_targets_match_all_pairs(solver, pairs):
     if solver == "cholmod":
         pytest.importorskip("cholespy")
     distance = ResistanceDistance(solver=SOURCES_TO_TARGETS_SOLVERS[solver]())
-    sources, targets = SOURCES_TO_TARGETS[pairs]
-    selected = jnp.arange(25) if targets is None else targets
+    side, sources, targets = SOURCES_TO_TARGETS[pairs]
+    selected = jnp.arange(side**2) if targets is None else targets
     rng = np.random.default_rng(0)
-    permeability = jnp.asarray(10 ** rng.uniform(-1, 0, (5, 5)))
+    permeability = jnp.asarray(10 ** rng.uniform(-1, 0, (side, side)))
     weights = jnp.asarray(rng.uniform(size=(sources.size, selected.size)))
 
     def objective(permeability):
@@ -370,6 +374,28 @@ def test_few_sources_to_targets_solve_for_them_only():
 
     # Temporary buffers of the query and of its gradient stay far below one
     # dense matrix of all vertices.
+    dense = n**2 * permeability.dtype.itemsize
+    for program in (jax.jit(objective), jax.jit(jax.grad(objective))):
+        memory = program.lower(permeability).compile().memory_analysis()
+        assert memory is not None
+        assert memory.temp_size_in_bytes < dense / 4
+
+
+def test_one_source_to_all_targets_streams_the_targets():
+    # The query of a moving window: one source to every vertex of a large
+    # window.
+    side = 401
+    n = side**2
+    permeability = jnp.linspace(0.5, 2.0, n, dtype=jnp.float32).reshape(side, side)
+    distance = ResistanceDistance(solver=lx.CG(rtol=1e-6, atol=1e-6, max_steps=500))
+    source = jnp.array([n // 2])
+
+    def objective(permeability):
+        grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
+        return jnp.sum(distance(grid, sources=source))
+
+    # Neither the distances nor their gradient hold the potentials of every
+    # target at once.
     dense = n**2 * permeability.dtype.itemsize
     for program in (jax.jit(objective), jax.jit(jax.grad(objective))):
         memory = program.lower(permeability).compile().memory_analysis()
