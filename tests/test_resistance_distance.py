@@ -470,34 +470,51 @@ def test_spielman_window_queries_stream_the_projections_of_sources_queries(solve
     method = SpielmanApproximation(epsilon=0.3, seed=2, projection_batch_size=8)
     distance = ResistanceDistance(SOURCES_TO_TARGETS_SOLVERS[solver](), method=method)
     rng = np.random.default_rng(0)
-    permeability = jnp.asarray(10 ** rng.uniform(-1, 0, (9, 11)))
+    grid = GridGraph(jnp.asarray(10 ** rng.uniform(-1, 0, (9, 11))), fun=avg)
     # Windows of 5 x 5 pixels, the first in the corner of the raster.
     rows, columns = np.array([2, 4, 6, 4]), np.array([2, 5, 8, 5])
     sources = jnp.asarray(rows * 11 + columns)
-    weights = jnp.asarray(rng.uniform(size=(4, 5, 5)))
 
-    def windows(permeability):
+    actual = distance.sources_to_windows_distance(grid, sources, 5)
+
+    rasters = distance(grid, sources=sources).reshape(4, 9, 11)
+    expected = [
+        raster[r - 2 : r + 3, c - 2 : c + 3]
+        for raster, r, c in zip(rasters, rows, columns)
+    ]
+    np.testing.assert_allclose(actual, np.stack(expected), rtol=1e-9, atol=1e-12)
+
+
+def test_spielman_window_query_gradients_estimate_those_of_exact_resistances():
+    # The gradient of a weighted sum of the estimates, over 200 seeds of 20
+    # projections, against that of the exact resistances, with negative and
+    # positive weights. Measured: at most 2.3 standard errors apart, and a
+    # median relative standard deviation of 0.24 per pixel, against 0.46 for
+    # the gradient of the estimates themselves.
+    rng = np.random.default_rng(0)
+    permeability = jnp.asarray(10 ** rng.uniform(-1, 0, (11, 13)))
+    rows, columns = np.array([3, 5, 7, 5]), np.array([3, 6, 9, 6])
+    sources = jnp.asarray(rows * 13 + columns)
+    weights = -jnp.asarray(rng.uniform(size=(4, 7, 7))).at[1, 2, 2].set(0.7)
+
+    def objective(permeability, distance):
         grid = GridGraph(permeability, fun=avg)
-        distances = distance.sources_to_windows_distance(grid, sources, 5)
-        return jnp.sum(weights * distances), distances
+        distances = distance.sources_to_windows_distance(grid, sources, 7)
+        return jnp.sum(weights * distances)
 
-    def sliced(permeability):
-        grid = GridGraph(permeability, fun=avg)
-        rasters = distance(grid, sources=sources).reshape(4, 9, 11)
-        distances = jnp.stack(
-            [
-                raster[r - 2 : r + 3, c - 2 : c + 3]
-                for raster, r, c in zip(rasters, rows, columns)
-            ]
-        )
-        return jnp.sum(weights * distances), distances
+    method = SpielmanApproximation(epsilon=0.5, projection_batch_size=16)
+    randomized = ResistanceDistance(method=method)
 
-    (_, actual), gradient = jax.value_and_grad(windows, has_aux=True)(permeability)
-    (_, expected), expected_gradient = jax.value_and_grad(sliced, has_aux=True)(
-        permeability
-    )
-    np.testing.assert_allclose(actual, expected, rtol=1e-9, atol=1e-12)
-    np.testing.assert_allclose(gradient, expected_gradient, rtol=1e-9, atol=1e-12)
+    @jax.vmap
+    def gradient(seed):
+        return jax.grad(objective)(permeability, randomized.reseeded(seed))
+
+    gradients = gradient(jnp.arange(200))
+    expected = jax.grad(objective)(permeability, ResistanceDistance())
+    spread = jnp.std(gradients, axis=0)
+    error = jnp.abs(jnp.mean(gradients, axis=0) - expected) / (spread / np.sqrt(200))
+    assert jnp.all(error < 4)
+    assert jnp.median(spread / jnp.abs(expected)) < 0.3
 
 
 def test_spielman_window_queries_hold_one_batch_of_projections():

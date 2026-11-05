@@ -57,12 +57,22 @@ def assert_close(actual, expected, rtol):
     )
 
 
-def own_windows(quality, permeability, distance, q_weighted=True):
+def with_exact_gradient(randomized, distance, grid):
+    """The `randomized` distances, with the gradient of the exact ones on `grid`.
+
+    The gradient of window queries of randomized distances estimates it.
+    """
+    exact = distance.exact()(grid)
+    return exact + jax.lax.stop_gradient(randomized - exact)
+
+
+def own_windows(quality, permeability, distance, q_weighted=True, exact=False):
     """Connectivity summed over each pixel's own window, one pixel at a time.
 
     Each window is centred on its pixel and padded beyond the raster with quality
     0 and the permeability floor, and the distances come from the all-pairs
-    query of `distance`, reseeded with the raster index of the pixel.
+    query of `distance`, reseeded with the raster index of the pixel, and with
+    the gradient of exact distances if `exact`.
     """
     size = 2 * D + 1
     centre = D * size + D
@@ -75,8 +85,10 @@ def own_windows(quality, permeability, distance, q_weighted=True):
         w = jax.lax.dynamic_slice(weight, (i, j), (size, size)).ravel()
         p = jax.lax.dynamic_slice(permeability, (i, j), (size, size))
         grid = GridGraph(p, fun=average)
-        reseeded = distance.reseeded(i * quality.shape[1] + j)
-        K = distance.debiased_proximity(proximity, grid)(reseeded(grid)[centre])
+        distances = distance.reseeded(i * quality.shape[1] + j)(grid)
+        if exact:
+            distances = with_exact_gradient(distances, distance, grid)
+        K = distance.debiased_proximity(proximity, grid)(distances[centre])
         return w[centre] * (K.at[centre].set(0) @ w)
 
     rows, columns = np.indices(quality.shape).reshape(2, -1)
@@ -156,18 +168,28 @@ def test_analyses_match_each_pixels_own_window(name, request):
     assert_close(connectivity, own_windows(QUALITY, PERMEABILITY, reference), rtol)
 
     sensitivity = make(SensitivityAnalysis, distance, batch_size=batch_size)
-    for argnums, var in enumerate(["quality", "permeability"]):
-        expected = jax.grad(own_windows, argnums)(QUALITY, PERMEABILITY, reference)
-        assert_close(sensitivity.run(var), expected, rtol)
+    expected = jax.grad(own_windows)(QUALITY, PERMEABILITY, reference)
+    assert_close(sensitivity.run("quality"), expected, rtol)
+    if name.startswith("spielman"):
+        # The permeability gradient of randomized distances is estimated from
+        # that of exact distances. Measured: Pearson 0.998.
+        expected = jax.grad(own_windows, 1)(
+            QUALITY, PERMEABILITY, reference, True, True
+        )
+        assert pearson(sensitivity.run("permeability"), expected) > 0.99
+    else:
+        expected = jax.grad(own_windows, 1)(QUALITY, PERMEABILITY, reference)
+        assert_close(sensitivity.run("permeability"), expected, rtol)
 
 
-def padded_raster(quality, permeability, distance, dependency_range):
+def padded_raster(quality, permeability, distance, dependency_range, exact=False):
     """Connectivity with the distances on the graph of the padded raster.
 
     The raster is padded by `dependency_range` on all sides with quality 0 and
     the permeability floor, 1e-4 times its maximum permeability, and each pixel
     counts the pixels of its own window. Randomized distances are reseeded with
-    the index 0 of the first pixel.
+    the index 0 of the first pixel, and have the gradient of exact distances if
+    `exact`.
     """
     height, width = quality.shape
     r = dependency_range
@@ -178,7 +200,10 @@ def padded_raster(quality, permeability, distance, dependency_range):
     weight = jnp.pad(quality, r)
     grid = GridGraph(permeability, fun=average)
     K = distance.debiased_proximity(proximity, grid)
-    distances = distance.reseeded(0)(grid).reshape(height + 2 * r, width + 2 * r, -1)
+    distances = distance.reseeded(0)(grid)
+    if exact:
+        distances = with_exact_gradient(distances, distance, grid)
+    distances = distances.reshape(height + 2 * r, width + 2 * r, -1)
 
     def pixel(i, j):
         row = distances[i + r, j + r].reshape(height + 2 * r, width + 2 * r)
@@ -210,9 +235,18 @@ def test_one_tile_computes_distances_on_the_padded_raster(name, request):
         padded_raster(quality, permeability, reference, D),
         rtol,
     )
-    for argnums, var in enumerate(["quality", "permeability"]):
-        expected = jax.grad(padded_raster, argnums)(quality, permeability, reference, D)
-        assert_close(run(SensitivityAnalysis, var), expected, rtol)
+    expected = jax.grad(padded_raster)(quality, permeability, reference, D)
+    assert_close(run(SensitivityAnalysis, "quality"), expected, rtol)
+    # The permeability gradient of randomized distances is estimated from that
+    # of exact distances. Measured: Pearson 0.982.
+    randomized = name.startswith("spielman")
+    expected = jax.grad(padded_raster, 1)(
+        quality, permeability, reference, D, randomized
+    )
+    if randomized:
+        assert pearson(run(SensitivityAnalysis, "permeability"), expected) > 0.97
+    else:
+        assert_close(run(SensitivityAnalysis, "permeability"), expected, rtol)
 
 
 def test_tiles_approximate_each_pixels_own_window():

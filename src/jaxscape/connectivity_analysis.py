@@ -336,7 +336,9 @@ class SensitivityAnalysis(WindowedAnalysis):
     showing how connectivity responds to changes in habitat quality or permeability
     at each pixel. Without coarsening, the result is the gradient of
     [`ConnectivityAnalysis.run`][jaxscape.connectivity_analysis.ConnectivityAnalysis.run]
-    with the same arguments.
+    with the same arguments. For `SpielmanApproximation`, the permeability
+    gradient of the estimated distances is estimated from that of exact
+    resistances (see `ResistanceDistance.sources_to_windows_distance`).
 
     With coarsening, the windows of block centres $c$ estimate it:
 
