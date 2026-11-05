@@ -402,6 +402,26 @@ def test_creating_an_analysis_analyses_the_tile_pattern_only(stub_spineax, monke
     assert len(analyses) == 1
 
 
+def test_creating_an_analysis_compiles_few_programs(stub_spineax, compilations):
+    # Each program compiled outside a trace takes about 0.05 s on a GPU: one
+    # per operation of the solver state and of the padding took 10 s to
+    # create the first analysis of the Maryland raster. Measured: 219
+    # programs, now 29.
+    distance = ResistanceDistance(CuDSSSolver(), method=SPIELMAN)
+    q = jnp.ones((30, 30), jnp.float32)
+    make(
+        ConnectivityAnalysis,
+        distance,
+        q,
+        q,
+        proximity=None,
+        dependency_range=5,
+        batch_size=4096,
+        coarsening_factor=0.4,
+    )
+    assert len(compilations) <= 40
+
+
 @pytest.mark.gpu
 def test_cudss_windows_carry_one_analysis():
     distance = ResistanceDistance(solver=make_cudss())

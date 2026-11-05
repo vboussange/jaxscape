@@ -166,10 +166,7 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
     ) -> SparseDirectState[_Factorization]:
         del options
         matrix = self._matrix(operator)
-        pattern = self._pattern(matrix)
-        values = _csr_values(matrix.data, pattern)
-        factorization, failed = self._analysed(pattern, values)
-        return SparseDirectState(factorization, pattern, values, failed)
+        return _initial_state(self, self._pattern(matrix), matrix.data)
 
     def reinit(
         self,
@@ -360,6 +357,17 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
         same_entry = (pattern.rows[slot] == rows) & (pattern.columns[slot] == columns)
         matches = jnp.all(jnp.where(stored, in_bounds & same_entry, ~in_bounds))
         return eqx.error_if(matrix.data, ~matches, mismatch)
+
+
+@eqx.filter_jit
+def _initial_state(
+    solver: AbstractSparseDirectSolver, pattern: CSRPattern, data: Array
+) -> SparseDirectState:
+    """The state of `solver` for the stored values `data` of a matrix of `pattern`,
+    analysed afresh, in one compiled program."""
+    values = _csr_values(data, pattern)
+    factorization, failed = solver._analysed(pattern, values)
+    return SparseDirectState(factorization, pattern, values, failed)
 
 
 def _csr_values(data: Array, pattern: CSRPattern) -> Array:

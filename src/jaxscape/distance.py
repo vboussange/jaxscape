@@ -265,6 +265,12 @@ class AbstractDistance(eqx.Module):
         pass
 
 
+@eqx.filter_jit
+def _system_matrix(distance: "AbstractSolverDistance", graph: AbstractGraph) -> BCOO:
+    """The system matrix of `distance` on `graph`, in one compiled program."""
+    return distance.system_matrix(graph)
+
+
 class AbstractSolverDistance(AbstractDistance):
     """Distance whose queries solve linear systems with one sparse matrix per graph.
 
@@ -310,7 +316,7 @@ class AbstractSolverDistance(AbstractDistance):
     def reinit(self, graph: AbstractGraph, state: Any) -> Any:
         if self.solver is None:
             return None
-        return _solver_state(self.system_matrix(graph), self.solver, None, state)
+        return _solver_state(_system_matrix(self, graph), self.solver, None, state)
 
     def init_preconditioner(self, graph: AbstractGraph) -> Any:
         """Deprecated alias of `init`, which queries now reinitialize for any graph."""

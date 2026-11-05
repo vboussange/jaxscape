@@ -107,30 +107,32 @@ class _Axis(eqx.Module):
     valid: Array
 
 
-def _axis(n: int, block_size: int, count: int) -> _Axis:
-    """The block centres along an axis of `n` pixels, in tiles of `count`."""
+def _axis(n: int, block_size: int, count: int) -> tuple[_Axis, int, int]:
+    """The block centres along an axis of `n` pixels, in tiles of `count`.
+
+    Also returns the largest span from the first to the last block centre of a
+    tile, and the first block centre of the last tile.
+    """
     centres = _block_centres(n, block_size)
     knots = np.stack(
         [np.r_[centres[0] - 1, centres[:-1]], centres, np.r_[centres[1:], n]], axis=1
     )
     tiles = -(-len(centres) // count)
-    members = np.arange(tiles * count).reshape(tiles, count)
-    return _Axis(
+    members = np.minimum(np.arange(tiles * count), len(centres) - 1)
+    members = members.reshape(tiles, count)
+    span = np.max(centres[members[:, -1]] - centres[members[:, 0]])
+    axis = _Axis(
         jnp.asarray(knots),
-        jnp.asarray(np.minimum(members, len(centres) - 1)),
-        jnp.asarray(members < len(centres)),
+        jnp.asarray(members),
+        jnp.asarray(np.arange(tiles * count).reshape(tiles, count) < len(centres)),
     )
+    return axis, int(span), int(centres[members[-1, 0]])
 
 
-def _first_centres(axis: _Axis) -> Array:
-    """The first block centre of each tile along `axis`."""
-    return axis.knots[axis.members[:, 0], 1]
-
-
-def _tile_side(axis: _Axis, dependency_range: int) -> int:
-    """Pixels along `axis` of its tiles, which hold the windows of their centres."""
-    span = axis.knots[axis.members[:, -1], 1] - _first_centres(axis)
-    return int(jnp.max(span)) + 2 * dependency_range + 1
+@eqx.filter_jit
+def _padded(raster: Array, pad: tuple, value: Array | float = 0) -> Array:
+    """`raster` padded by `pad` pixels with `value`, in one compiled program."""
+    return jnp.pad(raster, pad, constant_values=value)
 
 
 class WindowedAnalysis(eqx.Module):
@@ -300,23 +302,21 @@ class WindowedAnalysis(eqx.Module):
         height, width = quality_raster.shape
         blocks = tuple(len(_block_centres(n, block_size)) for n in (height, width))
         counts = _tile_shape(distance, batch_size, blocks)
-        axes = tuple(
-            _axis(n, block_size, count) for n, count in zip((height, width), counts)
+        axes, spans, last = zip(
+            *(_axis(n, block_size, count) for n, count in zip((height, width), counts))
         )
-        sides = tuple(_tile_side(axis, dependency_range) for axis in axes)
+        # A tile holds the windows of its block centres.
+        sides = tuple(span + 2 * dependency_range + 1 for span in spans)
         # With `dependency_range` pixels before the raster, the tile whose
         # first block centre is at raster index `i` starts at index `i` of the
         # padded rasters. The padding after the raster fits the last tiles.
-        last = [int(jnp.max(_first_centres(axis))) for axis in axes]
-        pad = [
+        pad = tuple(
             (dependency_range, start + side - dependency_range - n)
             for start, side, n in zip(last, sides, (height, width))
-        ]
-
-        self.quality_raster = jnp.pad(quality_raster, pad)
-        self.permeability_raster = jnp.pad(
-            permeability_raster, pad, constant_values=floor
         )
+
+        self.quality_raster = _padded(quality_raster, pad)
+        self.permeability_raster = _padded(permeability_raster, pad, floor)
         self.floor = floor
         self.distance = distance
         self.axes = (axes[0], axes[1])
