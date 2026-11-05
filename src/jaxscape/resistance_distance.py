@@ -96,10 +96,11 @@ class ResistanceDistance(AbstractSolverDistance):
         `n // 2`: the central pixel of a grid with an odd number of rows, such
         as the window of a windowed analysis. Distances from that vertex involve
         no cancellation. On windows of up to 101 x 101 pixels with a
-        permeability floor of `1e-4`, float32 permeability gradients from
-        `CuDSSSolver` stayed within 0.3 % of float64; grounded at the last
-        vertex, in a corner of the window, they were off by up to 17 times
-        their norm.
+        permeability floor of `1e-4`, float32 permeability gradients stayed
+        within 0.4 % of float64 with `CuDSSSolver`, and within 3.5 % with
+        the dense solve and `CholmodSolver`, which takes under 10 % longer in
+        float64. Grounded at the last vertex, in a corner of the window, they were
+        off by up to 17 times their norm with `CuDSSSolver`.
 
         Exact sources-to-targets queries on `n` vertices, from `m` sources to
         `k` targets, hold the potentials of all targets when `n * k` is at most
