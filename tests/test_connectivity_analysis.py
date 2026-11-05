@@ -161,27 +161,30 @@ def test_analyses_match_each_pixels_own_window(name, request):
         assert_close(sensitivity.run(var), expected, rtol)
 
 
-def padded_raster(quality, permeability, distance):
+def padded_raster(quality, permeability, distance, dependency_range):
     """Connectivity with the distances on the graph of the padded raster.
 
-    The raster is padded by `D` on all sides with quality 0 and the
-    permeability floor, and each pixel counts the pixels of its own window.
-    Randomized distances are reseeded with the index 0 of the first pixel.
+    The raster is padded by `dependency_range` on all sides with quality 0 and
+    the permeability floor, 1e-4 times its maximum permeability, and each pixel
+    counts the pixels of its own window. Randomized distances are reseeded with
+    the index 0 of the first pixel.
     """
     height, width = quality.shape
-    size = 2 * D + 1
-    permeability = jnp.where(permeability > FLOOR, permeability, FLOOR)
-    permeability = jnp.pad(permeability, D, constant_values=FLOOR)
-    weight = jnp.pad(quality, D)
+    r = dependency_range
+    size = 2 * r + 1
+    floor = 1e-4 * jax.lax.stop_gradient(jnp.max(permeability))
+    permeability = jnp.where(permeability > floor, permeability, floor)
+    permeability = jnp.pad(permeability, r, constant_values=floor)
+    weight = jnp.pad(quality, r)
     grid = GridGraph(permeability, fun=average)
     K = distance.debiased_proximity(proximity, grid)
-    distances = distance.reseeded(0)(grid).reshape(height + 2 * D, width + 2 * D, -1)
+    distances = distance.reseeded(0)(grid).reshape(height + 2 * r, width + 2 * r, -1)
 
     def pixel(i, j):
-        row = distances[i + D, j + D].reshape(height + 2 * D, width + 2 * D)
+        row = distances[i + r, j + r].reshape(height + 2 * r, width + 2 * r)
         d = jax.lax.dynamic_slice(row, (i, j), (size, size)).ravel()
         w = jax.lax.dynamic_slice(weight, (i, j), (size, size)).ravel()
-        return w[D * size + D] * (K(d).at[D * size + D].set(0) @ w)
+        return w[r * size + r] * (K(d).at[r * size + r].set(0) @ w)
 
     rows, columns = np.indices(quality.shape).reshape(2, -1)
     return jnp.sum(jax.vmap(pixel)(rows, columns))
@@ -191,31 +194,40 @@ def padded_raster(quality, permeability, distance):
     "name", ["resistance-dense", "resistance-cholmod", "spielman", "spielman-cholmod"]
 )
 def test_one_tile_computes_distances_on_the_padded_raster(name, request):
-    # Resistance queries share their work between sources: a batch of them
-    # takes the distances of a tile of 5 x 7 pixels, the whole raster.
+    # Resistance queries share their work between sources: with a dependency
+    # range of 10, tiles hold block centres 1 pixel apart, and a batch of them
+    # takes the distances of a tile of 2 x 2 pixels, the whole raster.
     distance = CASES[name][0](request)
     assert distance.sources_share_work
-    quality, permeability = QUALITY[:5], PERMEABILITY[:5]
+    quality, permeability = QUALITY[2:4, :2], PERMEABILITY[2:4, :2]
 
     def run(kind, *args):
-        return make(kind, distance, quality, permeability, batch_size=35).run(*args)
+        return make(
+            kind, distance, quality, permeability, batch_size=4, dependency_range=10
+        ).run(*args)
 
-    reference = CASES[name][1]
+    # The pseudo-inverse of the reference loses digits on a graph of floored
+    # padding but for 4 pixels.
+    reference, rtol = CASES[name][1], max(CASES[name][2], 1e-8)
     assert_close(
         run(ConnectivityAnalysis),
-        padded_raster(quality, permeability, reference),
-        CASES[name][2],
+        padded_raster(quality, permeability, reference, 10),
+        rtol,
     )
     for argnums, var in enumerate(["quality", "permeability"]):
-        expected = jax.grad(padded_raster, argnums)(quality, permeability, reference)
-        assert_close(run(SensitivityAnalysis, var), expected, CASES[name][2])
+        expected = jax.grad(padded_raster, argnums)(
+            quality, permeability, reference, 10
+        )
+        assert_close(run(SensitivityAnalysis, var), expected, rtol)
 
 
 def test_tiles_approximate_each_pixels_own_window():
-    # Tiles of 8 x 8 pixels: the distances of a pixel are those of a larger
-    # graph than its window, and slightly lower. Measured: connectivity +6.7 %,
-    # Pearson 0.9999 and 0.9995 for the quality and permeability sensitivity.
-    quality, permeability = smooth(1, (32, 32)), smooth(2, (32, 32))
+    # Whatever the batch size, the block centres of a tile lie at most a tenth
+    # of the dependency range apart: here, tiles of 2 x 2 pixels. The distances
+    # of a pixel are those of a larger graph than its window, and slightly
+    # lower. Measured: connectivity +0.3 %, Pearson 0.999999 and 0.99999 for
+    # the quality and permeability sensitivity.
+    quality, permeability = smooth(1, (30, 30)), smooth(2, (30, 30))
 
     def run(batch_size):
         def analysis(kind):
@@ -223,11 +235,12 @@ def test_tiles_approximate_each_pixels_own_window():
                 quality_raster=quality,
                 permeability_raster=permeability,
                 distance=ResistanceDistance(),
-                dependency_range=5,
+                dependency_range=10,
                 batch_size=batch_size,
             )
 
         sensitivity = analysis(SensitivityAnalysis)
+        assert sensitivity.tile_sides == (2 * 10 + 1 + (batch_size > 1),) * 2
         return (
             analysis(ConnectivityAnalysis).run(),
             sensitivity.run("quality"),
@@ -235,9 +248,9 @@ def test_tiles_approximate_each_pixels_own_window():
         )
 
     tiles, windows = run(64), run(1)
-    np.testing.assert_allclose(tiles[0], windows[0], rtol=0.1)
+    np.testing.assert_allclose(tiles[0], windows[0], rtol=0.01)
     for tile, window in zip(tiles[1:], windows[1:]):
-        assert pearson(tile, window) >= 0.999
+        assert pearson(tile, window) >= 0.9999
 
 
 def test_float32_tile_sensitivity_matches_float64():
@@ -370,9 +383,10 @@ def test_creating_an_analysis_analyses_the_tile_pattern_only(stub_spineax, monke
 
     stub_spineax_analyze = stub_spineax.analyze
     monkeypatch.setattr(stub_spineax, "analyze", analyze)
-    # Tiles of 2 x 4 pixels: their sparsity pattern differs from a window's,
+    # Tiles of 2 x 2 pixels: their sparsity pattern differs from a window's,
     # which a given proximity does not need.
-    make(ConnectivityAnalysis, ResistanceDistance(CuDSSSolver()))
+    distance = ResistanceDistance(CuDSSSolver())
+    make(ConnectivityAnalysis, distance, batch_size=4, dependency_range=10)
     assert len(analyses) == 1
 
 
@@ -673,7 +687,7 @@ def test_all_batches_and_runs_share_one_compiled_program(
     name, kind, args, coarsening_factor, compilations, request
 ):
     distance = CASES[name][0](request)
-    # Batches of three windows, or of one tile of three pixels for resistance.
+    # Batches of three windows: with a dependency range of 3, tiles are windows.
     windowed = make(
         kind,
         distance,
