@@ -198,6 +198,35 @@ def test_one_tile_computes_distances_on_the_padded_raster(name, request):
         assert_close(run(SensitivityAnalysis, var), expected, CASES[name][2])
 
 
+def test_tiles_approximate_each_pixels_own_window():
+    # Tiles of 8 x 8 pixels: the distances of a pixel are those of a larger
+    # graph than its window, and slightly lower. Measured: connectivity +6.7 %,
+    # Pearson 0.9999 and 0.9995 for the quality and permeability sensitivity.
+    quality, permeability = smooth(1, (32, 32)), smooth(2, (32, 32))
+
+    def run(batch_size):
+        def analysis(kind):
+            return kind(
+                quality_raster=quality,
+                permeability_raster=permeability,
+                distance=ResistanceDistance(),
+                dependency_range=5,
+                batch_size=batch_size,
+            )
+
+        sensitivity = analysis(SensitivityAnalysis)
+        return (
+            analysis(ConnectivityAnalysis).run(),
+            sensitivity.run("quality"),
+            sensitivity.run("permeability"),
+        )
+
+    tiles, windows = run(64), run(1)
+    np.testing.assert_allclose(tiles[0], windows[0], rtol=0.1)
+    for tile, window in zip(tiles[1:], windows[1:]):
+        assert pearson(tile, window) >= 0.999
+
+
 @pytest.mark.parametrize("q_weighted", [True, False])
 def test_euclidean_connectivity_matches_all_pairs(q_weighted):
     def cut_off(dist):
@@ -495,6 +524,10 @@ def test_coarsened_quality_sensitivity_of_other_distances_is_a_gradient():
     assert_close(sensitivity.run("quality"), expected, 1e-12)
 
 
+def pearson(a, b):
+    return np.corrcoef(np.ravel(a), np.ravel(b))[0, 1]
+
+
 def smooth(seed, shape):
     """Gaussian-smoothed noise rescaled to [0.05, 1]."""
     x = np.arange(-12, 13)
@@ -522,9 +555,6 @@ def test_coarsening_approximates_pixel_windows_on_a_smooth_landscape(
             batch_size=512,
             coarsening_factor=coarsening_factor,
         ).run(*args, q_weighted=q_weighted)
-
-    def pearson(a, b):
-        return np.corrcoef(np.ravel(a), np.ravel(b))[0, 1]
 
     # Blocks of 5 x 5 pixels: 25 times fewer windows.
     for q_weighted in [True, False]:

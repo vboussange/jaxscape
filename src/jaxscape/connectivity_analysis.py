@@ -250,8 +250,11 @@ class ConnectivityAnalysis(WindowedAnalysis):
 
     where $q_i$ is habitat quality at pixel $i$ and $K_{ij}$ is the proximity
     between pixels $i$ and $j$, a function `proximity` of their distance
-    $d_{ij}$ computed in the window centred on pixel $i$. Pairs farther apart
-    than `dependency_range` $D$ along either axis do not contribute.
+    $d_{ij}$ computed in the window centred on pixel $i$, or in a tile that
+    holds it (see
+    [`WindowedAnalysis`][jaxscape.windowed_analysis.WindowedAnalysis]). Pairs
+    farther apart than `dependency_range` $D$ along either axis do not
+    contribute.
 
     By default, $K_{ij} = e^{-r_{ij}/\alpha}$ with $\alpha = D/4$, where
     $r_{ij}$ is the distance in equivalent pixels: the number of pixels through
@@ -354,31 +357,38 @@ class SensitivityAnalysis(WindowedAnalysis):
       edges, the term falls steeply towards the edge and the interpolation
       underestimates it: by up to 20 % in a uniform landscape with
       `dependency_range` 8, the default proximity and `b = 3` or 5.
-    - **Permeability.** The gradient of each block window's connectivity
-      without the pairs within the block,
-      $\big(\sum_i T_c(i) \, q_i\big) \sum_{j \notin \text{block}} K_{cj} q_j$,
-      is multiplied pixel by pixel by a correction for the block artifacts,
-      after Omniscape's block correction:
-      $\sum_s w_c(s) \, g(\cdot - s) \big/ \big(g_\text{far} \sum_s w_c(s)\big)$.
-      Here $g$ and $g_\text{far}$ are the permeability gradients of
-      $\sum_{j \neq c} K_{cj}$ and $\sum_{j \notin \text{block}} K_{cj}$ on a
-      window of quality 1 and of the raster's maximum permeability, computed
-      once per run, and the weights $w_c(s) = T_c(c + s)$ of the raster pixels
-      $c + s$ select the pixel windows that the block window stands for. The
-      correction is 1 at or below its noise floor, where $|g_\text{far}|$ is at
-      most `1e-6` times its maximum, for example where proximities underflow.
+    - **Permeability.** The gradient of each tile's connectivity without the
+      pairs within blocks,
+      $\sum_c \big(\sum_i T_c(i) \, q_i\big) \sum_{j \notin \text{block}(c)} K_{cj} q_j$
+      over its block centres $c$, is multiplied pixel by pixel by a correction
+      for the block artifacts, after Omniscape's block correction:
+      $\sum_c \sum_s w_c(s) \, g(\cdot - c - s)$ divided by
+      $\sum_c g_\text{far}(\cdot - c) \sum_s w_c(s)$. Here $g$ and
+      $g_\text{far}$ are the permeability gradients of
+      $\sum_{j \neq c} K_{cj}$ and $\sum_{j \notin \text{block}} K_{cj}$ for one
+      block centre $c$ at the centre of a tile of quality 1 and of the
+      raster's maximum permeability, computed once per run, and the weights
+      $w_c(s) = T_c(c + s)$ of the raster pixels $c + s$ select the pixel
+      windows that each block centre stands for. The correction is 1 at or
+      below its noise floor, where the denominator is at most `1e-6` times the
+      maximum of $|g_\text{far}|$, for example where proximities underflow.
       In a uniform landscape, away from its edges, the corrected gradient of a
       block window is the weighted sum of the gradients of these pixel
       windows, except at or below the noise floor and in the band of up to
       $b - 1$ pixels that the pixel windows reach beyond the block window.
       The gradients in that band are lost, so the coarsened permeability
-      sensitivity is biased low. Measured in a uniform landscape with
-      `dependency_range` 8 and the default proximity, away from the edges, it
-      is 0.96 to 1.00 times the uncoarsened one for `ResistanceDistance` with
-      `b = 5` (0.97 to 1.00 with `b = 3`), and 0.99 to 1.00 for
-      `LCPDistance`. Within `dependency_range` of the edges, where the
-      calibration window differs most from the block windows, resistance
-      sensitivity is as low as 0.7 times the uncoarsened one in the outer rows.
+      sensitivity of windows is biased low. Measured in a uniform landscape
+      with `dependency_range` 8 and the default proximity, away from the
+      edges, it is 0.96 to 1.00 times the uncoarsened one for
+      `ResistanceDistance` with `b = 5` and one block centre per batch (0.97
+      to 1.00 with `b = 3`), and 0.99 to 1.00 for `LCPDistance`. Within
+      `dependency_range` of the edges, where the calibration window differs
+      most from the block windows, resistance sensitivity is as low as 0.7
+      times the uncoarsened one in the outer rows. Tiles keep the band, as
+      their calibration covers the whole tile; with `b = 5` and tiles of
+      8 x 8 block centres, the coarsened resistance sensitivity is 0.88 to
+      1.09 times the uncoarsened one on tiles of 8 x 8 pixels, 1.02 on
+      average.
 
     Parameters and windowing strategy are identical to
     [`ConnectivityAnalysis`][jaxscape.connectivity_analysis.ConnectivityAnalysis],

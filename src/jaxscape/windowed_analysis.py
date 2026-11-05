@@ -107,11 +107,13 @@ class WindowedAnalysis(eqx.Module):
     """Base class for windowed connectivity analyses on large rasters.
 
     Every pixel is the centre of a window of `2 * dependency_range + 1` pixels
-    a side, in which distances are computed. The rasters are padded on all sides
-    so that windows of edge pixels fit: padding has quality 0 and the
-    permeability floor. Permeability below the floor, `1e-4` times the maximum
-    permeability, is raised to it: every window graph is connected, and
-    regions of zero permeability stay nearly impassable.
+    a side, and counts the pixels of its window. Distances are computed on the
+    graph of the window, or of a tile that holds it (see below). The rasters
+    are padded on all sides so that windows of edge pixels fit: padding has
+    quality 0 and the permeability floor. Permeability below the floor, `1e-4`
+    times the maximum permeability, is raised to it: every window and tile
+    graph is connected, and regions of zero permeability stay nearly
+    impassable.
 
     With coarsening, the raster is divided into blocks of `b` pixels a side,
     where `b` is `dependency_range * coarsening_factor` rounded up to an odd
@@ -124,12 +126,39 @@ class WindowedAnalysis(eqx.Module):
     centres, along each axis, and the weights of all centres sum to 1 at every
     pixel.
 
-    Windows run in batches of `batch_size`, one compiled program for all
-    batches. Distances without solver state, such as `LCPDistance`,
-    `EuclideanDistance` and `ResistanceDistance()`, process the windows of a
-    batch in parallel. Distances with a solver process them one after another
-    and share one solver state, built when the analysis is created on a window
-    of uniform permeability, and reinitialized for each window (see
+    Block centres run in batches of `batch_size`, one compiled program for all
+    batches, in one of two ways:
+
+    - **Tiles**, for distances whose queries from several sources share work,
+      such as `ResistanceDistance` (see `AbstractDistance.sources_share_work`).
+      A batch is a grid of block centres, consecutive along each axis:
+      `isqrt(batch_size)` rows and `batch_size // isqrt(batch_size)` columns
+      of them, or fewer on smaller rasters. Its tile is the union of their
+      windows. One query from all of them, on the graph of the tile, gives each
+      centre its distances to every pixel of the tile, and each centre counts
+      the pixels of its window. The tile graph extends beyond each window, so
+      distances on it are lower: with `ResistanceDistance` and
+      `dependency_range` 20, connectivity is about 3 % higher than in windows,
+      and the sensitivity maps have a Pearson correlation above 0.999 with
+      theirs. With `batch_size=1`, each tile is a window. The query holds
+      `batch_size` distances for each pixel of the tile, and as many
+      gradients: with `dependency_range` 100 and `batch_size=400`, tiles of
+      `20 + 200` pixels a side hold 19 million distances. Each query costs
+      about the same whatever its number of sources, so the cost per centre
+      falls as `batch_size` grows, until the tile side reaches about
+      `2 * dependency_range`.
+    - **Windows**, for other distances, such as `LCPDistance` and
+      `EuclideanDistance`, whose queries cost about as much per source: each
+      block centre has its own window, and a batch is `batch_size` windows.
+
+    Randomized distances, such as `SpielmanApproximation`, apply the proximity
+    returned by `AbstractDistance.debiased_proximity` to their distances.
+
+    Distances without solver state, such as `LCPDistance`, `EuclideanDistance`
+    and `ResistanceDistance()`, process the tiles of a batch in parallel.
+    Distances with a solver process them one after another and share one
+    solver state, built when the analysis is created on a tile of uniform
+    permeability, and reinitialized for each tile (see
     [Reusing solver state](linear_solvers.md#reusing-solver-state)). Every run
     of the analysis starts from that state and reuses the compiled programs.
 
@@ -143,8 +172,9 @@ class WindowedAnalysis(eqx.Module):
     - `dependency_range`: Window half-width `D` in pixels. Pairs farther apart
       than `D` along either axis do not contribute, and the default
       `proximity` decays over `D / 4` equivalent pixels.
-    - `batch_size`: Number of windows per batch. Distances without solver
-      state hold all windows of a batch in memory at once.
+    - `batch_size`: Number of block centres per batch: the sources of one tile
+      query, or windows. It sets the memory, which holds all the windows of a
+      batch, or the distances of a tile query.
     - `proximity`: Function mapping distances, in the units of `distance`, to
       proximities. Defaults to `exp(-r / (D / 4))`, where `r` is the distance
       in equivalent pixels: the number of pixels through habitat of

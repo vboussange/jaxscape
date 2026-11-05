@@ -34,7 +34,7 @@ class AbstractDistance(eqx.Module):
     Specify either: `nodes` alone, `sources` and/or `targets`, or neither
     (for all-pairs).
 
-    **Class attributes:**
+    **Attributes:**
 
     - `sources_share_work`: Whether a query from several sources costs much less
       than one query per source, as when linear solves share one factorization.

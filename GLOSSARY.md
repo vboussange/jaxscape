@@ -43,3 +43,19 @@ _Avoid_: Update, refresh
 
 **Used-up state**:
 A solver state whose factorization a refactorization has consumed. Solving with it repeats the analysis and stays correct.
+
+### Windowed analyses
+
+**Window**:
+The pixels within `dependency_range` of a pixel along both axes. A pixel counts the pixels of its window.
+_Avoid_: Neighbourhood
+
+**Block centre**:
+A pixel whose window an analysis computes. Without coarsening every pixel is one; with coarsening, values interpolate between them.
+
+**Tile**:
+The union of the windows of a grid of block centres. One query from all of them, on the graph of the tile, gives each its distances.
+_Avoid_: Batch window, chunk
+
+**Sources that share work**:
+A distance whose query from several sources costs much less than one query per source, such as resistance, whose solves share one factorization. Windowed analyses run it on tiles, and other distances on windows.
