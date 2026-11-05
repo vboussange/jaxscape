@@ -194,39 +194,33 @@ def padded_raster(quality, permeability, distance, dependency_range):
     "name", ["resistance-dense", "resistance-cholmod", "spielman", "spielman-cholmod"]
 )
 def test_one_tile_computes_distances_on_the_padded_raster(name, request):
-    # Resistance queries share their work between sources: with a dependency
-    # range of 10, tiles hold block centres 1 pixel apart, and a batch of them
-    # takes the distances of a tile of 2 x 2 pixels, the whole raster.
+    # Resistance queries share their work between sources: a batch of as many
+    # sources as pixels takes the distances of one tile of 5 x 7 pixels, the
+    # whole raster.
     distance = CASES[name][0](request)
     assert distance.sources_share_work
-    quality, permeability = QUALITY[2:4, :2], PERMEABILITY[2:4, :2]
+    quality, permeability = QUALITY[:5], PERMEABILITY[:5]
 
     def run(kind, *args):
-        return make(
-            kind, distance, quality, permeability, batch_size=4, dependency_range=10
-        ).run(*args)
+        return make(kind, distance, quality, permeability, batch_size=35).run(*args)
 
-    # The pseudo-inverse of the reference loses digits on a graph of floored
-    # padding but for 4 pixels.
-    reference, rtol = CASES[name][1], max(CASES[name][2], 1e-8)
+    reference, rtol = CASES[name][1], CASES[name][2]
     assert_close(
         run(ConnectivityAnalysis),
-        padded_raster(quality, permeability, reference, 10),
+        padded_raster(quality, permeability, reference, D),
         rtol,
     )
     for argnums, var in enumerate(["quality", "permeability"]):
-        expected = jax.grad(padded_raster, argnums)(
-            quality, permeability, reference, 10
-        )
+        expected = jax.grad(padded_raster, argnums)(quality, permeability, reference, D)
         assert_close(run(SensitivityAnalysis, var), expected, rtol)
 
 
 def test_tiles_approximate_each_pixels_own_window():
-    # Whatever the batch size, the block centres of a tile lie at most a tenth
-    # of the dependency range apart: here, tiles of 2 x 2 pixels. The distances
-    # of a pixel are those of a larger graph than its window, and slightly
-    # lower. Measured: connectivity +0.3 %, Pearson 0.999999 and 0.99999 for
-    # the quality and permeability sensitivity.
+    # Batches of 64 pixels take tiles of 8 x 8 pixels, and batches of 900 one
+    # tile, the whole raster. The distances of a pixel are those of a larger
+    # graph than its window, and lower. Measured: connectivity +1.2 % and
+    # +2.7 %, Pearson 0.99998 and 0.99995 for the quality sensitivity, 0.9998
+    # and 0.9996 for the permeability sensitivity.
     quality, permeability = smooth(1, (30, 30)), smooth(2, (30, 30))
 
     def run(batch_size):
@@ -240,22 +234,25 @@ def test_tiles_approximate_each_pixels_own_window():
             )
 
         sensitivity = analysis(SensitivityAnalysis)
-        assert sensitivity.tile_sides == (2 * 10 + 1 + (batch_size > 1),) * 2
-        return (
+        return sensitivity.tile_sides, (
             analysis(ConnectivityAnalysis).run(),
             sensitivity.run("quality"),
             sensitivity.run("permeability"),
         )
 
-    tiles, windows = run(64), run(1)
-    np.testing.assert_allclose(tiles[0], windows[0], rtol=0.01)
-    for tile, window in zip(tiles[1:], windows[1:]):
-        assert pearson(tile, window) >= 0.9999
+    sides, windows = run(1)
+    assert sides == (21, 21)
+    for batch_size, side, rtol in [(64, 7 + 21, 0.02), (900, 29 + 21, 0.04)]:
+        sides, tiles = run(batch_size)
+        assert sides == (side, side)
+        np.testing.assert_allclose(tiles[0], windows[0], rtol=rtol)
+        for tile, window in zip(tiles[1:], windows[1:]):
+            assert pearson(tile, window) >= 0.999
 
 
 def test_tiles_of_a_narrow_raster_hold_about_batch_size_block_centres():
-    # With a dependency range of 40, tiles hold up to 5 x 5 block centres. On
-    # a raster of 3 columns, a batch of 16 takes tiles of 5 x 3 block centres.
+    # On a raster of 3 columns, a batch of 16 takes tiles of 5 x 3 block
+    # centres.
     narrow = jnp.ones((40, 3))
     windowed = make(
         ConnectivityAnalysis,

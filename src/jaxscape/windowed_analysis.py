@@ -65,19 +65,21 @@ def _block_centres(n: int, block_size: int) -> np.ndarray:
 
 
 def _tile_shape(
-    distance: AbstractDistance, batch_size: int, blocks: tuple[int, ...], most: int
+    distance: AbstractDistance, batch_size: int, blocks: tuple[int, ...]
 ) -> tuple[int, int]:
     """Block centres along each axis of a tile.
 
     If the queries of `distance` share work between sources, `batch_size`
-    centres or fewer, at most `most` along each axis, as square as the numbers
-    of centres `blocks` along each axis allow. Otherwise one centre.
+    centres or fewer, as square as the numbers of centres `blocks` along each
+    axis allow, and shared evenly between the tiles along each axis.
+    Otherwise one centre.
     """
     if not distance.sources_share_work:
         return 1, 1
-    rows = min(math.isqrt(batch_size), blocks[0], most)
-    columns = min(batch_size // rows, blocks[1], most)
-    return min(batch_size // columns, blocks[0], most), columns
+    rows = min(math.isqrt(batch_size), blocks[0])
+    columns = min(batch_size // rows, blocks[1])
+    rows = min(batch_size // columns, blocks[0])
+    return _even(rows, blocks[0]), _even(columns, blocks[1])
 
 
 def _even(most: int, total: int) -> int:
@@ -297,11 +299,7 @@ class WindowedAnalysis(eqx.Module):
         )
         height, width = quality_raster.shape
         blocks = tuple(len(_block_centres(n, block_size)) for n in (height, width))
-        # The block centres of a tile lie at most `dependency_range // 10`
-        # pixels apart along each axis: the tile graph extends beyond each
-        # window, and its distances depart from theirs as it grows.
-        most = 1 + dependency_range // 10 // block_size
-        counts = _tile_shape(distance, batch_size, blocks, most)
+        counts = _tile_shape(distance, batch_size, blocks)
         axes = tuple(
             _axis(n, block_size, count) for n, count in zip((height, width), counts)
         )
