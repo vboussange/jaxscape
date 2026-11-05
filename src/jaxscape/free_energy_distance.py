@@ -96,7 +96,8 @@ class FreeEnergyDistance(AbstractSolverDistance):
 
         - `graph`: Connected symmetric graph with `graph.nv` vertices.
         - `state`: Optional solver state for the current operator. `None`
-          initializes state automatically; AMJax setup must precede JIT tracing.
+          initializes state automatically; AMJax builds its hierarchy before JIT
+          tracing.
 
         **Returns:**
 
@@ -116,7 +117,8 @@ class FreeEnergyDistance(AbstractSolverDistance):
         - `nodes`: Vertex indices with shape `(k,)`, possibly repeated. Use the
           callable distance interface for grid coordinates.
         - `state`: Optional solver state for the current operator. `None`
-          initializes state automatically; AMJax setup must precede JIT tracing.
+          initializes state automatically; AMJax builds its hierarchy before JIT
+          tracing.
 
         **Returns:**
 
@@ -138,7 +140,8 @@ class FreeEnergyDistance(AbstractSolverDistance):
           targets may contain repeated indices. Use the callable distance
           interface for grid coordinates or omitted endpoints.
         - `state`: Optional solver state for the current operator. `None`
-          initializes state automatically; AMJax setup must precede JIT tracing.
+          initializes state automatically; AMJax builds its hierarchy before JIT
+          tracing.
 
         **Returns:**
 

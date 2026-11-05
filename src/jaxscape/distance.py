@@ -29,7 +29,7 @@ class AbstractDistance(eqx.Module):
       (Nx2 array for `GridGraph`).
     - `nodes`: Nodes for pairwise distances as vertex indices (1D) or
       coordinates (Nx2).
-    - `state`: Optional solver setup state. Defaults to automatic initialization.
+    - `state`: Optional solver state. Defaults to automatic initialization.
 
     Specify either: `nodes` alone, `sources` and/or `targets`, or neither
     (for all-pairs).
@@ -93,7 +93,7 @@ class AbstractDistance(eqx.Module):
         state: Any = None,
     ) -> Array:
         if state is None:
-            # Solver state is setup data, not part of the differentiable solve.
+            # Solver state is not part of the differentiable solve.
             # Stop gradients here so auto-initialized state matches Lineax's
             # `state=None` semantics and never carries tangents into custom VJPs.
             state = self.init(jax.tree.map(jax.lax.stop_gradient, graph))
@@ -146,6 +146,10 @@ class AbstractDistance(eqx.Module):
 
         Distances that queries compute exactly return themselves. Their solver
         states serve each other.
+
+        **Returns:**
+
+        The distance that this one estimates, or this one.
         """
         return self
 

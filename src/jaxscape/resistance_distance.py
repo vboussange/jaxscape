@@ -108,10 +108,10 @@ class ResistanceDistance(AbstractSolverDistance):
         `CuDSSSolver`.
 
         Exact sources-to-targets queries on `n` vertices, from `m` sources to
-        `k` targets, hold the potentials of all targets when `n * k` is at most
-        `2**22`, as in windows of up to 45 x 45 pixels. Beyond, they solve the
-        targets in chunks of 1024 and hold at most `n * (m + 1024)` potentials,
-        and their gradient solves each target once more.
+        `k` targets, hold the potentials of all targets when they are a few
+        million values, as in small windows. Beyond, they solve the targets in
+        chunks of `c`, about a thousand, and hold at most `n * (m + c)`
+        potentials, and their gradient solves each target once more.
 
     !!! warning
 
@@ -130,7 +130,13 @@ class ResistanceDistance(AbstractSolverDistance):
         return _grounded_laplacian(graph.get_adjacency_matrix())[0]
 
     def exact(self) -> "ResistanceDistance":
-        """Return the exact resistance distance, with the same solver."""
+        """Return the exact resistance distance, with the same solver.
+
+        **Returns:**
+
+        `ResistanceDistance` with `ExactResistance` and the solver of this one,
+        whose solver states serve each other.
+        """
         return ResistanceDistance(solver=self.solver)
 
     def debiased_proximity(
