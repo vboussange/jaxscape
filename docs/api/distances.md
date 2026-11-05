@@ -4,6 +4,7 @@
     options:
       members:
         - reinit
+        - sources_to_windows_distance
         - exact
         - debiased_proximity
 
@@ -24,6 +25,7 @@
 ::: jaxscape.resistance_distance.ResistanceDistance
     options:
       members:
+        - sources_to_windows_distance
         - exact
         - debiased_proximity
 

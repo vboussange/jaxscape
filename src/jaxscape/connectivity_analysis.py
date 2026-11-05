@@ -400,24 +400,22 @@ class SensitivityAnalysis(WindowedAnalysis):
       to 1.00 with `b = 3`), and 0.99 to 1.00 for `LCPDistance`. Within
       `dependency_range` of the edges, where the calibration window differs
       most from the block windows, resistance sensitivity is as low as 0.7
-      times the uncoarsened one in the outer rows. Tiles hold block centres
-      at most `dependency_range // 10` pixels apart, so that blocks of more
-      pixels have their own windows, as in these measurements. Smaller blocks
-      share tiles, whose calibration departs little from that of windows: in
-      a uniform landscape with `dependency_range` 30 and `b = 3`, tiles of
-      2 x 2 block centres gave 0.99 to 1.01 times the uncoarsened sensitivity
-      of the same tiles, away from the edges, and windows 0.995 to 1.00.
+      times the uncoarsened one in the outer rows. The calibration window
+      departs from tiles larger than windows, whose graph extends beyond the
+      windows: in the same uniform landscape, with one tile for the raster,
+      the coarsened resistance sensitivity was 1.01 to 1.11 times the
+      uncoarsened one of the same tile, away from the edges, with `b = 5`,
+      and 0.99 to 1.03 with `b = 3`.
 
     !!! warning "Limitations"
 
         - Randomized distances give noisy permeability sensitivity where
-          permeability varies over orders of magnitude. On part of the
-          Maryland land cover of the connectivity analysis example, with
-          `dependency_range` 30, the permeability sensitivity of
-          `SpielmanApproximation` had a Pearson correlation of 0.983 with that
-          of exact windows at `epsilon` 0.1, and 0.994 at 0.05. On tiles of
-          20 x 20 pixels, larger than the tile limit allows, it was 0.86 at
-          `epsilon` 0.1.
+          permeability varies over orders of magnitude. On a crop of 120 x 120
+          pixels of the Maryland land cover of the connectivity analysis
+          example, with `dependency_range` 30 and one tile, the permeability
+          sensitivity of `SpielmanApproximation` had a Pearson correlation of
+          0.996 with that of exact resistance at `epsilon` 0.1, 0.991 at 0.15
+          and 0.985 at 0.2, and two seeds agreed to 0.992, 0.983 and 0.963.
         - The block correction is calibrated on a uniform landscape. With
           barriers and blocks of several pixels, the coarsened permeability
           sensitivity is biased and keeps a lattice through the block

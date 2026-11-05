@@ -54,8 +54,11 @@ _Avoid_: Neighbourhood
 A pixel whose window an analysis computes. Without coarsening every pixel is one; with coarsening, values interpolate between them.
 
 **Tile**:
-The union of the windows of a grid of block centres. One query from all of them, on the graph of the tile, gives each its distances.
+The union of the windows of a grid of up to `batch_size` block centres; with as many as the raster has, the padded raster. One window query from all of them, on the graph of the tile, gives each its distances.
 _Avoid_: Batch window, chunk
+
+**Window query**:
+The distances from each source to the pixels of its window, the only query of windowed analyses (`AbstractDistance.sources_to_windows_distance`).
 
 **Sources that share work**:
 A distance whose query from several sources costs much less than one query per source, such as resistance, whose solves share one factorization. Windowed analyses run it on tiles, and other distances on windows.
