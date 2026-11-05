@@ -43,24 +43,23 @@ def _reachable(
 ) -> Array:
     """Proximity-weighted `weight` reachable from each source, outside `excluded`.
 
-    One query of `distance` on the graph of the tile `permeability` gives the
-    distances from a grid of sources, at the tile rows and columns `sources`,
-    to every pixel. Each source counts the pixels of its window, outside
-    `excluded`. Returns one value per source, in row-major order.
+    One window query of `distance` on the graph of the tile `permeability`
+    gives the distances from a grid of sources, at the tile rows and columns
+    `sources`, to the pixels of their windows. Each source counts the pixels
+    of its window, outside `excluded`. Returns one value per source, in
+    row-major order.
     """
     size = excluded.shape[0]
-    height, width = permeability.shape
     rows, columns = (x.ravel() for x in jnp.meshgrid(*sources, indexing="ij"))
     graph = GridGraph(permeability, fun=_average)
-    distances = distance(graph, sources=rows * width + columns, state=state)
+    distances = distance.sources_to_windows_distance(
+        graph, rows * graph.width + columns, size, state
+    )
     proximity = distance.debiased_proximity(windowed.proximity, graph)
 
     def reachable(inputs):
         distances, row, column = inputs
         start = (row - size // 2, column - size // 2)
-        distances = lax.dynamic_slice(
-            distances.reshape(height, width), start, (size, size)
-        )
         weights = lax.dynamic_slice(weight, start, (size, size))
         # Excluded pixels, the centre among them, get a unit distance: it keeps
         # the gradient finite for proximities that are singular at zero.
