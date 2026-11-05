@@ -15,7 +15,7 @@ from jaxscape.graph import GridGraph
 from jaxscape.lcp_distance import LCPDistance
 from jaxscape.resistance_distance import ResistanceDistance
 from jaxscape.window_operation import WindowOperation
-from jaxscape.windowed_analysis import _average, _uniform_graph, WindowedAnalysis
+from jaxscape.windowed_analysis import _average, WindowedAnalysis
 
 
 # Distances that are symmetric on the window graphs, whose edges average the
@@ -137,27 +137,33 @@ def _window_sensitivity(
 
 @eqx.filter_jit
 def _permeability_calibration(
-    distance: AbstractDistance,
-    proximity: Callable[[Array], Array],
-    op: WindowOperation,
-    graph: GridGraph,
-    state: Any,
-) -> tuple[Array, Array]:
-    """Permeability gradients of the uniform window `graph`, for the block correction.
+    analysis: WindowedAnalysis, state: Any
+) -> tuple[tuple[Array, Array], Any]:
+    """Block correction gradients on a window of the maximum permeability.
 
-    With quality 1: the gradient of the proximity-weighted quality reachable
-    from the centre, and that gradient without the pairs within the block, set
-    to 0 at or below its noise floor, `1e-6` times its maximum.
+    With quality 1: the permeability gradient of the proximity-weighted
+    quality reachable from the centre, and that gradient without the pairs
+    within the block, set to 0 at or below its noise floor, `1e-6` times its
+    maximum. Returns them and the array part of the solver state, reinitialized
+    for the window from the array part `state`.
     """
+    op = analysis.window_op
+    level = lax.stop_gradient(jnp.max(analysis.permeability_raster))
+    graph = analysis._uniform_graph(level)
+    static = eqx.partition(analysis.state, eqx.is_array)[1]
+    state = analysis.distance.reinit(graph, eqx.combine(state, static))
     ones = jnp.ones_like(graph.grid)
 
     def own(permeability, block):
         excluded = _excluded(op, block)
-        return _own(distance, proximity, ones, permeability, state, excluded)
+        return _own(
+            analysis.distance, analysis.proximity, ones, permeability, state, excluded
+        )
 
     pixels = jax.grad(own)(graph.grid, False)
     far = jax.grad(own)(graph.grid, True)
-    return pixels, jnp.where(jnp.abs(far) > 1e-6 * jnp.max(jnp.abs(far)), far, 0)
+    far = jnp.where(jnp.abs(far) > 1e-6 * jnp.max(jnp.abs(far)), far, 0)
+    return (pixels, far), eqx.partition(state, eqx.is_array)[0]
 
 
 class ConnectivityAnalysis(WindowedAnalysis):
@@ -334,7 +340,7 @@ class SensitivityAnalysis(WindowedAnalysis):
         permeability sensitivity.
         """
         coarse = self.window_op.window_size > 1
-        calibration = None
+        calibration = state = None
         if var == "quality":
             symmetric = isinstance(self.distance, _SYMMETRIC_DISTANCES)
             if coarse and q_weighted and symmetric:
@@ -344,13 +350,20 @@ class SensitivityAnalysis(WindowedAnalysis):
             raster = self.quality_raster
         elif var == "permeability":
             if coarse:
-                calibration = self._calibration()
+                # The windows carry on from the calibration's solver state.
+                state = eqx.partition(self.state, eqx.is_array)[0]
+                calibration, state = _permeability_calibration(self, state)
             raster = self.permeability_raster
         else:
             raise ValueError("`var` must be either 'quality' or 'permeability'")
 
         gradient = self._accumulate(
-            _window_sensitivity, jnp.zeros_like(raster), var, q_weighted, calibration
+            _window_sensitivity,
+            jnp.zeros_like(raster),
+            var,
+            q_weighted,
+            calibration,
+            state=state,
         )
         gradient = self._crop(gradient)
         if var == "permeability":
@@ -358,15 +371,3 @@ class SensitivityAnalysis(WindowedAnalysis):
                 self._crop(self.permeability_raster) > self.floor, gradient, 0
             )
         return gradient
-
-    def _calibration(self) -> tuple[Array, Array]:
-        """Block correction calibration at the raster's maximum permeability."""
-        op = self.window_op
-        level = lax.stop_gradient(jnp.max(self.permeability_raster))
-        graph = _uniform_graph(
-            op.total_window_size, level, self.permeability_raster.dtype
-        )
-        state = self.distance.init(graph)
-        return _permeability_calibration(
-            self.distance, self.proximity, op, graph, state
-        )

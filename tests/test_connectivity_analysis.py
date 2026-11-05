@@ -237,6 +237,10 @@ def test_cudss_windows_carry_one_analysis():
     rebuilds = spineax.rebuild_count()
     jax.block_until_ready(analysis(ConnectivityAnalysis, distance).run())
     jax.block_until_ready(analysis(SensitivityAnalysis, distance).run("permeability"))
+    # With coarsening, the windows carry on from the state of the block
+    # correction's calibration.
+    coarsened = analysis(SensitivityAnalysis, distance, coarsening_factor=0.5)
+    jax.block_until_ready(coarsened.run("permeability"))
     # Each window refactorizes the state of the previous one: no handle is
     # used up twice, so no analysis repeats.
     assert spineax.rebuild_count() == rebuilds
@@ -251,7 +255,9 @@ def test_sensitivity_is_finite_for_proximity_singular_at_zero():
         assert jnp.all(jnp.isfinite(sensitivity.run(var)))
 
 
-@pytest.mark.parametrize("name", ["lcp", "resistance-cholmod"])
+@pytest.mark.parametrize(
+    "name", ["lcp", "resistance-cholmod", "resistance-cudss-on-cpu"]
+)
 def test_coarsened_analyses_cover_the_raster(name, request):
     distance = CASES[name][0](request)
 
@@ -492,29 +498,35 @@ def compilations():
     ],
 )
 @pytest.mark.parametrize("coarsening_factor", [0.0, 0.5])
-def test_all_batches_run_one_compiled_program(
+def test_all_batches_and_runs_share_one_compiled_program(
     name, kind, args, coarsening_factor, compilations, request
 ):
     distance = CASES[name][0](request)
     quality, permeability = QUALITY[:5], PERMEABILITY[:5]
 
-    def run(batch_size):
-        analysis(
+    def windowed(batch_size):
+        return analysis(
             kind,
             distance,
             quality,
             permeability,
             batch_size=batch_size,
             coarsening_factor=coarsening_factor,
-        ).run(*args)
+        )
 
     # One batch compiles everything that does not depend on the batch count.
-    run(35)
+    windowed(35).run(*args)
     compilations.clear()
-    run(3)
-    # Each new Cholmod state also recompiles the permeability correction.
-    correction = "jit(_permeability_calibration)"
-    assert [name for name in compilations if name != correction] == ["jit(_batch)"]
+    batched = windowed(3)
+    batched.run(*args)
+    # Each new Cholmod state also recompiles the permeability calibration.
+    calibration = "jit(_permeability_calibration)"
+    assert [name for name in compilations if name != calibration] == ["jit(_batch)"]
+
+    # The analysis keeps its solver state: another run compiles nothing.
+    compilations.clear()
+    batched.run(*args)
+    assert compilations == []
 
 
 @pytest.mark.parametrize("kind", [ConnectivityAnalysis, SensitivityAnalysis])

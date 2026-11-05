@@ -28,10 +28,6 @@ def _average(x: Array, y: Array) -> Array:
     return (x + y) / 2
 
 
-def _uniform_graph(size: int, permeability, dtype) -> GridGraph:
-    return GridGraph(jnp.full((size, size), permeability, dtype), fun=_average)
-
-
 class _PixelExponential(eqx.Module):
     """Negative exponential `exp(-r / alpha)` of the distance in equivalent pixels `r`.
 
@@ -91,9 +87,10 @@ class WindowedAnalysis(eqx.Module):
     batches. Distances without solver state, such as `LCPDistance`,
     `EuclideanDistance` and `ResistanceDistance()`, process the windows of a
     batch in parallel. Distances with a solver process them one after another
-    and share one solver state, built once on a window of uniform permeability
-    and reinitialized for each window (see
-    [Reusing solver state](linear_solvers.md#reusing-solver-state)).
+    and share one solver state, built when the analysis is created on a window
+    of uniform permeability, and reinitialized for each window (see
+    [Reusing solver state](linear_solvers.md#reusing-solver-state)). Every run
+    of the analysis starts from that state and reuses the compiled programs.
 
     **Arguments:**
 
@@ -137,6 +134,7 @@ class WindowedAnalysis(eqx.Module):
     distance: AbstractDistance
     window_op: WindowOperation
     proximity: Callable[[Array], Array]
+    state: Any
     shape: tuple[int, int] = eqx.field(static=True)
     batch_size: int = eqx.field(static=True)
 
@@ -196,11 +194,15 @@ class WindowedAnalysis(eqx.Module):
             window_size=coarsening,
             buffer_size=buffer_size,
         )
+        # Solver setup, outside any trace: windows reinitialize this state.
+        graph = self._uniform_graph(1)
+        self.state = distance.init(graph)
         if proximity is None:
             size = self.window_op.total_window_size
-            graph = _uniform_graph(size, 1, self.permeability_raster.dtype)
             centre = size // 2
-            distances = distance(graph, sources=jnp.array([centre * size + centre]))
+            distances = distance(
+                graph, sources=jnp.array([centre * size + centre]), state=self.state
+            )
             # Randomized distances, such as `SpielmanApproximation`, can
             # decrease along the axis: the conversion stays monotone.
             profile = lax.cummax(distances.reshape(size, size)[centre, centre:])
@@ -246,7 +248,15 @@ class WindowedAnalysis(eqx.Module):
         values = along_rows(values, rows)
         return along_rows(values.T, columns).T
 
-    def _accumulate(self, window_fn: Callable, initial: Array, *args: Any) -> Array:
+    def _uniform_graph(self, permeability: Array | float) -> GridGraph:
+        """Window graph of uniform `permeability`."""
+        size = self.window_op.total_window_size
+        grid = jnp.full((size, size), permeability, self.permeability_raster.dtype)
+        return GridGraph(grid, fun=_average)
+
+    def _accumulate(
+        self, window_fn: Callable, initial: Array, *args: Any, state: Any = None
+    ) -> Array:
         """Accumulate `window_fn` over the windows of all block centres.
 
         `window_fn(analysis, quality, permeability, inside, tent, state, *args)`
@@ -254,14 +264,11 @@ class WindowedAnalysis(eqx.Module):
         the input raster, the interpolation weights of the window's block centre
         and the solver state, to a scalar or to a window. Scalars fill
         `initial`, of one entry per block centre in row-major order; windows
-        add to the padded raster `initial`.
+        add to the padded raster `initial`. The first window reinitializes the
+        array part `state` of a solver state, by default that of the analysis.
         """
-        size = self.window_op.total_window_size
-        state = self.distance.init(
-            _uniform_graph(size, 1, self.permeability_raster.dtype)
-        )
-        dynamic, static = eqx.partition(state, eqx.is_array)
-
+        if state is None:
+            state = eqx.partition(self.state, eqx.is_array)[0]
         accumulated = initial
         n_windows = math.prod(self._blocks)
         for start in tqdm(
@@ -269,25 +276,45 @@ class WindowedAnalysis(eqx.Module):
             desc="Batch progress",
             miniters=max(1, n_windows // self.batch_size // 100),
         ):
-            inputs = (self, jnp.asarray(start), dynamic, static, window_fn, args)
-            accumulated, dynamic = _batch(inputs, accumulated)
+            batch = _Batch(self, jnp.asarray(start), state, window_fn, args)
+            accumulated, state = _batch(batch, accumulated)
         return accumulated
 
 
-@eqx.filter_jit(donate="all-except-first")
-def _batch(inputs: tuple, accumulated: Array) -> tuple[Array, Any]:
-    """Add the windows of one batch to `accumulated`, whose buffer it reuses.
+class _Batch(eqx.Module):
+    """A batch of windows: the inputs of `_batch` that it does not donate.
 
-    The windows of the batch start at window `start`. Returns the accumulated
-    value and the array part of the solver state after the batch.
+    **Attributes:**
+
+    - `analysis`: The windowed analysis.
+    - `start`: Index of the first window of the batch.
+    - `state`: Array part of the solver state that the first window
+      reinitializes.
+    - `window_fn`, `args`: As in `WindowedAnalysis._accumulate`.
     """
-    analysis, start, dynamic, static, window_fn, args = inputs
+
+    analysis: WindowedAnalysis
+    start: Array
+    state: Any
+    window_fn: Callable
+    args: tuple
+
+
+@eqx.filter_jit(donate="all-except-first")
+def _batch(batch: _Batch, accumulated: Array) -> tuple[Array, Any]:
+    """Add the windows of `batch` to `accumulated`, whose buffer it reuses.
+
+    Returns the accumulated value and the array part of the solver state after
+    the batch.
+    """
+    analysis, window_fn, args = batch.analysis, batch.window_fn, batch.args
+    dynamic, static = batch.state, eqx.partition(analysis.state, eqx.is_array)[1]
     op = analysis.window_op
     size = op.total_window_size
     rows, columns = analysis._blocks
 
     # Dummy windows complete the last batch, so all batches share one program.
-    index = start + jnp.arange(analysis.batch_size)
+    index = batch.start + jnp.arange(analysis.batch_size)
     valid = index < rows * columns
     index = jnp.minimum(index, rows * columns - 1)
     # The block centres of the windows along each axis, and the neighbouring
