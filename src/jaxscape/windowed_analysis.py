@@ -80,6 +80,12 @@ def _tile_shape(
     return min(batch_size // columns, blocks[0], most), columns
 
 
+def _even(most: int, total: int) -> int:
+    """The fewest items per group that split `total` items into as few groups
+    of at most `most` items as possible."""
+    return -(-total // -(-total // most))
+
+
 class _Axis(eqx.Module):
     """The block centres along an axis of a raster, and the tiles that hold them.
 
@@ -148,8 +154,9 @@ class WindowedAnalysis(eqx.Module):
     centres, along each axis, and the weights of all centres sum to 1 at every
     pixel.
 
-    Block centres run in batches of `batch_size`, one compiled program for all
-    batches, in one of two ways:
+    Block centres run in batches of at most `batch_size`, as few as possible
+    and of equal sizes, which one compiled program computes, in one of two
+    ways:
 
     - **Tiles**, for distances whose queries from several sources share work,
       such as `ResistanceDistance` (see `AbstractDistance.sources_share_work`).
@@ -204,8 +211,8 @@ class WindowedAnalysis(eqx.Module):
     - `dependency_range`: Window half-width `D` in pixels. Pairs farther apart
       than `D` along either axis do not contribute, and the default
       `proximity` decays over `D / 4` equivalent pixels.
-    - `batch_size`: Number of block centres per batch: the sources of its tile
-      queries, or windows. It sets the memory, which holds all the windows of
+    - `batch_size`: Largest number of block centres per batch: the sources of
+      its tile queries, or windows. It sets the memory, which holds all the windows of
       a batch, or the distances of its tile queries.
     - `proximity`: Function mapping distances, in the units of `distance`, to
       proximities. Defaults to `exp(-r / (D / 4))`, where `r` is the distance
@@ -360,11 +367,12 @@ class WindowedAnalysis(eqx.Module):
 
     @property
     def _tiles_per_batch(self) -> int:
-        """Number of tiles in a batch of `batch_size` block centres or fewer."""
+        """Number of tiles in a batch of `batch_size` block centres or fewer,
+        the same in all batches, with as few batches as possible."""
         rows, columns = self.axes
         tiles = rows.members.shape[0] * columns.members.shape[0]
         sources = rows.members.shape[1] * columns.members.shape[1]
-        return max(1, min(self.batch_size // sources, tiles))
+        return _even(max(1, self.batch_size // sources), tiles)
 
     def _crop(self, raster: Array) -> Array:
         """Crop a padded raster to the input shape."""

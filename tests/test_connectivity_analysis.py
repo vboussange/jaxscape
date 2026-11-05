@@ -721,6 +721,26 @@ def test_all_batches_and_runs_share_one_compiled_program(
     assert compilations == []
 
 
+def test_batches_compute_the_windows_of_the_raster_only():
+    computed = []
+
+    class Counting(Opaque):
+        """A distance that counts the sources of its window queries."""
+
+        def sources_to_windows_distance(self, graph, sources, size, state=None):
+            jax.debug.callback(lambda s: computed.append(s.size), sources)
+            return self.distance.sources_to_windows_distance(
+                graph, sources, size, state
+            )
+
+    # 42 windows in batches of at most 32: two batches of 21.
+    jax.block_until_ready(
+        make(ConnectivityAnalysis, Counting(LCPDistance()), batch_size=32).run()
+    )
+    jax.effects_barrier()
+    assert sum(computed) == 42
+
+
 @pytest.mark.parametrize("kind", [ConnectivityAnalysis, SensitivityAnalysis])
 def test_default_proximity_compiles_once_for_all_analyses(kind, compilations):
     args = ("permeability",) if kind is SensitivityAnalysis else ()
