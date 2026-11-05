@@ -4,7 +4,7 @@ from typing import Any
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-import lineax as lx  # pyright: ignore[reportMissingImports]
+import lineax as lx
 from jax import Array, lax
 from jax.experimental.sparse import BCOO
 from jax.numpy.linalg import pinv
