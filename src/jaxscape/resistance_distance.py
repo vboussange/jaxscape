@@ -517,9 +517,13 @@ def _solve(
         if transpose:
             matrix = matrix.transpose()
             state, options = solver.transpose(state, {})
+        # Zero columns complete a multiple of 8 right-hand sides: cuDSS solved
+        # some other numbers of them twice as slowly, 1079 against 1080.
+        m = rhs.shape[1]
+        rhs = jnp.pad(rhs, ((0, 0), (0, -m % 8)))
         potentials = _batched_linear_solve_impl(
             matrix, rhs, solver, state=state, options=options
-        )
+        )[:, :m]
     return potentials - potentials[system.ground]
 
 
