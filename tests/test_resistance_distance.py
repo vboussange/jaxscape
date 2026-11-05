@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from equinox import filter_grad, filter_jit
 from jax.experimental.sparse import BCOO
-from jaxscape import Graph, GridGraph, SpielmanApproximation
+from jaxscape import Graph, GridGraph, LCPDistance, SpielmanApproximation
 from jaxscape.resistance_distance import (
     p_inv_resistance_distance,
     ResistanceDistance,
@@ -36,6 +36,10 @@ if AMJAX_AVAILABLE:
 EXPECTED_APPROXIMATION_ERROR = 8e-2
 EXPECTED_DIAGONAL_ERROR = 5e-4
 EXPECTED_GRADIENT_ERROR = 5e-3
+
+
+def avg(x, y):
+    return (x + y) / 2
 
 
 def build_nx_resistance_distance_matrix(G):
@@ -427,3 +431,40 @@ def test_few_sources_to_targets_solve_for_them_only():
         memory = program.lower(permeability).compile().memory_analysis()
         assert memory is not None
         assert memory.temp_size_in_bytes < dense / 4
+
+
+def test_debiased_proximity_of_spielman_estimates_has_the_exact_expectation():
+    # The proximity is convex in the distance: applied to unbiased randomized
+    # distances, its expectation exceeds the proximity of the exact distances.
+    rng = np.random.default_rng(0)
+    grid = GridGraph(jnp.asarray(10 ** rng.uniform(-1, 0, (5, 5))), fun=avg)
+    off_diagonal = ~jnp.eye(grid.nv, dtype=bool)
+
+    def proximity(distance):
+        return jnp.exp(-distance)
+
+    def total(proximity, distances):
+        return float(jnp.sum(jnp.where(off_diagonal, proximity(distances), 0)))
+
+    exact = total(proximity, ResistanceDistance()(grid))
+    raw, debiased = [], []
+    for seed in range(64):
+        method = SpielmanApproximation(epsilon=0.3, seed=seed)
+        distance = ResistanceDistance(method=method)
+        estimates = distance(grid)
+        raw.append(total(proximity, estimates))
+        debiased.append(total(distance.debiased_proximity(proximity, grid), estimates))
+    # Measured: +13 % and -1.3 %, with a standard error of 1.8 %.
+    assert np.mean(raw) / exact - 1 > 0.08
+    assert abs(np.mean(debiased) / exact - 1) < 0.04
+
+
+@pytest.mark.parametrize(
+    "distance", [ResistanceDistance(), LCPDistance()], ids=["exact", "lcp"]
+)
+def test_exact_distances_keep_their_proximity(distance):
+    def proximity(distance):
+        return jnp.exp(-distance)
+
+    grid = GridGraph(jnp.ones((3, 3)), fun=avg)
+    assert distance.debiased_proximity(proximity, grid) is proximity

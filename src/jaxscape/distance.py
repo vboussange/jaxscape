@@ -1,5 +1,6 @@
 import warnings
 from abc import abstractmethod
+from collections.abc import Callable
 from typing import Any
 
 import equinox as eqx
@@ -9,7 +10,7 @@ import lineax as lx
 from jax import Array
 from jax.experimental.sparse import BCOO
 
-from .graph import AbstractGraph
+from .graph import AbstractGraph, GridGraph
 from .solvers.operator import _solver_state
 
 
@@ -84,14 +85,12 @@ class AbstractDistance(eqx.Module):
             state = self.init(jax.tree.map(jax.lax.stop_gradient, graph))
 
         if nodes is not None:
-            assert (
-                sources is None and targets is None
-            ), (
+            assert sources is None and targets is None, (
                 "Specify either `nodes`, `sources`, `targets`, or both "
                 "`sources` and `targets`."
             )
             if nodes.ndim == 2:
-                if not hasattr(graph, "coord_to_index"):
+                if not isinstance(graph, GridGraph):
                     raise ValueError(
                         "Coordinate input (2D array) requires a GridGraph. "
                         "Use vertex indices (1D array) for Graph objects."
@@ -104,7 +103,7 @@ class AbstractDistance(eqx.Module):
             targets = jnp.arange(graph.nv) if targets is None else targets
 
             if sources.ndim == 2:
-                if not hasattr(graph, "coord_to_index"):
+                if not isinstance(graph, GridGraph):
                     raise ValueError(
                         "Coordinate input (2D array) for sources requires a GridGraph. "
                         "Use vertex indices (1D array) for Graph objects."
@@ -112,7 +111,7 @@ class AbstractDistance(eqx.Module):
                 sources = graph.coord_to_index(sources[:, 0], sources[:, 1])
 
             if targets.ndim == 2:
-                if not hasattr(graph, "coord_to_index"):
+                if not isinstance(graph, GridGraph):
                     raise ValueError(
                         "Coordinate input (2D array) for targets requires a GridGraph. "
                         "Use vertex indices (1D array) for Graph objects."
@@ -127,6 +126,27 @@ class AbstractDistance(eqx.Module):
     @abstractmethod
     def init(self, graph: AbstractGraph) -> Any:
         pass
+
+    def debiased_proximity(
+        self, proximity: Callable[[Array], Array], graph: AbstractGraph
+    ) -> Callable[[Array], Array]:
+        """Return the proximity to apply to the distances of queries on `graph`.
+
+        Applied to randomized distances, it has the expectation of `proximity`
+        applied to exact distances. Distances that queries compute exactly
+        return `proximity`.
+
+        **Arguments:**
+
+        - `proximity`: Function mapping distances to proximities.
+        - `graph`: Graph of the queries.
+
+        **Returns:**
+
+        Function mapping the distances of queries on `graph` to proximities.
+        """
+        del graph
+        return proximity
 
     def reinit(self, graph: AbstractGraph, state: Any) -> Any:
         """Return the state for `graph`, reusing what the solver can from `state`.

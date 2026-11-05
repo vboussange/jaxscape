@@ -1,4 +1,5 @@
 import math
+from collections.abc import Callable
 from typing import Any
 
 import equinox as eqx
@@ -94,6 +95,50 @@ class ResistanceDistance(AbstractSolverDistance):
     def system_matrix(self, graph: AbstractGraph) -> BCOO:
         """Return the grounded Laplacian of `graph`."""
         return graph_laplacian(graph.get_adjacency_matrix())[:-1, :-1]
+
+    def debiased_proximity(
+        self, proximity: Callable[[Array], Array], graph: AbstractGraph
+    ) -> Callable[[Array], Array]:
+        r"""Return the proximity to apply to the distances of queries on `graph`.
+
+        With `SpielmanApproximation`, an estimate $\hat R$ of the resistance
+        $R$ is unbiased, with variance $2 R^2 / k$ for $k$ projections. A
+        proximity $K$ convex in $R$ is then biased upward: by about 5 %, 15 %
+        and 30 % for `epsilon` 0.1, 0.2 and 0.3 with the default proximity of
+        the windowed analyses. The returned proximity is corrected to second
+        order:
+
+        $$K(\hat R) - \frac{\hat R^2}{k} K''(\hat R)$$
+
+        For a negative exponential, it is
+        $K(\hat R) \big(1 - (\hat R K'(\hat R) / K(\hat R))^2 / k\big)$. The
+        correction does not reduce the variance of the proximities. Exact
+        resistances keep `proximity`.
+
+        **Arguments:**
+
+        - `proximity`: Function mapping resistances to proximities, twice
+          differentiable.
+        - `graph`: Graph of the queries.
+
+        **Returns:**
+
+        Function mapping the resistances of queries on `graph` to proximities.
+        """
+        if not isinstance(self.method, SpielmanApproximation):
+            return proximity
+        k = _projection_size(graph.nv, self.method.epsilon)
+
+        def slope(distance):
+            return jax.jvp(proximity, (distance,), (jnp.ones_like(distance),))
+
+        def debiased(distance):
+            (value, _), (_, curvature) = jax.jvp(
+                slope, (distance,), (jnp.ones_like(distance),)
+            )
+            return value - distance**2 * curvature / k
+
+        return debiased
 
     @eqx.filter_jit
     def all_pairs_distance(self, graph: AbstractGraph, state: Any = None) -> Array:
