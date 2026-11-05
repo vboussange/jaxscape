@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import Any
 
 import equinox as eqx
@@ -61,10 +62,7 @@ def _reachable(
         distances, row, column = inputs
         start = (row - size // 2, column - size // 2)
         weights = lax.dynamic_slice(weight, start, (size, size))
-        # Excluded pixels, the centre among them, get a unit distance: it keeps
-        # the gradient finite for proximities that are singular at zero.
-        distances = jnp.where(excluded, 1, distances)
-        return jnp.sum(jnp.where(excluded, 0, proximity(distances) * weights))
+        return _window_sum(proximity, distances, weights, excluded)
 
     per_step = max(1, _PROXIMITIES_PER_STEP // size**2)
     if rows.size <= per_step:
@@ -72,6 +70,20 @@ def _reachable(
     return lax.map(
         jax.checkpoint(reachable), (distances, rows, columns), batch_size=per_step
     )
+
+
+def _window_sum(
+    proximity: Callable[[Array], Array],
+    distances: Array,
+    weights: Array,
+    excluded: Array,
+) -> Array:
+    """Sum of the proximities of a window's `distances` times `weights`,
+    outside `excluded`."""
+    # Excluded pixels, the centre among them, get a unit distance: it keeps
+    # the gradient finite for proximities that are singular at zero.
+    distances = jnp.where(excluded, 1, distances)
+    return jnp.sum(jnp.where(excluded, 0, proximity(distances) * weights))
 
 
 def _tile_connectivity(
@@ -215,19 +227,26 @@ def _permeability_calibration(windowed: WindowedAnalysis) -> tuple[Array, Array]
     """
     level = lax.stop_gradient(jnp.max(windowed.permeability_raster))
     size = 2 * windowed.dependency_range + 1
+    distance = windowed.distance
     graph = windowed._uniform_graph(level, (size, size))
-    state = windowed.distance.reinit(graph, windowed.window_state)
+    state = distance.reinit(graph, windowed.window_state)
+    centre = jnp.array([graph.nv // 2])
+
+    def window(permeability):
+        graph = GridGraph(permeability, fun=_average)
+        return distance.sources_to_windows_distance(graph, centre, size, state)[0]
+
+    # One window query, whose pullback takes both cotangents.
+    distances, pullback = jax.vjp(window, graph.grid)
+    proximity = distance.debiased_proximity(windowed.proximity, graph)
     ones = jnp.ones_like(graph.grid)
-    sources = (jnp.array([size // 2]),) * 2
 
-    def reachable(permeability, block):
+    def gradient(block):
         excluded = _excluded(windowed, block)
-        return _reachable(
-            windowed, windowed.distance, ones, permeability, sources, state, excluded
-        )[0]
+        cotangent = jax.grad(_window_sum, 1)(proximity, distances, ones, excluded)
+        return pullback(cotangent)[0]
 
-    pixels = jax.grad(reachable)(graph.grid, False)
-    far = jax.grad(reachable)(graph.grid, True)
+    pixels, far = gradient(False), gradient(True)
     far = jnp.where(jnp.abs(far) > 1e-6 * jnp.max(jnp.abs(far)), far, 0)
     return pixels, far
 
