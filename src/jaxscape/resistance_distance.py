@@ -21,6 +21,14 @@ from jaxscape.utils import _matmul, graph_laplacian
 # enough that the streamed scan path is the safer default.
 SPIELMAN_DENSE_PROJECTION_MAX_SIGN_ENTRIES = 200_000_000
 
+# Exact sources-to-targets queries solve all target columns at once, and keep
+# them for the gradient, when their potentials hold at most this many values.
+_UNCHUNKED_POTENTIALS = 2**22
+# Otherwise they solve the target columns this many at a time, and again for the
+# gradient. Sparse direct solvers reach their full throughput from a few hundred
+# columns on.
+_TARGET_CHUNK_SIZE = 1024
+
 
 class ResistanceDistance(AbstractSolverDistance):
     """
@@ -82,6 +90,25 @@ class ResistanceDistance(AbstractSolverDistance):
         dist = distance(grid)
         ```
 
+    !!! note "Grounding, float32 and memory"
+
+        Apart from the pseudo-inverse of dense all-pairs and nodes-to-nodes
+        queries, queries solve the Laplacian grounded at the middle vertex
+        `n // 2`: the central pixel of a grid with an odd number of rows, such
+        as the window of a windowed analysis. Distances from that vertex involve
+        no cancellation. On windows of up to 101 x 101 pixels with a
+        permeability floor of `1e-4`, float32 permeability gradients stayed
+        within 0.4 % of float64 with `CuDSSSolver`, and within 3.5 % with
+        the dense solve and `CholmodSolver`, which takes under 10 % longer in
+        float64. Grounded at the last vertex, in a corner of the window, they were
+        off by up to 17 times their norm with `CuDSSSolver`.
+
+        Exact sources-to-targets queries on `n` vertices, from `m` sources to
+        `k` targets, hold the potentials of all targets when `n * k` is at most
+        `2**22`, as in windows of up to 45 x 45 pixels. Beyond, they solve the
+        targets in chunks of 1024 and hold at most `n * (m + 1024)` potentials,
+        and their gradient solves each target once more.
+
     !!! warning
 
         The graph must be undirected for resistance distance to be well-defined.
@@ -95,7 +122,7 @@ class ResistanceDistance(AbstractSolverDistance):
 
     def system_matrix(self, graph: AbstractGraph) -> BCOO:
         """Return the grounded Laplacian of `graph`."""
-        return graph_laplacian(graph.get_adjacency_matrix())[:-1, :-1]
+        return _grounded_laplacian(graph.get_adjacency_matrix())
 
     def debiased_proximity(
         self, proximity: Callable[[Array], Array], graph: AbstractGraph
@@ -362,7 +389,7 @@ def spielman_sources_to_targets_resistance_distance(
     many adjoint solves for the gradient, whatever the numbers of sources and
     targets.
     """
-    features = _vertex_features(
+    features = _with_ground(
         _spielman_features_reduced(
             A.data, A.indices, A.shape, epsilon, seed, solver, state
         )
@@ -377,6 +404,46 @@ def _projection_size(n: int, epsilon: float) -> int:
     return max(1, math.ceil(math.log(max(n, 2)) / epsilon**2))
 
 
+def _grounded_rows(nodes: Array, n: int) -> Array:
+    """Rows of the grounded system for `nodes` of a graph of `n` vertices.
+
+    The ground is the middle vertex `n // 2`, the central pixel of a grid with
+    an odd number of rows. Grounding a window at its centre, where distances
+    start, keeps float32 gradients accurate: potentials grounded in a corner of
+    floored padding lose all their digits. The ground vertex, and padding
+    indices from `n` on, map to rows from `n - 1` on, past the last row.
+    """
+    ground = n // 2
+    return jnp.where(nodes == ground, n - 1, nodes - (nodes > ground))
+
+
+def _grounded_laplacian(A: BCOO) -> BCOO:
+    """The Laplacian of `A` without the row and the column of the ground vertex."""
+    L = graph_laplacian(A)
+    n = A.shape[0]
+    indices = _grounded_rows(L.indices, n)
+    # As in a sliced BCOO matrix, removed entries become zero padding past the
+    # last row and column.
+    removed = jnp.any(indices >= n - 1, axis=1)
+    return BCOO(
+        (
+            jnp.where(removed, 0, L.data),
+            jnp.where(removed[:, None], n - 1, indices),
+        ),
+        shape=(n - 1, n - 1),
+    )
+
+
+def _without_ground(vertex_values: Array) -> Array:
+    """Drop the column of the ground vertex from values of all vertices."""
+    return jnp.delete(vertex_values, vertex_values.shape[1] // 2, axis=1)
+
+
+def _with_ground(values: Array) -> Array:
+    """Insert a zero column for the ground vertex into grounded-system values."""
+    return jnp.insert(values, (values.shape[1] + 1) // 2, 0, axis=1)
+
+
 def _prepare_reduced_laplacian(
     data: Array,
     indices: Array,
@@ -384,7 +451,7 @@ def _prepare_reduced_laplacian(
     solver: lx.AbstractLinearSolver | None,
     state: Any,
 ) -> tuple[BCOO, Any]:
-    reduced = graph_laplacian(BCOO((data, indices), shape=shape))[:-1, :-1]
+    reduced = _grounded_laplacian(BCOO((data, indices), shape=shape))
     if solver is not None:
         state = _solver_state(reduced, solver, None, state)
     return reduced, state
@@ -431,16 +498,15 @@ def _node_potentials(
 def _unit_vectors(L_reduced: BCOO, nodes: Array) -> Array:
     """Columns `e_i` of the grounded system for `nodes`, zero for the ground node."""
     # Duplicate nodes retain duplicate columns.
-    return jax.nn.one_hot(nodes, L_reduced.shape[0], dtype=L_reduced.dtype).T
+    q = L_reduced.shape[0]
+    return jax.nn.one_hot(_grounded_rows(nodes, q + 1), q, dtype=L_reduced.dtype).T
 
 
 def _grounded_values(potentials: Array, nodes: Array) -> Array:
     """Select rows of (n - 1, rhs) potentials, with zero at the ground node."""
-    return jnp.where(
-        (nodes < potentials.shape[0])[:, None],
-        potentials[jnp.minimum(nodes, potentials.shape[0] - 1)],
-        0,
-    )
+    q = potentials.shape[0]
+    rows = _grounded_rows(nodes, q + 1)
+    return jnp.where((rows < q)[:, None], potentials[jnp.minimum(rows, q - 1)], 0)
 
 
 def _laplacian_data_pullback(
@@ -518,6 +584,61 @@ def _exact_selected_inverse_bwd(
     return _laplacian_data_pullback(adjoint, potentials, indices, shape)
 
 
+def _target_chunks(targets: Array, n: int) -> Array:
+    """Split `targets` of a graph of `n` vertices into chunks solved together.
+
+    One chunk when the potentials of all targets hold at most
+    `_UNCHUNKED_POTENTIALS` values, otherwise equal chunks of at most
+    `_TARGET_CHUNK_SIZE`. The last chunk is padded with the ground vertex, whose
+    potentials are zero.
+    """
+    k = targets.shape[0]
+    n_chunks = 1 if n * k <= _UNCHUNKED_POTENTIALS else -(-k // _TARGET_CHUNK_SIZE)
+    padding = n_chunks * -(-k // n_chunks) - k
+    return jnp.pad(targets, (0, padding), constant_values=n // 2).reshape(n_chunks, -1)
+
+
+def _exact_solver_state(
+    data: Array,
+    indices: Array,
+    shape: tuple[int, ...],
+    solver: lx.AbstractLinearSolver | None,
+    state: Any,
+) -> tuple[BCOO, Any]:
+    """The grounded Laplacian, and the solver state or dense factor that solves it."""
+    reduced, solve_state = _prepare_reduced_laplacian(
+        data, indices, shape, solver, state
+    )
+    if solver is None:
+        # The grounded Laplacian of a connected graph is positive definite: a
+        # dense Cholesky factorization solves it 1.3 times faster than the LU
+        # factorization of `_solve_reduced_laplacian`.
+        solve_state = jnp.linalg.cholesky(reduced.todense())
+    return reduced, solve_state
+
+
+def _exact_potentials(
+    reduced: BCOO,
+    nodes: Array,
+    solver: lx.AbstractLinearSolver | None,
+    solve_state: Any,
+) -> Array:
+    """Columns of the grounded inverse for `nodes`, zero for the ground vertex."""
+    if solver is None:
+        basis = _unit_vectors(reduced, nodes)
+        return jax.scipy.linalg.cho_solve((solve_state, True), basis)
+    return _node_potentials(reduced, nodes, solver, solve_state)
+
+
+def _own_values(potentials: Array, nodes: Array) -> Array:
+    """The value of each potential column at its own node."""
+
+    def own_value(column, node):
+        return _grounded_values(column[:, None], node[None])[0, 0]
+
+    return jax.vmap(own_value, in_axes=(1, 0))(potentials, nodes)
+
+
 @eqx.filter_custom_vjp
 def _exact_sources_to_targets(
     data: Array,
@@ -537,35 +658,36 @@ def _exact_sources_to_targets_fwd(
     perturbed, data, indices, shape, sources, targets, solver, state
 ):
     del perturbed
-    nodes = jnp.concatenate([sources, targets])
-    reduced, solve_state = _prepare_reduced_laplacian(
-        data, indices, shape, solver, state
-    )
-    if solver is None:
-        # The grounded Laplacian of a connected graph is positive definite: a
-        # dense Cholesky factorization solves it 1.3 times faster than the LU
-        # factorization of `_node_potentials`.
-        factor = jnp.linalg.cholesky(reduced.todense())
-        basis = _unit_vectors(reduced, nodes)
-        potentials = jax.scipy.linalg.cho_solve((factor, True), basis)
-    else:
-        potentials = _node_potentials(reduced, nodes, solver, solve_state)
-    # With S the grounded inverse among `nodes`, R_ij = S_ii + S_jj - S_ij - S_ji
-    # for source column i and target column j; only the diagonal and the
-    # source-target blocks of S are formed.
+    reduced, solve_state = _exact_solver_state(data, indices, shape, solver, state)
+    # With S the grounded inverse, R_ij = S_ii + S_jj - 2 S_ij for source i and
+    # target j. The source columns of S give S_ii and S_ij, the target columns
+    # their diagonal S_jj.
     m = sources.shape[0]
+    chunks = _target_chunks(targets, shape[0])
+    if chunks.shape[0] == 1:
+        # One solve for all columns, whose potentials stay for the gradient.
+        nodes = jnp.concatenate([sources, chunks[0]])
+        potentials = _exact_potentials(reduced, nodes, solver, solve_state)
+        diagonal = _own_values(potentials[:, m:], chunks[0])
+        residuals = (potentials, None)
+    else:
+        # The target columns, chunk by chunk, keeping their diagonal only: the
+        # gradient solves them again.
+        potentials = _exact_potentials(reduced, sources, solver, solve_state)
 
-    def own_value(column, node):
-        return _grounded_values(column[:, None], node[None])[0, 0]
+        def target_diagonal(chunk):
+            chunk_potentials = _exact_potentials(reduced, chunk, solver, solve_state)
+            return _own_values(chunk_potentials, chunk)
 
-    diagonal = jax.vmap(own_value, in_axes=(1, 0))(potentials, nodes)
+        diagonal = lax.map(target_diagonal, chunks)
+        residuals = (potentials, (reduced, solve_state))
+    source_potentials = potentials[:, :m]
     distances = (
-        diagonal[:m, None]
-        + diagonal[None, m:]
-        - _grounded_values(potentials[:, m:], sources)
-        - _grounded_values(potentials[:, :m], targets).T
+        _own_values(source_potentials, sources)[:, None]
+        + diagonal.reshape(-1)[None, : targets.shape[0]]
+        - 2 * _grounded_values(source_potentials, targets).T
     )
-    return distances, potentials
+    return distances, residuals
 
 
 _exact_sources_to_targets.def_fwd(_exact_sources_to_targets_fwd)
@@ -573,7 +695,7 @@ _exact_sources_to_targets.def_fwd(_exact_sources_to_targets_fwd)
 
 @_exact_sources_to_targets.def_bwd
 def _exact_sources_to_targets_bwd(
-    potentials,
+    residuals,
     cotangent,
     perturbed,
     data,
@@ -584,7 +706,7 @@ def _exact_sources_to_targets_bwd(
     solver,
     state,
 ):
-    del data, targets, solver, state
+    del state
     if cotangent is None or not perturbed:
         return None
     # As in `_exact_selected_inverse_bwd`, the adjoint is X G, where X are the
@@ -592,19 +714,55 @@ def _exact_sources_to_targets_bwd(
     # cotangent of S. For the cotangent H of the (m, k) distances,
     #   G = [[diag(H 1), -H], [-H.T, diag(H.T 1)]],
     # so X G = [X_s diag(H 1) - X_t H.T, X_t diag(H.T 1) - X_s H]. This costs
-    # O(n m k) and never forms G: one source to all targets stays O(n^2).
+    # O(n m k) and never forms G.
+    potentials, solver_state = residuals
     m = sources.shape[0]
-    source_potentials, target_potentials = potentials[:, :m], potentials[:, m:]
-    adjoint = jnp.concatenate(
-        [
-            source_potentials * jnp.sum(cotangent, axis=1)
-            - _matmul(target_potentials, cotangent.T),
-            target_potentials * jnp.sum(cotangent, axis=0)
-            - _matmul(source_potentials, cotangent),
-        ],
-        axis=1,
+    source_potentials = potentials[:, :m]
+    if solver_state is None:
+        # The forward pass kept the target columns after the source columns.
+        target_potentials = potentials[:, m:]
+        adjoint = jnp.concatenate(
+            [
+                source_potentials * jnp.sum(cotangent, axis=1)
+                - _matmul(target_potentials, cotangent.T),
+                target_potentials * jnp.sum(cotangent, axis=0)
+                - _matmul(source_potentials, cotangent),
+            ],
+            axis=1,
+        )
+        return _laplacian_data_pullback(adjoint, potentials, indices, shape)
+
+    # The data pullback sums over columns: each chunk of target columns, solved
+    # again, adds its own term and its part of X_t H.T.
+    reduced, solve_state = solver_state
+    chunks = _target_chunks(targets, shape[0])
+    padding = chunks.size - targets.shape[0]
+    chunk_cotangents = jnp.pad(cotangent, ((0, 0), (0, padding)))
+    chunk_cotangents = chunk_cotangents.reshape(-1, *chunks.shape).swapaxes(0, 1)
+
+    def add_chunk(carry, chunk_and_cotangent):
+        gradient, weighted_targets = carry
+        chunk, chunk_cotangent = chunk_and_cotangent
+        target_potentials = _exact_potentials(reduced, chunk, solver, solve_state)
+        adjoint = target_potentials * jnp.sum(chunk_cotangent, axis=0) - _matmul(
+            source_potentials, chunk_cotangent
+        )
+        gradient = gradient + _laplacian_data_pullback(
+            adjoint, target_potentials, indices, shape
+        )
+        weighted_targets = weighted_targets + _matmul(
+            target_potentials, chunk_cotangent.T
+        )
+        return (gradient, weighted_targets), None
+
+    carry = (jnp.zeros_like(data), jnp.zeros_like(source_potentials))
+    (gradient, weighted_targets), _ = lax.scan(
+        add_chunk, carry, (chunks, chunk_cotangents)
     )
-    return _laplacian_data_pullback(adjoint, potentials, indices, shape)
+    adjoint = source_potentials * jnp.sum(cotangent, axis=1) - weighted_targets
+    return gradient + _laplacian_data_pullback(
+        adjoint, source_potentials, indices, shape
+    )
 
 
 def _rademacher_projection_signs(
@@ -663,7 +821,9 @@ def _spielman_features_reduced_fwd(
     reduced, solve_state = _prepare_reduced_laplacian(
         data, indices, shape, solver, state
     )
-    projection = _spielman_projection(data, indices, shape, epsilon, seed)[:, :-1]
+    projection = _without_ground(
+        _spielman_projection(data, indices, shape, epsilon, seed)
+    )
     potentials = _solve_reduced_laplacian(reduced, projection.T, solver, solve_state)
     return potentials.T, (potentials, reduced, solve_state)
 
@@ -700,7 +860,7 @@ def _spielman_features_reduced_bwd(
     )
     # The projection helper returns all n columns; the removed ground column
     # did not affect F, so its cotangent must be zero.
-    (projection_gradient,) = projection_pullback(jnp.pad(adjoint.T, ((0, 0), (0, 1))))
+    (projection_gradient,) = projection_pullback(_with_ground(adjoint.T))
     return (
         _laplacian_data_pullback(adjoint, potentials, indices, shape)
         + projection_gradient
@@ -886,14 +1046,6 @@ def _spielman_nodes_to_nodes_resistance_distance_from_data(
     return distances.at[jnp.diag_indices(nodes.shape[0])].set(0)
 
 
-def _vertex_features(features_reduced: Array) -> Array:
-    """Features of every vertex from reduced embeddings.
-
-    The ground vertex, the last one, has zero features.
-    """
-    return jnp.pad(features_reduced, ((0, 0), (0, 1)))
-
-
 def _spielman_resistance_distance_from_data(
     data: Array,
     indices: Array,
@@ -903,7 +1055,7 @@ def _spielman_resistance_distance_from_data(
     solver: lx.AbstractLinearSolver | None,
     state: Any,
 ) -> Array:
-    features = _vertex_features(
+    features = _with_ground(
         _spielman_features_reduced(data, indices, shape, epsilon, seed, solver, state)
     )
     return _distances_from_selected_features(features, features)
