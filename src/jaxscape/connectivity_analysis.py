@@ -276,7 +276,10 @@ class SensitivityAnalysis(WindowedAnalysis):
       `EuclideanDistance`, `LCPDistance`, `ResistanceDistance` and
       `FreeEnergyDistance` are symmetric on the window graphs, whose edges
       average permeability. For other distances, the result is the gradient of
-      the coarsened connectivity.
+      the coarsened connectivity. Within `dependency_range` of the raster
+      edges, the term falls steeply towards the edge and the interpolation
+      underestimates it: by up to 20 % in a uniform landscape with
+      `dependency_range` 8, the default proximity and `b = 3` or 5.
     - **Permeability.** The gradient of each block window's connectivity
       without the pairs within the block,
       $\big(\sum_i T_c(i) \, q_i\big) \sum_{j \notin \text{block}} K_{cj} q_j$,
@@ -294,6 +297,14 @@ class SensitivityAnalysis(WindowedAnalysis):
       block window is the weighted sum of the gradients of these pixel
       windows, except at or below the noise floor and in the band of up to
       $b - 1$ pixels that the pixel windows reach beyond the block window.
+      The gradients in that band are lost, so the coarsened permeability
+      sensitivity is biased low. Measured in a uniform landscape with
+      `dependency_range` 8 and the default proximity, away from the edges, it
+      is 0.96 to 1.00 times the uncoarsened one for `ResistanceDistance` with
+      `b = 5` (0.97 to 1.00 with `b = 3`), and 0.99 to 1.00 for
+      `LCPDistance`. Within `dependency_range` of the edges, where the
+      calibration window differs most from the block windows, resistance
+      sensitivity is as low as 0.7 times the uncoarsened one in the outer rows.
 
     Parameters and windowing strategy are identical to
     [`ConnectivityAnalysis`][jaxscape.connectivity_analysis.ConnectivityAnalysis],
@@ -336,8 +347,8 @@ class SensitivityAnalysis(WindowedAnalysis):
         **Returns:**
 
         Gradient raster with the same shape as the input, showing sensitivity at
-        each pixel. Pixels whose permeability is below the floor have zero
-        permeability sensitivity.
+        each pixel. Pixels whose permeability is at or below the permeability
+        floor have zero permeability sensitivity.
         """
         coarse = self.window_op.window_size > 1
         calibration = state = None
