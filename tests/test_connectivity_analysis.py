@@ -36,7 +36,7 @@ def proximity(dist):
     return jnp.exp(-dist / D)
 
 
-def analysis(kind, distance, quality=QUALITY, permeability=PERMEABILITY, **kwargs):
+def make(kind, distance, quality=QUALITY, permeability=PERMEABILITY, **kwargs):
     # 42 windows: five full batches and a partial one.
     kwargs = {"proximity": proximity, "batch_size": 8, "dependency_range": D, **kwargs}
     return kind(
@@ -124,10 +124,10 @@ def test_analyses_match_each_pixels_own_window(name, request):
     make_distance, reference, rtol = CASES[name]
     distance = make_distance(request)
 
-    connectivity = analysis(ConnectivityAnalysis, distance).run()
+    connectivity = make(ConnectivityAnalysis, distance).run()
     assert_close(connectivity, own_windows(QUALITY, PERMEABILITY, reference), rtol)
 
-    sensitivity = analysis(SensitivityAnalysis, distance)
+    sensitivity = make(SensitivityAnalysis, distance)
     for argnums, var in enumerate(["quality", "permeability"]):
         expected = jax.grad(own_windows, argnums)(QUALITY, PERMEABILITY, reference)
         assert_close(sensitivity.run(var), expected, rtol)
@@ -145,7 +145,7 @@ def test_euclidean_connectivity_matches_all_pairs(q_weighted):
         return q @ (K - jnp.eye(grid.nv)) @ q
 
     def run(kind, *args):
-        return analysis(
+        return make(
             kind, EuclideanDistance(), permeability=QUALITY, proximity=cut_off
         ).run(*args, q_weighted=q_weighted)
 
@@ -167,11 +167,11 @@ def test_sensitivity_is_the_gradient_of_connectivity(name, kernel, request):
     distance = CASES[name][0](request)
 
     def connectivity(quality, permeability):
-        return analysis(
+        return make(
             ConnectivityAnalysis, distance, quality, permeability, proximity=kernel
         ).run()
 
-    sensitivity = analysis(SensitivityAnalysis, distance, proximity=kernel)
+    sensitivity = make(SensitivityAnalysis, distance, proximity=kernel)
     for argnums, var in enumerate(["quality", "permeability"]):
         actual = sensitivity.run(var)
         assert jnp.all(jnp.isfinite(actual))
@@ -191,7 +191,7 @@ def test_default_lcp_proximity_is_exponential_in_pixels(kind, uniform):
     args = ("permeability",) if kind is SensitivityAnalysis else ()
 
     def run(proximity):
-        return analysis(
+        return make(
             kind, LCPDistance(), permeability=permeability, proximity=proximity
         ).run(*args)
 
@@ -204,7 +204,7 @@ def test_default_resistance_proximity_is_exponential_in_pixels(r):
     # permeability 1, where resistance grows like the logarithm of r.
     quality = jnp.zeros((2 * D + 1, 2 * D + 1 + r)).at[D, jnp.array([D, D + r])].set(1)
     permeability = jnp.ones_like(quality)
-    connectivity = analysis(
+    connectivity = make(
         ConnectivityAnalysis,
         ResistanceDistance(),
         quality,
@@ -219,7 +219,7 @@ def test_default_proximity_decreases_for_randomized_distances():
     # With this seed, the randomized resistance drops from 0.80 two pixels
     # from the centre of a window of permeability 1 to 0.55 at its edge.
     method = SpielmanApproximation(epsilon=0.3, seed=3)
-    kernel = analysis(
+    kernel = make(
         ConnectivityAnalysis, ResistanceDistance(method=method), proximity=None
     ).proximity
 
@@ -235,11 +235,11 @@ def test_cudss_windows_carry_one_analysis():
     spineax = cudsssolver._load_cudss()
 
     rebuilds = spineax.rebuild_count()
-    jax.block_until_ready(analysis(ConnectivityAnalysis, distance).run())
-    jax.block_until_ready(analysis(SensitivityAnalysis, distance).run("permeability"))
+    jax.block_until_ready(make(ConnectivityAnalysis, distance).run())
+    jax.block_until_ready(make(SensitivityAnalysis, distance).run("permeability"))
     # With coarsening, the windows carry on from the state of the block
     # correction's calibration.
-    coarsened = analysis(SensitivityAnalysis, distance, coarsening_factor=0.5)
+    coarsened = make(SensitivityAnalysis, distance, coarsening_factor=0.5)
     jax.block_until_ready(coarsened.run("permeability"))
     # Each window refactorizes the state of the previous one: no handle is
     # used up twice, so no analysis repeats.
@@ -250,7 +250,7 @@ def test_sensitivity_is_finite_for_proximity_singular_at_zero():
     def inverse(dist):
         return 1 / dist
 
-    sensitivity = analysis(SensitivityAnalysis, LCPDistance(), proximity=inverse)
+    sensitivity = make(SensitivityAnalysis, LCPDistance(), proximity=inverse)
     for var in ["quality", "permeability"]:
         assert jnp.all(jnp.isfinite(sensitivity.run(var)))
 
@@ -263,7 +263,7 @@ def test_coarsened_analyses_cover_the_raster(name, request):
 
     # Blocks of 3 x 3 pixels, centred on rows 0, 1, 4 and 5, columns 0, 1, 4, 6.
     def coarsened(kind):
-        return analysis(kind, distance, coarsening_factor=0.5)
+        return make(kind, distance, coarsening_factor=0.5)
 
     connectivity = coarsened(ConnectivityAnalysis).run()
     assert jnp.isfinite(connectivity) and connectivity > 0
@@ -285,7 +285,7 @@ def test_coarsened_permeability_sensitivity_ignores_permeability_out_of_reach(
     lowered = permeability.at[:, 35:].set(0.2)
 
     def sensitivity(permeability):
-        return analysis(
+        return make(
             SensitivityAnalysis,
             CASES[name][0](request),
             quality,
@@ -309,7 +309,7 @@ def test_coarsened_permeability_sensitivity_is_finite_where_proximities_underflo
     habitat = jnp.zeros((40, 40), "float32").at[12:15, 12:18].set(1)
 
     def sensitivity(coarsening_factor):
-        return analysis(
+        return make(
             SensitivityAnalysis,
             CASES[name][0](request),
             habitat,
@@ -326,7 +326,7 @@ def test_coarsened_permeability_sensitivity_is_finite_where_proximities_underflo
 def test_coarsening_runs_on_a_raster_thinner_than_a_block():
     # Blocks of 3 x 3 pixels, on a raster of one row: every centre is in it.
     def coarsened(kind):
-        return analysis(
+        return make(
             kind, LCPDistance(), QUALITY[:1], PERMEABILITY[:1], coarsening_factor=0.5
         )
 
@@ -343,7 +343,7 @@ def test_coarsened_quality_sensitivity_is_exact_inside_a_uniform_landscape(
     uniform = jnp.full((20, 20), 0.7)
 
     def sensitivity(coarsening_factor):
-        return analysis(
+        return make(
             SensitivityAnalysis,
             distance,
             uniform,
@@ -377,7 +377,7 @@ def test_coarsening_approximates_pixel_windows_at_the_edges_of_a_uniform_landsca
     uniform = jnp.full((24, 25), 0.7)
 
     def sensitivity(coarsening_factor):
-        return analysis(
+        return make(
             SensitivityAnalysis,
             distance,
             uniform,
@@ -417,11 +417,11 @@ def test_coarsened_quality_sensitivity_of_other_distances_is_a_gradient():
     distance = Opaque(LCPDistance())
 
     def connectivity(quality):
-        return analysis(
+        return make(
             ConnectivityAnalysis, distance, quality, coarsening_factor=0.5
         ).run()
 
-    sensitivity = analysis(SensitivityAnalysis, distance, coarsening_factor=0.5)
+    sensitivity = make(SensitivityAnalysis, distance, coarsening_factor=0.5)
     expected = jax.grad(connectivity)(QUALITY)
     assert_close(sensitivity.run("quality"), expected, 1e-12)
 
@@ -504,8 +504,8 @@ def test_all_batches_and_runs_share_one_compiled_program(
     distance = CASES[name][0](request)
     quality, permeability = QUALITY[:5], PERMEABILITY[:5]
 
-    def windowed(batch_size):
-        return analysis(
+    def batched(batch_size):
+        return make(
             kind,
             distance,
             quality,
@@ -515,25 +515,25 @@ def test_all_batches_and_runs_share_one_compiled_program(
         )
 
     # One batch compiles everything that does not depend on the batch count.
-    windowed(35).run(*args)
+    batched(35).run(*args)
     compilations.clear()
-    batched = windowed(3)
-    batched.run(*args)
+    windowed = batched(3)
+    windowed.run(*args)
     # Each new Cholmod state also recompiles the permeability calibration.
     calibration = "jit(_permeability_calibration)"
     assert [name for name in compilations if name != calibration] == ["jit(_batch)"]
 
     # The analysis keeps its solver state: another run compiles nothing.
     compilations.clear()
-    batched.run(*args)
+    windowed.run(*args)
     assert compilations == []
 
 
 @pytest.mark.parametrize("kind", [ConnectivityAnalysis, SensitivityAnalysis])
 def test_default_proximity_compiles_once_for_all_analyses(kind, compilations):
     args = ("permeability",) if kind is SensitivityAnalysis else ()
-    analysis(kind, LCPDistance(), proximity=None).run(*args)
-    other = analysis(kind, LCPDistance(), 2 * QUALITY, 3 * PERMEABILITY, proximity=None)
+    make(kind, LCPDistance(), proximity=None).run(*args)
+    other = make(kind, LCPDistance(), 2 * QUALITY, 3 * PERMEABILITY, proximity=None)
 
     compilations.clear()
     other.run(*args)

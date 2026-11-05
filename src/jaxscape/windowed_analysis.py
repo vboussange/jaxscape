@@ -115,16 +115,26 @@ class WindowedAnalysis(eqx.Module):
 
     !!! example
 
-        ```python
-        from jaxscape.windowed_analysis import WindowedAnalysis
+        The subclasses share these arguments:
 
-        # process_window is an application-supplied callback returning a scalar.
-        class CustomConnectivity(WindowedAnalysis):
-            def run(self):
-                result = 0.0
-                for xy, quality in self.window_op.lazy_iterator(self.quality_raster):
-                    result += process_window(quality)
-                return result
+        ```python
+        from jaxscape import (
+            ConnectivityAnalysis,
+            ResistanceDistance,
+            SensitivityAnalysis,
+        )
+        from jaxscape.solvers import CholmodSolver
+
+        settings = dict(
+            quality_raster=quality,
+            permeability_raster=permeability,
+            distance=ResistanceDistance(solver=CholmodSolver()),
+            dependency_range=20,
+            batch_size=100,
+            coarsening_factor=0.25,  # blocks of 5 x 5 pixels
+        )
+        connectivity = ConnectivityAnalysis(**settings).run()
+        d_permeability = SensitivityAnalysis(**settings).run("permeability")
         ```
     """
 
@@ -259,7 +269,7 @@ class WindowedAnalysis(eqx.Module):
     ) -> Array:
         """Accumulate `window_fn` over the windows of all block centres.
 
-        `window_fn(analysis, quality, permeability, inside, tent, state, *args)`
+        `window_fn(windowed, quality, permeability, inside, tent, state, *args)`
         maps the windows of the padded rasters, the mask of their pixels inside
         the input raster, the interpolation weights of the window's block centre
         and the solver state, to a scalar or to a window. Scalars fill
@@ -286,14 +296,14 @@ class _Batch(eqx.Module):
 
     **Attributes:**
 
-    - `analysis`: The windowed analysis.
+    - `windowed`: The windowed windowed.
     - `start`: Index of the first window of the batch.
     - `state`: Array part of the solver state that the first window
       reinitializes.
     - `window_fn`, `args`: As in `WindowedAnalysis._accumulate`.
     """
 
-    analysis: WindowedAnalysis
+    windowed: WindowedAnalysis
     start: Array
     state: Any
     window_fn: Callable
@@ -307,21 +317,21 @@ def _batch(batch: _Batch, accumulated: Array) -> tuple[Array, Any]:
     Returns the accumulated value and the array part of the solver state after
     the batch.
     """
-    analysis, window_fn, args = batch.analysis, batch.window_fn, batch.args
-    dynamic, static = batch.state, eqx.partition(analysis.state, eqx.is_array)[1]
-    op = analysis.window_op
+    windowed, window_fn, args = batch.windowed, batch.window_fn, batch.args
+    dynamic, static = batch.state, eqx.partition(windowed.state, eqx.is_array)[1]
+    op = windowed.window_op
     size = op.total_window_size
-    rows, columns = analysis._blocks
+    rows, columns = windowed._blocks
 
     # Dummy windows complete the last batch, so all batches share one program.
-    index = batch.start + jnp.arange(analysis.batch_size)
+    index = batch.start + jnp.arange(windowed.batch_size)
     valid = index < rows * columns
     index = jnp.minimum(index, rows * columns - 1)
     # The block centres of the windows along each axis, and the neighbouring
     # centres where their interpolation weights reach 0: shape (batch, 2, 3).
     knots = [
         jnp.asarray(np.stack([np.r_[c[0] - 1, c[:-1]], c, np.r_[c[1:], c[-1] + 1]]))
-        for c in analysis._centres
+        for c in windowed._centres
     ]
     knots = jnp.stack(
         [knots[0][:, index // columns], knots[1][:, index % columns]], axis=1
@@ -332,22 +342,22 @@ def _batch(batch: _Batch, accumulated: Array) -> tuple[Array, Any]:
     def windows(knots):
         xy = knots[:, 1]
         pixels = xy[:, None] - size // 2 + jnp.arange(size)
-        inside = ((pixels[0] >= 0) & (pixels[0] < analysis.shape[0]))[:, None] & (
-            (pixels[1] >= 0) & (pixels[1] < analysis.shape[1])
+        inside = ((pixels[0] >= 0) & (pixels[0] < windowed.shape[0]))[:, None] & (
+            (pixels[1] >= 0) & (pixels[1] < windowed.shape[1])
         )[None, :]
         tent = [
             jnp.interp(pixels[axis], knots[axis], jnp.array([0, 1, 0]))
             for axis in range(2)
         ]
-        tent = jnp.outer(tent[0], tent[1]).astype(analysis.quality_raster.dtype)
-        quality = op.extract_total_window(xy, analysis.quality_raster)
-        permeability = op.extract_total_window(xy, analysis.permeability_raster)
+        tent = jnp.outer(tent[0], tent[1]).astype(windowed.quality_raster.dtype)
+        quality = op.extract_total_window(xy, windowed.quality_raster)
+        permeability = op.extract_total_window(xy, windowed.permeability_raster)
         return quality, permeability, inside, tent
 
     if dynamic is None:
 
         def window(knots):
-            return window_fn(analysis, *windows(knots), None, *args)
+            return window_fn(windowed, *windows(knots), None, *args)
 
         outputs = jax.vmap(window)(knots)
     else:
@@ -356,9 +366,9 @@ def _batch(batch: _Batch, accumulated: Array) -> tuple[Array, Any]:
         def step(dynamic, knots):
             quality, permeability, inside, tent = windows(knots)
             graph = GridGraph(lax.stop_gradient(permeability), fun=_average)
-            state = analysis.distance.reinit(graph, eqx.combine(dynamic, static))
+            state = windowed.distance.reinit(graph, eqx.combine(dynamic, static))
             output = window_fn(
-                analysis, quality, permeability, inside, tent, state, *args
+                windowed, quality, permeability, inside, tent, state, *args
             )
             return eqx.partition(state, eqx.is_array)[0], output
 

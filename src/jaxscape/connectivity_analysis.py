@@ -36,7 +36,7 @@ def _excluded(op: WindowOperation, block: bool) -> Array:
     return jnp.zeros((size, size), bool).at[core, core].set(True)
 
 
-def _own(
+def _reachable(
     distance: AbstractDistance,
     proximity: Callable[[Array], Array],
     weight: Array,
@@ -44,7 +44,7 @@ def _own(
     state: Any,
     excluded: Array,
 ) -> Array:
-    """Proximity-weighted `weight` seen from the window centre, outside `excluded`."""
+    """Proximity-weighted `weight` reachable from the centre, outside `excluded`."""
     size = weight.shape[0]
     centre = jnp.array([(size // 2) * size + size // 2])
     graph = GridGraph(permeability, fun=_average)
@@ -56,7 +56,7 @@ def _own(
 
 
 def _window_connectivity(
-    analysis: WindowedAnalysis,
+    windowed: WindowedAnalysis,
     quality: Array,
     permeability: Array,
     inside: Array,
@@ -72,31 +72,31 @@ def _window_connectivity(
     outside its block if `block`.
     """
     weight = quality if q_weighted else inside.astype(quality.dtype)
-    excluded = _excluded(analysis.window_op, block)
-    own = _own(
-        analysis.distance, analysis.proximity, weight, permeability, state, excluded
+    excluded = _excluded(windowed.window_op, block)
+    reachable = _reachable(
+        windowed.distance, windowed.proximity, weight, permeability, state, excluded
     )
-    return jnp.sum(tent * weight) * own
+    return jnp.sum(tent * weight) * reachable
 
 
-def _window_own(
-    analysis: WindowedAnalysis,
+def _window_reachable_quality(
+    windowed: WindowedAnalysis,
     quality: Array,
     permeability: Array,
     inside: Array,
     tent: Array,
     state: Any,
 ) -> Array:
-    """Proximity-weighted quality seen from the window centre."""
+    """Proximity-weighted quality reachable from the window centre."""
     del inside, tent
-    excluded = _excluded(analysis.window_op, block=False)
-    return _own(
-        analysis.distance, analysis.proximity, quality, permeability, state, excluded
+    excluded = _excluded(windowed.window_op, block=False)
+    return _reachable(
+        windowed.distance, windowed.proximity, quality, permeability, state, excluded
     )
 
 
 def _window_sensitivity(
-    analysis: WindowedAnalysis,
+    windowed: WindowedAnalysis,
     quality: Array,
     permeability: Array,
     inside: Array,
@@ -115,7 +115,7 @@ def _window_sensitivity(
 
     def connectivity(quality, permeability):
         return _window_connectivity(
-            analysis, quality, permeability, inside, tent, state, q_weighted, block
+            windowed, quality, permeability, inside, tent, state, q_weighted, block
         )
 
     argnums = 1 if var == "permeability" else 0
@@ -125,7 +125,7 @@ def _window_sensitivity(
     pixels, far = calibration
     # The pixel windows that the window stands for: the raster pixels around
     # its centre, weighted by their interpolation weights.
-    b = analysis.window_op.window_size
+    b = windowed.window_op.window_size
     centre = tent.shape[0] // 2
     near = slice(centre - b + 1, centre + b)
     weights = (tent * inside)[near, near]
@@ -137,7 +137,7 @@ def _window_sensitivity(
 
 @eqx.filter_jit
 def _permeability_calibration(
-    analysis: WindowedAnalysis, state: Any
+    windowed: WindowedAnalysis, state: Any
 ) -> tuple[tuple[Array, Array], Any]:
     """Block correction gradients on a window of the maximum permeability.
 
@@ -147,21 +147,21 @@ def _permeability_calibration(
     maximum. Returns them and the array part of the solver state, reinitialized
     for the window from the array part `state`.
     """
-    op = analysis.window_op
-    level = lax.stop_gradient(jnp.max(analysis.permeability_raster))
-    graph = analysis._uniform_graph(level)
-    static = eqx.partition(analysis.state, eqx.is_array)[1]
-    state = analysis.distance.reinit(graph, eqx.combine(state, static))
+    op = windowed.window_op
+    level = lax.stop_gradient(jnp.max(windowed.permeability_raster))
+    graph = windowed._uniform_graph(level)
+    static = eqx.partition(windowed.state, eqx.is_array)[1]
+    state = windowed.distance.reinit(graph, eqx.combine(state, static))
     ones = jnp.ones_like(graph.grid)
 
-    def own(permeability, block):
+    def reachable(permeability, block):
         excluded = _excluded(op, block)
-        return _own(
-            analysis.distance, analysis.proximity, ones, permeability, state, excluded
+        return _reachable(
+            windowed.distance, windowed.proximity, ones, permeability, state, excluded
         )
 
-    pixels = jax.grad(own)(graph.grid, False)
-    far = jax.grad(own)(graph.grid, True)
+    pixels = jax.grad(reachable)(graph.grid, False)
+    far = jax.grad(reachable)(graph.grid, True)
     far = jnp.where(jnp.abs(far) > 1e-6 * jnp.max(jnp.abs(far)), far, 0)
     return (pixels, far), eqx.partition(state, eqx.is_array)[0]
 
@@ -345,8 +345,8 @@ class SensitivityAnalysis(WindowedAnalysis):
             symmetric = isinstance(self.distance, _SYMMETRIC_DISTANCES)
             if coarse and q_weighted and symmetric:
                 initial = jnp.zeros(math.prod(self._blocks), self.quality_raster.dtype)
-                own = self._accumulate(_window_own, initial)
-                return 2 * self._interpolate(own.reshape(self._blocks))
+                reachable = self._accumulate(_window_reachable_quality, initial)
+                return 2 * self._interpolate(reachable.reshape(self._blocks))
             raster = self.quality_raster
         elif var == "permeability":
             if coarse:
