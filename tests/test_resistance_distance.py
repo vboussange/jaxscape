@@ -459,6 +459,77 @@ def test_spielman_sources_to_targets_draw_the_signs_of_large_graphs_in_batches()
     assert memory.temp_size_in_bytes < signs * permeability.dtype.itemsize
 
 
+@pytest.mark.parametrize("solver", ["dense", "cholmod"])
+def test_spielman_window_queries_stream_the_projections_of_sources_queries(solver):
+    # Every query draws the signs of each projection from the seed and its
+    # index: both queries estimate the distances with the same projections.
+    # Here ceil(log(99) / 0.3**2) = 52 projections, in batches of 8 and a last
+    # one of 4.
+    if solver == "cholmod":
+        pytest.importorskip("cholespy")
+    method = SpielmanApproximation(epsilon=0.3, seed=2, projection_batch_size=8)
+    distance = ResistanceDistance(SOURCES_TO_TARGETS_SOLVERS[solver](), method=method)
+    rng = np.random.default_rng(0)
+    permeability = jnp.asarray(10 ** rng.uniform(-1, 0, (9, 11)))
+    # Windows of 5 x 5 pixels, the first in the corner of the raster.
+    rows, columns = np.array([2, 4, 6, 4]), np.array([2, 5, 8, 5])
+    sources = jnp.asarray(rows * 11 + columns)
+    weights = jnp.asarray(rng.uniform(size=(4, 5, 5)))
+
+    def windows(permeability):
+        grid = GridGraph(permeability, fun=avg)
+        distances = distance.sources_to_windows_distance(grid, sources, 5)
+        return jnp.sum(weights * distances), distances
+
+    def sliced(permeability):
+        grid = GridGraph(permeability, fun=avg)
+        rasters = distance(grid, sources=sources).reshape(4, 9, 11)
+        distances = jnp.stack(
+            [
+                raster[r - 2 : r + 3, c - 2 : c + 3]
+                for raster, r, c in zip(rasters, rows, columns)
+            ]
+        )
+        return jnp.sum(weights * distances), distances
+
+    (_, actual), gradient = jax.value_and_grad(windows, has_aux=True)(permeability)
+    (_, expected), expected_gradient = jax.value_and_grad(sliced, has_aux=True)(
+        permeability
+    )
+    np.testing.assert_allclose(actual, expected, rtol=1e-9, atol=1e-12)
+    np.testing.assert_allclose(gradient, expected_gradient, rtol=1e-9, atol=1e-12)
+
+
+def test_spielman_window_queries_hold_one_batch_of_projections():
+    # ceil(log(3600) / epsilon**2) = 205 and 3276 projections of 3600
+    # vertices, solved 16 at a time from 4 sources with windows of 21 x 21
+    # pixels.
+    side = 60
+    permeability = jnp.linspace(0.5, 2.0, side**2).reshape(side, side)
+    solver = lx.CG(rtol=1e-8, atol=1e-8, max_steps=500)
+    sources = jnp.array([10 * side + 10, 30 * side + 30, 49 * side + 49, 1830])
+
+    def memory(epsilon, gradient):
+        method = SpielmanApproximation(epsilon=epsilon, projection_batch_size=16)
+        distance = ResistanceDistance(solver=solver, method=method)
+
+        def objective(permeability):
+            grid = GridGraph(permeability, fun=avg)
+            return jnp.sum(distance.sources_to_windows_distance(grid, sources, 21))
+
+        program = jax.jit(jax.grad(objective) if gradient else objective)
+        stats = program.lower(permeability).compile().memory_analysis()
+        assert stats is not None
+        return stats.temp_size_in_bytes
+
+    # Neither the potentials of all projections nor their random signs, one
+    # per stored edge, are held at once: 16 times more projections take no
+    # more memory. Measured: 8.7 MB, and 13.4 MB for the gradient, against
+    # 94 MB for the potentials of 3276 projections.
+    for gradient in (False, True):
+        assert memory(0.05, gradient) <= 1.01 * memory(0.2, gradient)
+
+
 def test_few_sources_to_targets_solve_for_them_only():
     n = 900
     permeability = jnp.linspace(0.5, 2.0, n).reshape(30, 30)

@@ -11,7 +11,7 @@ from jax.experimental.sparse import BCOO
 from jax.numpy.linalg import pinv
 
 from jaxscape.distance import AbstractSolverDistance
-from jaxscape.graph import AbstractGraph
+from jaxscape.graph import AbstractGraph, GridGraph
 from jaxscape.solvers.operator import _batched_linear_solve_impl, _solver_state
 from jaxscape.utils import _matmul, bcoo_diag, graph_laplacian
 
@@ -28,6 +28,9 @@ _UNCHUNKED_POTENTIALS = 2**22
 # gradient. Sparse direct solvers reach their full throughput from a few hundred
 # columns on.
 _TARGET_CHUNK_SIZE = 1024
+# Spielman window queries take the differences of about this many potentials
+# at once, and again for the gradient.
+_WINDOW_DIFFERENCES_PER_STEP = 2**24
 
 
 class ResistanceDistance(AbstractSolverDistance):
@@ -276,6 +279,38 @@ class ResistanceDistance(AbstractSolverDistance):
             state,
         )
 
+    def sources_to_windows_distance(
+        self, graph: GridGraph, sources: Array, size: int, state: Any = None
+    ) -> Array:
+        """Return the distances from each source to the pixels of its window.
+
+        As `AbstractDistance.sources_to_windows_distance`. With
+        `SpielmanApproximation`, the query solves the projections
+        `projection_batch_size` at a time, and adds the squared differences of
+        their potentials between each source and the pixels of its window. It
+        holds the potentials of one batch of projections and the windows, and
+        its gradient solves each batch twice more: once again, and for the
+        adjoint.
+
+        **Arguments:**
+
+        - `graph`: Grid graph on which to compute distances.
+        - `sources`: Source vertex indices with shape `(m,)`.
+        - `size`: Odd number of pixels along a side of the windows.
+        - `state`: Optional solver state. Defaults to automatic initialization.
+
+        **Returns:**
+
+        Distances with shape `(m, size, size)`.
+        """
+        if not isinstance(self.method, SpielmanApproximation):
+            return super().sources_to_windows_distance(graph, sources, size, state)
+        if size % 2 == 0:
+            raise ValueError("`size` must be odd.")
+        if state is None:
+            state = self.init(jax.tree.map(lax.stop_gradient, graph))
+        return _spielman_windows(graph, sources, size, self.method, self.solver, state)
+
 
 class AbstractResistanceMethod(eqx.Module):
     """Abstract base class for resistance distance algorithms."""
@@ -295,12 +330,17 @@ class SpielmanApproximation(AbstractResistanceMethod):
       projections: `k = ceil(log(n_vertices) / epsilon**2)`. All-pairs and
       sources-to-targets queries solve `k` linear systems and hold `k`
       potentials of every vertex; nodes-to-nodes queries solve one per node.
-    - `seed`: Random seed for the Rademacher edge projections.
-    - `projection_batch_size`: Number of projections whose random signs are
-      drawn together, when the signs of all projections, one per edge and
-      projection, exceed `SPIELMAN_DENSE_PROJECTION_MAX_SIGN_ENTRIES` entries.
-      Below, they are drawn at once. Larger batches can improve throughput at
-      the cost of more working memory.
+      Window queries, those of windowed analyses, solve `k` linear systems
+      and hold the potentials of `projection_batch_size` of them.
+    - `seed`: Random seed for the Rademacher edge projections. Each projection
+      draws its signs from `seed` and its index, so that all queries on a graph
+      share their projections.
+    - `projection_batch_size`: Number of projections that window queries solve
+      together. Other queries draw the random signs of this many projections
+      together when the signs of all projections, one per stored edge and
+      projection, exceed `SPIELMAN_DENSE_PROJECTION_MAX_SIGN_ENTRIES`
+      entries, and all at once below. Larger batches can improve throughput
+      at the cost of more working memory.
     """
 
     epsilon: float = 0.1
@@ -798,21 +838,19 @@ def _projections(
     """Stack `project(signs)` over the random signs of `k` projections.
 
     `project` maps the signs of some projections, with shape `(m, n_edges)`, to
-    `m` rows. When the signs of all projections hold at most
-    `SPIELMAN_DENSE_PROJECTION_MAX_SIGN_ENTRIES` entries, they are drawn at once
-    from `seed`. Otherwise each projection draws its own from `seed` and its
-    index, `projection_batch_size` projections at a time, and the gradient draws
-    them again instead of keeping them.
+    `m` rows. Each projection draws its signs from `seed` and its index (see
+    `_signs`). When the signs of all projections hold at most
+    `SPIELMAN_DENSE_PROJECTION_MAX_SIGN_ENTRIES` entries, they are drawn at
+    once. Otherwise they are drawn `projection_batch_size` projections at a
+    time, and the gradient draws them again instead of keeping them.
     """
-    if k * n_edges <= SPIELMAN_DENSE_PROJECTION_MAX_SIGN_ENTRIES:
-        key = jax.random.PRNGKey(seed)
-        return project(jax.random.rademacher(key, (k, n_edges)).astype(dtype))
     key = jax.random.PRNGKey(seed)
+    if k * n_edges <= SPIELMAN_DENSE_PROJECTION_MAX_SIGN_ENTRIES:
+        return project(_signs(key, jnp.arange(k), k, n_edges).astype(dtype))
 
     @jax.checkpoint
     def project_one(index):
-        signs = jax.random.rademacher(jax.random.fold_in(key, index), (n_edges,))
-        return project(signs.astype(dtype)[None])[0]
+        return project(_signs(key, index[None], k, n_edges).astype(dtype))[0]
 
     # A last partial batch keeps the keys of its projection indices.
     return lax.map(project_one, jnp.arange(k), batch_size=projection_batch_size)
@@ -828,20 +866,41 @@ def _spielman_projection(
 ) -> Array:
     """The weighted projections of the incidence matrix, with shape `(k, n)`."""
     k = _projection_size(shape[0], epsilon)
-    rows = indices[:, 0]
-    cols = indices[:, 1]
-    valid = jnp.all(indices < jnp.asarray(shape), axis=1)
-    weights = _sqrt_half_weights(jnp.where(valid, data, 0))
-    weights = weights * _projection_scale(k, data.dtype)
 
     def project(signs):
-        weighted = signs * weights
-        projection = jnp.zeros((signs.shape[0], shape[0]), dtype=data.dtype)
-        return projection.at[:, rows].add(weighted).at[:, cols].add(-weighted)
+        return _project_incidence(signs, data, indices, shape, k)
 
     return _projections(
         k, data.shape[0], seed, data.dtype, projection_batch_size, project
     )
+
+
+def _project_incidence(
+    signs: Array, data: Array, indices: Array, shape: tuple[int, ...], k: int
+) -> Array:
+    """The projections of the weighted incidence matrix with the random `signs`
+    of some of `k` projections, with shape `(m, n_edges)`, as `(m, n)` rows."""
+    valid = jnp.all(indices < jnp.asarray(shape), axis=1)
+    weights = _sqrt_half_weights(jnp.where(valid, data, 0))
+    weighted = signs * (weights * _projection_scale(k, data.dtype))
+    projection = jnp.zeros((signs.shape[0], shape[0]), dtype=data.dtype)
+    return (
+        projection.at[:, indices[:, 0]]
+        .add(weighted)
+        .at[:, indices[:, 1]]
+        .add(-weighted)
+    )
+
+
+def _signs(key: Array, projections: Array, k: int, n_edges: int) -> Array:
+    """The random signs of the stored edges for the projection indices
+    `projections`, each drawn from `key` and its index, and 0 from index `k` on.
+    """
+
+    def draw(index):
+        return jax.random.rademacher(jax.random.fold_in(key, index), (n_edges,))
+
+    return jnp.where(projections[:, None] < k, jax.vmap(draw)(projections), 0)
 
 
 def _sqrt_half_weights(data: Array) -> Array:
@@ -934,6 +993,105 @@ def _spielman_features_reduced_bwd(
         data,
     )
     # The adjoint is zero at the ground, whose column of P does not affect F.
+    (projection_gradient,) = projection_pullback(adjoint.T)
+    return (
+        _laplacian_data_pullback(adjoint, potentials, indices, shape)
+        + projection_gradient
+    )
+
+
+@eqx.filter_jit
+def _spielman_windows(
+    graph: GridGraph,
+    sources: Array,
+    size: int,
+    method: SpielmanApproximation,
+    solver: lx.AbstractLinearSolver | None,
+    state: Any,
+) -> Array:
+    """Spielman estimates of the distances from `sources` to their windows.
+
+    The squared differences of the potentials of each batch of projections,
+    between a source and the pixels of its window, add up to the estimates.
+    The gradient solves each batch again.
+    """
+    A = graph.get_adjacency_matrix()
+    data, indices, shape = A.data, A.indices, A.shape
+    k = _projection_size(shape[0], method.epsilon)
+    batch = method.projection_batch_size
+    batches = jnp.arange(-(-k // batch) * batch).reshape(-1, batch)
+    key = jax.random.PRNGKey(method.seed)
+    system = _grounded_system(lax.stop_gradient(data), indices, shape, solver, state)
+    half = size // 2
+    rows, columns = sources // graph.width, sources % graph.width
+
+    def window(potentials, row, column):
+        own = potentials[row, column]
+        start = (row - half, column - half, 0)
+        pixels = lax.dynamic_slice(potentials, start, (size, size, batch))
+        return jnp.sum((pixels - own) ** 2, axis=-1)
+
+    @jax.checkpoint
+    def squares(projections):
+        signs = _signs(key, projections, k, data.shape[0]).astype(data.dtype)
+        potentials = _spielman_potentials(
+            data, indices, shape, signs, k, system, solver
+        )
+        potentials = potentials.reshape(graph.height, graph.width, batch)
+        per_step = max(1, _WINDOW_DIFFERENCES_PER_STEP // (size**2 * batch))
+        return lax.map(
+            jax.checkpoint(lambda source: window(potentials, *source)),
+            (rows, columns),
+            batch_size=per_step,
+        )
+
+    def add(total, projections):
+        return total + squares(projections), None
+
+    initial = jnp.zeros((sources.shape[0], size, size), data.dtype)
+    return lax.scan(add, initial, batches)[0]
+
+
+@eqx.filter_custom_vjp
+def _spielman_potentials(
+    data: Array,
+    indices: Array,
+    shape: tuple[int, ...],
+    signs: Array,
+    k: int,
+    system: _GroundedSystem,
+    solver: lx.AbstractLinearSolver | None,
+) -> Array:
+    """The potentials of the projections with the random `signs`, with shape
+    `(n, m)`: the transposed features of the Spielman embedding, solved with
+    `system`, the grounded Laplacian of `data`."""
+    return _spielman_potentials_fwd(
+        None, data, indices, shape, signs, k, system, solver
+    )[0]
+
+
+def _spielman_potentials_fwd(perturbed, data, indices, shape, signs, k, system, solver):
+    del perturbed
+    projection = _project_incidence(signs, data, indices, shape, k)
+    potentials = _solve(system, projection.T, solver)
+    return potentials, potentials
+
+
+_spielman_potentials.def_fwd(_spielman_potentials_fwd)
+
+
+@_spielman_potentials.def_bwd
+def _spielman_potentials_bwd(
+    potentials, cotangent, perturbed, data, indices, shape, signs, k, system, solver
+):
+    if cotangent is None or not perturbed:
+        return None
+    # As in `_spielman_features_reduced_bwd`, with the potentials Y = F.T and
+    # their cotangent H.T.
+    adjoint = _solve(system, cotangent, solver, transpose=True)
+    _, projection_pullback = jax.vjp(
+        lambda data: _project_incidence(signs, data, indices, shape, k), data
+    )
     (projection_gradient,) = projection_pullback(adjoint.T)
     return (
         _laplacian_data_pullback(adjoint, potentials, indices, shape)
