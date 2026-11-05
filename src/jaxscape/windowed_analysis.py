@@ -430,6 +430,9 @@ class _TileData(eqx.Module):
     - `sources`: The tile rows and the tile columns of the block centres.
     - `valid`: Mask of the block centres of the raster, with shape
       `(rows, columns)`: the others repeat the last one.
+    - `index`: The raster index of the first block centre, in row-major order.
+      Randomized distances draw the estimates of the tile with it (see
+      `AbstractDistance.reseeded`).
     """
 
     quality: Array
@@ -438,6 +441,7 @@ class _TileData(eqx.Module):
     weights: tuple[Array, ...]
     sources: tuple[Array, ...]
     valid: Array
+    index: Array
 
 
 def _extract_tile(
@@ -466,6 +470,7 @@ def _extract_tile(
         ),
         sources=tuple(k[:, 1] - o + half for k, o in zip(knots, origin)),
         valid=valid,
+        index=origin[0] * windowed.shape[1] + origin[1],
     )
 
 

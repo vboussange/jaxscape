@@ -506,6 +506,30 @@ def test_debiased_proximity_of_spielman_estimates_has_the_exact_expectation():
 
 
 @pytest.mark.parametrize(
+    "query", [{}, {"sources": jnp.array([0, 12])}, {"nodes": jnp.array([3, 7])}]
+)
+def test_reseeded_spielman_distances_draw_other_projections(query):
+    rng = np.random.default_rng(0)
+    grid = GridGraph(jnp.asarray(10 ** rng.uniform(-1, 0, (5, 5))), fun=avg)
+    distance = ResistanceDistance(method=SpielmanApproximation(epsilon=0.3))
+
+    @jax.jit
+    def reseeded(index):
+        return distance.reseeded(index)(grid, **query)
+
+    np.testing.assert_array_equal(reseeded(1), reseeded(1))
+    assert not np.allclose(reseeded(1), reseeded(2))
+    assert not np.allclose(reseeded(1), distance(grid, **query))
+
+
+@pytest.mark.parametrize(
+    "distance", [ResistanceDistance(), LCPDistance()], ids=["exact", "lcp"]
+)
+def test_exact_distances_keep_their_seed(distance):
+    assert distance.reseeded(jnp.array(3)) is distance
+
+
+@pytest.mark.parametrize(
     "distance", [ResistanceDistance(), LCPDistance()], ids=["exact", "lcp"]
 )
 def test_exact_distances_keep_their_proximity(distance):

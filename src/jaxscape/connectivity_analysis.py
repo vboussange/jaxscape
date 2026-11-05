@@ -5,6 +5,7 @@ import jax
 import jax.numpy as jnp
 from jax import Array, lax
 
+from jaxscape.distance import AbstractDistance
 from jaxscape.graph import GridGraph
 from jaxscape.windowed_analysis import _average, _TileData, WindowedAnalysis
 
@@ -33,6 +34,7 @@ _PROXIMITIES_PER_STEP = 2**22
 
 def _reachable(
     windowed: WindowedAnalysis,
+    distance: AbstractDistance,
     weight: Array,
     permeability: Array,
     sources: tuple[Array, ...],
@@ -41,17 +43,17 @@ def _reachable(
 ) -> Array:
     """Proximity-weighted `weight` reachable from each source, outside `excluded`.
 
-    One query on the graph of the tile `permeability` gives the distances
-    from a grid of sources, at the tile rows and columns `sources`, to every
-    pixel. Each source counts the pixels of its window, outside
+    One query of `distance` on the graph of the tile `permeability` gives the
+    distances from a grid of sources, at the tile rows and columns `sources`,
+    to every pixel. Each source counts the pixels of its window, outside
     `excluded`. Returns one value per source, in row-major order.
     """
     size = excluded.shape[0]
     height, width = permeability.shape
     rows, columns = (x.ravel() for x in jnp.meshgrid(*sources, indexing="ij"))
     graph = GridGraph(permeability, fun=_average)
-    distances = windowed.distance(graph, sources=rows * width + columns, state=state)
-    proximity = windowed.distance.debiased_proximity(windowed.proximity, graph)
+    distances = distance(graph, sources=rows * width + columns, state=state)
+    proximity = distance.debiased_proximity(windowed.proximity, graph)
 
     def reachable(inputs):
         distances, row, column = inputs
@@ -88,8 +90,9 @@ def _tile_connectivity(
     """
     weight = tile.quality if q_weighted else tile.inside.astype(tile.quality.dtype)
     excluded = _excluded(windowed, block)
+    distance = windowed.distance.reseeded(tile.index)
     reachable = _reachable(
-        windowed, weight, tile.permeability, tile.sources, state, excluded
+        windowed, distance, weight, tile.permeability, tile.sources, state, excluded
     )
     mass = jnp.where(tile.valid, _block_sums(tile, weight), 0)
     return mass.ravel() * reachable
@@ -100,8 +103,15 @@ def _tile_reachable_quality(
 ) -> Array:
     """Proximity-weighted quality reachable from each block centre of `tile`."""
     excluded = _excluded(windowed, block=False)
+    distance = windowed.distance.reseeded(tile.index)
     return _reachable(
-        windowed, tile.quality, tile.permeability, tile.sources, state, excluded
+        windowed,
+        distance,
+        tile.quality,
+        tile.permeability,
+        tile.sources,
+        state,
+        excluded,
     )
 
 
@@ -218,7 +228,9 @@ def _permeability_calibration(
 
     def reachable(permeability, block):
         excluded = _excluded(windowed, block)
-        return _reachable(windowed, ones, permeability, sources, state, excluded)[0]
+        return _reachable(
+            windowed, windowed.distance, ones, permeability, sources, state, excluded
+        )[0]
 
     pixels = jax.grad(reachable)(grid, False)
     far = jax.grad(reachable)(grid, True)

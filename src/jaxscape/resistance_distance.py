@@ -139,6 +139,26 @@ class ResistanceDistance(AbstractSolverDistance):
         """
         return ResistanceDistance(solver=self.solver)
 
+    def reseeded(self, index: Array) -> "ResistanceDistance":
+        """Return the distance whose random projections depend on `index` too.
+
+        With `SpielmanApproximation`, the seed of the projections becomes one
+        drawn from `seed` and `index`. Exact resistances return themselves.
+
+        **Arguments:**
+
+        - `index`: Integer, which may be traced.
+
+        **Returns:**
+
+        `ResistanceDistance` with the same solver and method, but the seed.
+        """
+        if not isinstance(self.method, SpielmanApproximation):
+            return self
+        key = jax.random.fold_in(jax.random.PRNGKey(self.method.seed), index)
+        seed = jax.random.bits(key, dtype=jnp.uint32)
+        return eqx.tree_at(lambda d: d.method.seed, self, seed)
+
     def debiased_proximity(
         self, proximity: Callable[[Array], Array], graph: AbstractGraph
     ) -> Callable[[Array], Array]:

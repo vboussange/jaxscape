@@ -153,6 +153,23 @@ class AbstractDistance(eqx.Module):
         """
         return self
 
+    def reseeded(self, index: Array) -> "AbstractDistance":
+        """Return the distance whose random draws depend on `index` too.
+
+        The estimates of randomized distances for different indices are then
+        independent. Distances that queries compute exactly return themselves.
+
+        **Arguments:**
+
+        - `index`: Integer, which may be traced.
+
+        **Returns:**
+
+        A distance of the same kind.
+        """
+        del index
+        return self
+
     def debiased_proximity(
         self, proximity: Callable[[Array], Array], graph: AbstractGraph
     ) -> Callable[[Array], Array]:

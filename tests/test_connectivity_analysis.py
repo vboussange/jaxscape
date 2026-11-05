@@ -62,7 +62,7 @@ def own_windows(quality, permeability, distance, q_weighted=True):
 
     Each window is centred on its pixel and padded beyond the raster with quality
     0 and the permeability floor, and the distances come from the all-pairs
-    query of `distance`.
+    query of `distance`, reseeded with the raster index of the pixel.
     """
     size = 2 * D + 1
     centre = D * size + D
@@ -75,7 +75,8 @@ def own_windows(quality, permeability, distance, q_weighted=True):
         w = jax.lax.dynamic_slice(weight, (i, j), (size, size)).ravel()
         p = jax.lax.dynamic_slice(permeability, (i, j), (size, size))
         grid = GridGraph(p, fun=average)
-        K = distance.debiased_proximity(proximity, grid)(distance(grid)[centre])
+        reseeded = distance.reseeded(i * quality.shape[1] + j)
+        K = distance.debiased_proximity(proximity, grid)(reseeded(grid)[centre])
         return w[centre] * (K.at[centre].set(0) @ w)
 
     rows, columns = np.indices(quality.shape).reshape(2, -1)
@@ -165,6 +166,7 @@ def padded_raster(quality, permeability, distance):
 
     The raster is padded by `D` on all sides with quality 0 and the
     permeability floor, and each pixel counts the pixels of its own window.
+    Randomized distances are reseeded with the index 0 of the first pixel.
     """
     height, width = quality.shape
     size = 2 * D + 1
@@ -173,7 +175,7 @@ def padded_raster(quality, permeability, distance):
     weight = jnp.pad(quality, D)
     grid = GridGraph(permeability, fun=average)
     K = distance.debiased_proximity(proximity, grid)
-    distances = distance(grid).reshape(height + 2 * D, width + 2 * D, -1)
+    distances = distance.reseeded(0)(grid).reshape(height + 2 * D, width + 2 * D, -1)
 
     def pixel(i, j):
         row = distances[i + D, j + D].reshape(height + 2 * D, width + 2 * D)
