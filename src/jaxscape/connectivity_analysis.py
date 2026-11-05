@@ -399,8 +399,10 @@ class SensitivityAnalysis(WindowedAnalysis):
           permeability varies over orders of magnitude. On part of the
           Maryland land cover of the connectivity analysis example, with
           `dependency_range` 30, the permeability sensitivity of
-          `SpielmanApproximation(epsilon=0.1)` had a Pearson correlation of
-          0.82 with the exact one: use `epsilon` 0.05 or less there.
+          `SpielmanApproximation` had a Pearson correlation of 0.983 with that
+          of exact windows at `epsilon` 0.1, and 0.994 at 0.05. On tiles of
+          20 x 20 pixels, larger than the tile limit allows, it was 0.86 at
+          `epsilon` 0.1.
         - The block correction is calibrated on a uniform landscape. With
           barriers and blocks of several pixels, the coarsened permeability
           sensitivity is biased and keeps a lattice through the block
