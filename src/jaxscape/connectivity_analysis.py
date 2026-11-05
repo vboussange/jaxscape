@@ -6,19 +6,27 @@ import jax.numpy as jnp
 from jax import Array, lax
 
 from jaxscape.graph import GridGraph
-from jaxscape.window_operation import WindowOperation
-from jaxscape.windowed_analysis import _average, _Tile, WindowedAnalysis
+from jaxscape.windowed_analysis import _average, _TileData, WindowedAnalysis
 
 
-def _excluded(op: WindowOperation, block: bool) -> Array:
+def _excluded(windowed: WindowedAnalysis, block: bool) -> Array:
     """Mask of the window centre, or of the block around it if `block`."""
-    size = op.total_window_size
-    half = op.window_size // 2 if block else 0
-    core = slice(size // 2 - half, size // 2 + half + 1)
-    return jnp.zeros((size, size), bool).at[core, core].set(True)
+    centre = windowed.dependency_range
+    half = windowed.block_size // 2 if block else 0
+    core = slice(centre - half, centre + half + 1)
+    return jnp.zeros((2 * centre + 1,) * 2, bool).at[core, core].set(True)
 
 
-# Neighbourhood sums hold about this many proximities at once, and recompute
+def _block_sums(tile: _TileData, values: Array) -> Array:
+    """Sums of the `values` of `tile` with the interpolation weights of each of
+    its block centres, with shape `(rows, columns)`."""
+    rows, columns = tile.weights
+    return jnp.einsum(
+        "iy,yx,jx->ij", rows, values, columns, precision=lax.Precision.HIGHEST
+    )
+
+
+# Window sums hold about this many proximities at once, and recompute
 # them for the gradient.
 _PROXIMITIES_PER_STEP = 2**22
 
@@ -33,10 +41,10 @@ def _reachable(
 ) -> Array:
     """Proximity-weighted `weight` reachable from each source, outside `excluded`.
 
-    One query on the graph of the tile `permeability` gives the distances from
-    a grid of sources, at the tile rows and columns `sources`, to every pixel.
-    Each source counts the pixels of its window, outside `excluded`. Returns
-    one value per source, in row-major order.
+    One query on the graph of the tile `permeability` gives the distances
+    from a grid of sources, at the tile rows and columns `sources`, to every
+    pixel. Each source counts the pixels of its window, outside
+    `excluded`. Returns one value per source, in row-major order.
     """
     size = excluded.shape[0]
     height, width = permeability.shape
@@ -67,7 +75,7 @@ def _reachable(
 
 def _tile_connectivity(
     windowed: WindowedAnalysis,
-    tile: _Tile,
+    tile: _TileData,
     state: Any,
     q_weighted: bool,
     block: bool = False,
@@ -79,31 +87,27 @@ def _tile_connectivity(
     outside its block if `block`.
     """
     weight = tile.quality if q_weighted else tile.inside.astype(tile.quality.dtype)
-    excluded = _excluded(windowed.window_op, block)
+    excluded = _excluded(windowed, block)
     reachable = _reachable(
         windowed, weight, tile.permeability, tile.sources, state, excluded
     )
-    rows, columns = tile.weights
-    mass = jnp.einsum(
-        "iy,yx,jx->ij", rows, weight, columns, precision=lax.Precision.HIGHEST
-    )
-    return jnp.where(tile.valid, mass, 0).ravel() * reachable
+    mass = jnp.where(tile.valid, _block_sums(tile, weight), 0)
+    return mass.ravel() * reachable
 
 
 def _tile_reachable_quality(
-    windowed: WindowedAnalysis, tile: _Tile, state: Any
+    windowed: WindowedAnalysis, tile: _TileData, state: Any
 ) -> Array:
     """Proximity-weighted quality reachable from each block centre of `tile`."""
-    excluded = _excluded(windowed.window_op, block=False)
-    reachable = _reachable(
+    excluded = _excluded(windowed, block=False)
+    return _reachable(
         windowed, tile.quality, tile.permeability, tile.sources, state, excluded
     )
-    return jnp.where(tile.valid.ravel(), reachable, 0)
 
 
 def _tile_sensitivity(
     windowed: WindowedAnalysis,
-    tile: _Tile,
+    tile: _TileData,
     state: Any,
     var: str,
     q_weighted: bool,
@@ -130,7 +134,7 @@ def _tile_sensitivity(
 
 
 def _block_correction(
-    windowed: WindowedAnalysis, tile: _Tile, calibration: tuple[Array, Array]
+    windowed: WindowedAnalysis, tile: _TileData, calibration: tuple[Array, Array]
 ) -> Array:
     """Correction of the permeability gradient of `tile` for its blocks.
 
@@ -140,15 +144,15 @@ def _block_correction(
     block centres with the sums of their weights.
     """
     pixels, far = calibration
-    half = windowed.window_op.total_window_size // 2
-    reach = windowed.window_op.window_size - 1
+    half = windowed.dependency_range
+    reach = windowed.block_size - 1
     rows, columns = tile.weights
     height, width = tile.inside.shape
     inside = tile.inside.astype(rows.dtype)
     # The calibration's source is at index `shape // 2` of its gradients. The
     # interpolation weights of the raster pixels reach at most `reach` pixels
-    # beyond the tile's first and last block centres, which are `half` pixels
-    # from its edges.
+    # beyond the tile's first and last block centres, which are at least
+    # `half` pixels from its edges.
     weights = inside * jnp.einsum("ij,iy,jx->yx", tile.valid, rows, columns)
     weights = weights[
         half - reach : height - half + reach, half - reach : width - half + reach
@@ -156,13 +160,10 @@ def _block_correction(
     start = tuple(n // 2 - half + reach for n in pixels.shape)
     spread = _convolve(weights, pixels, start, (height, width))
     # The sums of the weights, at the block centres.
-    sums = jnp.einsum(
-        "iy,yx,jx->ij", rows, inside, columns, precision=lax.Precision.HIGHEST
-    )
     centres = (
         jnp.zeros_like(inside)
         .at[tile.sources[0][:, None], tile.sources[1][None, :]]
-        .add(jnp.where(tile.valid, sums, 0))
+        .add(jnp.where(tile.valid, _block_sums(tile, inside), 0))
     )
     centres = centres[half : height - half, half : width - half]
     start = tuple(n // 2 - half for n in far.shape)
@@ -210,20 +211,19 @@ def _permeability_calibration(
     `state`.
     """
     level = lax.stop_gradient(jnp.max(windowed.permeability_raster))
-    graph = windowed._uniform_graph(level, windowed._tile_sides)
-    static = eqx.partition(windowed.state, eqx.is_array)[1]
-    state = windowed.distance.reinit(graph, eqx.combine(state, static))
-    ones = jnp.ones_like(graph.grid)
-    sources = tuple(jnp.array([n // 2]) for n in graph.grid.shape)
+    grid = windowed._uniform_graph(level, windowed.tile_sides).grid
+    state, dynamic = windowed._reinit(grid, state)
+    ones = jnp.ones_like(grid)
+    sources = tuple(jnp.array([n // 2]) for n in grid.shape)
 
     def reachable(permeability, block):
-        excluded = _excluded(windowed.window_op, block)
+        excluded = _excluded(windowed, block)
         return _reachable(windowed, ones, permeability, sources, state, excluded)[0]
 
-    pixels = jax.grad(reachable)(graph.grid, False)
-    far = jax.grad(reachable)(graph.grid, True)
+    pixels = jax.grad(reachable)(grid, False)
+    far = jax.grad(reachable)(grid, True)
     far = jnp.where(jnp.abs(far) > 1e-6 * jnp.max(jnp.abs(far)), far, 0)
-    return (pixels, far), eqx.partition(state, eqx.is_array)[0]
+    return (pixels, far), dynamic
 
 
 class ConnectivityAnalysis(WindowedAnalysis):
@@ -342,10 +342,10 @@ class SensitivityAnalysis(WindowedAnalysis):
       `AbstractDistance.symmetric`), as `EuclideanDistance`, `LCPDistance`,
       `ResistanceDistance` and `FreeEnergyDistance` do on the window graphs,
       whose edges average permeability. For other distances, the result is the
-      gradient of the coarsened connectivity. Within `dependency_range` of the raster
-      edges, the term falls steeply towards the edge and the interpolation
-      underestimates it: by up to 20 % in a uniform landscape with
-      `dependency_range` 8, the default proximity and `b = 3` or 5.
+      gradient of the coarsened connectivity. Within `dependency_range` of the
+      raster edges, the term falls steeply towards the edge and the
+      interpolation underestimates it: by up to 20 % in a uniform landscape
+      with `dependency_range` 8, the default proximity and `b = 3` or 5.
     - **Permeability.** The gradient of each tile's connectivity without the
       pairs within blocks,
       $\sum_c \big(\sum_i T_c(i) \, q_i\big) \sum_{j \notin \text{block}(c)} K_{cj} q_j$
@@ -423,7 +423,7 @@ class SensitivityAnalysis(WindowedAnalysis):
         each pixel. Pixels whose permeability is at or below the permeability
         floor have zero permeability sensitivity.
         """
-        coarse = self.window_op.window_size > 1
+        coarse = self.block_size > 1
         calibration = state = None
         if var == "quality":
             if coarse and q_weighted and self.distance.symmetric:

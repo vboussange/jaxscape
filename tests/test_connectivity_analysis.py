@@ -359,6 +359,21 @@ def test_randomized_distances_take_the_default_proximity_of_exact_ones(name, req
     assert_close(kernel(randomized)(distances), expected, 1e-8)
 
 
+def test_creating_an_analysis_analyses_the_tile_pattern_only(stub_spineax, monkeypatch):
+    analyses = []
+
+    def analyze(values, *args, **kwargs):
+        analyses.append(values.shape)
+        return stub_spineax_analyze(values, *args, **kwargs)
+
+    stub_spineax_analyze = stub_spineax.analyze
+    monkeypatch.setattr(stub_spineax, "analyze", analyze)
+    # Tiles of 2 x 4 pixels: their sparsity pattern differs from a window's,
+    # which a given proximity does not need.
+    make(ConnectivityAnalysis, ResistanceDistance(CuDSSSolver()))
+    assert len(analyses) == 1
+
+
 @pytest.mark.gpu
 def test_cudss_windows_carry_one_analysis():
     distance = ResistanceDistance(solver=make_cudss())
