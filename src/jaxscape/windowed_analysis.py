@@ -98,14 +98,9 @@ def _tile_shape(
 
 
 def _tile_side(knots: np.ndarray, dependency_range: int) -> int:
-    """Pixels along an axis of the tiles of `knots`, from `_tiles`.
-
-    An odd number: resistance queries ground the middle vertex of a graph,
-    which is then the central pixel of the tile, next to its block centres. In
-    float32, potentials grounded at an edge of floored padding lose digits.
-    """
+    """Pixels along an axis of the tiles of `knots`, from `_tiles`."""
     span = int(np.max(knots[:, -1, 1] - knots[:, 0, 1]))
-    return span + 2 * dependency_range + 1 + span % 2
+    return span + 2 * dependency_range + 1
 
 
 class WindowedAnalysis(eqx.Module):
@@ -139,8 +134,7 @@ class WindowedAnalysis(eqx.Module):
       A batch is a grid of block centres, consecutive along each axis:
       `isqrt(batch_size)` rows and `batch_size // isqrt(batch_size)` columns
       of them, or fewer on smaller rasters. Its tile is the union of their
-      windows, with one more row or column where needed to make their numbers
-      odd, so that the tile's central pixel exists. One query from all of
+      windows. One query from all of
       them, on the graph of the tile, gives each centre its distances to every
       pixel of the tile, and each centre counts the pixels of its window. The
       tile graph extends beyond each window, so distances on it are lower:

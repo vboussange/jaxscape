@@ -181,9 +181,7 @@ def padded_raster(quality, permeability, distance):
 )
 def test_one_tile_computes_distances_on_the_padded_raster(name, request):
     # Resistance queries share their work between sources: a batch of them
-    # takes the distances of a tile of 5 x 7 pixels, the whole raster. Its
-    # tile, of 11 x 13 pixels, has an odd number of pixels along each axis, as
-    # all tiles do.
+    # takes the distances of a tile of 5 x 7 pixels, the whole raster.
     distance = CASES[name][0](request)
     assert distance.sources_share_work
     quality, permeability = QUALITY[:5], PERMEABILITY[:5]
@@ -233,8 +231,8 @@ def test_tiles_approximate_each_pixels_own_window():
 
 def test_float32_tile_sensitivity_matches_float64():
     # Tiles of 2 x 4 pixels and a buffer of 30 floored pixels around them:
-    # resistance queries ground the tile's middle vertex, which is its central
-    # pixel, next to the sources, when the tile has an odd number of rows.
+    # resistance queries ground a pixel of near-maximum permeability next to
+    # the sources, away from the floored pixels.
     def sensitivity(dtype):
         return make(
             SensitivityAnalysis,

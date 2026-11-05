@@ -535,3 +535,37 @@ def test_float32_permeability_gradients_of_a_window_on_the_floor(solver):
     actual = gradient(jnp.float32)
     error = jnp.linalg.norm(actual - expected) / jnp.linalg.norm(expected)
     assert error < 1e-3
+
+
+@pytest.mark.parametrize("solver", ["dense", "cholmod"])
+def test_float32_queries_of_a_tile_whose_centre_is_a_barrier(solver):
+    if solver == "cholmod":
+        pytest.importorskip("cholespy")
+    distance = ResistanceDistance(solver=SOURCES_TO_TARGETS_SOLVERS[solver]())
+    # A tile whose central pixel, and the pixels around it, are barriers at a
+    # permeability floor 1e-4 times the maximum. Measured: float32 gradients
+    # within 0.16 % of float64 with the dense solve, and 4e-6 with CHOLMOD;
+    # grounded at the central pixel, distances were off by 35 % and 1 %, and
+    # gradients by 9 % and 27 %.
+    side = 81
+    rng = np.random.default_rng(0)
+    permeability = 10 ** rng.uniform(-1, 0, (side, side))
+    middle = side // 2
+    permeability[middle - 2 : middle + 3, middle - 2 : middle + 3] = 1e-4
+    quality = jnp.asarray(rng.uniform(size=(side, side)) * (permeability > 1e-3))
+    sources = jnp.array([0, 3 * side + 5, side**2 - 1, (middle - 6) * side + middle])
+
+    def query(dtype):
+        def connectivity(permeability):
+            grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
+            distances = distance(grid, sources=sources)
+            return jnp.sum(jnp.exp(-distances / 2) * quality.ravel()), distances
+
+        gradient, distances = jax.grad(connectivity, has_aux=True)(
+            jnp.asarray(permeability, dtype)
+        )
+        return distances, gradient
+
+    for actual, expected in zip(query(jnp.float32), query(jnp.float64)):
+        error = jnp.linalg.norm(actual - expected) / jnp.linalg.norm(expected)
+        assert error < 5e-3
