@@ -9,7 +9,13 @@ import numpy as np
 import pytest
 from equinox import filter_grad, filter_jit
 from jax.experimental.sparse import BCOO
-from jaxscape import Graph, GridGraph, LCPDistance, SpielmanApproximation
+from jaxscape import (
+    Graph,
+    GridGraph,
+    LCPDistance,
+    resistance_distance,
+    SpielmanApproximation,
+)
 from jaxscape.resistance_distance import (
     p_inv_resistance_distance,
     ResistanceDistance,
@@ -427,6 +433,30 @@ def test_spielman_sources_to_targets_solve_for_the_projections():
         memory = program.lower(permeability).compile().memory_analysis()
         assert memory is not None
         assert memory.temp_size_in_bytes < dense / 2
+
+
+@pytest.mark.skipif(not CHOLMOD_AVAILABLE, reason="Cholmod not available")
+def test_spielman_sources_to_targets_draw_the_signs_of_large_graphs_in_batches():
+    # ceil(log(10000) / 0.04**2) = 5757 projections of 39600 directed edges:
+    # more random signs than `SPIELMAN_DENSE_PROJECTION_MAX_SIGN_ENTRIES`, which
+    # would take 1.8 GB at once. The query draws them `projection_batch_size`
+    # projections at a time, and holds the potentials of 5757 projections.
+    side = 100
+    permeability = jnp.linspace(0.5, 2.0, side**2).reshape(side, side)
+    method = SpielmanApproximation(epsilon=0.04)
+    distance = ResistanceDistance(solver=CholmodSolver(), method=method)
+    signs = 5757 * 4 * side * (side - 1)
+    assert signs > resistance_distance.SPIELMAN_DENSE_PROJECTION_MAX_SIGN_ENTRIES
+
+    def objective(permeability):
+        grid = GridGraph(permeability, fun=avg)
+        return jnp.sum(distance(grid, sources=jnp.array([side**2 // 2])))
+
+    program = jax.jit(objective).lower(permeability).compile()
+    memory = program.memory_analysis()
+    assert memory is not None
+    # Measured on a CPU: 0.98 GB, and 6.0 GB with the signs drawn at once.
+    assert memory.temp_size_in_bytes < signs * permeability.dtype.itemsize
 
 
 def test_few_sources_to_targets_solve_for_them_only():
