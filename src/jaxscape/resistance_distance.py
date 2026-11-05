@@ -362,11 +362,11 @@ def spielman_sources_to_targets_resistance_distance(
     many adjoint solves for the gradient, whatever the numbers of sources and
     targets.
     """
-    features = _spielman_features_reduced(
-        A.data, A.indices, A.shape, epsilon, seed, solver, state
+    features = _vertex_features(
+        _spielman_features_reduced(
+            A.data, A.indices, A.shape, epsilon, seed, solver, state
+        )
     )
-    # The ground vertex, the last one, has zero features.
-    features = jnp.pad(features, ((0, 0), (0, 1)))
     return _distances_from_selected_features(features[:, sources], features[:, targets])
 
 
@@ -886,16 +886,12 @@ def _spielman_nodes_to_nodes_resistance_distance_from_data(
     return distances.at[jnp.diag_indices(nodes.shape[0])].set(0)
 
 
-def _distances_from_features_reduced(features_reduced: Array) -> Array:
-    """Pairwise approximate resistance distances from reduced embeddings."""
-    features = jnp.pad(features_reduced, ((0, 0), (0, 1)))
-    feature_norms = jnp.sum(features**2, axis=0)
-    # Pairwise squared distances: ||u - v||^2 = ||u||^2 + ||v||^2 - 2 u*v.
-    return (
-        feature_norms[:, None]
-        + feature_norms[None, :]
-        - 2 * _matmul(features.T, features)
-    )
+def _vertex_features(features_reduced: Array) -> Array:
+    """Features of every vertex from reduced embeddings.
+
+    The ground vertex, the last one, has zero features.
+    """
+    return jnp.pad(features_reduced, ((0, 0), (0, 1)))
 
 
 def _spielman_resistance_distance_from_data(
@@ -907,7 +903,7 @@ def _spielman_resistance_distance_from_data(
     solver: lx.AbstractLinearSolver | None,
     state: Any,
 ) -> Array:
-    features_reduced = _spielman_features_reduced(
-        data, indices, shape, epsilon, seed, solver, state
+    features = _vertex_features(
+        _spielman_features_reduced(data, indices, shape, epsilon, seed, solver, state)
     )
-    return _distances_from_features_reduced(features_reduced)
+    return _distances_from_selected_features(features, features)
