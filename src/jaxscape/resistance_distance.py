@@ -356,7 +356,8 @@ class SpielmanApproximation(AbstractResistanceMethod):
       and hold the potentials of `projection_batch_size` of them.
     - `seed`: Random seed for the Rademacher edge projections. Each projection
       draws its signs from `seed` and its index, so that all queries on a graph
-      share their projections.
+      share their projections, in float32 and float64, with and without 64-bit
+      types (`jax_enable_x64`).
     - `projection_batch_size`: Number of projections that window queries solve
       together. Other queries draw the random signs of this many projections
       together when the signs of all projections, one per stored edge and
@@ -920,9 +921,20 @@ def _signs(key: Array, projections: Array, k: int, n_edges: int) -> Array:
     """
 
     def draw(index):
-        return jax.random.rademacher(jax.random.fold_in(key, index), (n_edges,))
+        return _rademacher(jax.random.fold_in(key, index), (n_edges,))
 
     return jnp.where(projections[:, None] < k, jax.vmap(draw)(projections), 0)
+
+
+def _rademacher(key: Array, shape: tuple[int, ...]) -> Array:
+    """Random signs, 1 or -1 with equal probability, as `int32` of `shape`.
+
+    They compare float32 uniforms with one half, whether or not 64-bit types
+    are enabled, so that a key draws the same signs in float32 and float64.
+    `jax.random.rademacher` draws uniforms of the default float type, and
+    other signs with 64-bit types.
+    """
+    return 2 * jax.random.bernoulli(key, jnp.float32(0.5), shape).astype(jnp.int32) - 1
 
 
 def _sqrt_half_weights(data: Array) -> Array:
@@ -1147,11 +1159,11 @@ def _spielman_windows_bwd(
         keys = jax.vmap(lambda probe: jax.random.fold_in(key, probe))(probes)
         valid = (probes < k).astype(data.dtype)
         per_source = jax.vmap(
-            lambda key: jax.random.rademacher(jax.random.fold_in(key, 0), rows.shape)
+            lambda key: _rademacher(jax.random.fold_in(key, 0), rows.shape)
         )(keys)
-        per_pixel = jax.vmap(
-            lambda key: jax.random.rademacher(jax.random.fold_in(key, 1), grid)
-        )(keys)
+        per_pixel = jax.vmap(lambda key: _rademacher(jax.random.fold_in(key, 1), grid))(
+            keys
+        )
         per_source = (per_source * valid[:, None]).astype(data.dtype).T
         per_pixel = jnp.moveaxis(per_pixel.astype(data.dtype), 0, -1)
         rhs = _probe_right_hand_sides(weights, rows, columns, per_source, per_pixel)
