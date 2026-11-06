@@ -324,12 +324,18 @@ class ResistanceDistance(AbstractSolverDistance):
         `projection_batch_size` at a time with two right-hand sides each. Each
         probe draws a sign per source and a sign per pixel, whose product
         weighs a pair. The estimate of each stored edge is unbiased. The
-        gradient of the estimates themselves varies much more between seeds:
-        on a crop of 120 x 120 pixels of the Maryland land cover of the
-        connectivity analysis example, with `dependency_range` 30, one tile
-        and `epsilon` 0.2, the permeability sensitivities of two seeds had a
-        Pearson correlation of 0.16 with it, and 0.96 with the probes, which
-        reached 0.99 at `epsilon` 0.1 and took about half the time.
+        gradient of the estimates themselves varies much more between seeds.
+        On the Maryland land cover of the connectivity analysis example, with
+        `dependency_range` 100, blocks of 21 pixels, one tile and
+        `CuDSSSolver` in float32, the permeability sensitivities of two seeds
+        had Pearson correlations of 0.9983, 0.9962 and 0.9862 with the probes
+        at `epsilon` 0.1, 0.15 and 0.2 (0.9979, 0.9930 and 0.9853 for the
+        sensitivity divided by that of a flat landscape), and of 0.31 with the
+        gradient of the estimates at `epsilon` 0.1. On a crop of 120 x 120
+        pixels with `dependency_range` 30, one tile and `epsilon` 0.2, two
+        seeds agreed to 0.96 with the probes, which took about half the time,
+        and to 0.16 with the gradient of the estimates; the probes reached
+        0.99 at `epsilon` 0.1.
 
         **Arguments:**
 
@@ -372,11 +378,14 @@ class SpielmanApproximation(AbstractResistanceMethod):
       sources-to-targets queries solve `k` linear systems and hold `k`
       potentials of every vertex; nodes-to-nodes queries solve one per node.
       Window queries, those of windowed analyses, solve `k` linear systems
-      and hold the potentials of `projection_batch_size` of them.
+      and hold the potentials of `projection_batch_size` of them. Their
+      gradient solves `2 * k` more, two right-hand sides for each of `k`
+      random probes, `projection_batch_size` probes at a time.
     - `seed`: Random seed for the Rademacher edge projections. Each projection
       draws its signs from `seed` and its index, so that all queries on a graph
       share their projections, in float32 and float64, with and without 64-bit
-      types (`jax_enable_x64`).
+      types (`jax_enable_x64`). The probes of the gradient of window queries
+      draw their signs from the same seed.
     - `projection_batch_size`: Number of projections that window queries solve
       together. Other queries draw the random signs of this many projections
       together when the signs of all projections, one per stored edge and

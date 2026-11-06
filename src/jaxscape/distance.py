@@ -37,9 +37,10 @@ class AbstractDistance(eqx.Module):
     **Attributes:**
 
     - `sources_share_work`: Whether a query from several sources costs much less
-      than one query per source, as when linear solves share one factorization.
-      Windowed analyses then compute the distances of many sources on one tile
-      graph. Defaults to `False`.
+      than one query per source, as when the linear solves of a query serve
+      every source with one solver state, such as a factorization or a
+      multigrid hierarchy. Windowed analyses then compute the distances of
+      many sources on one tile graph. Defaults to `False`.
     - `symmetric`: Whether the distance from `i` to `j` equals the distance
       from `j` to `i` on graphs whose adjacency matrix is symmetric, as those
       of windowed analyses are. Their quality sensitivity then needs no
@@ -215,10 +216,14 @@ class AbstractDistance(eqx.Module):
 
         The window of a source is the square of `size` pixels a side centred on
         it, and it must lie inside the grid: the query raises otherwise.
-        Windowed analyses query distances through this method only. By
-        default, it slices the distances from the sources to every vertex. A
-        distance may override it to hold fewer values, as `ResistanceDistance`
-        does with `SpielmanApproximation`.
+        Windowed analyses query the distances of their block centres through
+        this method, and the profile of their default proximity through a
+        sources-to-targets query. By default, it computes the distances from
+        the sources to every vertex and slices their windows: it holds
+        `m * n` distances for `m` sources and `n` vertices, besides the memory
+        of the query. A distance may override it to hold fewer values, as
+        `ResistanceDistance` does with `SpielmanApproximation`, or for speed,
+        as `LCPDistance` does on grid graphs.
 
         **Arguments:**
 
