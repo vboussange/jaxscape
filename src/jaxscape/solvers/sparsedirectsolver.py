@@ -32,12 +32,19 @@ class CSRPattern(eqx.Module):
     - `rows`: Row of each CSR value.
     - `value_map`: For each stored entry of the BCOO matrix, the index of its CSR
       value, or the number of CSR values for padding entries.
+    - `ell_slots`, `ell_columns`: The CSR values and columns of each row, padded
+      to the longest row with the number of CSR values and column 0, with shape
+      `(n, width)`, or `None` when they would hold more than twice as many
+      entries as the CSR values. Products of the matrix with vectors read them
+      row by row.
     """
 
     offsets: Array
     columns: Array
     rows: Array
     value_map: Array
+    ell_slots: Array | None = None
+    ell_columns: Array | None = None
 
     @property
     def n(self) -> int:
@@ -78,8 +85,9 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
     The checks assume nothing from the library. Each factorization solves
     `A x = A 1`, and fails when the backward error
     `max|A 1 - A x| / (||A||_inf max|x|)` is not finite or exceeds the square root
-    of the machine epsilon. Each solve fails when its solution `x` of `b` is not
-    finite or `max|b - A x|` exceeds `residual_tolerance` times `max|b|`. A failed
+    of the machine epsilon. Each solve scales `b` by a power of two to a largest
+    magnitude in [0.5, 1), and fails when its solution `x` of `b` is not finite
+    or `max|b - A x|` exceeds `residual_tolerance` times `max|b|`. A failed
     solve returns NaN and reports `lineax.RESULTS.singular`, so it raises with
     `throw=True` and returns a failed result with `throw=False`. On GPUs, Lineax may
     only print the error, and the failed distances are then NaN.
@@ -165,10 +173,7 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
     ) -> SparseDirectState[_Factorization]:
         del options
         matrix = self._matrix(operator)
-        pattern = self._pattern(matrix)
-        values = _csr_values(matrix.data, pattern)
-        factorization, failed = self._analysed(pattern, values)
-        return SparseDirectState(factorization, pattern, values, failed)
+        return _initial_state(self, self._pattern(matrix), matrix.data)
 
     def reinit(
         self,
@@ -239,16 +244,25 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
         options: dict[str, Any],
     ) -> tuple[Array, RESULTS, dict[str, Any]]:
         del options
-        solution = self.solve(state.factorization, vector)
+        # The solve scales the right-hand side exactly, by a power of two, to a
+        # largest magnitude in [0.5, 1), so that its solution keeps the
+        # precision of the dtype: float32 right-hand sides of about 1e-37 had
+        # subnormal solutions, which failed the check below. Right-hand sides
+        # below the smallest normal number solve to 0.
+        norm = jnp.max(jnp.abs(vector))
+        exponent = jnp.frexp(norm)[1]
+        normal = norm >= jnp.finfo(vector.dtype).tiny
+        scaled = jnp.where(normal, jnp.ldexp(vector, -exponent), 0)
+        solution = self.solve(state.factorization, scaled)
         product = _product(state.pattern, state.values, solution)
         tolerance = self.residual_tolerance(solution.dtype)
         # A NaN residual compares false.
         solved = ~state.failed & (
-            jnp.max(jnp.abs(vector - product)) <= tolerance * jnp.max(jnp.abs(vector))
+            jnp.max(jnp.abs(scaled - product)) <= tolerance * jnp.max(jnp.abs(scaled))
         )
         # A failed solve can leave finite solutions. They become NaN, so that
         # their values never look valid.
-        solution = jnp.where(solved, solution, jnp.nan)
+        solution = jnp.where(solved, jnp.ldexp(solution, exponent), jnp.nan)
         return solution, RESULTS.where(solved, RESULTS.successful, RESULTS.singular), {}
 
     def transpose(self, state: SparseDirectState[_Factorization], options: dict):
@@ -310,16 +324,27 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
         valid = np.all((indices >= 0) & (indices < np.asarray(matrix.shape)), axis=1)
         keys = indices[valid, 0] * n + indices[valid, 1]
         unique_keys, slots = np.unique(keys, return_inverse=True)
+        nnz = unique_keys.shape[0]
         row_counts = np.bincount(unique_keys // n, minlength=n)
-        value_map = np.full(indices.shape[0], unique_keys.shape[0])
+        offsets = np.concatenate([[0], np.cumsum(row_counts)])
+        columns = unique_keys % n
+        value_map = np.full(indices.shape[0], nnz)
         value_map[valid] = slots
+        ell_slots = ell_columns = None
+        width = int(row_counts.max(initial=0))
+        if n * width <= 2 * nnz:
+            position = np.arange(width)
+            stored = position[None, :] < row_counts[:, None]
+            ell = np.where(stored, offsets[:-1, None] + position[None, :], nnz)
+            ell_slots = jnp.asarray(ell, dtype=jnp.int32)
+            ell_columns = jnp.asarray(np.append(columns, 0)[ell], dtype=jnp.int32)
         return CSRPattern(
-            offsets=jnp.asarray(
-                np.concatenate([[0], np.cumsum(row_counts)]), dtype=jnp.int32
-            ),
-            columns=jnp.asarray(unique_keys % n, dtype=jnp.int32),
+            offsets=jnp.asarray(offsets, dtype=jnp.int32),
+            columns=jnp.asarray(columns, dtype=jnp.int32),
             rows=jnp.asarray(unique_keys // n, dtype=jnp.int32),
             value_map=jnp.asarray(value_map, dtype=jnp.int32),
+            ell_slots=ell_slots,
+            ell_columns=ell_columns,
         )
 
     def _checked_data(
@@ -352,16 +377,56 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
         return eqx.error_if(matrix.data, ~matches, mismatch)
 
 
+@eqx.filter_jit
+def _initial_state(
+    solver: AbstractSparseDirectSolver, pattern: CSRPattern, data: Array
+) -> SparseDirectState:
+    """The state of `solver` for the stored values `data` of a matrix of `pattern`,
+    analysed afresh, in one compiled program."""
+    values = _csr_values(data, pattern)
+    factorization, failed = solver._analysed(pattern, values)
+    return SparseDirectState(factorization, pattern, values, failed)
+
+
 def _csr_values(data: Array, pattern: CSRPattern) -> Array:
     values = jnp.zeros(pattern.nnz, dtype=data.dtype)
     return values.at[pattern.value_map].add(data, mode="drop")
 
 
+@jax.custom_batching.custom_vmap
 def _product(pattern: CSRPattern, values: Array, vector: Array) -> Array:
-    """The product of the matrix with CSR `values` and `vector`."""
-    return jax.ops.segment_sum(
-        values * vector[pattern.columns],
-        pattern.rows,
-        num_segments=pattern.n,
-        indices_are_sorted=True,
-    )
+    """The product of the matrix with CSR `values` and `vector`.
+
+    Under `jax.vmap` over vectors alone, it computes the products one vector
+    after another. XLA gathers the entries of a batch of vectors as a slice
+    per index, which reads the batch in strides of the vector size: the
+    residual checks of 128 solutions of 826950 vertices took 32 ms on an RTX
+    3090 as a batch, against a 100 ms solve, and 9 ms one vector after
+    another, with rows padded to the longest (see `CSRPattern`).
+    """
+    return _product_of(pattern, values, vector)
+
+
+@_product.def_vmap
+def _(
+    axis_size: int, in_batched: Any, pattern: CSRPattern, values: Array, vector: Array
+):
+    del axis_size
+    if any(jax.tree.leaves(in_batched[:2])) or not in_batched[2]:
+        axes = jax.tree.map(lambda batched: 0 if batched else None, in_batched)
+        return jax.vmap(_product_of, in_axes=axes)(pattern, values, vector), True
+    return jax.lax.map(
+        lambda vector: _product_of(pattern, values, vector), vector
+    ), True
+
+
+def _product_of(pattern: CSRPattern, values: Array, vector: Array) -> Array:
+    if pattern.ell_slots is None or pattern.ell_columns is None:
+        return jax.ops.segment_sum(
+            values * vector[pattern.columns],
+            pattern.rows,
+            num_segments=pattern.n,
+            indices_are_sorted=True,
+        )
+    padded = jnp.append(values, jnp.zeros((1,), values.dtype))[pattern.ell_slots]
+    return jnp.sum(padded * vector[pattern.ell_columns], axis=1)

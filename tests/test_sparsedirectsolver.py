@@ -115,7 +115,7 @@ def test_distances_match_dense_reference_across_contrast(solver, compiled, dtype
         grid = grid_of(surface(name).astype(dtype))
         actual = distances(grid, distance.init(grid))
 
-        expected = ResistanceDistance()(grid_of(surface(name)), nodes=nodes)
+        expected = ResistanceDistance(solver=None)(grid_of(surface(name)), nodes=nodes)
         assert actual.dtype == dtype
         rtol = distance_rtol(dtype, name)
         np.testing.assert_allclose(
@@ -214,6 +214,30 @@ def test_sparse_solves_and_gradients_match_dense_reference(solver, n_rhs):
     np.testing.assert_allclose(actual[1], expected[1], rtol=1e-10, atol=1e-12)
 
 
+def test_float32_solves_keep_their_precision_for_tiny_right_hand_sides(solver):
+    # Gradients of proximities that nearly underflow give right-hand sides of
+    # about 1e-37 in float32, near the smallest normal number, 1.2e-38: their
+    # solutions were subnormal, lost their precision and failed the residual
+    # check of the solve, as on the Maryland land cover with cuDSS. Right-hand
+    # sides below the smallest normal number solve to 0.
+    conductance = surface("smooth", (12, 12))
+    matrix = ResistanceDistance().system_matrix(grid_of(conductance))
+    # Entries of magnitude 0.5 to 1 stay normal numbers at the scale 1e-37.
+    rng = np.random.default_rng(0)
+    b = rng.choice([-1, 1], (144, 3)) * rng.uniform(0.5, 1, (144, 3))
+    expected = np.linalg.solve(matrix.todense(), b)
+    matrix = BCOO((matrix.data.astype(jnp.float32), matrix.indices), shape=matrix.shape)
+    state = solver.init(BCOOLinearOperator(matrix), {})
+
+    def solve(b):
+        b = jnp.asarray(b, jnp.float32)
+        return _batched_linear_solve(matrix, b, solver, state=state)
+
+    for scale in [1e-37, 1.0, 1e30]:
+        np.testing.assert_allclose(solve(scale * b) / scale, expected, rtol=1e-4)
+    np.testing.assert_array_equal(solve(1e-40 * b), 0)
+
+
 def test_reinit_reuses_the_analysis_and_keeps_unchanged_values():
     solver = DenseCholesky()
     distance = ResistanceDistance(solver=solver)
@@ -275,7 +299,7 @@ def test_a_backend_needs_only_factorize_solve_and_a_tolerance():
     state = distance.reinit(grid_of(2 * smooth), distance.init(grid_of(smooth)))
     actual = distance(grid_of(2 * smooth), nodes=nodes, state=state)
 
-    expected = ResistanceDistance()(grid_of(2 * smooth), nodes=nodes)
+    expected = ResistanceDistance(solver=None)(grid_of(2 * smooth), nodes=nodes)
     np.testing.assert_allclose(actual, expected, rtol=1e-8)
 
 
@@ -305,7 +329,7 @@ def test_a_query_on_a_new_graph_solves_it_with_an_outdated_state(solver):
     for name in ("six_decades", "barrier_with_floor", "six_decades"):
         actual = query(grid_of(surface(name)), outdated)
 
-        expected = ResistanceDistance()(grid_of(surface(name)), nodes=nodes)
+        expected = ResistanceDistance(solver=None)(grid_of(surface(name)), nodes=nodes)
         np.testing.assert_allclose(actual, expected, rtol=1e-8, atol=1e-12)
 
 
@@ -316,7 +340,7 @@ def test_queries_without_a_state_initialize_one_outside_jit(solver):
 
     np.testing.assert_allclose(
         distance(grid, nodes=nodes),
-        ResistanceDistance()(grid, nodes=nodes),
+        ResistanceDistance(solver=None)(grid, nodes=nodes),
         rtol=1e-8,
     )
     with pytest.raises(ValueError, match=r"outside `jax\.jit`.*distance\.init"):
@@ -377,20 +401,47 @@ def test_a_failed_refactorization_raises_mid_optimization(kind, name, dtype):
         jax.block_until_ready(step(surface(name).astype(dtype), state))
 
 
-def test_solves_fail_with_a_failed_state_or_a_large_residual():
+def star(n):
+    """A grounded star: the hub's row holds every vertex."""
+    matrix = np.diag(np.full(n, 2.0))
+    matrix[0, 1:] = matrix[1:, 0] = -1.0
+    matrix[0, 0] = n
+    return matrix
+
+
+@pytest.mark.parametrize("vectors", [None, 3])
+@pytest.mark.parametrize("graph", ["grid", "star"])
+def test_solves_fail_with_a_failed_state_or_a_large_residual(vectors, graph):
     solver = DenseCholesky()
-    operator = BCOOLinearOperator(grounded_laplacian(surface("smooth")))
+    if graph == "grid":
+        matrix = grounded_laplacian(surface("smooth"))
+    else:
+        matrix = sparse_layout(star(12))
+    operator = BCOOLinearOperator(matrix)
     state = solver.init(operator, {})
+    # Products of the matrix read each row in a block of 5 entries, on a grid,
+    # and add up the stored entries row by row, on a star.
+    if graph == "grid":
+        assert state.pattern.ell_slots is not None
+        assert state.pattern.ell_slots.shape == (operator.in_size(), 5)
+    else:
+        assert state.pattern.ell_slots is None
     b = jnp.ones(operator.in_size())
-    _, result, _ = solver.compute(state, b, {})
-    assert result == lx.RESULTS.successful
+    compute = solver.compute
+    if vectors is not None:
+        b = jnp.asarray(np.random.default_rng(1).standard_normal((vectors, b.size)))
+        compute = jax.vmap(solver.compute, in_axes=(None, 0, None))
+    solution, result, _ = compute(state, b, {})
+    assert jnp.all(result == lx.RESULTS.successful)
+    expected = np.linalg.solve(matrix.todense(), np.asarray(b).T).T
+    np.testing.assert_allclose(solution, expected, rtol=1e-10)
 
     # Each solution here solves the factorized matrix, so only the check rejects it.
     failed = eqx.tree_at(lambda s: s.failed, state, jnp.array(True))
     other_matrix = eqx.tree_at(lambda s: s.values, state, 2 * state.values)
     for rejected in (failed, other_matrix):
-        solution, result, _ = solver.compute(rejected, b, {})
-        assert result == lx.RESULTS.singular
+        solution, result, _ = compute(rejected, b, {})
+        assert jnp.all(result == lx.RESULTS.singular)
         assert np.all(np.isnan(solution))
 
 
@@ -426,7 +477,7 @@ def test_a_failed_refactorization_is_retried_on_a_fresh_analysis():
 
     assert not state.failed and state.factorization.refactorizations == 0
     solution = lx.linear_solve(operators[2], b, solver, state=state)
-    expected = np.linalg.solve(np.asarray(operators[2].matrix.todense()), b)
+    expected = np.linalg.solve(np.asarray(grounded_laplacian(3 * smooth).todense()), b)
     np.testing.assert_allclose(solution.value, expected, rtol=1e-8)
 
 

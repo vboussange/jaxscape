@@ -58,9 +58,9 @@ def test_imports_and_defaults_load_no_cuda_library():
 import sys
 import jaxscape
 from jaxscape import ResistanceDistance
-from jaxscape.solvers import CuDSSSolver
+from jaxscape.solvers import CuDSSSolver, GridMultigridSolver
 from jaxscape.solvers.cudsssolver import CUDSS_AVAILABLE
-assert ResistanceDistance().solver is None
+assert isinstance(ResistanceDistance().solver, GridMultigridSolver)
 assert not any(name.startswith("spineax") for name in sys.modules)
 print(CUDSS_AVAILABLE)
 """
@@ -120,7 +120,7 @@ def test_the_solver_runs_on_spineax_phases(stub_spineax):
     nodes = jnp.array([0, 9, 41])
     distance = ResistanceDistance(solver=CuDSSSolver())
 
-    expected = ResistanceDistance()(grid_of(conductance), nodes=nodes)
+    expected = ResistanceDistance(solver=None)(grid_of(conductance), nodes=nodes)
     for dtype, rtol in ((jnp.float64, 1e-10), (jnp.float32, 1e-4)):
         grid = grid_of(conductance.astype(dtype))
         new_grid = grid_of(2 * conductance.astype(dtype))
@@ -223,7 +223,7 @@ def test_queries_allocate_no_dense_matrix(cudss):
 @pytest.mark.parametrize("query", QUERIES)
 def test_carrying_the_state_never_repeats_the_analysis(cudss, query):
     distance = ResistanceDistance(solver=CuDSSSolver())
-    reference = ResistanceDistance()
+    reference = ResistanceDistance(solver=None)
     state = distance.init(grid_of(surface("smooth")))
 
     @jax.jit
@@ -273,7 +273,7 @@ def test_a_used_up_state_repeats_the_analysis_and_stays_exact(cudss):
     conductance = 2 * surface("smooth")
     actual = distance(grid_of(conductance), nodes=nodes, state=used_up)
 
-    expected = ResistanceDistance()(grid_of(conductance), nodes=nodes)
+    expected = ResistanceDistance(solver=None)(grid_of(conductance), nodes=nodes)
     np.testing.assert_allclose(actual, expected, rtol=1e-8)
     assert cudss.rebuild_count() > rebuilds
 
@@ -289,7 +289,7 @@ def test_spielman_adjoint_solves_reuse_the_forward_factorization(cudss, query):
         return distance(grid_of(conductance), state=state, **QUERIES[query])
 
     forward, pullback = jax.vjp(distances, conductance)
-    reference = ResistanceDistance(method=SPIELMAN)
+    reference = ResistanceDistance(solver=None, method=SPIELMAN)
     expected = reference(grid_of(conductance), **QUERIES[query])
     np.testing.assert_allclose(
         forward, expected, rtol=1e-6, atol=1e-10 * float(np.max(np.abs(expected)))

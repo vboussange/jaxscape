@@ -8,6 +8,10 @@ from .amjaxcgsolver import (
 )
 from .cholmodsolver import CholmodSolver as CholmodSolver
 from .cudsssolver import CuDSSSolver as CuDSSSolver
+from .gridmultigridsolver import (
+    GridMultigridSolver as GridMultigridSolver,
+    GridMultigridState as GridMultigridState,
+)
 from .operator import (
     AbstractReusableStateSolver as AbstractReusableStateSolver,
     BCOOLinearOperator as BCOOLinearOperator,

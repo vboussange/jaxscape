@@ -1,25 +1,50 @@
 import math
-from typing import Any, Optional
+from collections.abc import Callable
+from typing import Any, ClassVar
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import lineax as lx
-from jax import Array
-from jax import lax
+from jax import Array, lax
 from jax.experimental.sparse import BCOO
 from jax.numpy.linalg import pinv
 
-from jaxscape.distance import AbstractSolverDistance
-from jaxscape.graph import AbstractGraph
+from jaxscape.distance import (
+    _grid_multigrid_state,
+    _inside_windows,
+    AbstractSolverDistance,
+)
+from jaxscape.graph import AbstractGraph, GridGraph
+from jaxscape.solvers.gridmultigridsolver import GridMultigridSolver
 from jaxscape.solvers.operator import _batched_linear_solve_impl, _solver_state
-from jaxscape.utils import _matmul, graph_laplacian
+from jaxscape.utils import _matmul, bcoo_diag, graph_laplacian
 
 
 # Building the full Rademacher projection matrix is faster for moderate sizes,
 # but beyond this many sign entries the temporary allocation becomes large
 # enough that the streamed scan path is the safer default.
 SPIELMAN_DENSE_PROJECTION_MAX_SIGN_ENTRIES = 200_000_000
+
+# Exact sources-to-targets queries solve all target columns at once, and keep
+# them for the gradient, when their potentials hold at most this many values.
+_UNCHUNKED_POTENTIALS = 2**22
+# Otherwise they solve the target columns this many at a time, and again for the
+# gradient. Sparse direct solvers reach their full throughput from a few hundred
+# columns on.
+_TARGET_CHUNK_SIZE = 1024
+# Spielman window queries take the squared differences of about this many
+# potentials at once, from windows of up to `_LARGEST_GATHERED_WINDOW`
+# differences, and from larger windows one at a time: XLA gathers several large
+# windows more slowly than it slices one. With 64 projections on an RTX 3090,
+# 1225 windows of 201 pixels a side took 27 ms one at a time and 53 ms two or
+# more at a time, and 4096 windows of 41 pixels a side 62 ms one at a time and
+# 8 ms 64 at a time.
+_WINDOW_DIFFERENCES_PER_STEP = 2**24
+_LARGEST_GATHERED_WINDOW = 2**18
+# The gradient of Spielman window queries places the windows of this many
+# consecutive sources at once (see `_probe_right_hand_sides`).
+_SOURCES_PER_STRIP = 64
 
 
 class ResistanceDistance(AbstractSolverDistance):
@@ -28,13 +53,29 @@ class ResistanceDistance(AbstractSolverDistance):
 
     **Attributes:**
 
-    - `solver`: Optional `lineax.AbstractLinearSolver`. Must be compatible with
-      BCOO matrices. We currently support `jaxscape.solvers.CholmodSolver`,
-      `jaxscape.solvers.PyAMGSolver`, `jaxscape.solvers.AMJaxCGSolver`, and
-      `jaxscape.solvers.CuDSSSolver`.
-      If None, uses the pseudo-inverse method, which is very memory intensive
-      for exact all-pairs distances (densifies the Laplacian matrix), or dense
-      solves for approximate distances.
+    - `solver`: Lineax solver of the grounded Laplacian, compatible with BCOO
+      matrices, or `None` for dense solves. Defaults to
+      `jaxscape.solvers.GridMultigridSolver()`, conjugate gradients with a
+      geometric multigrid preconditioner, which solves grid graphs, such as
+      those of a `GridGraph`, on any device without an optional dependency,
+      also in float32 and inside `jax.jit`. It solves grids of up to 1024
+      pixels with one Cholesky factorization, up to rounding. On a grid of
+      1000 x 1000 pixels in float32, its exact resistances among 20 nodes had
+      a relative error of `6.5e-5` against float64. Exact windowed analyses,
+      which solve for every vertex of a tile, took up to three times longer on
+      a CPU than with `solver=None`. Other graphs raise with the default: pass
+      `jaxscape.solvers.CholmodSolver`, `PyAMGSolver`, `AMJaxCGSolver` or
+      `CuDSSSolver`, or `solver=None`. The solver guide gives the solver of
+      each device and query
+      ([Choosing a solver](linear_solvers.md#choosing-a-solver)). Without a
+      solver, exact all-pairs and nodes-to-nodes
+      queries take the pseudo-inverse of the dense Laplacian, and other
+      queries a dense Cholesky factorization of the grounded Laplacian: their
+      memory grows with the square of the number of vertices, which suits
+      small graphs. The float32 pseudo-inverse loses accuracy: on a grid of
+      24 x 40 pixels with conductances over two decades, its all-pairs
+      resistances had a relative error of 40 % against float64, and those of
+      the default `2.6e-6`.
     - `method`: A resistance distance method. Defaults to `ExactResistance()`.
       Use `SpielmanApproximation(epsilon=..., seed=...)` for the randomized
       Spielman-Srivastava approximation.
@@ -44,16 +85,20 @@ class ResistanceDistance(AbstractSolverDistance):
         ```python
         import jax.numpy as jnp
         from jaxscape import GridGraph, ResistanceDistance, SpielmanApproximation
-        from jaxscape.solvers import AMJaxCGSolver, PyAMGSolver
+        from jaxscape.solvers import AMJaxCGSolver, CholmodSolver
 
         permeability = jnp.ones((3, 3))
         grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
 
-        # Default: pseudo-inverse (small graphs)
+        # Default: GridMultigridSolver, for grid graphs
         distance = ResistanceDistance()
+        dist = distance(grid)
 
-        # With solver (large graphs)
-        distance = ResistanceDistance(solver=PyAMGSolver())
+        # Dense solves, for small graphs of any kind
+        distance = ResistanceDistance(solver=None)
+
+        # A sparse direct solver, for other graphs
+        distance = ResistanceDistance(solver=CholmodSolver())
 
         # With an initialized AMG-preconditioned CG solver
         distance = ResistanceDistance(
@@ -70,35 +115,190 @@ class ResistanceDistance(AbstractSolverDistance):
         state = distance.reinit(updated_grid, state)
         dist = distance(updated_grid, state=state)
 
-        # Approximate resistance distance
-        distance = ResistanceDistance(
-            method=SpielmanApproximation(epsilon=0.05),
-            solver=PyAMGSolver(),
-        )
+        # Approximate resistance distance, with the default solver
+        distance = ResistanceDistance(method=SpielmanApproximation(epsilon=0.05))
 
         dist = distance(grid)
         ```
 
+    !!! note "Grounding, float32 and memory"
+
+        Apart from the pseudo-inverse of dense all-pairs and nodes-to-nodes
+        queries, queries solve the Laplacian grounded at one vertex: among the
+        vertices whose weighted degree is at least half the largest, the
+        nearest to the middle vertex `n // 2` in Manhattan distance on a grid
+        of `w` columns, where `w` is the largest index difference between
+        neighbours, with the lowest index among the nearest. On a grid graph
+        of `h` rows and `w` columns with rook contiguity, the middle vertex is
+        the pixel of row `h // 2` and column `w // 2` for an odd `h`, and the
+        first pixel of row `h / 2`, on the left edge, for an even `h`. The
+        ground is then a pixel of near-maximum permeability at or near the
+        centre of the windows of a windowed analysis, whose sides are odd,
+        from which their distances involve no cancellation, and near the left
+        edge of tiles of an even number of rows: at pixel (347, 18) of the
+        raster on the 894 x 925 tile of the Maryland land cover of the
+        connectivity analysis example. The ground's degree is added to its
+        diagonal entry, so that every ground gives one sparsity pattern. On
+        windows of up to 101 x 101 pixels with a permeability floor of `1e-4`,
+        float32 permeability gradients stayed within 0.4 % of float64 with
+        `CuDSSSolver`, and within 3.5 % with the dense solve and
+        `CholmodSolver`, which takes under 10 % longer in float64. Grounded at
+        a floored pixel, they were off by up to 17 times their norm with
+        `CuDSSSolver`.
+
+        On large tiles, float32 solves of direct solvers are inaccurate around
+        the ground. On that Maryland tile, with
+        `SpielmanApproximation(epsilon=0.15)`, the float32 permeability
+        sensitivity over the 40 x 40 pixels around the ground was 4.15 times
+        that of float64 with the same random signs in median, and up to 1204
+        times, with `CuDSSSolver`, against 1.06 and 6.3 times with
+        `GridMultigridSolver(rtol=3e-4)`. For permeability sensitivity on
+        large tiles in float32, use `GridMultigridSolver`, the default, or a
+        direct solver in float64.
+
+        Exact sources-to-targets queries on `n` vertices, from `m` sources to
+        `k` targets, hold the potentials of all targets when they are a few
+        million values, as in small windows. Beyond, they solve the targets in
+        chunks of `c`, about a thousand, and hold at most `n * (m + c)`
+        potentials, and their gradient solves each target once more.
+
     !!! warning
 
         The graph must be undirected for resistance distance to be well-defined.
+        With a solver, it must also be connected: the grounded Laplacian of a
+        disconnected graph is singular, and queries raise. `GridMultigridSolver`
+        then reports a non-finite solution, or a solve that did not converge
+        within `max_steps`. A grid graph is disconnected when edges of zero
+        conductance cut it, as `fun` gives between pixels of zero permeability.
+        Windowed analyses raise permeability to a floor, so that their graphs
+        are connected. Without a solver, the pseudo-inverse gives the
+        resistances within each connected component, and finite values between
+        components, and sources-to-targets queries give NaN.
     """
 
-    solver: Optional[lx.AbstractLinearSolver] = None
+    solver: lx.AbstractLinearSolver | None = eqx.field(
+        default_factory=GridMultigridSolver
+    )
     method: "AbstractResistanceMethod" = eqx.field(
         default_factory=lambda: ExactResistance()
     )
+    sources_share_work: ClassVar[bool] = True
+    symmetric: ClassVar[bool] = True
 
     def system_matrix(self, graph: AbstractGraph) -> BCOO:
         """Return the grounded Laplacian of `graph`."""
-        return graph_laplacian(graph.get_adjacency_matrix())[:-1, :-1]
+        return _grounded_laplacian(graph.get_adjacency_matrix())[0]
+
+    def exact(self) -> "ResistanceDistance":
+        """Return the exact resistance distance, with the same solver.
+
+        **Returns:**
+
+        `ResistanceDistance` with `ExactResistance` and the solver of this one,
+        whose solver states serve each other.
+        """
+        return ResistanceDistance(solver=self.solver)
+
+    def reseeded(self, index: Array) -> "ResistanceDistance":
+        """Return the distance whose random projections depend on `index` too.
+
+        With `SpielmanApproximation`, the seed of the projections becomes one
+        drawn from `seed` and `index`. Exact resistances return themselves.
+
+        **Arguments:**
+
+        - `index`: Integer, which may be traced.
+
+        **Returns:**
+
+        `ResistanceDistance` with the same solver and method, but the seed.
+        """
+        if not isinstance(self.method, SpielmanApproximation):
+            return self
+        key = jax.random.fold_in(jax.random.PRNGKey(self.method.seed), index)
+        seed = jax.random.bits(key, dtype=jnp.uint32)
+        return eqx.tree_at(lambda d: d.method.seed, self, seed)
+
+    def debiased_proximity(
+        self, proximity: Callable[[Array], Array], graph: AbstractGraph
+    ) -> Callable[[Array], Array]:
+        r"""Return the proximity to apply to the distances of queries on `graph`.
+
+        With `SpielmanApproximation`, an estimate $\hat R$ of the resistance
+        $R$ is unbiased, with variance $2 R^2 / k$ for $k$ projections. A
+        proximity $K$ convex in $R$ is then biased upward: by about 5 %, 15 %
+        and 30 % for `epsilon` 0.1, 0.2 and 0.3 with the default proximity of
+        the windowed analyses. The returned proximity is corrected to second
+        order:
+
+        $$K(\hat R) - \frac{\hat R^2}{k} K''(\hat R)$$
+
+        For a negative exponential, it is
+        $K(\hat R) \big(1 - (\hat R K'(\hat R) / K(\hat R))^2 / k\big)$. The
+        correction does not reduce the variance of the proximities. Exact
+        resistances keep `proximity`.
+
+        **Arguments:**
+
+        - `proximity`: Function mapping resistances to proximities, twice
+          differentiable.
+        - `graph`: Graph of the queries.
+
+        **Returns:**
+
+        Function mapping the resistances of queries on `graph` to proximities.
+        """
+        if not isinstance(self.method, SpielmanApproximation):
+            return proximity
+        k = _projection_size(graph.nv, self.method.epsilon)
+
+        def slope(distance):
+            return jax.jvp(proximity, (distance,), (jnp.ones_like(distance),))
+
+        def debiased(distance):
+            (value, _), (_, curvature) = jax.jvp(
+                slope, (distance,), (jnp.ones_like(distance),)
+            )
+            return value - distance**2 * curvature / k
+
+        return debiased
+
+    def init(self, graph: AbstractGraph) -> Any:
+        """Build the solver state for `graph`.
+
+        With `GridMultigridSolver`, the default, the state of a `GridGraph`
+        builds inside `jax.jit` too: the solver reads its grid from concrete
+        sparse indices, which the shape and contiguity of the graph set. Other
+        solvers and graphs build their state as `AbstractSolverDistance.init`
+        does.
+
+        **Arguments:**
+
+        - `graph`: Graph whose grounded Laplacian the state is built for.
+
+        **Returns:**
+
+        State to pass to queries and to `reinit`, or `None` without a solver.
+        """
+        if isinstance(self.solver, GridMultigridSolver) and isinstance(
+            graph, GridGraph
+        ):
+            return _grid_multigrid_state(self, graph)
+        return super().init(graph)
 
     @eqx.filter_jit
     def all_pairs_distance(self, graph: AbstractGraph, state: Any = None) -> Array:
+        if state is None:
+            state = self.init(graph)
         A = graph.get_adjacency_matrix()
         if isinstance(self.method, SpielmanApproximation):
             return spielman_resistance_distance(
-                A, self.method.epsilon, self.method.seed, self.solver, state
+                A,
+                self.method.epsilon,
+                self.method.seed,
+                self.solver,
+                state,
+                projection_batch_size=self.method.projection_batch_size,
             )
         if self.solver is None:
             return p_inv_resistance_distance(A)
@@ -112,6 +312,8 @@ class ResistanceDistance(AbstractSolverDistance):
     def nodes_to_nodes_distance(
         self, graph: AbstractGraph, nodes: Array, state: Any = None
     ) -> Array:
+        if state is None:
+            state = self.init(graph)
         A = graph.get_adjacency_matrix()
         if isinstance(self.method, SpielmanApproximation):
             return spielman_nodes_to_nodes_resistance_distance(
@@ -138,6 +340,8 @@ class ResistanceDistance(AbstractSolverDistance):
         targets: Array,
         state: Any = None,
     ) -> Array:
+        if state is None:
+            state = self.init(graph)
         if isinstance(self.method, SpielmanApproximation):
             A = graph.get_adjacency_matrix()
             return spielman_sources_to_targets_resistance_distance(
@@ -150,8 +354,67 @@ class ResistanceDistance(AbstractSolverDistance):
                 state,
                 projection_batch_size=self.method.projection_batch_size,
             )
-        R = self.all_pairs_distance(graph, state)
-        return R[sources[:, None], targets[None, :]]
+        A = graph.get_adjacency_matrix()
+        return _exact_sources_to_targets(
+            A.data,
+            A.indices,
+            A.shape,
+            sources.astype(A.indices.dtype),
+            targets.astype(A.indices.dtype),
+            self.solver,
+            state,
+        )
+
+    def sources_to_windows_distance(
+        self, graph: GridGraph, sources: Array, size: int, state: Any = None
+    ) -> Array:
+        """Return the distances from each source to the pixels of its window.
+
+        As `AbstractDistance.sources_to_windows_distance`. With
+        `SpielmanApproximation`, the query solves the `k` projections
+        `projection_batch_size` at a time, and adds the squared differences of
+        their potentials between each source and the pixels of its window. It
+        holds the potentials of one batch of projections and the windows.
+
+        Its gradient estimates the gradient of the exact resistances,
+        contracted with the cotangent of the estimates, from `k` random
+        probes of the pairs of a source and a pixel of its window, solved
+        `projection_batch_size` at a time with two right-hand sides each. Each
+        probe draws a sign per source and a sign per pixel, whose product
+        weighs a pair. The estimate of each stored edge is unbiased. The
+        gradient of the estimates themselves varies much more between seeds.
+        On the Maryland land cover of the connectivity analysis example, with
+        `dependency_range` 100, blocks of 21 pixels, one tile and
+        `CuDSSSolver` in float32, the permeability sensitivities of two seeds
+        had Pearson correlations of 0.9983, 0.9962 and 0.9862 with the probes
+        at `epsilon` 0.1, 0.15 and 0.2 (0.9979, 0.9930 and 0.9853 for the
+        sensitivity divided by that of a flat landscape), and of 0.31 with the
+        gradient of the estimates at `epsilon` 0.1. On a crop of 120 x 120
+        pixels with `dependency_range` 30, one tile and `epsilon` 0.2, two
+        seeds agreed to 0.96 with the probes, which took about half the time,
+        and to 0.16 with the gradient of the estimates; the probes reached
+        0.99 at `epsilon` 0.1.
+
+        **Arguments:**
+
+        - `graph`: Grid graph on which to compute distances.
+        - `sources`: Source vertex indices with shape `(m,)`.
+        - `size`: Odd number of pixels along a side of the windows.
+        - `state`: Optional solver state. Defaults to automatic initialization.
+
+        **Returns:**
+
+        Distances with shape `(m, size, size)`.
+        """
+        if not isinstance(self.method, SpielmanApproximation):
+            return super().sources_to_windows_distance(graph, sources, size, state)
+        if size % 2 == 0:
+            raise ValueError("`size` must be odd.")
+        if state is None:
+            state = self.init(jax.tree.map(lax.stop_gradient, graph))
+        return _spielman_window_query(
+            graph, sources, size, self.method, self.solver, state
+        )
 
 
 class AbstractResistanceMethod(eqx.Module):
@@ -169,12 +432,24 @@ class SpielmanApproximation(AbstractResistanceMethod):
     **Attributes:**
 
     - `epsilon`: Accuracy parameter. Smaller values use more random
-      projections: `ceil(log(n_vertices) / epsilon**2)`, which increases memory
-      use.
-    - `seed`: Random seed for the Rademacher edge projections.
-    - `projection_batch_size`: Number of projection rows evaluated together.
-      Larger batches can improve throughput at the cost of more working memory;
-      choose a size that fits your device.
+      projections: `k = ceil(log(n_vertices) / epsilon**2)`. All-pairs and
+      sources-to-targets queries solve `k` linear systems and hold `k`
+      potentials of every vertex; nodes-to-nodes queries solve one per node.
+      Window queries, those of windowed analyses, solve `k` linear systems
+      and hold the potentials of `projection_batch_size` of them. Their
+      gradient solves `2 * k` more, two right-hand sides for each of `k`
+      random probes, `projection_batch_size` probes at a time.
+    - `seed`: Random seed for the Rademacher edge projections. Each projection
+      draws its signs from `seed` and its index, so that all queries on a graph
+      share their projections, in float32 and float64, with and without 64-bit
+      types (`jax_enable_x64`). The probes of the gradient of window queries
+      draw their signs from the same seed.
+    - `projection_batch_size`: Number of projections that window queries solve
+      together. Other queries draw the random signs of this many projections
+      together when the signs of all projections, one per stored edge and
+      projection, exceed `SPIELMAN_DENSE_PROJECTION_MAX_SIGN_ENTRIES`
+      entries, and all at once below. Larger batches can improve throughput
+      at the cost of more working memory.
     """
 
     epsilon: float = 0.1
@@ -238,12 +513,7 @@ def lineax_solver_nodes_to_nodes_resistance_distance(
         A.data, A.indices, A.shape, nodes.astype(A.indices.dtype), solver, state
     )
     diagonal = jnp.diag(selected_inverse)
-    return (
-        diagonal[:, None]
-        + diagonal[None, :]
-        - selected_inverse
-        - selected_inverse.T
-    )
+    return diagonal[:, None] + diagonal[None, :] - selected_inverse - selected_inverse.T
 
 
 @eqx.filter_jit
@@ -251,8 +521,10 @@ def spielman_resistance_distance(
     A: BCOO,
     epsilon: float = 0.1,
     seed: int = 0,
-    solver: Optional[lx.AbstractLinearSolver] = None,
+    solver: lx.AbstractLinearSolver | None = None,
     state: Any = None,
+    *,
+    projection_batch_size: int = 64,
 ) -> Array:
     """
     Approximate resistance distances using Spielman-Srivastava projections.
@@ -267,7 +539,7 @@ def spielman_resistance_distance(
     distances between columns of `Z` approximate resistance distances.
     """
     return _spielman_resistance_distance_from_data(
-        A.data, A.indices, A.shape, epsilon, seed, solver, state
+        A.data, A.indices, A.shape, epsilon, seed, solver, state, projection_batch_size
     )
 
 
@@ -277,7 +549,7 @@ def spielman_nodes_to_nodes_resistance_distance(
     nodes: Array,
     epsilon: float = 0.1,
     seed: int = 0,
-    solver: Optional[lx.AbstractLinearSolver] = None,
+    solver: lx.AbstractLinearSolver | None = None,
     state: Any = None,
     *,
     projection_batch_size: int = 64,
@@ -303,24 +575,28 @@ def spielman_sources_to_targets_resistance_distance(
     targets: Array,
     epsilon: float = 0.1,
     seed: int = 0,
-    solver: Optional[lx.AbstractLinearSolver] = None,
+    solver: lx.AbstractLinearSolver | None = None,
     state: Any = None,
     *,
     projection_batch_size: int = 64,
 ) -> Array:
-    """Approximate resistance distances from sources to targets."""
-    return _spielman_sources_to_targets_resistance_distance_from_data(
+    """Approximate resistance distances from sources to targets.
+
+    Embeds every vertex with `ceil(log(n_vertices) / epsilon**2)` solves, and as
+    many adjoint solves for the gradient, whatever the numbers of sources and
+    targets.
+    """
+    features = _spielman_features_reduced(
         A.data,
         A.indices,
         A.shape,
-        sources.astype(A.indices.dtype),
-        targets.astype(A.indices.dtype),
         epsilon,
         seed,
         solver,
         state,
         projection_batch_size,
     )
+    return _distances_from_selected_features(features[:, sources], features[:, targets])
 
 
 def _projection_size(n: int, epsilon: float) -> int:
@@ -330,64 +606,118 @@ def _projection_size(n: int, epsilon: float) -> int:
     return max(1, math.ceil(math.log(max(n, 2)) / epsilon**2))
 
 
-def _prepare_reduced_laplacian(
+def _grounded_laplacian(A: BCOO) -> tuple[BCOO, Array]:
+    """The Laplacian of `A` grounded at a vertex, and that vertex.
+
+    The ground is, among the vertices whose weighted degree is at least half the
+    largest, the nearest to the middle vertex `n // 2` in Manhattan distance on a
+    grid of `w` columns, where `w` is the largest index difference between
+    neighbours, with the lowest index among the nearest. On a grid graph of `h`
+    rows and `w` columns with rook contiguity, the middle vertex is the pixel of
+    row `h // 2` and column `w // 2` for an odd `h`, and the first pixel of row
+    `h / 2`, on the left edge, for an even `h`; the ground is the pixel of
+    near-maximum permeability nearest to it. In float32, a ground on a barrier or
+    in floored padding makes the system too ill-conditioned to solve, and a
+    ground near the sources of windows, at their centre, avoids cancellation in
+    their distances.
+
+    The returned matrix `L + d e_g e_g^T` adds the degree `d` of the ground `g`
+    to its diagonal entry: it keeps the sparsity pattern of the Laplacian `L`
+    whatever the ground, and it is positive definite for a connected graph. Its
+    solutions minus their value at `g` are those of `L` without the row and the
+    column of `g`, and give the same resistances.
+    """
+    n = A.shape[0]
+    rows, columns = A.indices[:, 0], A.indices[:, 1]
+    # Padding indices, from `n` on, are dropped.
+    degree = jax.ops.segment_sum(A.data, rows, num_segments=n)
+    width = jnp.maximum(jnp.max(jnp.where(rows < n, jnp.abs(rows - columns), 0)), 1)
+    vertices, middle = jnp.arange(n), n // 2
+    offset = jnp.abs(vertices // width - middle // width) + jnp.abs(
+        vertices % width - middle % width
+    )
+    ground = jnp.argmin(jnp.where(degree >= jnp.max(degree) / 2, offset, 2 * n))
+    diagonal = bcoo_diag(degree.at[ground].multiply(2), A.indices.dtype)
+    return diagonal - A, ground
+
+
+class _GroundedSystem(eqx.Module):
+    """A grounded Laplacian, its ground vertex, and what solves it.
+
+    **Attributes:**
+
+    - `matrix`: The grounded Laplacian, from `_grounded_laplacian`.
+    - `ground`: The ground vertex.
+    - `state`: The solver state for `matrix`, or its dense Cholesky factor
+      without a solver.
+    """
+
+    matrix: BCOO
+    ground: Array
+    state: Any
+
+
+def _grounded_system(
     data: Array,
     indices: Array,
     shape: tuple[int, ...],
-    solver: Optional[lx.AbstractLinearSolver],
+    solver: lx.AbstractLinearSolver | None,
     state: Any,
-) -> tuple[BCOO, Any]:
-    reduced = graph_laplacian(BCOO((data, indices), shape=shape))[:-1, :-1]
-    if solver is not None:
-        state = _solver_state(reduced, solver, None, state)
-    return reduced, state
+) -> _GroundedSystem:
+    """The grounded Laplacian of the adjacency matrix of `data` and `indices`.
 
-
-def _solve_reduced_laplacian(
-    L_reduced: BCOO,
-    rhs: Array,
-    solver: Optional[lx.AbstractLinearSolver],
-    state: Any,
-    options: dict[str, Any] | None = None,
-) -> Array:
-    """Execute with already prepared state; all RHS keep independent solves."""
+    A solver reinitializes `state` for it. Without a solver, the grounded
+    Laplacian of a connected graph is positive definite: a dense Cholesky
+    factorization solves it 1.3 times faster than an LU factorization.
+    """
+    matrix, ground = _grounded_laplacian(BCOO((data, indices), shape=shape))
     if solver is None:
-        return jnp.linalg.solve(L_reduced.todense(), rhs)
-    return _batched_linear_solve_impl(
-        L_reduced, rhs, solver, state=state, options=options
-    )
+        state = jnp.linalg.cholesky(matrix.todense())
+    else:
+        state = _solver_state(matrix, solver, None, state)
+    return _GroundedSystem(matrix, ground, state)
 
 
-def _solve_adjoint(
-    L_reduced: BCOO,
+def _solve(
+    system: _GroundedSystem,
     rhs: Array,
-    solver: Optional[lx.AbstractLinearSolver],
-    state: Any,
+    solver: lx.AbstractLinearSolver | None,
+    transpose: bool = False,
 ) -> Array:
-    options = None
-    if solver is not None:
-        state, options = solver.transpose(state, {})
-    return _solve_reduced_laplacian(L_reduced.T, rhs, solver, state, options)
+    """The potentials of the right-hand side columns `rhs`, zero at the ground.
+
+    With `transpose`, of the transposed system, as adjoint solves need.
+    """
+    if solver is None:
+        potentials = jax.scipy.linalg.cho_solve((system.state, True), rhs)
+    else:
+        matrix, state, options = system.matrix, system.state, None
+        if transpose:
+            matrix = matrix.transpose()
+            state, options = solver.transpose(state, {})
+        # Zero columns complete a multiple of 8 right-hand sides: cuDSS solved
+        # some other numbers of them twice as slowly, 1079 against 1080.
+        m = rhs.shape[1]
+        rhs = jnp.pad(rhs, ((0, 0), (0, -m % 8)))
+        potentials = _batched_linear_solve_impl(
+            matrix, rhs, solver, state=state, options=options
+        )[:, :m]
+    return potentials - potentials[system.ground]
 
 
 def _node_potentials(
-    L_reduced: BCOO,
-    nodes: Array,
-    solver: Optional[lx.AbstractLinearSolver],
-    state: Any,
+    system: _GroundedSystem, nodes: Array, solver: lx.AbstractLinearSolver | None
 ) -> Array:
-    # The ground-node column of E is zero; duplicate nodes retain duplicate RHS.
-    basis = jax.nn.one_hot(nodes, L_reduced.shape[0], dtype=L_reduced.dtype).T
-    return _solve_reduced_laplacian(L_reduced, basis, solver, state)
+    """Columns of the grounded inverse for `nodes`, zero for the ground vertex."""
+    # Duplicate nodes retain duplicate columns.
+    n = system.matrix.shape[0]
+    basis = jax.nn.one_hot(nodes, n, dtype=system.matrix.dtype).T
+    return _solve(system, basis, solver)
 
 
-def _grounded_values(potentials: Array, nodes: Array) -> Array:
-    """Select rows of (n - 1, rhs) potentials, with zero at the ground node."""
-    return jnp.where(
-        (nodes < potentials.shape[0])[:, None],
-        potentials[jnp.minimum(nodes, potentials.shape[0] - 1)],
-        0,
-    )
+def _values(potentials: Array, nodes: Array) -> Array:
+    """The rows of `potentials` for `nodes`, zero for padding indices past them."""
+    return potentials.at[nodes].get(mode="fill", fill_value=0)
 
 
 def _laplacian_data_pullback(
@@ -399,15 +729,16 @@ def _laplacian_data_pullback(
     #   dL = e_u (e_u - e_v).T da_uv
     #   dloss/da_uv = K_uu - K_uv
     #              = -sum_j Lambda[u, j] * (V[u, j] - V[v, j]).
-    # Grounding is equivalent to setting the ground row of Lambda and V to zero.
-    # Thus we can evaluate the last line without ever constructing dense K.
+    # Lambda and V are zero at the ground vertex, as for the Laplacian without
+    # the row and the column of the ground. Thus we can evaluate the last line
+    # without ever constructing dense K.
     # Each duplicate storage position gets its own contribution; upstream AD
     # sums contributions if one parameter controls both directed entries of an
     # undirected edge. No factor of two is needed here. Self-loops give zero
     # because V_u - V_u = 0; padding is masked out below.
     # Keep gather/multiply/reduce fused; explicit edge vmap/chunking is slower.
     values = -jnp.sum(
-        _grounded_values(adjoint, indices[:, 0])
+        _values(adjoint, indices[:, 0])
         * _edge_potential_deltas(potentials, indices, shape),
         axis=1,
     )
@@ -420,7 +751,7 @@ def _exact_selected_inverse(
     indices: Array,
     shape: tuple[int, ...],
     nodes: Array,
-    solver: Optional[lx.AbstractLinearSolver],
+    solver: lx.AbstractLinearSolver | None,
     state: Any,
 ) -> Array:
     return _exact_selected_inverse_fwd(
@@ -430,9 +761,9 @@ def _exact_selected_inverse(
 
 def _exact_selected_inverse_fwd(perturbed, data, indices, shape, nodes, solver, state):
     del perturbed
-    reduced, solve_state = _prepare_reduced_laplacian(data, indices, shape, solver, state)
-    potentials = _node_potentials(reduced, nodes, solver, solve_state)
-    return _grounded_values(potentials, nodes), potentials
+    system = _grounded_system(data, indices, shape, solver, state)
+    potentials = _node_potentials(system, nodes, solver)
+    return _values(potentials, nodes), potentials
 
 
 _exact_selected_inverse.def_fwd(_exact_selected_inverse_fwd)
@@ -463,26 +794,236 @@ def _exact_selected_inverse_bwd(
     return _laplacian_data_pullback(adjoint, potentials, indices, shape)
 
 
-def _rademacher_projection_signs(
-    k: int, n_edges: int, seed: int, dtype_: jnp.dtype
+def _target_chunks(targets: Array, n: int) -> Array:
+    """Split `targets` of a graph of `n` vertices into chunks solved together.
+
+    One chunk when the potentials of all targets hold at most
+    `_UNCHUNKED_POTENTIALS` values, otherwise equal chunks of at most
+    `_TARGET_CHUNK_SIZE`. The last chunk is padded with vertex 0, whose
+    values the query drops.
+    """
+    k = targets.shape[0]
+    n_chunks = 1 if n * k <= _UNCHUNKED_POTENTIALS else -(-k // _TARGET_CHUNK_SIZE)
+    padding = n_chunks * -(-k // n_chunks) - k
+    return jnp.pad(targets, (0, padding)).reshape(n_chunks, -1)
+
+
+def _own_values(potentials: Array, nodes: Array) -> Array:
+    """The value of each potential column at its own node."""
+
+    return potentials[nodes, jnp.arange(nodes.shape[0])]
+
+
+@eqx.filter_custom_vjp
+def _exact_sources_to_targets(
+    data: Array,
+    indices: Array,
+    shape: tuple[int, ...],
+    sources: Array,
+    targets: Array,
+    solver: lx.AbstractLinearSolver | None,
+    state: Any,
 ) -> Array:
-    return jax.random.rademacher(jax.random.PRNGKey(seed), (k, n_edges)).astype(dtype_)
+    return _exact_sources_to_targets_fwd(
+        None, data, indices, shape, sources, targets, solver, state
+    )[0]
+
+
+def _exact_sources_to_targets_fwd(
+    perturbed, data, indices, shape, sources, targets, solver, state
+):
+    del perturbed
+    system = _grounded_system(data, indices, shape, solver, state)
+    # With S the grounded inverse, R_ij = S_ii + S_jj - 2 S_ij for source i and
+    # target j. The source columns of S give S_ii and S_ij, the target columns
+    # their diagonal S_jj.
+    m = sources.shape[0]
+    chunks = _target_chunks(targets, shape[0])
+    if chunks.shape[0] == 1:
+        # One solve for all columns, whose potentials stay for the gradient.
+        nodes = jnp.concatenate([sources, chunks[0]])
+        potentials = _node_potentials(system, nodes, solver)
+        diagonal = _own_values(potentials[:, m:], chunks[0])
+        residuals = (potentials, None)
+    else:
+        # The target columns, chunk by chunk, keeping their diagonal only: the
+        # gradient solves them again.
+        potentials = _node_potentials(system, sources, solver)
+
+        def target_diagonal(chunk):
+            chunk_potentials = _node_potentials(system, chunk, solver)
+            return _own_values(chunk_potentials, chunk)
+
+        diagonal = lax.map(target_diagonal, chunks)
+        residuals = (potentials, system)
+    source_potentials = potentials[:, :m]
+    distances = (
+        _own_values(source_potentials, sources)[:, None]
+        + diagonal.reshape(-1)[None, : targets.shape[0]]
+        - 2 * _values(source_potentials, targets).T
+    )
+    return distances, residuals
+
+
+_exact_sources_to_targets.def_fwd(_exact_sources_to_targets_fwd)
+
+
+@_exact_sources_to_targets.def_bwd
+def _exact_sources_to_targets_bwd(
+    residuals,
+    cotangent,
+    perturbed,
+    data,
+    indices,
+    shape,
+    sources,
+    targets,
+    solver,
+    state,
+):
+    del state
+    if cotangent is None or not perturbed:
+        return None
+    # As in `_exact_selected_inverse_bwd`, the adjoint is X G, where X are the
+    # potentials of the source columns X_s and target columns X_t, and G is the
+    # cotangent of S. For the cotangent H of the (m, k) distances,
+    #   G = [[diag(H 1), -H], [-H.T, diag(H.T 1)]],
+    # so X G = [X_s diag(H 1) - X_t H.T, X_t diag(H.T 1) - X_s H]. This costs
+    # O(n m k) and never forms G.
+    potentials, system = residuals
+    m = sources.shape[0]
+    source_potentials = potentials[:, :m]
+    if system is None:
+        # The forward pass kept the target columns after the source columns.
+        target_potentials = potentials[:, m:]
+        adjoint = jnp.concatenate(
+            [
+                source_potentials * jnp.sum(cotangent, axis=1)
+                - _matmul(target_potentials, cotangent.T),
+                target_potentials * jnp.sum(cotangent, axis=0)
+                - _matmul(source_potentials, cotangent),
+            ],
+            axis=1,
+        )
+        return _laplacian_data_pullback(adjoint, potentials, indices, shape)
+
+    # The data pullback sums over columns: each chunk of target columns, solved
+    # again, adds its own term and its part of X_t H.T.
+    chunks = _target_chunks(targets, shape[0])
+    padding = chunks.size - targets.shape[0]
+    chunk_cotangents = jnp.pad(cotangent, ((0, 0), (0, padding)))
+    chunk_cotangents = chunk_cotangents.reshape(-1, *chunks.shape).swapaxes(0, 1)
+
+    def add_chunk(carry, chunk_and_cotangent):
+        gradient, weighted_targets = carry
+        chunk, chunk_cotangent = chunk_and_cotangent
+        target_potentials = _node_potentials(system, chunk, solver)
+        adjoint = target_potentials * jnp.sum(chunk_cotangent, axis=0) - _matmul(
+            source_potentials, chunk_cotangent
+        )
+        gradient = gradient + _laplacian_data_pullback(
+            adjoint, target_potentials, indices, shape
+        )
+        weighted_targets = weighted_targets + _matmul(
+            target_potentials, chunk_cotangent.T
+        )
+        return (gradient, weighted_targets), None
+
+    carry = (jnp.zeros_like(data), jnp.zeros_like(source_potentials))
+    (gradient, weighted_targets), _ = lax.scan(
+        add_chunk, carry, (chunks, chunk_cotangents)
+    )
+    adjoint = source_potentials * jnp.sum(cotangent, axis=1) - weighted_targets
+    return gradient + _laplacian_data_pullback(
+        adjoint, source_potentials, indices, shape
+    )
+
+
+def _projections(
+    k: int,
+    n_edges: int,
+    seed: int,
+    dtype: jnp.dtype,
+    projection_batch_size: int,
+    project: Callable[[Array], Array],
+) -> Array:
+    """Stack `project(signs)` over the random signs of `k` projections.
+
+    `project` maps the signs of some projections, with shape `(m, n_edges)`, to
+    `m` rows. Each projection draws its signs from `seed` and its index (see
+    `_signs`). When the signs of all projections hold at most
+    `SPIELMAN_DENSE_PROJECTION_MAX_SIGN_ENTRIES` entries, they are drawn at
+    once. Otherwise they are drawn `projection_batch_size` projections at a
+    time, and the gradient draws them again instead of keeping them.
+    """
+    key = jax.random.PRNGKey(seed)
+    if k * n_edges <= SPIELMAN_DENSE_PROJECTION_MAX_SIGN_ENTRIES:
+        return project(_signs(key, jnp.arange(k), k, n_edges).astype(dtype))
+
+    @jax.checkpoint
+    def project_one(index):
+        return project(_signs(key, index[None], k, n_edges).astype(dtype))[0]
+
+    # A last partial batch keeps the keys of its projection indices.
+    return lax.map(project_one, jnp.arange(k), batch_size=projection_batch_size)
 
 
 def _spielman_projection(
-    data: Array, indices: Array, shape: tuple[int, ...], epsilon: float, seed: int
+    data: Array,
+    indices: Array,
+    shape: tuple[int, ...],
+    epsilon: float,
+    seed: int,
+    projection_batch_size: int,
 ) -> Array:
+    """The weighted projections of the incidence matrix, with shape `(k, n)`."""
     k = _projection_size(shape[0], epsilon)
-    signs = _rademacher_projection_signs(k, data.shape[0], seed, data.dtype)
-    rows = indices[:, 0]
-    cols = indices[:, 1]
+
+    def project(signs):
+        return _project_incidence(signs, data, indices, shape, k)
+
+    return _projections(
+        k, data.shape[0], seed, data.dtype, projection_batch_size, project
+    )
+
+
+def _project_incidence(
+    signs: Array, data: Array, indices: Array, shape: tuple[int, ...], k: int
+) -> Array:
+    """The projections of the weighted incidence matrix with the random `signs`
+    of some of `k` projections, with shape `(m, n_edges)`, as `(m, n)` rows."""
     valid = jnp.all(indices < jnp.asarray(shape), axis=1)
     weights = _sqrt_half_weights(jnp.where(valid, data, 0))
-    normalized_weights = signs * weights[None, :] * _projection_scale(k, data.dtype)
-    projection = jnp.zeros((k, shape[0]), dtype=data.dtype)
-    projection = projection.at[:, rows].add(normalized_weights)
-    projection = projection.at[:, cols].add(-normalized_weights)
-    return projection
+    weighted = signs * (weights * _projection_scale(k, data.dtype))
+    projection = jnp.zeros((signs.shape[0], shape[0]), dtype=data.dtype)
+    return (
+        projection.at[:, indices[:, 0]]
+        .add(weighted)
+        .at[:, indices[:, 1]]
+        .add(-weighted)
+    )
+
+
+def _signs(key: Array, projections: Array, k: int, n_edges: int) -> Array:
+    """The random signs of the stored edges for the projection indices
+    `projections`, each drawn from `key` and its index, and 0 from index `k` on.
+    """
+
+    def draw(index):
+        return _rademacher(jax.random.fold_in(key, index), (n_edges,))
+
+    return jnp.where(projections[:, None] < k, jax.vmap(draw)(projections), 0)
+
+
+def _rademacher(key: Array, shape: tuple[int, ...]) -> Array:
+    """Random signs, 1 or -1 with equal probability, as `int32` of `shape`.
+
+    They compare float32 uniforms with one half, whether or not 64-bit types
+    are enabled, so that a key draws the same signs in float32 and float64.
+    `jax.random.rademacher` draws uniforms of the default float type, and
+    other signs with 64-bit types.
+    """
+    return 2 * jax.random.bernoulli(key, jnp.float32(0.5), shape).astype(jnp.int32) - 1
 
 
 def _sqrt_half_weights(data: Array) -> Array:
@@ -504,22 +1045,31 @@ def _spielman_features_reduced(
     shape: tuple[int, ...],
     epsilon: float,
     seed: int,
-    solver: Optional[lx.AbstractLinearSolver],
+    solver: lx.AbstractLinearSolver | None,
     state: Any,
+    projection_batch_size: int,
 ) -> Array:
     return _spielman_features_reduced_fwd(
-        None, data, indices, shape, epsilon, seed, solver, state
+        None,
+        data,
+        indices,
+        shape,
+        epsilon,
+        seed,
+        solver,
+        state,
+        projection_batch_size,
     )[0]
 
 
 def _spielman_features_reduced_fwd(
-    perturbed, data, indices, shape, epsilon, seed, solver, state
+    perturbed, data, indices, shape, epsilon, seed, solver, state, batch_size
 ):
     del perturbed
-    reduced, solve_state = _prepare_reduced_laplacian(data, indices, shape, solver, state)
-    projection = _spielman_projection(data, indices, shape, epsilon, seed)[:, :-1]
-    potentials = _solve_reduced_laplacian(reduced, projection.T, solver, solve_state)
-    return potentials.T, (potentials, reduced, solve_state)
+    system = _grounded_system(data, indices, shape, solver, state)
+    projection = _spielman_projection(data, indices, shape, epsilon, seed, batch_size)
+    potentials = _solve(system, projection.T, solver)
+    return potentials.T, (potentials, system)
 
 
 _spielman_features_reduced.def_fwd(_spielman_features_reduced_fwd)
@@ -527,16 +1077,27 @@ _spielman_features_reduced.def_fwd(_spielman_features_reduced_fwd)
 
 @_spielman_features_reduced.def_bwd
 def _spielman_features_reduced_bwd(
-    residuals, cotangent, perturbed, data, indices, shape, epsilon, seed, solver, state
+    residuals,
+    cotangent,
+    perturbed,
+    data,
+    indices,
+    shape,
+    epsilon,
+    seed,
+    solver,
+    state,
+    batch_size,
 ):
     del state
     if cotangent is None or not perturbed:
         return None
-    potentials, reduced, solve_state = residuals
-    # Let A be the (q, q) grounded Laplacian, q = n - 1, and P the (k, q)
-    # weighted projection with its ground column removed. Its signs are fixed,
-    # but its weights depend on data. Forward: A Y = P.T, F = Y.T.
-    # Here potentials = Y and cotangent = H = dloss/dF, with shape (k, q).
+    potentials, system = residuals
+    # Let A be the grounded Laplacian, without the row and the column of the
+    # ground (the potentials are zero there), and P the (k, n) weighted
+    # projection without its ground column. Its signs are fixed, but its
+    # weights depend on data. Forward: A Y = P.T, F = Y.T.
+    # Here potentials = Y and cotangent = H = dloss/dF, with shape (k, n).
     # Using the Frobenius inner product <U, V> = sum(U * V):
     #   A dY = dP.T - (dA) Y               (differentiate the solve)
     #   dloss = <H, dF> = <H.T, dY>        (differentiate F = Y.T)
@@ -547,29 +1108,260 @@ def _spielman_features_reduced_bwd(
     # Both P and A depend on the same edge data, so their pullbacks must be
     # added. The helper contracts -Lambda Y.T directly into sparse storage;
     # ordinary AD pulls Lambda.T through the actual weighted projection.
-    adjoint = _solve_adjoint(reduced, cotangent.T, solver, solve_state)
+    adjoint = _solve(system, cotangent.T, solver, transpose=True)
     _, projection_pullback = jax.vjp(
-        lambda weights: _spielman_projection(weights, indices, shape, epsilon, seed),
+        lambda weights: _spielman_projection(
+            weights, indices, shape, epsilon, seed, batch_size
+        ),
         data,
     )
-    # The projection helper returns all n columns; the removed ground column
-    # did not affect F, so its cotangent must be zero.
-    (projection_gradient,) = projection_pullback(
-        jnp.pad(adjoint.T, ((0, 0), (0, 1)))
-    )
+    # The adjoint is zero at the ground, whose column of P does not affect F.
+    (projection_gradient,) = projection_pullback(adjoint.T)
     return (
         _laplacian_data_pullback(adjoint, potentials, indices, shape)
         + projection_gradient
     )
 
 
+@eqx.filter_jit
+def _spielman_window_query(
+    graph: GridGraph,
+    sources: Array,
+    size: int,
+    method: SpielmanApproximation,
+    solver: lx.AbstractLinearSolver | None,
+    state: Any,
+) -> Array:
+    """`ResistanceDistance.sources_to_windows_distance` with `method`."""
+    sources = _inside_windows(graph, sources, size)
+    A = graph.get_adjacency_matrix()
+    grid = (graph.height, graph.width)
+    return _spielman_windows(
+        A.data, A.indices, A.shape, grid, sources, size, method, solver, state
+    )
+
+
+def _batches(k: int, size: int) -> Array:
+    """The indices of `k` projections or probes, in batches of `size`, the last
+    completed with indices from `k` on."""
+    return jnp.arange(-(-k // size) * size).reshape(-1, size)
+
+
+@eqx.filter_custom_vjp
+def _spielman_windows(
+    data: Array,
+    indices: Array,
+    shape: tuple[int, ...],
+    grid: tuple[int, int],
+    sources: Array,
+    size: int,
+    method: SpielmanApproximation,
+    solver: lx.AbstractLinearSolver | None,
+    state: Any,
+) -> Array:
+    """Spielman estimates of the distances from `sources` to their windows, on
+    the grid of shape `grid` whose adjacency matrix holds `data` at `indices`."""
+    return _spielman_windows_fwd(
+        None, data, indices, shape, grid, sources, size, method, solver, state
+    )[0]
+
+
+def _spielman_windows_fwd(
+    perturbed, data, indices, shape, grid, sources, size, method, solver, state
+):
+    del perturbed
+    # The squared differences of the potentials of each batch of projections,
+    # between a source and the pixels of its window, add up to the estimates.
+    system = _grounded_system(data, indices, shape, solver, state)
+    k = _projection_size(shape[0], method.epsilon)
+    key = jax.random.PRNGKey(method.seed)
+    half = size // 2
+    rows, columns = sources // grid[1], sources % grid[1]
+
+    def window(potentials, row, column):
+        own = potentials[row, column]
+        start = (row - half, column - half, 0)
+        pixels = lax.dynamic_slice(potentials, start, (size, size, own.shape[0]))
+        return jnp.sum((pixels - own) ** 2, axis=-1)
+
+    def add(total, projections):
+        signs = _signs(key, projections, k, data.shape[0]).astype(data.dtype)
+        projection = _project_incidence(signs, data, indices, shape, k)
+        potentials = _solve(system, projection.T, solver).reshape(*grid, -1)
+        differences = size**2 * signs.shape[0]
+        per_step = max(1, _WINDOW_DIFFERENCES_PER_STEP // differences)
+        if differences > _LARGEST_GATHERED_WINDOW:
+            per_step = 1
+        squares = lax.map(
+            lambda source: window(potentials, *source),
+            (rows, columns),
+            batch_size=per_step,
+        )
+        return total + squares, None
+
+    initial = jnp.zeros((sources.shape[0], size, size), data.dtype)
+    batches = _batches(k, method.projection_batch_size)
+    return lax.scan(add, initial, batches)[0], system
+
+
+_spielman_windows.def_fwd(_spielman_windows_fwd)
+
+
+@_spielman_windows.def_bwd
+def _spielman_windows_bwd(
+    system,
+    cotangent,
+    perturbed,
+    data,
+    indices,
+    shape,
+    grid,
+    sources,
+    size,
+    method,
+    solver,
+    state,
+):
+    del state
+    if cotangent is None or not perturbed:
+        return None
+    # The exact resistance R_p = b_p.T L^-1 b_p of a pair p of a source s and
+    # a pixel w of its window, b_p = e_s - e_w, has the derivative
+    # -x_p[u] (x_p[u] - x_p[v]) with respect to the stored entry a_uv of the
+    # adjacency matrix, where x_p = L^-1 b_p (see `_laplacian_data_pullback`).
+    # Contracted with the cotangent G of the distances, it is the pullback of
+    # L^-1 K L^-1 with K = sum_p G_p b_p b_p.T. With random signs q_p,
+    # r = sum_p q_p |G_p|^(1/2) b_p and r' = sum_p q_p sign(G_p) |G_p|^(1/2) b_p
+    # give E[r' r.T] = K, so that the pullback of L^-1 r' and L^-1 r estimates
+    # it without bias. The sign of a pair is the product of a sign per source
+    # and a sign per pixel, whose products are uncorrelated between pairs.
+    k = _projection_size(shape[0], method.epsilon)
+    # The probes draw from another key than the projections.
+    key = jax.random.fold_in(jax.random.PRNGKey(method.seed), 2**31 - 1)
+    height, width = grid
+    rows, columns = sources // width, sources % width
+    magnitude = jnp.sqrt(jnp.abs(cotangent))
+    nonzero = cotangent != 0
+    signed = jnp.where(nonzero, cotangent / jnp.where(nonzero, magnitude, 1), 0)
+    weights = jnp.stack([magnitude, signed], axis=-1)
+
+    def add(gradient, probes):
+        keys = jax.vmap(lambda probe: jax.random.fold_in(key, probe))(probes)
+        valid = (probes < k).astype(data.dtype)
+        per_source = jax.vmap(
+            lambda key: _rademacher(jax.random.fold_in(key, 0), rows.shape)
+        )(keys)
+        per_pixel = jax.vmap(lambda key: _rademacher(jax.random.fold_in(key, 1), grid))(
+            keys
+        )
+        per_source = (per_source * valid[:, None]).astype(data.dtype).T
+        per_pixel = jnp.moveaxis(per_pixel.astype(data.dtype), 0, -1)
+        rhs = _probe_right_hand_sides(weights, rows, columns, per_source, per_pixel)
+        potentials = _solve(system, rhs.reshape(height * width, -1), solver)
+        potentials = potentials.reshape(-1, probes.size, 2)
+        pullback = _laplacian_data_pullback(
+            potentials[..., 1], potentials[..., 0], indices, shape
+        )
+        return gradient + pullback, None
+
+    batches = _batches(k, method.projection_batch_size)
+    gradient = lax.scan(add, jnp.zeros_like(data), batches)[0]
+    return gradient / k
+
+
+def _probe_right_hand_sides(
+    weights: Array,
+    rows: Array,
+    columns: Array,
+    per_source: Array,
+    per_pixel: Array,
+) -> Array:
+    """The right-hand sides of the probes of the gradient of a window query.
+
+    Source `s`, at row `rows[s]` and column `columns[s]`, weighs the pixels
+    of its window with `weights[s]`, of shape `(size, size, 2)`, and each
+    probe draws a sign per source, `per_source`, of shape `(m, probes)`, and
+    a sign per pixel, `per_pixel`, of shape `(height, width, probes)`. A pixel
+    takes minus its sign times the weights that it gets from the windows that
+    hold it, each times the sign of its source, and a source adds its sign
+    times the weights of its window times the signs of their pixels.
+
+    The sources run in chunks of up to `_SOURCES_PER_STRIP` consecutive
+    sources. A pass adds, for each chunk, the windows of its sources within
+    `size // 2` rows of its first remaining source to a strip of rows, with
+    one matrix product, and passes repeat until every window is added: one
+    pass for a grid of sources, row after row. On an RTX 3090, the 1260
+    windows of 201 pixels a side of the notebook's tile took 40 ms per batch
+    of 64 probes, against 130 ms one window after another.
+
+    **Returns:**
+
+    The right-hand sides, with shape `(height, width, probes, 2)`.
+    """
+    m, size = weights.shape[:2]
+    half = size // 2
+    height, width, probes = per_pixel.shape
+    slack = max(0, min(half, height - size))
+    strip = size + slack
+    count = min(_SOURCES_PER_STRIP, m)
+    chunks = -(-m // count)
+    padding = chunks * count - m
+
+    def chunked(x, value=0):
+        widths = [(0, padding)] + [(0, 0)] * (x.ndim - 1)
+        x = jnp.pad(x, widths, constant_values=value)
+        return x.reshape(chunks, count, *x.shape[1:])
+
+    def chunk(spread, inputs):
+        rows, columns, weights, signs, remaining = inputs
+        start = jnp.min(jnp.where(remaining, rows, height)) - half
+        start = jnp.minimum(start, height - strip)
+        offset = rows - half - start
+        added = remaining & (offset >= 0) & (offset <= slack)
+
+        def shifted(weight, offset, column, added):
+            canvas = jnp.zeros((strip, width, 2), weight.dtype)
+            weight = jnp.where(added, weight, 0)
+            return lax.dynamic_update_slice(canvas, weight, (offset, column - half, 0))
+
+        offset = jnp.clip(offset, 0, slack)
+        windows = jax.vmap(shifted)(weights, offset, columns, added)
+        precision = lax.Precision.HIGHEST
+        spreads = jnp.einsum("jxyc,jb->xybc", windows, signs, precision=precision)
+        corner = (start, 0, 0, 0)
+        block = lax.dynamic_slice(spread, corner, spreads.shape)
+        spread = lax.dynamic_update_slice(spread, block + spreads, corner)
+        pixels = lax.dynamic_slice(per_pixel, corner[:3], (strip, width, probes))
+        own = jnp.einsum("xyb,jxyc->jbc", pixels, windows, precision=precision)
+        return spread, (signs[:, :, None] * own, remaining & ~added)
+
+    inputs = (
+        chunked(rows, half),
+        chunked(columns, half),
+        chunked(weights),
+        chunked(per_source),
+    )
+
+    def unfinished(carry):
+        return jnp.any(carry[2])
+
+    def add(carry):
+        spread, own, remaining = carry
+        spread, (added, remaining) = lax.scan(chunk, spread, (*inputs, remaining))
+        return spread, own + added, remaining
+
+    spread = jnp.zeros((height, width, probes, 2), per_pixel.dtype)
+    own = jnp.zeros((chunks, count, probes, 2), per_pixel.dtype)
+    remaining = (jnp.arange(chunks * count) < m).reshape(chunks, count)
+    spread, own, _ = lax.while_loop(unfinished, add, (spread, own, remaining))
+    own = own.reshape(-1, probes, 2)[:m]
+    return (-per_pixel[..., None] * spread).at[rows, columns].add(own)
+
+
 def _edge_potential_deltas(
     potentials: Array, indices: Array, shape: tuple[int, ...]
 ) -> Array:
-    deltas = (
-        _grounded_values(potentials, indices[:, 0])
-        - _grounded_values(potentials, indices[:, 1])
-    )
+    deltas = _values(potentials, indices[:, 0]) - _values(potentials, indices[:, 1])
     valid = jnp.all(indices < jnp.asarray(shape), axis=1)
     return jnp.where(valid[:, None], deltas, 0)
 
@@ -584,29 +1376,18 @@ def _spielman_project_potentials(
     projection_batch_size: int,
 ) -> Array:
     k = _projection_size(shape[0], epsilon)
+    # Scale the (edges, sites) differences once instead of weighting every
+    # entry of the (projections, edges) signs before the contraction.
     edge_deltas = _edge_potential_deltas(potentials, indices, shape)
     scaled_weights = _sqrt_half_weights(data) * _projection_scale(k, data.dtype)
+    weighted_deltas = scaled_weights[:, None] * edge_deltas
 
-    if k * data.shape[0] <= SPIELMAN_DENSE_PROJECTION_MAX_SIGN_ENTRIES:
-        signs = _rademacher_projection_signs(k, data.shape[0], seed, data.dtype)
-        # Scale the (edges, sites) differences once instead of weighting every
-        # entry of the (projections, edges) sign matrix before the contraction.
-        return _matmul(signs, scaled_weights[:, None] * edge_deltas)
+    def project(signs):
+        return _matmul(signs, weighted_deltas)
 
-    key = jax.random.PRNGKey(seed)
-
-    @jax.checkpoint
-    def project_one(projection_index):
-        projection_key = jax.random.fold_in(key, projection_index)
-        signs = jax.random.rademacher(projection_key, data.shape).astype(data.dtype)
-        return _matmul(signs * scaled_weights, edge_deltas)
-
-    # lax.map handles a final partial batch with the same global fold_in keys.
-    # Checkpointing each row recomputes signs in reverse mode instead of saving
-    # all k rows. Working storage scales with the user-selected batch size;
-    # there is no automatic memory-based reduction. Dense projections retain
-    # their original whole-matrix PRNG key.
-    return lax.map(project_one, jnp.arange(k), batch_size=projection_batch_size)
+    return _projections(
+        k, data.shape[0], seed, data.dtype, projection_batch_size, project
+    )
 
 
 def _distances_from_selected_features(
@@ -629,27 +1410,43 @@ def _spielman_selected_features(
     nodes: Array,
     epsilon: float,
     seed: int,
-    solver: Optional[lx.AbstractLinearSolver],
+    solver: lx.AbstractLinearSolver | None,
     state: Any,
     projection_batch_size: int,
 ) -> Array:
     return _spielman_selected_features_fwd(
-        None, data, indices, shape, nodes, epsilon, seed, solver, state,
+        None,
+        data,
+        indices,
+        shape,
+        nodes,
+        epsilon,
+        seed,
+        solver,
+        state,
         projection_batch_size,
     )[0]
 
 
 def _spielman_selected_features_fwd(
-    perturbed, data, indices, shape, nodes, epsilon, seed, solver, state,
+    perturbed,
+    data,
+    indices,
+    shape,
+    nodes,
+    epsilon,
+    seed,
+    solver,
+    state,
     projection_batch_size,
 ):
     del perturbed
-    reduced, solve_state = _prepare_reduced_laplacian(data, indices, shape, solver, state)
-    potentials = _node_potentials(reduced, nodes, solver, solve_state)
+    system = _grounded_system(data, indices, shape, solver, state)
+    potentials = _node_potentials(system, nodes, solver)
     features = _spielman_project_potentials(
         data, indices, shape, potentials, epsilon, seed, projection_batch_size
     )
-    return features, (potentials, reduced, solve_state)
+    return features, (potentials, system)
 
 
 _spielman_selected_features.def_fwd(_spielman_selected_features_fwd)
@@ -657,13 +1454,23 @@ _spielman_selected_features.def_fwd(_spielman_selected_features_fwd)
 
 @_spielman_selected_features.def_bwd
 def _spielman_selected_features_bwd(
-    residuals, cotangent, perturbed, data, indices, shape, nodes, epsilon, seed,
-    solver, state, projection_batch_size,
+    residuals,
+    cotangent,
+    perturbed,
+    data,
+    indices,
+    shape,
+    nodes,
+    epsilon,
+    seed,
+    solver,
+    state,
+    projection_batch_size,
 ):
     del nodes, state
     if cotangent is None or not perturbed:
         return None
-    potentials, reduced, solve_state = residuals
+    potentials, system = residuals
     # Let A be the (q, q) grounded Laplacian, q = n - 1, E the fixed (q, m)
     # site basis, and P the (k, q) weighted projection with fixed random signs.
     # Forward: A X = E, Z = P X. Here potentials = X and the incoming cotangent
@@ -690,32 +1497,10 @@ def _spielman_selected_features_bwd(
         potentials,
     )
     projection_gradient, adjoint_rhs = projection_pullback(cotangent)
-    adjoint = _solve_adjoint(reduced, adjoint_rhs, solver, solve_state)
+    adjoint = _solve(system, adjoint_rhs, solver, transpose=True)
     return (
         _laplacian_data_pullback(adjoint, potentials, indices, shape)
         + projection_gradient
-    )
-
-
-def _spielman_sources_to_targets_resistance_distance_from_data(
-    data: Array,
-    indices: Array,
-    shape: tuple[int, ...],
-    sources: Array,
-    targets: Array,
-    epsilon: float,
-    seed: int,
-    solver: Optional[lx.AbstractLinearSolver],
-    state: Any,
-    projection_batch_size: int,
-) -> Array:
-    nodes = jnp.concatenate([sources, targets])
-    features = _spielman_selected_features(
-        data, indices, shape, nodes, epsilon, seed, solver, state, projection_batch_size
-    )
-    n_sources = sources.shape[0]
-    return _distances_from_selected_features(
-        features[:, :n_sources], features[:, n_sources:]
     )
 
 
@@ -726,7 +1511,7 @@ def _spielman_nodes_to_nodes_resistance_distance_from_data(
     nodes: Array,
     epsilon: float,
     seed: int,
-    solver: Optional[lx.AbstractLinearSolver],
+    solver: lx.AbstractLinearSolver | None,
     state: Any,
     projection_batch_size: int,
 ) -> Array:
@@ -737,28 +1522,17 @@ def _spielman_nodes_to_nodes_resistance_distance_from_data(
     return distances.at[jnp.diag_indices(nodes.shape[0])].set(0)
 
 
-def _distances_from_features_reduced(features_reduced: Array) -> Array:
-    """Pairwise approximate resistance distances from reduced embeddings."""
-    features = jnp.pad(features_reduced, ((0, 0), (0, 1)))
-    feature_norms = jnp.sum(features**2, axis=0)
-    # Pairwise squared distances: ||u - v||^2 = ||u||^2 + ||v||^2 - 2 u*v.
-    return (
-        feature_norms[:, None]
-        + feature_norms[None, :]
-        - 2 * _matmul(features.T, features)
-    )
-
-
 def _spielman_resistance_distance_from_data(
     data: Array,
     indices: Array,
     shape: tuple[int, ...],
     epsilon: float,
     seed: int,
-    solver: Optional[lx.AbstractLinearSolver],
+    solver: lx.AbstractLinearSolver | None,
     state: Any,
+    projection_batch_size: int,
 ) -> Array:
-    features_reduced = _spielman_features_reduced(
-        data, indices, shape, epsilon, seed, solver, state
+    features = _spielman_features_reduced(
+        data, indices, shape, epsilon, seed, solver, state, projection_batch_size
     )
-    return _distances_from_features_reduced(features_reduced)
+    return _distances_from_selected_features(features, features)
