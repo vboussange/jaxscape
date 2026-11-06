@@ -3,6 +3,7 @@ import math
 from abc import abstractmethod
 from collections import OrderedDict
 from collections.abc import Callable, Hashable
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import equinox as eqx
@@ -539,6 +540,26 @@ class WindowedAnalysis(eqx.Module):
         `state`."""
         graph = GridGraph(lax.stop_gradient(permeability), fun=_average)
         return self.distance.reinit(graph, state)
+
+    def _while_compiling(
+        self, work: Callable[[], Any], tile_fn: Callable, initial: Array, *args: Any
+    ) -> Any:
+        """Return `work()`, run while another thread compiles the batch program
+        of `_accumulate(tile_fn, initial, *args)`, which `_accumulate` then
+        runs. Arrays of the shapes and dtypes of those of `args` can stand in
+        for them. In a trace, as inside `jax.jit`, nothing compiles alone.
+        """
+        if _tracing():
+            return work()
+        state = self._latest_state(self.tile_sides, self.state)
+        batch = _Batch(self, jnp.asarray(0), state, tile_fn, args)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            compiled = pool.submit(
+                lambda: _batch.compiled.lower(batch, initial).compile()
+            )
+            result = work()
+            compiled.result()
+        return result
 
     def _accumulate(self, tile_fn: Callable, initial: Array, *args: Any) -> Array:
         """Accumulate `tile_fn` over the tiles of all block centres.
