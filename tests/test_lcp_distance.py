@@ -236,11 +236,12 @@ def test_grid_window_query_is_an_exact_fixed_point(dtype):
         LCPDistance().sources_to_windows_distance(graph, jnp.array([source]), side)[0]
     )
     padded = np.pad(distances, 1, constant_values=np.inf)
-    permeability = np.pad(raster, 1, constant_values=np.nan)
+    permeability = jnp.pad(jnp.asarray(raster), 1, constant_values=jnp.nan)
     best = np.full_like(distances, np.inf)
     for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
         tail = (slice(1 - dy, 1 - dy + side), slice(1 - dx, 1 - dx + side))
-        cost = np_dtype.type(1) / ((permeability[tail] + raster) / np_dtype.type(2))
+        # The device computes the costs: GPUs may round divisions otherwise.
+        cost = np.asarray(1 / _average(permeability[tail], jnp.asarray(raster)))
         candidate = padded[tail] + cost
         best = np.fmin(best, np.where(np.isnan(cost), np.inf, candidate))
     best.flat[source] = 0
