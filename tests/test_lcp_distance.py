@@ -286,6 +286,11 @@ def test_grid_window_query_with_traced_neighbors_uses_the_edge_list():
     sources = jnp.array([40, 30])
     graph = GridGraph(permeability, fun=_average)
     query = lambda graph: LCPDistance().sources_to_windows_distance(graph, sources, 5)
+    # Traced neighbours, as those of a graph passed into `jax.jit`, give the
+    # rounds of the sparse edges, which gather and scatter.
+    names = _loop_primitives(jax.make_jaxpr(query)(graph).jaxpr)
+    assert any("gather" in n for n in names), names
+    assert any("scatter" in n for n in names), names
     np.testing.assert_array_equal(jax.jit(query)(graph), query(graph))
 
 

@@ -44,7 +44,8 @@ def proximity(dist):
 
 
 def make(kind, distance, quality=QUALITY, permeability=PERMEABILITY, **kwargs):
-    # 42 windows: five full batches and a partial one.
+    # 42 block centres: six batches of 7 windows, or six tiles of 2 x 4 block
+    # centres for distances whose sources share work.
     kwargs = {"proximity": proximity, "batch_size": 8, "dependency_range": D, **kwargs}
     return kind(
         quality_raster=quality,
@@ -856,10 +857,24 @@ def test_all_batches_and_runs_share_one_compiled_program(
     windowed.run(*args)
     assert compilations.count("jit(_batch)") == 1
 
-    # The analysis keeps its solver state: another run compiles nothing.
+    # The next run starts from the solver state that this one left, of the
+    # same structure: it compiles nothing.
     compilations.clear()
     windowed.run(*args)
     assert compilations == []
+
+
+def test_dummy_tiles_of_a_partial_last_batch_add_nothing():
+    # 42 windows in batches of at most 4: ten batches of 4, and a last batch
+    # of 2 windows that two dummy windows complete.
+    distance = LCPDistance()
+    sensitivity = make(SensitivityAnalysis, distance, batch_size=4)
+    assert sensitivity._tiles_per_batch == 4
+
+    connectivity = make(ConnectivityAnalysis, distance, batch_size=4).run()
+    assert_close(connectivity, own_windows(QUALITY, PERMEABILITY, distance), 1e-12)
+    expected = jax.grad(own_windows, 1)(QUALITY, PERMEABILITY, distance)
+    assert_close(sensitivity.run("permeability"), expected, 1e-12)
 
 
 def test_batches_compute_the_windows_of_the_raster_only():

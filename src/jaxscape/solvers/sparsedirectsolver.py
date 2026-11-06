@@ -401,7 +401,8 @@ def _product(pattern: CSRPattern, values: Array, vector: Array) -> Array:
     after another. XLA gathers the entries of a batch of vectors as a slice
     per index, which reads the batch in strides of the vector size: the
     residual checks of 128 solutions of 826950 vertices took 32 ms on an RTX
-    3090, against a 100 ms solve.
+    3090 as a batch, against a 100 ms solve, and 9 ms one vector after
+    another, with rows padded to the longest (see `CSRPattern`).
     """
     return _product_of(pattern, values, vector)
 
