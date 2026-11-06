@@ -109,9 +109,10 @@ Distances do this for you, as [Reusing solver state](#reusing-solver-state) desc
 `GridMultigridSolver` solves the grounded Laplacians of grid graphs with
 conjugate gradients, preconditioned by one V-cycle of a multigrid hierarchy per
 iteration. `init` reads the grid, a raster shape and contiguity, from the sparse
-indices; `reinit` takes the current conductances inside `jax.jit`, and each
-solve builds their hierarchy, in milliseconds, so that every tile of a windowed
-analysis is solved with its own hierarchy at no setup cost.
+indices, and `reinit` scatters the current conductances into the stencil of the
+grid inside `jax.jit`. Each solve builds the multigrid hierarchy of these
+conductances, in 2.3 ms for the 894 x 925 tile below on an RTX 3090, so that
+every tile of a windowed analysis is solved with its own hierarchy.
 
 ```python
 from jaxscape import ResistanceDistance, SpielmanApproximation
@@ -128,12 +129,13 @@ approximate = ResistanceDistance(
 right-hand side, and sets the cost: on the 894 x 925 tile of the Maryland land
 cover of the connectivity analysis example, with conductances from `1e-4` to
 1, 64 right-hand sides took 8 iterations at `rtol=1e-3`, 13 at `3e-4` and 27 at
-`1e-5`, about 7 ms each on an RTX 3090 in float32. In float32, the residual of
-the solution stops decreasing: on a test grid, it stayed at `2e-5` to `6e-4`
-relative for every `rtol` from `3e-4` to `1e-5` (see the solver reference
-below). Resistances to pixels behind barriers converge last: at `rtol=3e-3`,
-the permeability sensitivity of `SpielmanApproximation(epsilon=0.15)` had a
-Pearson correlation of 0.48 with float64.
+`1e-5`: solves of 63, 106 and 201 ms with their hierarchy, on an RTX 3090 in
+float32. In float32, the residual of the solution stops decreasing: on a test
+grid, it stayed at `2e-5` to `6e-4` relative for every `rtol` from `3e-4` to
+`1e-5` (see the solver reference below). Resistances to pixels behind barriers
+converge last: at `rtol=3e-3`, the permeability sensitivity of
+`SpielmanApproximation(epsilon=0.15)` had a Pearson correlation of 0.48 with
+float64.
 
 The example runs six analyses in float32: the connectivity, the permeability
 sensitivity and the permeability sensitivity of a flat landscape, for
