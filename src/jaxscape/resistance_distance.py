@@ -57,17 +57,19 @@ class ResistanceDistance(AbstractSolverDistance):
       also in float32 and inside `jax.jit`. It solves grids of up to 1024
       pixels with one Cholesky factorization, up to rounding. On a grid of
       1000 x 1000 pixels in float32, its exact resistances among 20 nodes had
-      a relative error of `6.5e-5` against float64. Other graphs raise with
-      the default: pass `jaxscape.solvers.CholmodSolver`, `PyAMGSolver`,
-      `AMJaxCGSolver` or `CuDSSSolver` (see
-      [Linear solvers](linear_solvers.md)), or `solver=None`. Without a solver,
-      exact all-pairs and nodes-to-nodes queries take the pseudo-inverse of
-      the dense Laplacian, and other queries a dense Cholesky factorization of
-      the grounded Laplacian: their memory grows with the square of the number
-      of vertices, which suits small graphs. The float32 pseudo-inverse loses
-      accuracy: on a grid of 24 x 40 pixels with conductances over two
-      decades, its all-pairs resistances had a relative error of 40 % against
-      float64, and those of the default `2.6e-6`.
+      a relative error of `6.5e-5` against float64. Exact windowed analyses,
+      which solve for every vertex of a tile, took up to three times longer on
+      a CPU than with `solver=None`. Other graphs raise with the default: pass
+      `jaxscape.solvers.CholmodSolver`, `PyAMGSolver`, `AMJaxCGSolver` or
+      `CuDSSSolver` (see [Linear solvers](linear_solvers.md)), or
+      `solver=None`. Without a solver, exact all-pairs and nodes-to-nodes
+      queries take the pseudo-inverse of the dense Laplacian, and other
+      queries a dense Cholesky factorization of the grounded Laplacian: their
+      memory grows with the square of the number of vertices, which suits
+      small graphs. The float32 pseudo-inverse loses accuracy: on a grid of
+      24 x 40 pixels with conductances over two decades, its all-pairs
+      resistances had a relative error of 40 % against float64, and those of
+      the default `2.6e-6`.
     - `method`: A resistance distance method. Defaults to `ExactResistance()`.
       Use `SpielmanApproximation(epsilon=..., seed=...)` for the randomized
       Spielman-Srivastava approximation.

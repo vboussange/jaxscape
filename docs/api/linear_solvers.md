@@ -9,8 +9,8 @@ preconditioned by geometric multigrid, which solves the grounded Laplacians of
 grid graphs, such as those of a `GridGraph`. It runs in JAX on CPU and GPU,
 inside `jax.jit`, in float32 and float64, and needs no optional dependency. It
 solves grids of up to 1024 pixels with one Cholesky factorization, up to
-rounding. On grid graphs, it was the fastest solver measured, and accurate in
-float32:
+rounding. On grid graphs in float32, it matched or beat the other solvers
+measured, in time and accuracy:
 
 | Workload | `GridMultigridSolver` | `CholmodSolver` | `AMJaxCGSolver` | `CuDSSSolver` |
 |---|---|---|---|---|
@@ -24,8 +24,8 @@ resistances among 20 points of a 100 x 100 grid with L-BFGS, in at most 50
 steps; every fit reached a relative RMSE of 0.0012, with `AMJaxCGSolver` at
 `rtol=atol=1e-3`. The exact resistances are those among 20 nodes, with their
 gradient, on a smooth permeability over two decades with a barrier at `1e-3`;
-errors are relative to float64. Times are medians of warm runs, at the default
-`rtol=1e-5` unless stated.
+errors are relative to float64. Times are those of warm runs, medians of three
+for the inverse benchmark, at the default `rtol=1e-5` unless stated.
 
 Choose another solver in these cases:
 
@@ -45,10 +45,26 @@ Choose another solver in these cases:
   pseudo-inverse loses accuracy: on a grid of 24 x 40 pixels with conductances
   over two decades, its all-pairs resistances had a relative error of 40 %
   against float64, and those of the default `2.6e-6`. Use it in float64.
+- Exact windowed analyses on a CPU. Their window queries solve for every
+  vertex of a tile, and a direct solver reuses one factorization for all of
+  them, where conjugate gradients iterate for each.
 
-A sparse direct solver reuses one factorization for every right-hand side of a
-graph, which may pay off for exact queries with many right-hand sides, such as
-all-pairs queries; these have not been measured against the multigrid.
+The exact windowed analyses below ran on a smooth raster of 200 x 200 pixels,
+with `dependency_range=20`, `coarsening_factor=0.25` and `batch_size=64`: 25
+tiles of 71 x 71 pixels. Times are those of a second run, for the connectivity
+and the permeability sensitivity, on two AMD EPYC 7742 and on an RTX 3090:
+
+| Exact windowed analysis | Default | `solver=None` | `CholmodSolver` | `CuDSSSolver` |
+|---|---|---|---|---|
+| CPU, float64 | 103 s, 223 s | 52 s, 109 s | 44 s, 109 s | |
+| CPU, float32 | 66 s, 140 s | 21 s, 48 s | | |
+| RTX 3090, float32 | 1.5 s, 3.0 s | 1.7 s, 3.1 s | | 2.4 s, 4.9 s |
+| RTX 3090, float64 | 5.9 s, 11.9 s | 26.6 s, 49.7 s | | 3.4 s, 7.1 s |
+
+With `dependency_range=10`, no coarsening and tiles of 28 x 28 pixels, which
+the default solves with one Cholesky factorization, it took 14 s and 24 s in
+float64 on the CPU, against 6.2 s and 20 s with `solver=None` and 30 s and
+43 s with `CholmodSolver`.
 
 With a solver, the graph must be connected: the grounded Laplacian of a
 disconnected graph is singular, and queries raise. Edges of zero conductance
