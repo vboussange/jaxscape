@@ -423,8 +423,7 @@ def test_randomized_distances_take_the_default_proximity_of_exact_ones(name, req
     assert_close(kernel(randomized)(distances), expected, 1e-8)
 
 
-def test_creating_an_analysis_analyses_the_tile_pattern_only(stub_spineax, monkeypatch):
-    monkeypatch.setattr(windowed_analysis, "_STATES", OrderedDict())
+def test_creating_an_analysis_analyses_the_tile_pattern_only(stub_spineax):
     analyses = stub_spineax.analyses()
     # Tiles of 2 x 2 pixels: their sparsity pattern differs from a window's,
     # which a given proximity does not need.
@@ -509,7 +508,6 @@ def notebook_runs(distance, monkeypatch, **kwargs):
 def test_analyses_of_one_distance_analyse_each_pattern_once(
     batch_size, stub_spineax, monkeypatch
 ):
-    monkeypatch.setattr(windowed_analysis, "_STATES", OrderedDict())
     distance = ResistanceDistance(CuDSSSolver(), method=SPIELMAN)
 
     def analyses():
