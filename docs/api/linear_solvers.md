@@ -1,21 +1,63 @@
 # Linear solvers
 
-`ResistanceDistance` and `FreeEnergyDistance` internally solve linear systems. The choice of solver directly affects runtime and memory usage.
+`ResistanceDistance` and `FreeEnergyDistance` internally solve linear systems. The choice of solver directly affects runtime, memory usage and accuracy.
 
-For substantial landscapes, choose an explicit sparse solver:
+## The default solver
 
-- On CPU, start with `CholmodSolver` when a sparse factorization fits in memory;
-  try `PyAMGSolver` when factorization storage is too costly.
-- On an NVIDIA GPU, use `CuDSSSolver` when a sparse Cholesky factorization fits
-  in GPU memory.
-- On a `GridGraph`, on any device, `GridMultigridSolver` needs no setup on the
-  host and no extra dependency. It suits windowed analyses with
-  `SpielmanApproximation`, whose estimates need few iterations.
-- For other JIT-compiled CPU or GPU execution, use Lineax CG, or
-  `AMJaxCGSolver` when a reusable multigrid preconditioner helps convergence.
-  AMJax setup runs on CPU.
-- The default, `solver=None`, uses a dense solve and is suited to small
-  graphs only.
+`ResistanceDistance()` solves with `GridMultigridSolver()`: conjugate gradients
+preconditioned by geometric multigrid, which solves the grounded Laplacians of
+grid graphs, such as those of a `GridGraph`. It runs in JAX on CPU and GPU,
+inside `jax.jit`, in float32 and float64, and needs no optional dependency. It
+solves grids of up to 1024 pixels with one Cholesky factorization, up to
+rounding. On grid graphs, it was the fastest solver measured, and accurate in
+float32:
+
+| Workload | `GridMultigridSolver` | `CholmodSolver` | `AMJaxCGSolver` | `CuDSSSolver` |
+|---|---|---|---|---|
+| Inverse landscape genetics, CPU | 2.1 to 2.2 s (1.4 s at `rtol=1e-3`) | 6.05 s | 10.7 to 11.7 s | |
+| Inverse landscape genetics, RTX 3090, float32 | 0.24 s (0.15 s at `rtol=1e-3`) | | 0.24 s | 0.89 s |
+| Exact resistances on 1000 x 1000 pixels, RTX 3090, float32 | 33 ms, error `6.5e-5`, state in 0.7 s | | fails | 32 ms, error `9.4e-4`, analysis in 6.3 s |
+| Exact resistances on 1000 x 1000 pixels, RTX 3090, float64 | 182 ms at `rtol=1e-8` | | 1298 ms | 55 ms |
+
+The inverse landscape genetics benchmark of the repository fits the
+resistances among 20 points of a 100 x 100 grid with L-BFGS, in at most 50
+steps; every fit reached a relative RMSE of 0.0012, with `AMJaxCGSolver` at
+`rtol=atol=1e-3`. The exact resistances are those among 20 nodes, with their
+gradient, on a smooth permeability over two decades with a barrier at `1e-3`;
+errors are relative to float64. Times are medians of warm runs, at the default
+`rtol=1e-5` unless stated.
+
+Choose another solver in these cases:
+
+- Graphs other than grid graphs, on which the default raises. On CPU, use
+  `CholmodSolver` when a sparse factorization fits in memory, and
+  `PyAMGSolver` when factorization storage is too costly. On an NVIDIA GPU, use
+  `CuDSSSolver` when a sparse Cholesky factorization fits in GPU memory. For
+  other JIT-compiled CPU or GPU execution, use Lineax CG, or `AMJaxCGSolver`
+  when a reusable algebraic multigrid preconditioner helps convergence; AMJax
+  setup runs on CPU.
+- Float64 on an NVIDIA GPU: `CuDSSSolver` took 55 ms where the multigrid took
+  182 ms in the table above.
+- Small graphs of any kind: `solver=None` takes the pseudo-inverse of the dense
+  Laplacian for exact all-pairs and nodes-to-nodes queries, and a dense
+  Cholesky factorization of the grounded Laplacian for other queries. Its
+  memory grows with the square of the number of vertices. In float32, the
+  pseudo-inverse loses accuracy: on a grid of 24 x 40 pixels with conductances
+  over two decades, its all-pairs resistances had a relative error of 40 %
+  against float64, and those of the default `2.6e-6`. Use it in float64.
+
+A sparse direct solver reuses one factorization for every right-hand side of a
+graph, which may pay off for exact queries with many right-hand sides, such as
+all-pairs queries; these have not been measured against the multigrid.
+
+With a solver, the graph must be connected: the grounded Laplacian of a
+disconnected graph is singular, and queries raise. Edges of zero conductance
+disconnect a grid graph, as `fun` gives between pixels of zero permeability.
+Windowed analyses raise permeability to a floor, so that their graphs are
+connected.
+
+`FreeEnergyDistance()` solves with dense solves by default, `solver=None`,
+which suits small graphs; it takes the same solvers.
 
 Solver tolerances depend on the workload and precision. Check accuracy for your
 queries; solver convergence alone does not establish accurate distances.
@@ -37,8 +79,8 @@ See the [Lineax documentation](https://docs.kidger.site/lineax/) for the full li
 
 ## `JAXScape` solvers
 
-`JAXScape` provides a multigrid solver for grid graphs, and four optional
-high-performance solvers as extras:
+`JAXScape` provides a multigrid solver for grid graphs, the default of
+`ResistanceDistance`, and four optional high-performance solvers as extras:
 
 | Solver | Execution | Typical use and limits |
 |---|---|---|
@@ -109,8 +151,9 @@ Distances do this for you, as [Reusing solver state](#reusing-solver-state) desc
 `GridMultigridSolver` solves the grounded Laplacians of grid graphs with
 conjugate gradients, preconditioned by one V-cycle of a multigrid hierarchy per
 iteration. `init` reads the grid, a raster shape and contiguity, from the sparse
-indices, and `reinit` scatters the current conductances into the stencil of the
-grid inside `jax.jit`. Each solve builds the multigrid hierarchy of these
+indices, which `distance.init(graph)` takes from the shape and contiguity of a
+`GridGraph`, also inside `jax.jit`. `reinit` scatters the current conductances
+into the stencil of the grid inside `jax.jit`. Each solve builds the multigrid hierarchy of these
 conductances, in 2.3 ms for the 894 x 925 tile below on an RTX 3090, so that
 every tile of a windowed analysis is solved with its own hierarchy.
 
@@ -118,7 +161,7 @@ every tile of a windowed analysis is solved with its own hierarchy.
 from jaxscape import ResistanceDistance, SpielmanApproximation
 from jaxscape.solvers import GridMultigridSolver
 
-exact = ResistanceDistance(solver=GridMultigridSolver())  # rtol=1e-5
+exact = ResistanceDistance()  # GridMultigridSolver(rtol=1e-5, max_steps=200)
 approximate = ResistanceDistance(
     solver=GridMultigridSolver(rtol=3e-4),
     method=SpielmanApproximation(epsilon=0.15),
@@ -171,6 +214,8 @@ Solver setup can cost far more than a solve, as a sparse analysis or a multigrid
 
 - `distance.init(graph)` builds the state of `graph`. Some solvers read concrete
   sparse indices or run host code, so call it outside `jax.jit`.
+  `GridMultigridSolver` builds the state of a `GridGraph` inside `jax.jit` too,
+  from its shape and contiguity.
 - `distance.reinit(graph, state)` returns the state of another graph with the same
   sparsity pattern, reusing what the solver can. It runs inside `jax.jit`.
 - Queries take that state, and all queries on a graph can share it. A query always
@@ -184,7 +229,6 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 from jaxscape import GridGraph, ResistanceDistance
-from jaxscape.solvers import AMJaxCGSolver
 
 
 def landscape(log_conductance):
@@ -195,9 +239,8 @@ sites = jnp.array([0, 45, 99])
 true_log_conductance = jax.random.normal(jax.random.key(0), (10, 10))
 target = ResistanceDistance()(landscape(true_log_conductance), nodes=sites)
 
-distance = ResistanceDistance(
-    solver=AMJaxCGSolver(rtol=1e-6, atol=1e-6, max_steps=1_000)
-)
+# GridMultigridSolver: the table below lists what the state of each solver keeps.
+distance = ResistanceDistance()
 log_conductance = jnp.zeros((10, 10))
 state = distance.init(landscape(log_conductance))
 

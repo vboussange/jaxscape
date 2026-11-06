@@ -17,22 +17,19 @@ uv add jaxscape
 
 The default installation is CPU-only. For NVIDIA GPUs, use `uv add 'jaxscape[cuda]'`, or install JAX following the [official JAX installation guide](https://jax.readthedocs.io/en/latest/installation.html). JAXScape will automatically use the JAX backend you have configured.
 
-You may be required to install optional linear solvers for large-scale resistance and free-energy distance computations. `CholmodSolver`, `PyAMGSolver`, `AMJaxCGSolver`, and `CuDSSSolver` are documented on the [linear solver page](https://vboussange.github.io/jaxscape/api/linear_solvers), including how to reuse solver state for JIT-compiled and differentiable repeated solves. `GridMultigridSolver`, documented there too, solves grid graphs on any device without an extra dependency.
+Resistance distances on grid graphs need no optional solver: `ResistanceDistance()` solves them with `GridMultigridSolver`, on CPU and GPU, in float32 and float64. Other graphs, and free-energy distances on large landscapes, may need an optional linear solver: `CholmodSolver`, `PyAMGSolver`, `AMJaxCGSolver`, and `CuDSSSolver` are documented on the [linear solver page](https://vboussange.github.io/jaxscape/api/linear_solvers), including how to reuse solver state for JIT-compiled and differentiable repeated solves.
 
 ## Resistance distance methods
 
-`ResistanceDistance()` computes exact resistance distances by default. For
-larger graphs, use the Spielman-Srivastava randomized approximation by selecting
-an explicit method object:
+`ResistanceDistance()` computes exact resistance distances by default, with
+`GridMultigridSolver` on grid graphs. For larger graphs, use the
+Spielman-Srivastava randomized approximation by selecting an explicit method
+object:
 
 ```python
 from jaxscape import ResistanceDistance, SpielmanApproximation
-from jaxscape.solvers import PyAMGSolver
 
-distance = ResistanceDistance(
-    method=SpielmanApproximation(epsilon=0.05, seed=0),
-    solver=PyAMGSolver(),
-)
+distance = ResistanceDistance(method=SpielmanApproximation(epsilon=0.05, seed=0))
 ```
 
 The `epsilon` parameter belongs to `SpielmanApproximation`: smaller values use
