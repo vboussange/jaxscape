@@ -63,21 +63,24 @@ _COMPILER_OPTIONS = {"xla_gpu_autotune_level": 0, "xla_gpu_enable_triton_gemm": 
 
 
 class _Program(eqx.Module):
-    """A function jitted with `_COMPILER_OPTIONS`, and without them for the
-    calls that JAX traces, as inside `jax.jit`: JAX takes compiler options
-    for the programs that it compiles alone only.
+    """A function jitted with `_COMPILER_OPTIONS` for the calls that JAX
+    compiles alone, and without them for the others: JAX takes compiler
+    options for top-level programs only. A call is traced inside a trace, as
+    inside `jax.jit`, and when its arguments hold tracers, as under `jax.vmap`
+    or `jax.vjp` outside `jax.jit`, whose pullback `jax.jit` can trace.
 
     **Attributes:**
 
-    - `compiled`: The function jitted with the options.
+    - `top_level`: The function jitted with the options.
     - `traced`: The function jitted without them.
     """
 
-    compiled: Callable
+    top_level: Callable
     traced: Callable
 
     def __call__(self, *args: Any) -> Any:
-        return (self.traced if _tracing() else self.compiled)(*args)
+        traced = _tracing() or _traced(args)
+        return (self.traced if traced else self.top_level)(*args)
 
 
 def _program(**kwargs: Any) -> Callable[[Callable], _Program]:
@@ -88,8 +91,8 @@ def _program(**kwargs: Any) -> Callable[[Callable], _Program]:
         # `eqx.filter_jit` passes `compiler_options` to `jax.jit`, which its
         # type overloads leave out.
         options = {"compiler_options": _COMPILER_OPTIONS}
-        compiled = eqx.filter_jit(fun, **kwargs, **options)  # pyright: ignore
-        return _Program(compiled, eqx.filter_jit(fun, **kwargs))
+        top_level = eqx.filter_jit(fun, **kwargs, **options)  # pyright: ignore
+        return _Program(top_level, eqx.filter_jit(fun, **kwargs))
 
     return program
 
@@ -547,7 +550,8 @@ class WindowedAnalysis(eqx.Module):
         """Return `work()`, run while another thread compiles the batch program
         of `_accumulate(tile_fn, initial, *args)`, which `_accumulate` then
         runs. Arrays of the shapes and dtypes of those of `args` can stand in
-        for them. In a trace, as inside `jax.jit`, nothing compiles alone.
+        for them. Nothing compiles alone in a trace, as inside `jax.jit`, nor
+        when the analysis or the arguments hold tracers, as under `jax.vmap`.
 
         The program lowers in this thread, with the JAX settings that JAX keeps
         for each thread, such as those of `jax.enable_x64` and
@@ -555,11 +559,11 @@ class WindowedAnalysis(eqx.Module):
         compiles the program again and reports the error. If `work()` raises,
         the error propagates without waiting for the compilation.
         """
-        if _tracing():
+        if _tracing() or _traced((self, initial, args)):
             return work()
         state = self._latest_state(self.tile_sides, self.state)
         batch = _Batch(self, jnp.asarray(0), state, tile_fn, args)
-        lowered = _batch.compiled.lower(batch, initial)
+        lowered = _batch.top_level.lower(batch, initial)
         pool = ThreadPoolExecutor(max_workers=1)
         pool.submit(lowered.compile)
         try:

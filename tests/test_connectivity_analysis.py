@@ -618,7 +618,7 @@ def test_the_block_calibration_pulls_back_both_gradients_at_once():
         coarsening_factor=0.5,
     )
     calibration = connectivity_analysis._permeability_calibration
-    lowered = calibration.compiled.lower(sensitivity, sensitivity.window_state)
+    lowered = calibration.top_level.lower(sensitivity, sensitivity.window_state)
     text = str(lowered.compile().compiled.as_text())
     assert text.count("trsm") + text.count("triangularSolve") == 4
 
@@ -693,9 +693,9 @@ def test_a_failed_compilation_of_the_batches_leaves_the_analysis_to_run(monkeypa
         )
 
     jax.clear_caches()
-    monkeypatch.setattr(jax.stages.Lowered, "compile", failing)
-    actual = sensitivity()
-    monkeypatch.undo()
+    with monkeypatch.context() as patch:
+        patch.setattr(jax.stages.Lowered, "compile", failing)
+        actual = sensitivity()
     assert_close(actual, sensitivity(), 1e-12)
 
 
@@ -722,6 +722,71 @@ def test_an_interrupted_block_calibration_leaves_the_batches_compiling(monkeypat
         assert not compiled.is_set()
     finally:
         release.set()
+
+
+class _Recorded:
+    """A jitted function that records the arguments that hold tracers of its
+    calls and lowerings."""
+
+    def __init__(self, fun, traced):
+        self.fun, self.traced = fun, traced
+
+    def __call__(self, *args):
+        self._record(args)
+        return self.fun(*args)
+
+    def lower(self, *args):
+        self._record(args)
+        return self.fun.lower(*args)
+
+    def _record(self, args):
+        if any(isinstance(leaf, Tracer) for leaf in jax.tree.leaves(args)):
+            self.traced.append(args)
+
+
+@pytest.fixture
+def traced_top_level_calls(monkeypatch):
+    """The arguments that hold tracers of the calls and lowerings of the
+    programs of windowed analyses jitted with compiler options."""
+    traced = []
+    for module, name in [
+        (windowed_analysis, "_batch"),
+        (windowed_analysis, "_profile"),
+        (connectivity_analysis, "_permeability_calibration"),
+    ]:
+        program = getattr(module, name)
+        top_level = _Recorded(program.top_level, traced)
+        program = windowed_analysis._Program(top_level=top_level, traced=program.traced)
+        monkeypatch.setattr(module, name, program)
+    return traced
+
+
+def test_transformed_runs_take_the_programs_without_compiler_options(
+    traced_top_level_calls,
+):
+    # Under `jax.vjp` and `jax.vmap`, outside `jax.jit`, the programs of an
+    # analysis take tracers: JAX takes compiler options for the programs that
+    # it compiles alone only, and `jax.jit` of the pullback traces them.
+    def connectivity(permeability):
+        return make(ConnectivityAnalysis, LCPDistance(), QUALITY, permeability).run()
+
+    def sensitivity(permeability):
+        return make(
+            SensitivityAnalysis,
+            LCPDistance(),
+            QUALITY,
+            permeability,
+            coarsening_factor=0.5,
+        ).run("permeability")
+
+    pullback = jax.vjp(connectivity, PERMEABILITY)[1]
+    gradient = jax.jit(pullback)(jnp.ones(()))[0]
+    permeabilities = jnp.stack([PERMEABILITY, 2 * PERMEABILITY])
+    batched = jax.vmap(sensitivity)(permeabilities)
+    assert traced_top_level_calls == []
+    assert_close(gradient, jax.grad(connectivity)(PERMEABILITY), 1e-12)
+    for one, permeability in zip(batched, permeabilities):
+        assert_close(one, sensitivity(permeability), 1e-12)
 
 
 @pytest.mark.parametrize("name", ["lcp", "resistance-dense"])
