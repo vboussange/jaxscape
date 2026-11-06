@@ -63,11 +63,12 @@ _COMPILER_OPTIONS = {"xla_gpu_autotune_level": 0, "xla_gpu_enable_triton_gemm": 
 
 
 class _Program(eqx.Module):
-    """A function jitted with `_COMPILER_OPTIONS` for the calls that JAX
-    compiles alone, and without them for the others: JAX takes compiler
-    options for top-level programs only. A call is traced inside a trace, as
-    inside `jax.jit`, and when its arguments hold tracers, as under `jax.vmap`
-    or `jax.vjp` outside `jax.jit`, whose pullback `jax.jit` can trace.
+    """A function jitted with `_COMPILER_OPTIONS`, and without them for the
+    calls that JAX transforms: JAX takes compiler options for top-level
+    programs only. JAX transforms the calls inside a trace, as inside
+    `jax.jit`, and the calls whose arguments hold tracers, as under `jax.vmap`
+    or `jax.vjp` outside `jax.jit`. The pullback of `jax.vjp` holds the
+    program, and `jax.jit` of the pullback nests it.
 
     **Attributes:**
 
