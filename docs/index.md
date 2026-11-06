@@ -17,7 +17,7 @@ uv add jaxscape
 
 The default installation is CPU-only. For NVIDIA GPUs, use `uv add 'jaxscape[cuda]'`, or install JAX following the [official JAX installation guide](https://jax.readthedocs.io/en/latest/installation.html). JAXScape will automatically use the JAX backend you have configured.
 
-You may be required to install optional linear solvers for large-scale resistance and free-energy distance computations. `CholmodSolver`, `PyAMGSolver`, `AMJaxCGSolver`, and `CuDSSSolver` are documented on the [linear solver page](https://vboussange.github.io/jaxscape/api/linear_solvers), including how to reuse solver state for JIT-compiled and differentiable repeated solves.
+You may be required to install optional linear solvers for large-scale resistance and free-energy distance computations. `CholmodSolver`, `PyAMGSolver`, `AMJaxCGSolver`, and `CuDSSSolver` are documented on the [linear solver page](https://vboussange.github.io/jaxscape/api/linear_solvers), including how to reuse solver state for JIT-compiled and differentiable repeated solves. `GridMultigridSolver`, documented there too, solves grid graphs on any device without an extra dependency.
 
 ## Resistance distance methods
 

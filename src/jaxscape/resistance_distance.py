@@ -50,8 +50,9 @@ class ResistanceDistance(AbstractSolverDistance):
 
     - `solver`: Optional `lineax.AbstractLinearSolver`. Must be compatible with
       BCOO matrices. We currently support `jaxscape.solvers.CholmodSolver`,
-      `jaxscape.solvers.PyAMGSolver`, `jaxscape.solvers.AMJaxCGSolver`, and
-      `jaxscape.solvers.CuDSSSolver`.
+      `jaxscape.solvers.PyAMGSolver`, `jaxscape.solvers.AMJaxCGSolver`,
+      `jaxscape.solvers.CuDSSSolver`, and, for grid graphs,
+      `jaxscape.solvers.GridMultigridSolver`.
       If None, uses the pseudo-inverse method, which is very memory intensive
       for exact all-pairs distances (densifies the Laplacian matrix), or dense
       solves for approximate distances. Exact sources-to-targets queries
