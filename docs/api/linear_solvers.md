@@ -8,6 +8,9 @@ For substantial landscapes, choose an explicit sparse solver:
   try `PyAMGSolver` when factorization storage is too costly.
 - On an NVIDIA GPU, use `CuDSSSolver` when a sparse Cholesky factorization fits
   in GPU memory.
+- On a `GridGraph`, on any device, `GridMultigridSolver` needs no setup on the
+  host and no extra dependency. It suits windowed analyses with
+  `SpielmanApproximation`, whose estimates need few iterations.
 - For other JIT-compiled CPU or GPU execution, use Lineax CG, or
   `AMJaxCGSolver` when a reusable multigrid preconditioner helps convergence.
   AMJax setup runs on CPU.
@@ -34,10 +37,12 @@ See the [Lineax documentation](https://docs.kidger.site/lineax/) for the full li
 
 ## `JAXScape` solvers
 
-`JAXScape` provides four optional high-performance solvers as extras:
+`JAXScape` provides a multigrid solver for grid graphs, and four optional
+high-performance solvers as extras:
 
 | Solver | Execution | Typical use and limits |
 |---|---|---|
+| `GridMultigridSolver` | JAX on CPU or GPU | Conjugate gradients with a geometric multigrid preconditioner for the matrices of `GridGraph`s, whose hierarchy `reinit` builds inside `jax.jit` in milliseconds. No host step and no extra dependency. |
 | `CholmodSolver` | CPU host callback | Direct factorization for fixed sparse systems; efficient reuse when factorization memory fits. GPU arrays cross the host-device boundary. |
 | `PyAMGSolver` | CPU host callback | AMG-preconditioned CG when factorization storage is too costly. Multiple right-hand sides are solved serially. |
 | `AMJaxCGSolver` | CPU setup; JAX solve on CPU or GPU | Reusable multigrid preconditioner for repeated solves, with fresh CG state when the operator changes. No per-solve host callback. |
@@ -53,8 +58,8 @@ uv add jaxscape --extra cudss      # cuDSS direct solver (NVIDIA GPU, CUDA 13)
 ```
 
 !!! info "CI/CD coverage"
-    The standard CI test suite exercises `CholmodSolver`, `PyAMGSolver` and
-    `AMJaxCGSolver`. CI has no NVIDIA GPU: it runs the sparse direct solver logic
+    The standard CI test suite exercises `GridMultigridSolver`, `CholmodSolver`,
+    `PyAMGSolver` and `AMJaxCGSolver`. CI has no NVIDIA GPU: it runs the sparse direct solver logic
     on a dense solver, and the `CuDSSSolver` tests marked `gpu` need an NVIDIA GPU
     with spineax and cuDSS.
 
@@ -98,6 +103,39 @@ x = lx.linear_solve(operator, b, solver, state=state).value
 ```
 
 Distances do this for you, as [Reusing solver state](#reusing-solver-state) describes.
+
+## Geometric multigrid solver
+
+`GridMultigridSolver` solves the grounded Laplacians of grid graphs with
+conjugate gradients, preconditioned by one V-cycle of a multigrid hierarchy per
+iteration. `init` reads the grid, a raster shape and contiguity, from the sparse
+indices; `reinit` builds the hierarchy of the current conductances inside
+`jax.jit`, in milliseconds, so that every tile of a windowed analysis is
+solved with its own hierarchy at no setup cost.
+
+```python
+from jaxscape import ResistanceDistance, SpielmanApproximation
+from jaxscape.solvers import GridMultigridSolver
+
+exact = ResistanceDistance(solver=GridMultigridSolver())  # rtol=1e-5
+approximate = ResistanceDistance(
+    solver=GridMultigridSolver(rtol=3e-4),
+    method=SpielmanApproximation(epsilon=0.15),
+)
+```
+
+`rtol` bounds the residual of each solve relative to its right-hand side, and
+sets the cost: on the 894 x 925 tile of the Maryland land cover of the
+connectivity analysis example, with conductances from `1e-4` to 1, 64
+right-hand sides took 8 iterations at `rtol=1e-3`, 13 at `3e-4` and 27 at
+`1e-5`, about 7 ms each on an RTX 3090 in float32. Resistances to pixels behind
+barriers converge last. With `SpielmanApproximation(epsilon=0.15)`, `rtol=3e-4`
+kept the resistances of windows as close to float64 as those of `CuDSSSolver`
+in float32, and gave the same connectivity and sensitivity maps; at `rtol=3e-3`,
+the permeability sensitivity had a Pearson correlation of 0.48 with float64,
+against 0.989 at `3e-4` and 0.989 with `CuDSSSolver` in float32.
+The three resistance analyses of the example took 11 s on that GPU, against
+25 s with `CuDSSSolver`, whose analysis of the tile took 5 s for each.
 
 ## Reusing solver state
 
@@ -159,6 +197,7 @@ What a state keeps from one graph to the next:
 
 | Solver | Kept by the state |
 |---|---|
+| `GridMultigridSolver` | The grid; `reinit` builds the hierarchy of the new values |
 | `AMJaxCGSolver` | The multigrid hierarchy |
 | `CuDSSSolver` | The sparse analysis, and the factorization while the values stay the same |
 | `CholmodSolver` | Its last factorization, while the values stay the same |
@@ -193,6 +232,10 @@ A solver of another kind whose state outlives the matrix values subclasses `Abst
 
 ## Solver reference
 
+::: jaxscape.solvers.gridmultigridsolver.GridMultigridSolver
+    options:
+      members: false
+
 ::: jaxscape.solvers.cholmodsolver.CholmodSolver
     options:
       members: false
@@ -225,7 +268,7 @@ A solver of another kind whose state outlives the matrix values subclasses `Abst
 
 ## Advanced: `BCOOLinearOperator`
 
-`JAXScape` exposes a `lineax`-compatible linear operator that wraps JAX's native `BCOO` sparse matrix format. It lets compatible Lineax solvers operate on sparse matrices without converting to a dense representation, and is used internally by the four optional solvers above.
+`JAXScape` exposes a `lineax`-compatible linear operator that wraps JAX's native `BCOO` sparse matrix format. It lets compatible Lineax solvers operate on sparse matrices without converting to a dense representation, and is used internally by the solvers above.
 
 ::: jaxscape.solvers.operator.BCOOLinearOperator
     options:

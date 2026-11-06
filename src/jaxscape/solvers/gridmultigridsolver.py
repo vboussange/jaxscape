@@ -74,10 +74,13 @@ class GridMultigridSolver(AbstractReusableStateSolver):
     On the 894 x 925 grid of the Maryland land cover of the connectivity
     analysis example, with conductances from `1e-4` to 1, on an RTX 3090 in
     float32, the hierarchy took 3 ms, and 64 right-hand sides of
-    `SpielmanApproximation` took 33 ms at `rtol=3e-3` and 62 ms at `1e-3`,
-    against an analysis of 4.9 s and solves of 63 ms with `CuDSSSolver`. At
-    `rtol=1e-3`, the solutions were as close to float64 solutions as those of
-    `CuDSSSolver` in float32.
+    `SpielmanApproximation` took 61 ms at `rtol=1e-3` (8 iterations), 98 ms at
+    `3e-4` (13), 134 ms at `1e-4` (18) and 199 ms at `1e-5` (27), against an
+    analysis of 5 s and solves of 65 ms with `CuDSSSolver`. Against float64,
+    the proximity-weighted errors of the resistances of the windows of 8
+    sources were 8.6 % at `rtol=1e-3`, 1.5 % at `3e-4`, 0.06 % at `3e-5`, and
+    1.0 % with `CuDSSSolver` in float32: resistances to pixels behind barriers
+    converge last.
 
     **Attributes:**
 
@@ -94,8 +97,8 @@ class GridMultigridSolver(AbstractReusableStateSolver):
         positive definite: a grounded Laplacian of a connected graph.
     """
 
-    rtol: float = 1e-6
-    max_steps: int = 100
+    rtol: float = 1e-5
+    max_steps: int = 200
 
     def __check_init__(self):
         if self.rtol < 0:
@@ -466,37 +469,32 @@ def _conjugate_gradients(
 
     Each column is scaled exactly, by a power of two, to a largest magnitude in
     [0.5, 1), so that float32 right-hand sides of about 1e-37 keep their
-    precision; those below the smallest normal number solve to 0. Columns stop
-    iterating once converged.
+    precision; those below the smallest normal number solve to 0. All columns
+    iterate until the last one converges, which costs no time.
 
     **Returns:**
 
     The solutions, and whether each column converged.
     """
-    norm = jnp.max(jnp.abs(b), axis=(0, 1))
-    exponent = jnp.frexp(norm)[1]
-    b = jnp.where(norm >= jnp.finfo(b.dtype).tiny, jnp.ldexp(b, -exponent), 0)
+    largest = jnp.max(jnp.abs(b), axis=(0, 1))
+    exponent = jnp.frexp(largest)[1]
+    b = jnp.where(largest >= jnp.finfo(b.dtype).tiny, jnp.ldexp(b, -exponent), 0)
     offsets, stencil = state.offsets, state.stencils[0]
     tolerance = (rtol**2) * _dot(b, b)
 
-    def active(squared_residual):
-        return squared_residual > tolerance
-
     def step(carry):
         x, r, p, rz, squared_residual, steps = carry
-        on = active(squared_residual)
         z = _v_cycle(state, r)
         rz_new = _dot(r, z)
         # The first step starts from p = 0.
-        p = jnp.where(on, z + _ratio(rz_new, rz) * p, p)
+        p = z + _ratio(rz_new, rz) * p
         q = _apply(offsets, stencil, p)
-        alpha = jnp.where(on, _ratio(rz_new, _dot(p, q)), 0)
+        alpha = _ratio(rz_new, _dot(p, q))
         r = r - alpha * q
-        rz = jnp.where(on, rz_new, rz)
-        return x + alpha * p, r, p, rz, _dot(r, r), steps + 1
+        return x + alpha * p, r, p, rz_new, _dot(r, r), steps + 1
 
     def unconverged(carry):
-        return jnp.any(active(carry[4])) & (carry[5] < max_steps)
+        return jnp.any(carry[4] > tolerance) & (carry[5] < max_steps)
 
     # One V-cycle in the program, inside the loop, halves its compilation.
     zeros = jnp.zeros_like(b)

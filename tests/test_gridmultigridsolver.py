@@ -41,15 +41,16 @@ def system_matrix(conductance, neighbors=ROOK_CONTIGUITY):
 @pytest.mark.parametrize(
     "shape, neighbors",
     [
-        ((40, 53), ROOK_CONTIGUITY),
-        ((33, 32), QUEEN_CONTIGUITY),
-        ((2, 300), ROOK_CONTIGUITY),
-        ((1, 400), ROOK_CONTIGUITY),
+        ((70, 83), ROOK_CONTIGUITY),
+        ((65, 64), QUEEN_CONTIGUITY),
+        ((2, 1200), ROOK_CONTIGUITY),
+        ((1, 3000), ROOK_CONTIGUITY),
         ((7, 9), ROOK_CONTIGUITY),
     ],
     ids=["rook", "queen", "two-rows", "one-row", "coarsest-only"],
 )
 def test_solves_match_dense_solves(shape, neighbors):
+    # Two coarse grids, one for the grid of two rows, and none for the last.
     matrix = system_matrix(landscape(shape), neighbors)
     solver = GridMultigridSolver(rtol=1e-12, max_steps=200)
     state = solver.init(BCOOLinearOperator(matrix), {})
@@ -198,11 +199,13 @@ def test_right_hand_sides_with_their_own_matrices_solve_one_by_one():
 
 
 def test_unconverged_solves_raise():
-    matrix = system_matrix(landscape((30, 31)))
+    # Grids of up to 1024 pixels are solved exactly, in one step.
+    matrix = system_matrix(landscape((64, 65)))
     solver = GridMultigridSolver(rtol=1e-12, max_steps=1)
     state = solver.init(BCOOLinearOperator(matrix), {})
+    b = jnp.ones(matrix.shape[0])
     with pytest.raises(Exception, match="maximum number of solver steps"):
-        jax.block_until_ready(_linear_solve(matrix, jnp.ones(930), solver, state=state))
+        jax.block_until_ready(_linear_solve(matrix, b, solver, state=state))
 
 
 def test_matrices_of_other_graphs_are_rejected():
