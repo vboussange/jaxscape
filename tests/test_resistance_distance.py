@@ -517,6 +517,37 @@ def test_spielman_window_query_gradients_estimate_those_of_exact_resistances():
     assert jnp.median(spread / jnp.abs(expected)) < 0.3
 
 
+def test_spielman_window_queries_of_float32_without_64_bit_types_match_float64():
+    # Processes without 64-bit types query in float32: with one seed, their
+    # projections and probes are those of float64 queries.
+    method = SpielmanApproximation(epsilon=0.3, seed=2, projection_batch_size=8)
+    distance = ResistanceDistance(method=method).reseeded(jnp.array(5))
+    rng = np.random.default_rng(0)
+    permeability = 10 ** rng.uniform(-1, 0, (9, 11))
+    rows, columns = np.array([2, 4, 6]), np.array([2, 5, 8])
+    weights = -rng.uniform(size=(3, 5, 5))
+
+    def query(dtype):
+        def objective(permeability):
+            grid = GridGraph(permeability, fun=avg)
+            sources = jnp.asarray(rows * 11 + columns)
+            distances = distance.sources_to_windows_distance(grid, sources, 5)
+            return jnp.sum(jnp.asarray(weights, dtype) * distances), distances
+
+        gradient, distances = jax.grad(objective, has_aux=True)(
+            jnp.asarray(permeability, dtype)
+        )
+        return distances, gradient
+
+    expected = query(jnp.float64)
+    with jax.enable_x64(False):
+        actual = query(jnp.float32)
+    for actual, expected in zip(actual, expected):
+        assert actual.dtype == jnp.float32
+        error = jnp.linalg.norm(actual - expected) / jnp.linalg.norm(expected)
+        assert error < 1e-5
+
+
 def test_spielman_window_queries_hold_one_batch_of_projections():
     # ceil(log(3600) / epsilon**2) = 205 and 3276 projections of 3600
     # vertices, solved 16 at a time from 4 sources with windows of 21 x 21
