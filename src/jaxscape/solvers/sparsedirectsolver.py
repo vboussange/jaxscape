@@ -32,12 +32,19 @@ class CSRPattern(eqx.Module):
     - `rows`: Row of each CSR value.
     - `value_map`: For each stored entry of the BCOO matrix, the index of its CSR
       value, or the number of CSR values for padding entries.
+    - `ell_slots`, `ell_columns`: The CSR values and columns of each row, padded
+      to the longest row with the number of CSR values and column 0, with shape
+      `(n, width)`, or `None` when they would hold more than twice as many
+      entries as the CSR values. Products of the matrix with vectors read them
+      row by row.
     """
 
     offsets: Array
     columns: Array
     rows: Array
     value_map: Array
+    ell_slots: Array | None = None
+    ell_columns: Array | None = None
 
     @property
     def n(self) -> int:
@@ -317,16 +324,27 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
         valid = np.all((indices >= 0) & (indices < np.asarray(matrix.shape)), axis=1)
         keys = indices[valid, 0] * n + indices[valid, 1]
         unique_keys, slots = np.unique(keys, return_inverse=True)
+        nnz = unique_keys.shape[0]
         row_counts = np.bincount(unique_keys // n, minlength=n)
-        value_map = np.full(indices.shape[0], unique_keys.shape[0])
+        offsets = np.concatenate([[0], np.cumsum(row_counts)])
+        columns = unique_keys % n
+        value_map = np.full(indices.shape[0], nnz)
         value_map[valid] = slots
+        ell_slots = ell_columns = None
+        width = int(row_counts.max(initial=0))
+        if n * width <= 2 * nnz:
+            position = np.arange(width)
+            stored = position[None, :] < row_counts[:, None]
+            ell = np.where(stored, offsets[:-1, None] + position[None, :], nnz)
+            ell_slots = jnp.asarray(ell, dtype=jnp.int32)
+            ell_columns = jnp.asarray(np.append(columns, 0)[ell], dtype=jnp.int32)
         return CSRPattern(
-            offsets=jnp.asarray(
-                np.concatenate([[0], np.cumsum(row_counts)]), dtype=jnp.int32
-            ),
-            columns=jnp.asarray(unique_keys % n, dtype=jnp.int32),
+            offsets=jnp.asarray(offsets, dtype=jnp.int32),
+            columns=jnp.asarray(columns, dtype=jnp.int32),
             rows=jnp.asarray(unique_keys // n, dtype=jnp.int32),
             value_map=jnp.asarray(value_map, dtype=jnp.int32),
+            ell_slots=ell_slots,
+            ell_columns=ell_columns,
         )
 
     def _checked_data(
@@ -375,11 +393,39 @@ def _csr_values(data: Array, pattern: CSRPattern) -> Array:
     return values.at[pattern.value_map].add(data, mode="drop")
 
 
+@jax.custom_batching.custom_vmap
 def _product(pattern: CSRPattern, values: Array, vector: Array) -> Array:
-    """The product of the matrix with CSR `values` and `vector`."""
-    return jax.ops.segment_sum(
-        values * vector[pattern.columns],
-        pattern.rows,
-        num_segments=pattern.n,
-        indices_are_sorted=True,
-    )
+    """The product of the matrix with CSR `values` and `vector`.
+
+    Under `jax.vmap` over vectors alone, it computes the products one vector
+    after another. XLA gathers the entries of a batch of vectors as a slice
+    per index, which reads the batch in strides of the vector size: the
+    residual checks of 128 solutions of 826950 vertices took 32 ms on an RTX
+    3090, against a 100 ms solve.
+    """
+    return _product_of(pattern, values, vector)
+
+
+@_product.def_vmap
+def _(
+    axis_size: int, in_batched: Any, pattern: CSRPattern, values: Array, vector: Array
+):
+    del axis_size
+    if any(jax.tree.leaves(in_batched[:2])) or not in_batched[2]:
+        axes = jax.tree.map(lambda batched: 0 if batched else None, in_batched)
+        return jax.vmap(_product_of, in_axes=axes)(pattern, values, vector), True
+    return jax.lax.map(
+        lambda vector: _product_of(pattern, values, vector), vector
+    ), True
+
+
+def _product_of(pattern: CSRPattern, values: Array, vector: Array) -> Array:
+    if pattern.ell_slots is None or pattern.ell_columns is None:
+        return jax.ops.segment_sum(
+            values * vector[pattern.columns],
+            pattern.rows,
+            num_segments=pattern.n,
+            indices_are_sorted=True,
+        )
+    padded = jnp.append(values, jnp.zeros((1,), values.dtype))[pattern.ell_slots]
+    return jnp.sum(padded * vector[pattern.ell_columns], axis=1)

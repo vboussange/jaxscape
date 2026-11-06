@@ -460,13 +460,20 @@ def test_spielman_sources_to_targets_draw_the_signs_of_large_graphs_in_batches()
 
 
 @pytest.mark.parametrize("solver", ["dense", "cholmod"])
-def test_spielman_window_queries_stream_the_projections_of_sources_queries(solver):
+@pytest.mark.parametrize("gathered", [True, False])
+def test_spielman_window_queries_stream_the_projections_of_sources_queries(
+    solver, gathered, monkeypatch
+):
     # Every query draws the signs of each projection from the seed and its
     # index: both queries estimate the distances with the same projections.
     # Here ceil(log(99) / 0.3**2) = 52 projections, in batches of 8 and a last
-    # one of 4.
+    # one of 4. Small windows are gathered several at a time, large ones taken
+    # one at a time.
     if solver == "cholmod":
         pytest.importorskip("cholespy")
+    if not gathered:
+        monkeypatch.setattr(resistance_distance, "_LARGEST_GATHERED_WINDOW", 0)
+        jax.clear_caches()
     method = SpielmanApproximation(epsilon=0.3, seed=2, projection_batch_size=8)
     distance = ResistanceDistance(SOURCES_TO_TARGETS_SOLVERS[solver](), method=method)
     rng = np.random.default_rng(0)
@@ -515,6 +522,75 @@ def test_spielman_window_query_gradients_estimate_those_of_exact_resistances():
     error = jnp.abs(jnp.mean(gradients, axis=0) - expected) / (spread / np.sqrt(200))
     assert jnp.all(error < 4)
     assert jnp.median(spread / jnp.abs(expected)) < 0.3
+
+
+@pytest.mark.parametrize("sources_per_strip", [64, 4])
+def test_spielman_probe_right_hand_sides_add_the_windows_of_their_sources(
+    sources_per_strip, monkeypatch
+):
+    # Windows of 7 x 7 pixels of a grid of sources, row after row, and two
+    # sources out of that order, rows apart from their neighbours.
+    monkeypatch.setattr(resistance_distance, "_SOURCES_PER_STRIP", sources_per_strip)
+    rng = np.random.default_rng(0)
+    rows, columns = np.meshgrid([3, 6, 9, 12, 16], [3, 8, 13, 19], indexing="ij")
+    rows = np.r_[rows.ravel(), 16, 3]
+    columns = np.r_[columns.ravel(), 3, 19]
+    m, size, probes = rows.size, 7, 5
+    weights = rng.normal(size=(m, size, size, 2))
+    per_source = rng.choice([-1.0, 1.0], (m, probes))
+    per_pixel = rng.choice([-1.0, 1.0], (20, 23, probes))
+
+    actual = resistance_distance._probe_right_hand_sides(
+        jnp.asarray(weights),
+        jnp.asarray(rows),
+        jnp.asarray(columns),
+        jnp.asarray(per_source),
+        jnp.asarray(per_pixel),
+    )
+
+    # Each source adds its weights, times its sign, to its window, and the
+    # weights times the signs of the pixels of its window to itself.
+    spread = np.zeros(per_pixel.shape + (2,))
+    own = np.zeros((m, probes, 2))
+    for s, (row, column) in enumerate(zip(rows - 3, columns - 3)):
+        window = (slice(row, row + size), slice(column, column + size))
+        spread[window] += weights[s][:, :, None, :] * per_source[s][:, None]
+        signs = per_pixel[window]
+        own[s] = per_source[s][:, None] * np.einsum("xyb,xyc->bc", signs, weights[s])
+    expected = -per_pixel[..., None] * spread
+    np.add.at(expected, (rows, columns), own)
+    np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12)
+
+
+def test_spielman_window_queries_of_float32_without_64_bit_types_match_float64():
+    # Processes without 64-bit types query in float32: with one seed, their
+    # projections and probes are those of float64 queries.
+    method = SpielmanApproximation(epsilon=0.3, seed=2, projection_batch_size=8)
+    distance = ResistanceDistance(method=method).reseeded(jnp.array(5))
+    rng = np.random.default_rng(0)
+    permeability = 10 ** rng.uniform(-1, 0, (9, 11))
+    rows, columns = np.array([2, 4, 6]), np.array([2, 5, 8])
+    weights = -rng.uniform(size=(3, 5, 5))
+
+    def query(dtype):
+        def objective(permeability):
+            grid = GridGraph(permeability, fun=avg)
+            sources = jnp.asarray(rows * 11 + columns)
+            distances = distance.sources_to_windows_distance(grid, sources, 5)
+            return jnp.sum(jnp.asarray(weights, dtype) * distances), distances
+
+        gradient, distances = jax.grad(objective, has_aux=True)(
+            jnp.asarray(permeability, dtype)
+        )
+        return distances, gradient
+
+    expected = query(jnp.float64)
+    with jax.enable_x64(False):
+        actual = query(jnp.float32)
+    for actual, expected in zip(actual, expected):
+        assert actual.dtype == jnp.float32
+        error = jnp.linalg.norm(actual - expected) / jnp.linalg.norm(expected)
+        assert error < 1e-5
 
 
 def test_spielman_window_queries_hold_one_batch_of_projections():

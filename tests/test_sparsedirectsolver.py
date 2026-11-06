@@ -401,20 +401,47 @@ def test_a_failed_refactorization_raises_mid_optimization(kind, name, dtype):
         jax.block_until_ready(step(surface(name).astype(dtype), state))
 
 
-def test_solves_fail_with_a_failed_state_or_a_large_residual():
+def star(n):
+    """A grounded star: the hub's row holds every vertex."""
+    matrix = np.diag(np.full(n, 2.0))
+    matrix[0, 1:] = matrix[1:, 0] = -1.0
+    matrix[0, 0] = n
+    return matrix
+
+
+@pytest.mark.parametrize("vectors", [None, 3])
+@pytest.mark.parametrize("graph", ["grid", "star"])
+def test_solves_fail_with_a_failed_state_or_a_large_residual(vectors, graph):
     solver = DenseCholesky()
-    operator = BCOOLinearOperator(grounded_laplacian(surface("smooth")))
+    if graph == "grid":
+        matrix = grounded_laplacian(surface("smooth"))
+    else:
+        matrix = sparse_layout(star(12))
+    operator = BCOOLinearOperator(matrix)
     state = solver.init(operator, {})
+    # Products of the matrix read each row in a block of 5 entries, on a grid,
+    # and add up the stored entries row by row, on a star.
+    if graph == "grid":
+        assert state.pattern.ell_slots is not None
+        assert state.pattern.ell_slots.shape == (operator.in_size(), 5)
+    else:
+        assert state.pattern.ell_slots is None
     b = jnp.ones(operator.in_size())
-    _, result, _ = solver.compute(state, b, {})
-    assert result == lx.RESULTS.successful
+    compute = solver.compute
+    if vectors is not None:
+        b = jnp.asarray(np.random.default_rng(1).standard_normal((vectors, b.size)))
+        compute = jax.vmap(solver.compute, in_axes=(None, 0, None))
+    solution, result, _ = compute(state, b, {})
+    assert jnp.all(result == lx.RESULTS.successful)
+    expected = np.linalg.solve(matrix.todense(), np.asarray(b).T).T
+    np.testing.assert_allclose(solution, expected, rtol=1e-10)
 
     # Each solution here solves the factorized matrix, so only the check rejects it.
     failed = eqx.tree_at(lambda s: s.failed, state, jnp.array(True))
     other_matrix = eqx.tree_at(lambda s: s.values, state, 2 * state.values)
     for rejected in (failed, other_matrix):
-        solution, result, _ = solver.compute(rejected, b, {})
-        assert result == lx.RESULTS.singular
+        solution, result, _ = compute(rejected, b, {})
+        assert jnp.all(result == lx.RESULTS.singular)
         assert np.all(np.isnan(solution))
 
 
