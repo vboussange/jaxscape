@@ -331,7 +331,8 @@ class _EdgeList(eqx.Module):
     n: int = eqx.field(static=True)
 
     # Each round gathers and scatters: check for convergence after each.
-    rounds_per_check: ClassVar[int] = 1
+    relax_rounds: ClassVar[int] = 1
+    steps_per_check: ClassVar[int] = 1
 
     def tails(self, x: Array) -> Array:
         return x[:, self.indices[:, 0]]
@@ -339,14 +340,22 @@ class _EdgeList(eqx.Module):
     def heads(self, x: Array) -> Array:
         return x[:, self.indices[:, 1]]
 
-    def min_into(self, x: Array) -> Array:
-        return ops.segment_min(x.T, self.indices[:, 1], num_segments=self.n).T
-
     def sum_into(self, x: Array) -> Array:
         return ops.segment_sum(x.T, self.indices[:, 1], num_segments=self.n).T
 
-    def sum_out_of(self, x: Array) -> Array:
-        return ops.segment_sum(x.T, self.indices[:, 0], num_segments=self.n).T
+    def relax(self, distances: Array, costs: Array) -> Array:
+        """One relaxation round."""
+        candidates = self.tails(distances) + costs
+        best = ops.segment_min(candidates.T, self.indices[:, 1], num_segments=self.n)
+        return jnp.minimum(distances, best.T)
+
+    def propagate(
+        self, adjoint: Array, cotangent: Array, tight: Array, share: Array
+    ) -> Array:
+        """One update `lambda <- g + B lambda` of the adjoint."""
+        along_tight = jnp.where(tight, self.heads(adjoint * share), 0)
+        flow = ops.segment_sum(along_tight.T, self.indices[:, 0], num_segments=self.n)
+        return cotangent + flow.T
 
 
 class _GridEdges(eqx.Module):
@@ -355,13 +364,24 @@ class _GridEdges(eqx.Module):
     Vertex arrays have shape `(s, height, width)`, one raster per source, and
     edge arrays `(s, k, height, width)`: entry `[:, k, i, j]` is the edge into
     pixel `(i, j)` from pixel `(i - dy, j - dx)`, for `(dy, dx) = offsets[k]`.
+
+    With four neighbours, a relaxation step runs two rounds as one elementwise
+    expression of shifted rasters over the walks of up to two edges, which
+    reads and writes every raster once. On an RTX 3090, a round on 64 windows
+    of 201 x 201 pixels takes 43 µs this way, and 74 µs with one round per
+    step. With eight neighbours, two rounds hold 64 walks: they save 7 % of
+    the time for 7 times the compilation, and a step runs one round. Two
+    adjoint updates per step gained nothing.
     """
 
     offsets: tuple[tuple[int, int], ...] = eqx.field(static=True)
 
-    # A round is a few fused elementwise operations: check for convergence
-    # every few rounds. Rounds past convergence change nothing.
-    rounds_per_check: ClassVar[int] = 8
+    # Check for convergence every few steps; steps past it change nothing.
+    steps_per_check: ClassVar[int] = 4
+
+    @property
+    def relax_rounds(self) -> int:
+        return 2 if len(self.offsets) <= 4 else 1
 
     def tails(self, x: Array) -> Array:
         return jnp.stack([_shifted(x, o, jnp.inf) for o in self.offsets], axis=1)
@@ -369,36 +389,80 @@ class _GridEdges(eqx.Module):
     def heads(self, x: Array) -> Array:
         return x[:, None]
 
-    def min_into(self, x: Array) -> Array:
-        return reduce(jnp.minimum, [x[:, k] for k in range(len(self.offsets))])
-
     def sum_into(self, x: Array) -> Array:
         return reduce(jnp.add, [x[:, k] for k in range(len(self.offsets))])
 
-    def sum_out_of(self, x: Array) -> Array:
-        return reduce(
-            jnp.add,
-            [
-                _shifted(x[:, k], (-dy, -dx), 0)
-                for k, (dy, dx) in enumerate(self.offsets)
-            ],
-        )
+    def walks(self, length: int) -> list[list[tuple[int, tuple[int, int]]]]:
+        """The walks of `length` edges that visit no pixel twice.
+
+        A walk lists its edges in order, each as its offset index `k` and the
+        offset of its head from the start of the walk. A walk through a pixel
+        twice holds a cycle. Without it, the walk is shorter, and its rounded
+        sum of positive costs is no larger, so the rounds may leave such walks
+        out. Tight edges hold no cycle, so adjoint walks through one add zero.
+        """
+        walks = [[]]
+        for _ in range(length):
+            longer = []
+            for walk in walks:
+                visited = {(0, 0)} | {head for _, head in walk}
+                row, column = walk[-1][1] if walk else (0, 0)
+                for k, (dy, dx) in enumerate(self.offsets):
+                    if (row + dy, column + dx) not in visited:
+                        longer.append(walk + [(k, (row + dy, column + dx))])
+            walks = longer
+        return walks
+
+    def relax(self, distances: Array, costs: Array) -> Array:
+        """`relax_rounds` relaxation rounds.
+
+        A round takes the minimum of each distance and of the rounded sums
+        `d_u + c_uv` over its incoming edges. Rounding is monotone, so `r`
+        rounds give the minimum over the walks of up to `r` edges ending at
+        each pixel of their costs, added in walk order to the distance of their
+        start: exactly the same distances.
+        """
+        best = distances
+        for length in range(1, self.relax_rounds + 1):
+            for walk in self.walks(length):
+                (row, column) = end = walk[-1][1]
+                total = _shifted(distances, end, jnp.inf)
+                for k, (dy, dx) in walk:
+                    # The cost of edge k at its head, `end - head` before
+                    # the end of the walk.
+                    total = total + _shifted(costs[k], (row - dy, column - dx), jnp.inf)
+                best = jnp.minimum(best, total)
+        return best
+
+    def propagate(
+        self, adjoint: Array, cotangent: Array, tight: Array, share: Array
+    ) -> Array:
+        """One update `lambda <- g + B lambda` of the adjoint."""
+        along_tight = jnp.where(tight, self.heads(adjoint * share), 0)
+        flows = [
+            _shifted(along_tight[:, k], (-dy, -dx), 0)
+            for k, (dy, dx) in enumerate(self.offsets)
+        ]
+        return cotangent + reduce(jnp.add, flows)
 
 
 _Edges = _EdgeList | _GridEdges
 
 
-def _fixed_point(step: Callable[[Array], Array], x: Array, edges: _Edges) -> Array:
-    """Apply `step` to `x` until it stops changing, at most once per vertex."""
+def _fixed_point(
+    step: Callable[[Array], Array], x: Array, rounds: int, edges: _Edges
+) -> Array:
+    """Apply `step`, which runs `rounds` rounds, to `x` until it stops changing,
+    for at most one round per vertex."""
     n = math.prod(x.shape[1:])
-    rounds = edges.rounds_per_check
 
     def apply(state):
         iteration, previous, _ = state
         updated = previous
-        for _ in range(rounds):
+        for _ in range(edges.steps_per_check):
             updated = step(updated)
-        return iteration + rounds, updated, jnp.any(updated != previous)
+        changed = jnp.any(updated != previous)
+        return iteration + rounds * edges.steps_per_check, updated, changed
 
     return lax.while_loop(
         lambda state: (state[0] < n - 1) & state[2],
@@ -430,13 +494,10 @@ def _bellman_ford_solve(
     costs = jnp.where(present, reciprocal, jnp.inf)
     distances = jnp.where(is_source, 0, jnp.inf).astype(data.dtype)
 
-    def relax(previous):
-        best = edges.min_into(edges.tails(previous) + costs)
-        return jnp.minimum(previous, best)
-
-    # The bound of n - 1 rounds holds: the first changes nothing past
-    # convergence, which is exact.
-    distances = _fixed_point(relax, distances, edges)
+    # Rounds past convergence change nothing.
+    distances = _fixed_point(
+        lambda d: edges.relax(d, costs), distances, edges.relax_rounds, edges
+    )
 
     before, after = edges.tails(distances), edges.heads(distances)
     tight = present & jnp.isfinite(after) & (before + costs == after)
@@ -498,17 +559,14 @@ def _bellman_ford_backward(residual, cotangent):
     # shared conductances receive the sum of these contributions over sources.
     data, edges, tight, share = residual
 
-    def along_tight(adjoint):
-        """alpha_uv lambda_v on each edge."""
-        return jnp.where(tight, edges.heads(adjoint * share), 0)
-
-    def propagate(previous):
-        return cotangent + edges.sum_out_of(along_tight(previous))
+    def propagate(adjoint):
+        return edges.propagate(adjoint, cotangent, tight, share)
 
     # The strictly ordered tight graph is acyclic, so lambda = g + B lambda
     # reaches its fixed point within n - 1 updates, including signed g.
-    adjoint = _fixed_point(propagate, cotangent, edges)
-    flow = jnp.sum(along_tight(adjoint), axis=0)
+    adjoint = _fixed_point(propagate, cotangent, 1, edges)
+    # alpha_uv lambda_v on each edge, summed over sources.
+    flow = jnp.sum(jnp.where(tight, edges.heads(adjoint * share), 0), axis=0)
     # Zero-flow edges, including absent entries, have zero derivative. Mask
     # their denominator before arithmetic so unused tiny conductances stay safe.
     safe_data = jnp.where((data > 0) & (flow != 0), data, 1)
