@@ -84,8 +84,16 @@ class GridMultigridSolver(AbstractReusableStateSolver):
 
     **Attributes:**
 
-    - `rtol`: Largest residual of a solution relative to its right-hand side, in
-      the Euclidean norm.
+    - `rtol`: Largest Euclidean norm, relative to that of the right-hand side,
+      of the residual that conjugate gradients update at each iteration. In
+      exact arithmetic it equals the residual `b - A x` of the solution `x`.
+      In float32, rounding stops the decrease of `b - A x`: on a grid of
+      201 x 201 pixels of conductances log-uniform from `1e-4` to 1, with a
+      tenth of the pixels and a barrier at `1e-4`, the relative residuals of
+      float32 solutions, computed in float64, stayed from `2e-5` to `6e-4` for
+      every `rtol` from `3e-4` to `1e-5`, and those of the exact solutions
+      rounded to float32 were `6e-6` to `1.2e-4`. Such solves converge with a
+      residual `b - A x` above `rtol`.
     - `max_steps`: Largest number of iterations. A solve that has not converged
       then fails with `lineax.RESULTS.max_steps_reached`.
 
