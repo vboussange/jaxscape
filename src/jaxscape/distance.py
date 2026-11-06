@@ -214,10 +214,11 @@ class AbstractDistance(eqx.Module):
         """Return the distances from each source to the pixels of its window.
 
         The window of a source is the square of `size` pixels a side centred on
-        it, and it must lie inside the grid. Windowed analyses query distances
-        through this method only. By default, it slices the distances from the
-        sources to every vertex. A distance may override it to hold fewer
-        values, as `ResistanceDistance` does with `SpielmanApproximation`.
+        it, and it must lie inside the grid: the query raises otherwise.
+        Windowed analyses query distances through this method only. By
+        default, it slices the distances from the sources to every vertex. A
+        distance may override it to hold fewer values, as `ResistanceDistance`
+        does with `SpielmanApproximation`.
 
         **Arguments:**
 
@@ -234,6 +235,7 @@ class AbstractDistance(eqx.Module):
         """
         if size % 2 == 0:
             raise ValueError("`size` must be odd.")
+        sources = _inside_windows(graph, sources, size)
         distances = self(graph, sources=sources, state=state)
         return _windows(distances.reshape(-1, graph.height, graph.width), sources, size)
 
@@ -256,6 +258,32 @@ class AbstractDistance(eqx.Module):
     @abstractmethod
     def all_pairs_distance(self, graph: AbstractGraph, state: Any = None) -> Array:
         pass
+
+
+_WINDOW_OUT_OF_GRID = (
+    "sources_to_windows_distance: the window of a source leaves the grid. The "
+    "sources of windows of `size` pixels a side lie at least `size // 2` pixels "
+    "from the edges of the grid."
+)
+
+
+def _windows_out_of_grid(graph: GridGraph, sources: Array, size: int) -> Array:
+    """Mask of the `sources` whose window of `size` pixels a side leaves `graph`."""
+    half = size // 2
+    rows, columns = sources // graph.width, sources % graph.width
+    return (
+        (rows < half)
+        | (rows >= graph.height - half)
+        | (columns < half)
+        | (columns >= graph.width - half)
+    )
+
+
+def _inside_windows(graph: GridGraph, sources: Array, size: int) -> Array:
+    """`sources`, which raises if the window of `size` pixels a side of one
+    leaves `graph`: slices of windows would wrap or clamp silently."""
+    outside = jnp.any(_windows_out_of_grid(graph, sources, size))
+    return eqx.error_if(sources, outside, _WINDOW_OUT_OF_GRID)
 
 
 def _windows(distances: Array, sources: Array, size: int) -> Array:

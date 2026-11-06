@@ -10,7 +10,7 @@ from jax import Array, lax
 from jax.experimental.sparse import BCOO
 from jax.numpy.linalg import pinv
 
-from jaxscape.distance import AbstractSolverDistance
+from jaxscape.distance import _inside_windows, AbstractSolverDistance
 from jaxscape.graph import AbstractGraph, GridGraph
 from jaxscape.solvers.operator import _batched_linear_solve_impl, _solver_state
 from jaxscape.utils import _matmul, bcoo_diag, graph_laplacian
@@ -1045,6 +1045,7 @@ def _spielman_window_query(
     state: Any,
 ) -> Array:
     """`ResistanceDistance.sources_to_windows_distance` with `method`."""
+    sources = _inside_windows(graph, sources, size)
     A = graph.get_adjacency_matrix()
     grid = (graph.height, graph.width)
     return _spielman_windows(
