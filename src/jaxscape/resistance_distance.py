@@ -28,9 +28,18 @@ _UNCHUNKED_POTENTIALS = 2**22
 # gradient. Sparse direct solvers reach their full throughput from a few hundred
 # columns on.
 _TARGET_CHUNK_SIZE = 1024
-# Spielman window queries take the differences of about this many potentials
-# at once, and again for the gradient.
+# Spielman window queries take the squared differences of about this many
+# potentials at once, from windows of up to `_LARGEST_GATHERED_WINDOW`
+# differences, and from larger windows one at a time: XLA gathers several large
+# windows more slowly than it slices one. With 64 projections on an RTX 3090,
+# 1225 windows of 201 pixels a side took 27 ms one at a time and 53 ms two or
+# more at a time, and 4096 windows of 41 pixels a side 62 ms one at a time and
+# 8 ms 64 at a time.
 _WINDOW_DIFFERENCES_PER_STEP = 2**24
+_LARGEST_GATHERED_WINDOW = 2**18
+# The gradient of Spielman window queries places the windows of this many
+# consecutive sources at once (see `_probe_right_hand_sides`).
+_SOURCES_PER_STRIP = 64
 
 
 class ResistanceDistance(AbstractSolverDistance):
@@ -1077,7 +1086,10 @@ def _spielman_windows_fwd(
         signs = _signs(key, projections, k, data.shape[0]).astype(data.dtype)
         projection = _project_incidence(signs, data, indices, shape, k)
         potentials = _solve(system, projection.T, solver).reshape(*grid, -1)
-        per_step = max(1, _WINDOW_DIFFERENCES_PER_STEP // (size**2 * signs.shape[0]))
+        differences = size**2 * signs.shape[0]
+        per_step = max(1, _WINDOW_DIFFERENCES_PER_STEP // differences)
+        if differences > _LARGEST_GATHERED_WINDOW:
+            per_step = 1
         squares = lax.map(
             lambda source: window(potentials, *source),
             (rows, columns),
@@ -1125,7 +1137,6 @@ def _spielman_windows_bwd(
     # The probes draw from another key than the projections.
     key = jax.random.fold_in(jax.random.PRNGKey(method.seed), 2**31 - 1)
     height, width = grid
-    half = size // 2
     rows, columns = sources // width, sources % width
     magnitude = jnp.sqrt(jnp.abs(cotangent))
     nonzero = cotangent != 0
@@ -1143,22 +1154,7 @@ def _spielman_windows_bwd(
         )(keys)
         per_source = (per_source * valid[:, None]).astype(data.dtype).T
         per_pixel = jnp.moveaxis(per_pixel.astype(data.dtype), 0, -1)
-
-        def place(spread, inputs):
-            # The window terms of a source, and its own term.
-            row, column, weight, sign = inputs
-            start = (row - half, column - half, 0, 0)
-            pixels = lax.dynamic_slice(spread, start, (size, size) + spread.shape[2:])
-            pixels = pixels + weight[:, :, None, :] * sign[None, None, :, None]
-            signs = lax.dynamic_slice(per_pixel, start[:3], (size, size, sign.size))
-            own = sign[:, None] * jnp.einsum(
-                "xyb,xyc->bc", signs, weight, precision=lax.Precision.HIGHEST
-            )
-            return lax.dynamic_update_slice(spread, pixels, start), own
-
-        spread = jnp.zeros((height, width, probes.size, 2), data.dtype)
-        spread, own = lax.scan(place, spread, (rows, columns, weights, per_source))
-        rhs = (-per_pixel[..., None] * spread).at[rows, columns].add(own)
+        rhs = _probe_right_hand_sides(weights, rows, columns, per_source, per_pixel)
         potentials = _solve(system, rhs.reshape(height * width, -1), solver)
         potentials = potentials.reshape(-1, probes.size, 2)
         pullback = _laplacian_data_pullback(
@@ -1169,6 +1165,95 @@ def _spielman_windows_bwd(
     batches = _batches(k, method.projection_batch_size)
     gradient = lax.scan(add, jnp.zeros_like(data), batches)[0]
     return gradient / k
+
+
+def _probe_right_hand_sides(
+    weights: Array,
+    rows: Array,
+    columns: Array,
+    per_source: Array,
+    per_pixel: Array,
+) -> Array:
+    """The right-hand sides of the probes of the gradient of a window query.
+
+    Source `s`, at row `rows[s]` and column `columns[s]`, weighs the pixels
+    of its window with `weights[s]`, of shape `(size, size, 2)`, and each
+    probe draws a sign per source, `per_source`, of shape `(m, probes)`, and
+    a sign per pixel, `per_pixel`, of shape `(height, width, probes)`. A pixel
+    takes minus its sign times the weights that it gets from the windows that
+    hold it, each times the sign of its source, and a source adds its sign
+    times the weights of its window times the signs of their pixels.
+
+    The sources run in chunks of up to `_SOURCES_PER_STRIP` consecutive
+    sources. A pass adds, for each chunk, the windows of its sources within
+    `size // 2` rows of its first remaining source to a strip of rows, with
+    one matrix product, and passes repeat until every window is added: one
+    pass for a grid of sources, row after row. On an RTX 3090, the 1260
+    windows of 201 pixels a side of the notebook's tile took 40 ms per batch
+    of 64 probes, against 130 ms one window after another.
+
+    **Returns:**
+
+    The right-hand sides, with shape `(height, width, probes, 2)`.
+    """
+    m, size = weights.shape[:2]
+    half = size // 2
+    height, width, probes = per_pixel.shape
+    slack = max(0, min(half, height - size))
+    strip = size + slack
+    count = min(_SOURCES_PER_STRIP, m)
+    chunks = -(-m // count)
+    padding = chunks * count - m
+
+    def chunked(x, value=0):
+        widths = [(0, padding)] + [(0, 0)] * (x.ndim - 1)
+        x = jnp.pad(x, widths, constant_values=value)
+        return x.reshape(chunks, count, *x.shape[1:])
+
+    def chunk(spread, inputs):
+        rows, columns, weights, signs, remaining = inputs
+        start = jnp.min(jnp.where(remaining, rows, height)) - half
+        start = jnp.minimum(start, height - strip)
+        offset = rows - half - start
+        added = remaining & (offset >= 0) & (offset <= slack)
+
+        def shifted(weight, offset, column, added):
+            canvas = jnp.zeros((strip, width, 2), weight.dtype)
+            weight = jnp.where(added, weight, 0)
+            return lax.dynamic_update_slice(canvas, weight, (offset, column - half, 0))
+
+        offset = jnp.clip(offset, 0, slack)
+        windows = jax.vmap(shifted)(weights, offset, columns, added)
+        precision = lax.Precision.HIGHEST
+        spreads = jnp.einsum("jxyc,jb->xybc", windows, signs, precision=precision)
+        corner = (start, 0, 0, 0)
+        block = lax.dynamic_slice(spread, corner, spreads.shape)
+        spread = lax.dynamic_update_slice(spread, block + spreads, corner)
+        pixels = lax.dynamic_slice(per_pixel, corner[:3], (strip, width, probes))
+        own = jnp.einsum("xyb,jxyc->jbc", pixels, windows, precision=precision)
+        return spread, (signs[:, :, None] * own, remaining & ~added)
+
+    inputs = (
+        chunked(rows, half),
+        chunked(columns, half),
+        chunked(weights),
+        chunked(per_source),
+    )
+
+    def unfinished(carry):
+        return jnp.any(carry[2])
+
+    def add(carry):
+        spread, own, remaining = carry
+        spread, (added, remaining) = lax.scan(chunk, spread, (*inputs, remaining))
+        return spread, own + added, remaining
+
+    spread = jnp.zeros((height, width, probes, 2), per_pixel.dtype)
+    own = jnp.zeros((chunks, count, probes, 2), per_pixel.dtype)
+    remaining = (jnp.arange(chunks * count) < m).reshape(chunks, count)
+    spread, own, _ = lax.while_loop(unfinished, add, (spread, own, remaining))
+    own = own.reshape(-1, probes, 2)[:m]
+    return (-per_pixel[..., None] * spread).at[rows, columns].add(own)
 
 
 def _edge_potential_deltas(

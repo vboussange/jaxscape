@@ -217,19 +217,22 @@ def _convolve(
 
 
 @eqx.filter_jit
-def _permeability_calibration(windowed: WindowedAnalysis) -> tuple[Array, Array]:
+def _permeability_calibration(
+    windowed: WindowedAnalysis, state: Any
+) -> tuple[tuple[Array, Array], Any]:
     """Block correction gradients on a window of the maximum permeability.
 
     With quality 1 and one source at the centre of the window: the
     permeability gradients of the proximity-weighted quality reachable from
     it, and of the same without the pairs within its block, set to 0 at or
-    below its noise floor, `1e-6` times its maximum.
+    below its noise floor, `1e-6` times its maximum. Also returns the solver
+    state of the window, reinitialized from `state`.
     """
     level = lax.stop_gradient(jnp.max(windowed.permeability_raster))
     size = 2 * windowed.dependency_range + 1
     distance = windowed.distance
     graph = windowed._uniform_graph(level, (size, size))
-    state = distance.reinit(graph, windowed.window_state)
+    state = distance.reinit(graph, state)
     centre = jnp.array([graph.nv // 2])
 
     def window(permeability):
@@ -248,7 +251,7 @@ def _permeability_calibration(windowed: WindowedAnalysis) -> tuple[Array, Array]
 
     pixels, far = gradient(False), gradient(True)
     far = jnp.where(jnp.abs(far) > 1e-6 * jnp.max(jnp.abs(far)), far, 0)
-    return pixels, far
+    return (pixels, far), state
 
 
 class ConnectivityAnalysis(WindowedAnalysis):
@@ -478,7 +481,11 @@ class SensitivityAnalysis(WindowedAnalysis):
             raster = self.quality_raster
         elif var == "permeability":
             if coarse:
-                calibration = _permeability_calibration(self)
+                size = 2 * self.dependency_range + 1
+                window = (size, size)
+                state = self._latest_state(window, self.window_state)
+                calibration, state = _permeability_calibration(self, state)
+                self._leave_state(window, state)
             raster = self.permeability_raster
         else:
             raise ValueError("`var` must be either 'quality' or 'permeability'")
