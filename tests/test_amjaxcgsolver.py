@@ -74,7 +74,7 @@ def test_frozen_preconditioner_jitted_values_and_gradients(amjax_dependencies):
 
         def dense_objective(values):
             graph = GridGraph(values, fun=lambda x, y: (x + y) / 2)
-            return jnp.sum(ResistanceDistance()(graph, nodes=nodes) ** 2)
+            return jnp.sum(ResistanceDistance(solver=None)(graph, nodes=nodes) ** 2)
 
         current_permeability = permeability + jnp.linspace(0.1, 0.5, 36).reshape(6, 6)
         value, gradient = jax.jit(jax.value_and_grad(objective))(current_permeability)
@@ -82,9 +82,7 @@ def test_frozen_preconditioner_jitted_values_and_gradients(amjax_dependencies):
             current_permeability
         )
         np.testing.assert_allclose(value, expected_value, rtol=1e-8)
-        np.testing.assert_allclose(
-            gradient, expected_gradient, rtol=1e-8, atol=1e-9
-        )
+        np.testing.assert_allclose(gradient, expected_gradient, rtol=1e-8, atol=1e-9)
 
 
 @pytest.mark.parametrize("size", [1, 4, 9])
@@ -120,11 +118,11 @@ def test_single_level_hierarchy_uses_cg(amjax_dependencies, size):
             graph = GridGraph(values, fun=lambda x, y: (x + y) / 2)
             return jnp.sum(distance(graph, state=state))
 
-        gradient = jax.jit(jax.grad(
-            lambda values: objective(values, distance, resistance_state)
-        ))(permeability)
+        gradient = jax.jit(
+            jax.grad(lambda values: objective(values, distance, resistance_state))
+        )(permeability)
         expected = jax.grad(
-            lambda values: objective(values, ResistanceDistance())
+            lambda values: objective(values, ResistanceDistance(solver=None))
         )(permeability)
         np.testing.assert_allclose(gradient, expected, rtol=1e-8, atol=1e-9)
 
@@ -136,7 +134,7 @@ def test_missing_amjax_dependency_reports_extra(monkeypatch):
     with pytest.raises(ImportError, match=r"jaxscape\[amjax\]"):
         AMJaxCGSolver()
     with pytest.raises(ImportError, match=r"jaxscape\[amjax\]"):
-        build_amjax_solver(None)
+        build_amjax_solver(None)  # pyright: ignore[reportGeneralTypeIssues]
 
 
 def test_deprecated_state_methods_are_aliases(amjax_dependencies):

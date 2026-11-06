@@ -47,7 +47,7 @@ uv add jaxscape
 
 The default installation is CPU-only. For NVIDIA GPUs, use `uv add 'jaxscape[cuda]'`, or install JAX following the [official JAX installation guide](https://jax.readthedocs.io/en/latest/installation.html). JAXScape will automatically use the JAX backend you have configured.
 
-You may be required to install optional linear solvers for large-scale resistance and free-energy distance computations, mainly `CholmodSolver` on CPU, and `AMJaxCGSolver` and `CuDSSSolver` on GPU. `GridMultigridSolver` solves grid graphs on any device without them. The [linear solver page](https://vboussange.github.io/jaxscape/api/linear_solvers) documents them all.
+Resistance distances on grid graphs need no optional solver: `ResistanceDistance()` solves them with `GridMultigridSolver`, on CPU and GPU, in float32 and float64. Other graphs, and free-energy distances on large landscapes, may need an optional linear solver, mainly `CholmodSolver` on CPU, and `AMJaxCGSolver` and `CuDSSSolver` on GPU. The [linear solver page](https://vboussange.github.io/jaxscape/api/linear_solvers) documents them all.
 
 ## Quick start
 
@@ -60,15 +60,10 @@ curl -sL https://github.com/vboussange/jaxscape/releases/download/v0.0.6/data.zi
 **2. Run the analysis**
 
 ```python
-import jax
-
-# Enable float64 arrays for the free-energy distance.
-jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
-import lineax as lx
 import matplotlib.pyplot as plt
 import numpy as np
-from jaxscape import FreeEnergyDistance, GridGraph, LCPDistance, ResistanceDistance
+from jaxscape import GridGraph, LCPDistance, ResistanceDistance
 
 permeability = jnp.array(
     np.loadtxt("data/permeability.csv", delimiter=","), dtype=jnp.float32
@@ -80,25 +75,15 @@ grid = GridGraph(grid=permeability, fun=lambda x, y: (x + y) / 2)
 
 # Compute distances from the top-left pixel to every other pixel.
 source = grid.coord_to_index(jnp.array([0]), jnp.array([0]))
-
-# LCP and resistance distances use float32; free-energy distance uses float64.
-free_energy_grid = GridGraph(
-    permeability.astype(jnp.float64), fun=lambda x, y: (x + y) / 2
-)
-free_energy = FreeEnergyDistance(
-    theta=0.01,
-    solver=lx.CG(rtol=1e-10, atol=1e-90, max_steps=10_000, stabilise_every=None),
-)
 distances = {
     "LCP distance": LCPDistance()(grid, sources=source),
     "Resistance distance": ResistanceDistance()(grid, sources=source),
-    "Free-energy distance": free_energy(free_energy_grid, sources=source),
 }
 
 distance_cmap = plt.cm.magma.copy()
 distance_cmap.set_bad(color="lightgray")
 
-fig, axs = plt.subplots(1, 4, figsize=(12, 4))
+fig, axs = plt.subplots(1, 3, figsize=(9, 3.3))
 
 permeability_im = axs[0].imshow(permeability, cmap="gray", vmin=0, vmax=1)
 axs[0].set_xticks([])
@@ -124,12 +109,11 @@ plt.tight_layout()
 plt.show()
 ```
 
-`theta` is the inverse temperature: larger values concentrate the path
-distribution on least-cost paths. Entries of the fundamental matrix decay
-exponentially with path cost, so this example uses float64 and tight CG
-tolerances to resolve them. The
+The example runs in float32. `ResistanceDistance()` solves the grid graph
+with its default solver, `GridMultigridSolver`, on CPU or GPU, without an
+optional dependency. The
 [solver guide](https://vboussange.github.io/jaxscape/api/linear_solvers/)
-covers solver choices for larger landscapes.
+covers solver choices for other graphs and larger landscapes.
 
 <div align="center"><img src="docs/examples/distance_calculation/distances.png" alt="Distances"  width="600"></div>
 

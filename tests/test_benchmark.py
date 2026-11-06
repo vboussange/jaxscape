@@ -191,7 +191,7 @@ def test_the_inverse_loop_takes_the_steps_of_optimistix_minimise(cudss, request)
         )
 
     # Targets far from the start, so that the line search rejects steps.
-    targets = ResistanceDistance()(grid(start + 4.0), nodes=coords)
+    targets = ResistanceDistance(solver=None)(grid(start + 4.0), nodes=coords)
     args = (base, coords, targets)
     distance = ResistanceDistance(solver=CuDSSSolver())
     optimizer = optx.LBFGS(rtol=1e-5, atol=1e-5)
@@ -212,7 +212,7 @@ def test_the_inverse_loop_takes_the_steps_of_optimistix_minimise(cudss, request)
 
     expected = optx.minimise(
         lambda params, args: runner._inverse_loss(
-            params, *args, distance=ResistanceDistance()
+            params, *args, distance=ResistanceDistance(solver=None)
         ),
         optimizer,
         start,

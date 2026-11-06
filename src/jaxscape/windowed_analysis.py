@@ -14,7 +14,7 @@ from jax import Array, lax
 from jax.core import Tracer
 from tqdm import tqdm
 
-from jaxscape.distance import AbstractDistance
+from jaxscape.distance import _traced, AbstractDistance
 from jaxscape.graph import GridGraph
 
 
@@ -46,11 +46,6 @@ def _tracing() -> bool:
     to the device then gives a tracer. Outside a trace, the transfer compiles
     no program; `jnp.array(1) + 1` would compile two, in 36 ms on a CPU."""
     return isinstance(jax.device_put(0), Tracer)
-
-
-def _traced(tree: Any) -> bool:
-    """Whether a leaf of `tree` is a tracer."""
-    return any(isinstance(leaf, Tracer) for leaf in jax.tree.leaves(tree))
 
 
 # XLA:GPU options of the programs that windowed analyses compile. Their matrix
@@ -290,8 +285,9 @@ class WindowedAnalysis(eqx.Module):
     returned by `AbstractDistance.debiased_proximity` to their distances.
 
     Distances without solver state, such as `LCPDistance`, `EuclideanDistance`
-    and `ResistanceDistance()`, process the tiles of a batch in parallel.
-    Distances with a solver process them one after another, each tile
+    and `ResistanceDistance(solver=None)`, process the tiles of a batch in
+    parallel. Distances with a solver, such as `ResistanceDistance()` with its
+    default `GridMultigridSolver`, process them one after another, each tile
     reinitializing the solver state that the previous one left (see
     [Reusing solver state](linear_solvers.md#reusing-solver-state)).
     Windowed analyses share solver states within a process: for each
@@ -357,12 +353,11 @@ class WindowedAnalysis(eqx.Module):
             ResistanceDistance,
             SensitivityAnalysis,
         )
-        from jaxscape.solvers import CholmodSolver
 
         settings = dict(
             quality_raster=quality,
             permeability_raster=permeability,
-            distance=ResistanceDistance(solver=CholmodSolver()),
+            distance=ResistanceDistance(),  # GridMultigridSolver
             dependency_range=20,
             batch_size=100,
             coarsening_factor=0.25,  # blocks of 5 x 5 pixels

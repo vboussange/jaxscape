@@ -68,9 +68,17 @@ def test_differentiability():
 
 def test_distances_without_a_solver_have_no_state():
     grid = GridGraph(jnp.ones((3, 3)), fun=lambda x, y: (x + y) / 2)
-    for distance in DISTANCES:
+    without_solver = [
+        EuclideanDistance(),
+        LCPDistance(),
+        ResistanceDistance(solver=None),
+        FreeEnergyDistance(theta=0.1),
+    ]
+    for distance in without_solver:
         assert distance.init(grid) is None
         assert distance.reinit(grid, None) is None
+    # Resistances have a solver by default.
+    assert ResistanceDistance().init(grid) is not None
 
 
 def grid_of(values):
@@ -222,7 +230,8 @@ def test_a_state_carries_through_scan(solver):
     values = jnp.stack([VALUES, NEW_VALUES, VALUES])
     _, distances = jax.lax.scan(step, distance.init(grid_of(VALUES)), values)
 
-    assert_close(distances[1], ResistanceDistance()(grid_of(NEW_VALUES), nodes=NODES))
+    expected = ResistanceDistance(solver=None)(grid_of(NEW_VALUES), nodes=NODES)
+    assert_close(distances[1], expected)
     assert_close(distances[2], distances[0])
 
 

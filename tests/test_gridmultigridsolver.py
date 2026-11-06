@@ -21,6 +21,7 @@ from jaxscape.solvers import (
     BCOOLinearOperator,
     GridMultigridSolver,
     gridmultigridsolver,
+    GridMultigridState,
 )
 from jaxscape.solvers.operator import _batched_linear_solve, _linear_solve
 
@@ -161,7 +162,7 @@ def test_distances_and_gradients_match_the_dense_solve():
         conductance, distance, state
     )
     expected, expected_gradient = jax.value_and_grad(objective)(
-        conductance, ResistanceDistance()
+        conductance, ResistanceDistance(solver=None)
     )
     np.testing.assert_allclose(value, expected, rtol=1e-10)
     scale = float(jnp.max(jnp.abs(expected_gradient)))
@@ -182,7 +183,7 @@ def test_spielman_window_queries_and_gradients_match_the_dense_solve():
         conductance, ResistanceDistance(solver=solver, method=method)
     )
     expected = jax.value_and_grad(objective)(
-        conductance, ResistanceDistance(method=method)
+        conductance, ResistanceDistance(solver=None, method=method)
     )
     np.testing.assert_allclose(actual[0], expected[0], rtol=1e-10)
     np.testing.assert_allclose(actual[1], expected[1], rtol=1e-8, atol=1e-12)
@@ -215,7 +216,7 @@ def test_windowed_analyses_carry_the_state_across_tiles(analysis):
 
     solver = GridMultigridSolver(rtol=1e-12, max_steps=200)
     actual = run(ResistanceDistance(solver=solver))
-    expected = run(ResistanceDistance())
+    expected = run(ResistanceDistance(solver=None))
     np.testing.assert_allclose(actual, expected, rtol=1e-8, atol=1e-12)
 
 
@@ -278,11 +279,29 @@ def test_matrices_of_other_graphs_are_rejected():
         distance.init(Graph(BCOO.fromdense(jnp.asarray(ring))))
 
 
-def test_a_state_initializes_outside_jit():
+def test_the_state_of_another_graph_initializes_outside_jit():
+    # That of a `GridGraph` builds from its shape and contiguity, also inside
+    # `jax.jit`.
     distance = ResistanceDistance(solver=GridMultigridSolver())
     grid = GridGraph(landscape((6, 7)), fun=avg)
+    graph = Graph(grid.get_adjacency_matrix())
     with pytest.raises(ValueError, match="outside `jax.jit`"):
-        eqx.filter_jit(distance.init)(grid)
+        eqx.filter_jit(distance.init)(graph)
+    assert isinstance(eqx.filter_jit(distance.init)(grid), GridMultigridState)
+
+
+def test_singular_matrices_raise():
+    # A column of zero permeability cuts the grid in two: the grounded
+    # Laplacian is singular, and the Cholesky factor of the coarsest grid not
+    # finite.
+    conductance = landscape((40, 41)).at[:, 20].set(0)
+    graph = GridGraph(conductance, fun=jnp.minimum)
+    matrix = ResistanceDistance().system_matrix(graph)
+    solver = GridMultigridSolver()
+    state = solver.init(BCOOLinearOperator(matrix), {})
+    b = jnp.zeros(matrix.shape[0]).at[0].set(1)
+    with pytest.raises(Exception, match="non-finite"):
+        jax.block_until_ready(_linear_solve(matrix, b, solver, state=state))
 
 
 def test_a_state_rejects_graphs_of_another_grid():
@@ -308,7 +327,9 @@ def test_reinit_takes_new_values_inside_jit():
         return distance(grid, nodes=nodes, state=state), state
 
     actual, new_state = step(conductance, state)
-    expected = ResistanceDistance()(GridGraph(conductance, fun=avg), nodes=nodes)
+    expected = ResistanceDistance(solver=None)(
+        GridGraph(conductance, fun=avg), nodes=nodes
+    )
     np.testing.assert_allclose(actual, expected, rtol=1e-10)
     assert jax.tree.structure(new_state) == jax.tree.structure(state)
 
