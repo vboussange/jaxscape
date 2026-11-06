@@ -12,6 +12,7 @@ from jax.numpy.linalg import pinv
 
 from jaxscape.distance import _inside_windows, AbstractSolverDistance
 from jaxscape.graph import AbstractGraph, GridGraph
+from jaxscape.solvers.gridmultigridsolver import GridMultigridSolver
 from jaxscape.solvers.operator import _batched_linear_solve_impl, _solver_state
 from jaxscape.utils import _matmul, bcoo_diag, graph_laplacian
 
@@ -48,17 +49,25 @@ class ResistanceDistance(AbstractSolverDistance):
 
     **Attributes:**
 
-    - `solver`: Optional `lineax.AbstractLinearSolver`. Must be compatible with
-      BCOO matrices. We currently support `jaxscape.solvers.CholmodSolver`,
-      `jaxscape.solvers.PyAMGSolver`, `jaxscape.solvers.AMJaxCGSolver`,
-      `jaxscape.solvers.CuDSSSolver`, and, for grid graphs,
-      `jaxscape.solvers.GridMultigridSolver`.
-      If None, uses the pseudo-inverse method, which is very memory intensive
-      for exact all-pairs distances (densifies the Laplacian matrix), or dense
-      solves for approximate distances. Exact sources-to-targets queries
-      without a solver use a dense Cholesky factorization of the grounded
-      Laplacian, which needs a connected graph: the distances of a
-      disconnected graph are NaN.
+    - `solver`: Lineax solver of the grounded Laplacian, compatible with BCOO
+      matrices, or `None` for dense solves. Defaults to
+      `jaxscape.solvers.GridMultigridSolver()`, conjugate gradients with a
+      geometric multigrid preconditioner, which solves grid graphs, such as
+      those of a `GridGraph`, on any device without an optional dependency,
+      also in float32 and inside `jax.jit`. It solves grids of up to 1024
+      pixels with one Cholesky factorization, up to rounding. On a grid of
+      1000 x 1000 pixels in float32, its exact resistances among 20 nodes had
+      a relative error of `6.5e-5` against float64. Other graphs raise with
+      the default: pass `jaxscape.solvers.CholmodSolver`, `PyAMGSolver`,
+      `AMJaxCGSolver` or `CuDSSSolver` (see
+      [Linear solvers](linear_solvers.md)), or `solver=None`. Without a solver,
+      exact all-pairs and nodes-to-nodes queries take the pseudo-inverse of
+      the dense Laplacian, and other queries a dense Cholesky factorization of
+      the grounded Laplacian: their memory grows with the square of the number
+      of vertices, which suits small graphs. The float32 pseudo-inverse loses
+      accuracy: on a grid of 24 x 40 pixels with conductances over two
+      decades, its all-pairs resistances had a relative error of 40 % against
+      float64, and those of the default `2.6e-6`.
     - `method`: A resistance distance method. Defaults to `ExactResistance()`.
       Use `SpielmanApproximation(epsilon=..., seed=...)` for the randomized
       Spielman-Srivastava approximation.
@@ -68,16 +77,20 @@ class ResistanceDistance(AbstractSolverDistance):
         ```python
         import jax.numpy as jnp
         from jaxscape import GridGraph, ResistanceDistance, SpielmanApproximation
-        from jaxscape.solvers import AMJaxCGSolver, PyAMGSolver
+        from jaxscape.solvers import AMJaxCGSolver, CholmodSolver
 
         permeability = jnp.ones((3, 3))
         grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
 
-        # Default: pseudo-inverse (small graphs)
+        # Default: GridMultigridSolver, for grid graphs
         distance = ResistanceDistance()
+        dist = distance(grid)
 
-        # With solver (large graphs)
-        distance = ResistanceDistance(solver=PyAMGSolver())
+        # Dense solves, for small graphs of any kind
+        distance = ResistanceDistance(solver=None)
+
+        # A sparse direct solver, for other graphs
+        distance = ResistanceDistance(solver=CholmodSolver())
 
         # With an initialized AMG-preconditioned CG solver
         distance = ResistanceDistance(
@@ -94,11 +107,8 @@ class ResistanceDistance(AbstractSolverDistance):
         state = distance.reinit(updated_grid, state)
         dist = distance(updated_grid, state=state)
 
-        # Approximate resistance distance
-        distance = ResistanceDistance(
-            method=SpielmanApproximation(epsilon=0.05),
-            solver=PyAMGSolver(),
-        )
+        # Approximate resistance distance, with the default solver
+        distance = ResistanceDistance(method=SpielmanApproximation(epsilon=0.05))
 
         dist = distance(grid)
         ```
@@ -135,8 +145,8 @@ class ResistanceDistance(AbstractSolverDistance):
         that of float64 with the same random signs in median, and up to 1204
         times, with `CuDSSSolver`, against 1.06 and 6.3 times with
         `GridMultigridSolver(rtol=3e-4)`. For permeability sensitivity on
-        large tiles in float32, use `GridMultigridSolver`, or a direct solver
-        in float64.
+        large tiles in float32, use `GridMultigridSolver`, the default, or a
+        direct solver in float64.
 
         Exact sources-to-targets queries on `n` vertices, from `m` sources to
         `k` targets, hold the potentials of all targets when they are a few
@@ -147,9 +157,20 @@ class ResistanceDistance(AbstractSolverDistance):
     !!! warning
 
         The graph must be undirected for resistance distance to be well-defined.
+        With a solver, it must also be connected: the grounded Laplacian of a
+        disconnected graph is singular, and queries raise. `GridMultigridSolver`
+        then reports a non-finite solution, or a solve that did not converge
+        within `max_steps`. A grid graph is disconnected when edges of zero
+        conductance cut it, as `fun` gives between pixels of zero permeability.
+        Windowed analyses raise permeability to a floor, so that their graphs
+        are connected. Without a solver, the pseudo-inverse gives the
+        resistances within each connected component, and finite values between
+        components, and sources-to-targets queries give NaN.
     """
 
-    solver: lx.AbstractLinearSolver | None = None
+    solver: lx.AbstractLinearSolver | None = eqx.field(
+        default_factory=GridMultigridSolver
+    )
     method: "AbstractResistanceMethod" = eqx.field(
         default_factory=lambda: ExactResistance()
     )
@@ -236,6 +257,8 @@ class ResistanceDistance(AbstractSolverDistance):
 
     @eqx.filter_jit
     def all_pairs_distance(self, graph: AbstractGraph, state: Any = None) -> Array:
+        if state is None:
+            state = self.init(graph)
         A = graph.get_adjacency_matrix()
         if isinstance(self.method, SpielmanApproximation):
             return spielman_resistance_distance(
@@ -258,6 +281,8 @@ class ResistanceDistance(AbstractSolverDistance):
     def nodes_to_nodes_distance(
         self, graph: AbstractGraph, nodes: Array, state: Any = None
     ) -> Array:
+        if state is None:
+            state = self.init(graph)
         A = graph.get_adjacency_matrix()
         if isinstance(self.method, SpielmanApproximation):
             return spielman_nodes_to_nodes_resistance_distance(
@@ -284,6 +309,8 @@ class ResistanceDistance(AbstractSolverDistance):
         targets: Array,
         state: Any = None,
     ) -> Array:
+        if state is None:
+            state = self.init(graph)
         if isinstance(self.method, SpielmanApproximation):
             A = graph.get_adjacency_matrix()
             return spielman_sources_to_targets_resistance_distance(

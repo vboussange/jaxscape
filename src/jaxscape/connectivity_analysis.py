@@ -450,12 +450,11 @@ class SensitivityAnalysis(WindowedAnalysis):
         ```python
         import jax.numpy as jnp
         from jaxscape import ResistanceDistance, SensitivityAnalysis
-        from jaxscape.solvers import CholmodSolver
 
         sens = SensitivityAnalysis(
             quality_raster=quality,
             permeability_raster=permeability,
-            distance=ResistanceDistance(solver=CholmodSolver()),
+            distance=ResistanceDistance(),
             dependency_range=20,
             batch_size=100,
         )

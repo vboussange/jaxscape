@@ -129,12 +129,12 @@ SPIELMAN = SpielmanApproximation(epsilon=0.3, seed=1)
 CASES = {
     "spielman": (
         lambda _: ResistanceDistance(method=SPIELMAN),
-        ResistanceDistance(method=SPIELMAN),
+        ResistanceDistance(solver=None, method=SPIELMAN),
         1e-10,
     ),
     "spielman-cholmod": (
         lambda request: ResistanceDistance(solver("cholmod", request), method=SPIELMAN),
-        ResistanceDistance(method=SPIELMAN),
+        ResistanceDistance(solver=None, method=SPIELMAN),
         1e-8,
     ),
     "euclidean": (lambda _: EuclideanDistance(), EuclideanDistance(), 1e-12),
@@ -145,11 +145,20 @@ CASES = {
         FreeEnergyDistance(theta=1e-3),
         1e-10,
     ),
-    "resistance-dense": (lambda _: ResistanceDistance(), ResistanceDistance(), 1e-10),
+    "resistance-dense": (
+        lambda _: ResistanceDistance(solver=None),
+        ResistanceDistance(solver=None),
+        1e-10,
+    ),
+    "resistance-default": (
+        lambda _: ResistanceDistance(),
+        ResistanceDistance(solver=None),
+        1e-10,
+    ),
     **{
         f"resistance-{name}": (
             lambda request, name=name: ResistanceDistance(solver(name, request)),
-            ResistanceDistance(),
+            ResistanceDistance(solver=None),
             1e-8,
         )
         for name in ("cholmod", "amjax", "cudss-on-cpu", "cudss")
@@ -223,7 +232,14 @@ def padded_raster(quality, permeability, distance, dependency_range, exact=False
 
 
 @pytest.mark.parametrize(
-    "name", ["resistance-dense", "resistance-cholmod", "spielman", "spielman-cholmod"]
+    "name",
+    [
+        "resistance-dense",
+        "resistance-default",
+        "resistance-cholmod",
+        "spielman",
+        "spielman-cholmod",
+    ],
 )
 def test_one_tile_computes_distances_on_the_padded_raster(name, request):
     # Resistance queries share their work between sources: a batch of as many
@@ -269,7 +285,9 @@ def test_tiles_approximate_each_pixels_own_window():
             return kind(
                 quality_raster=quality,
                 permeability_raster=permeability,
-                distance=ResistanceDistance(),
+                # Dense solves: on a CPU, the test took 24 s with them, and
+                # 43 s with the default `GridMultigridSolver`.
+                distance=ResistanceDistance(solver=None),
                 dependency_range=10,
                 batch_size=batch_size,
             )
@@ -306,14 +324,15 @@ def test_tiles_of_a_narrow_raster_hold_about_batch_size_block_centres():
     assert windowed.tile_sides == (4 + 81, 2 + 81)
 
 
-def test_float32_tile_sensitivity_matches_float64():
+@pytest.mark.parametrize("name", ["resistance-dense", "resistance-default"])
+def test_float32_tile_sensitivity_matches_float64(name, request):
     # Tiles of 2 x 4 pixels and a buffer of 30 floored pixels around them:
     # resistance queries ground a pixel of near-maximum permeability next to
     # the sources, away from the floored pixels.
     def sensitivity(dtype):
         return make(
             SensitivityAnalysis,
-            ResistanceDistance(),
+            CASES[name][0](request),
             QUALITY.astype(dtype),
             PERMEABILITY.astype(dtype),
             dependency_range=30,
@@ -616,7 +635,7 @@ def test_the_block_calibration_pulls_back_both_gradients_at_once():
     # cuBLAS's triangularSolve on a GPU.
     sensitivity = make(
         SensitivityAnalysis,
-        ResistanceDistance(method=SPIELMAN),
+        ResistanceDistance(solver=None, method=SPIELMAN),
         coarsening_factor=0.5,
     )
     calibration = connectivity_analysis._permeability_calibration

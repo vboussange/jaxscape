@@ -115,7 +115,7 @@ def test_distances_match_dense_reference_across_contrast(solver, compiled, dtype
         grid = grid_of(surface(name).astype(dtype))
         actual = distances(grid, distance.init(grid))
 
-        expected = ResistanceDistance()(grid_of(surface(name)), nodes=nodes)
+        expected = ResistanceDistance(solver=None)(grid_of(surface(name)), nodes=nodes)
         assert actual.dtype == dtype
         rtol = distance_rtol(dtype, name)
         np.testing.assert_allclose(
@@ -299,7 +299,7 @@ def test_a_backend_needs_only_factorize_solve_and_a_tolerance():
     state = distance.reinit(grid_of(2 * smooth), distance.init(grid_of(smooth)))
     actual = distance(grid_of(2 * smooth), nodes=nodes, state=state)
 
-    expected = ResistanceDistance()(grid_of(2 * smooth), nodes=nodes)
+    expected = ResistanceDistance(solver=None)(grid_of(2 * smooth), nodes=nodes)
     np.testing.assert_allclose(actual, expected, rtol=1e-8)
 
 
@@ -329,7 +329,7 @@ def test_a_query_on_a_new_graph_solves_it_with_an_outdated_state(solver):
     for name in ("six_decades", "barrier_with_floor", "six_decades"):
         actual = query(grid_of(surface(name)), outdated)
 
-        expected = ResistanceDistance()(grid_of(surface(name)), nodes=nodes)
+        expected = ResistanceDistance(solver=None)(grid_of(surface(name)), nodes=nodes)
         np.testing.assert_allclose(actual, expected, rtol=1e-8, atol=1e-12)
 
 
@@ -340,7 +340,7 @@ def test_queries_without_a_state_initialize_one_outside_jit(solver):
 
     np.testing.assert_allclose(
         distance(grid, nodes=nodes),
-        ResistanceDistance()(grid, nodes=nodes),
+        ResistanceDistance(solver=None)(grid, nodes=nodes),
         rtol=1e-8,
     )
     with pytest.raises(ValueError, match=r"outside `jax\.jit`.*distance\.init"):

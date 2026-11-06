@@ -16,11 +16,19 @@ from jaxscape import (
     resistance_distance,
     SpielmanApproximation,
 )
+from jaxscape.graph import QUEEN_CONTIGUITY, ROOK_CONTIGUITY
 from jaxscape.resistance_distance import (
     p_inv_resistance_distance,
     ResistanceDistance,
 )
-from jaxscape.solvers import AMJaxCGSolver, CholmodSolver, CuDSSSolver, PyAMGSolver
+from jaxscape.solvers import (
+    AMJaxCGSolver,
+    CholmodSolver,
+    CuDSSSolver,
+    GridMultigridSolver,
+    GridMultigridState,
+    PyAMGSolver,
+)
 
 
 # Check availability of optional solvers
@@ -130,7 +138,7 @@ def test_approximate_resistance_distance():
 
     distance = ResistanceDistance(method=SpielmanApproximation(epsilon=0.05))
     dist_approx = filter_jit(distance)(grid)
-    dist_pinv = ResistanceDistance()(grid)
+    dist_pinv = ResistanceDistance(solver=None)(grid)
 
     assert dist_approx.shape == dist_pinv.shape
     assert jnp.allclose(dist_approx, dist_approx.T, atol=1e-5)
@@ -263,7 +271,7 @@ def test_solver_resistance_differentiability(solver):
     permeability = jnp.linspace(0.8, 1.4, 25, dtype=jnp.float32).reshape(5, 5)
     graph = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
     distance = ResistanceDistance(solver=solver)
-    reference = ResistanceDistance()
+    reference = ResistanceDistance(solver=None)
     state = distance.init(graph)
     tolerances = solver_tolerances(solver)
     nodes = jnp.array([0, 7, 24, 7], dtype=jnp.int32)
@@ -372,7 +380,8 @@ def test_sources_to_targets_match_all_pairs(solver, pairs):
 
     def all_pairs(permeability):
         grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
-        distances = ResistanceDistance()(grid)[sources[:, None], selected[None, :]]
+        distances = ResistanceDistance(solver=None)(grid)
+        distances = distances[sources[:, None], selected[None, :]]
         return jnp.sum(weights * distances), distances
 
     (_, actual), gradient = jax.value_and_grad(objective, has_aux=True)(permeability)
@@ -656,11 +665,12 @@ def test_debiased_proximity_of_spielman_estimates_has_the_exact_expectation():
     def total(proximity, distances):
         return float(jnp.sum(jnp.where(off_diagonal, proximity(distances), 0)))
 
-    exact = total(proximity, ResistanceDistance()(grid))
+    exact = total(proximity, ResistanceDistance(solver=None)(grid))
     raw, debiased = [], []
     for seed in range(64):
+        # Each seed compiles its queries: dense solves compile fastest.
         method = SpielmanApproximation(epsilon=0.3, seed=seed)
-        distance = ResistanceDistance(method=method)
+        distance = ResistanceDistance(solver=None, method=method)
         estimates = distance(grid)
         raw.append(total(proximity, estimates))
         debiased.append(total(distance.debiased_proximity(proximity, grid), estimates))
@@ -795,3 +805,128 @@ def test_float32_queries_of_a_tile_whose_centre_is_a_barrier(solver):
     for actual, expected in zip(query(jnp.float32), query(jnp.float64)):
         error = jnp.linalg.norm(actual - expected) / jnp.linalg.norm(expected)
         assert error < 5e-3
+
+
+# The default solver, `GridMultigridSolver()`. Grids of up to 1024 pixels are
+# the coarsest grid of its hierarchy, which a Cholesky factorization solves.
+SMALL_GRID = (24, 40)
+
+
+def small_landscape(dtype, shape=SMALL_GRID):
+    rng = np.random.default_rng(3)
+    return jnp.asarray(10 ** rng.uniform(-2, 0, shape), dtype)
+
+
+def test_the_default_solver_is_grid_multigrid():
+    assert ResistanceDistance().solver == GridMultigridSolver(rtol=1e-5, max_steps=200)
+    assert ResistanceDistance(solver=None).solver is None
+
+
+DEFAULT_QUERIES = {
+    "all-pairs": {},
+    "nodes": {"nodes": jnp.array([0, 37, 959, 480, 37])},
+    "sources-to-targets": {
+        "sources": jnp.array([5, 480]),
+        "targets": jnp.array([959, 0, 123, 480]),
+    },
+}
+
+
+@pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
+@pytest.mark.parametrize("query", DEFAULT_QUERIES)
+def test_the_default_solves_small_grids_as_the_dense_solve(dtype, query):
+    # Against the dense solve in float64. Measured: relative errors of the
+    # weighted sums of at most 1.5e-6 and of their gradients 3.5e-6 in
+    # float32, and 3e-12 in float64. In float32, those of the pseudo-inverse
+    # of the all-pairs and nodes-to-nodes queries were 35 % and 42 %.
+    weights = np.random.default_rng(4).uniform(size=(960, 960))
+
+    def objective(permeability, distance):
+        distances = distance(GridGraph(permeability, fun=avg), **DEFAULT_QUERIES[query])
+        m, k = distances.shape
+        return jnp.sum(jnp.asarray(weights[:m, :k], permeability.dtype) * distances)
+
+    def value_and_grad(dtype, distance):
+        return jax.value_and_grad(objective)(small_landscape(dtype), distance)
+
+    actual = value_and_grad(dtype, ResistanceDistance())
+    expected = value_and_grad(jnp.float64, ResistanceDistance(solver=None))
+    for a, e in zip(actual, expected):
+        assert a.dtype == dtype
+        error = jnp.linalg.norm(a - e) / jnp.linalg.norm(e)
+        assert error < (1e-5 if dtype == jnp.float32 else 1e-10)
+
+
+def test_the_default_runs_eagerly_and_under_jax_transformations():
+    # Its state, built from the shape and contiguity of a grid graph, also
+    # inside `jax.jit` and for a graph that `eqx.filter_jit` traces whole.
+    permeability = small_landscape(jnp.float64, (12, 15))
+    nodes = jnp.array([0, 17, 179, 90])
+    distance = ResistanceDistance()
+
+    def objective(permeability, distance=distance):
+        grid = GridGraph(permeability, fun=avg)
+        return jnp.sum(jnp.exp(-distance(grid, nodes=nodes)))
+
+    grid = GridGraph(permeability, fun=avg)
+    expected = ResistanceDistance(solver=None)(grid, nodes=nodes)
+    expected_gradient = jax.grad(objective)(permeability, ResistanceDistance(None))
+    for actual in (
+        distance(grid, nodes=nodes),
+        jax.jit(lambda p: distance(GridGraph(p, fun=avg), nodes=nodes))(permeability),
+        filter_jit(distance)(grid, nodes=nodes),
+        distance.nodes_to_nodes_distance(grid, nodes),
+        distance.all_pairs_distance(grid)[nodes[:, None], nodes],
+        distance.sources_to_targets_distance(grid, nodes, nodes),
+        jax.vmap(lambda p: distance(GridGraph(p, fun=avg), nodes=nodes))(
+            jnp.stack([permeability, permeability])
+        )[1],
+    ):
+        np.testing.assert_allclose(actual, expected, rtol=1e-10)
+    for gradient in (
+        jax.grad(objective)(permeability),
+        jax.jit(jax.grad(objective))(permeability),
+        filter_jit(filter_grad(lambda g: jnp.sum(distance(g, nodes=nodes))))(grid).grid,
+    ):
+        assert gradient.shape == permeability.shape
+    np.testing.assert_allclose(
+        jax.jit(jax.grad(objective))(permeability), expected_gradient, rtol=1e-8
+    )
+
+
+@pytest.mark.parametrize("neighbors", [ROOK_CONTIGUITY, QUEEN_CONTIGUITY])
+def test_the_default_state_of_a_traced_grid_graph_is_that_of_the_graph(neighbors):
+    grid = GridGraph(small_landscape(jnp.float64, (9, 11)), avg, neighbors)
+    distance = ResistanceDistance()
+
+    expected = distance.init(grid)
+    assert isinstance(expected, GridMultigridState)
+    for traced in (
+        jax.jit(lambda p: distance.init(GridGraph(p, avg, neighbors)))(grid.grid),
+        filter_jit(distance.init)(grid),
+    ):
+        assert jax.tree.structure(traced) == jax.tree.structure(expected)
+        for a, e in zip(jax.tree.leaves(traced), jax.tree.leaves(expected)):
+            np.testing.assert_array_equal(a, e)
+
+
+def test_the_default_rejects_graphs_other_than_grids():
+    ring = np.zeros((10, 10))
+    for i in range(10):
+        ring[i, (i + 1) % 10] = ring[(i + 1) % 10, i] = 1.0
+    graph = Graph(BCOO.fromdense(jnp.asarray(ring)))
+    with pytest.raises(ValueError, match=r"grid graphs.*`solver=None`"):
+        ResistanceDistance()(graph, nodes=jnp.array([0, 5]))
+    # The dense solve: the resistance of two paths of 5 edges in parallel.
+    distances = ResistanceDistance(solver=None)(graph, nodes=jnp.array([0, 5]))
+    np.testing.assert_allclose(distances[0, 1], 2.5)
+
+
+@pytest.mark.parametrize("query", DEFAULT_QUERIES)
+def test_the_default_raises_on_disconnected_graphs(query):
+    # A column of zero permeability cuts the grid in two: the grounded
+    # Laplacian is singular.
+    permeability = small_landscape(jnp.float64).at[:, 20].set(0)
+    grid = GridGraph(permeability, fun=jnp.minimum)
+    with pytest.raises(Exception, match="non-finite"):
+        jax.block_until_ready(ResistanceDistance()(grid, **DEFAULT_QUERIES[query]))

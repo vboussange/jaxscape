@@ -70,13 +70,15 @@ class GridMultigridSolver(AbstractReusableStateSolver):
 
     Solves the symmetric positive definite matrices whose sparsity pattern is a
     grid stencil, such as the grounded Laplacians of a `GridGraph`, with rook or
-    queen contiguity, that `ResistanceDistance` solves. It runs in JAX, on any
-    device. The state holds the matrix coefficients on the grid: only `init`
-    reads the grid from concrete sparse indices, and `reinit` takes new values
-    inside `jax.jit`. Each solve builds the multigrid hierarchy of the state,
-    in a few milliseconds. A compiled program then holds one hierarchy for
-    each place where it solves, whatever the states it reinitializes: XLA took
-    0.7 s to compile the hierarchy of the 894 x 925 grid below on an RTX 3090.
+    queen contiguity, that `ResistanceDistance` solves. It is the default solver
+    of `ResistanceDistance`. It runs in JAX, on any device, in float32 and
+    float64, and needs no optional dependency. The state holds the matrix
+    coefficients on the grid: only `init` reads the grid from concrete sparse
+    indices, and `reinit` takes new values inside `jax.jit`. Each solve builds
+    the multigrid hierarchy of the state, in a few milliseconds. A compiled
+    program then holds one hierarchy for each place where it solves, whatever
+    the states it reinitializes: XLA took 0.7 s to compile the hierarchy of the
+    894 x 925 grid below on an RTX 3090.
 
     Each V-cycle smooths with a sweep of damped Jacobi before and after the
     coarse correction. Coarse grids keep every other point along each axis, and
@@ -100,6 +102,19 @@ class GridMultigridSolver(AbstractReusableStateSolver):
     1.0 % with `CuDSSSolver` in float32: resistances to pixels behind barriers
     converge last.
 
+    On the inverse landscape genetics benchmark of the repository, an L-BFGS
+    fit of the resistances among 20 points of a 100 x 100 grid, the fit took
+    2.1 to 2.2 s on a CPU at the default `rtol=1e-5`, in float64 and float32,
+    and 1.4 s at `rtol=1e-3`, against 6.05 s with `CholmodSolver` and 10.7 to
+    11.7 s with `AMJaxCGSolver`. On an RTX 3090 in float32, it took 0.24 s at
+    `rtol=1e-5` and 0.15 s at `1e-3`, against 0.24 s with `AMJaxCGSolver` and
+    0.89 s with `CuDSSSolver`.
+    The exact resistances among 20 nodes of a 1000 x 1000 grid in float32, and
+    their gradient, took 33 ms on that GPU, with a relative error of `6.5e-5`
+    against float64 and a state built in 0.7 s, against 32 ms, `9.4e-4` and
+    6.3 s with `CuDSSSolver`; `AMJaxCGSolver` failed in float32. In float64,
+    `CuDSSSolver` is faster: 55 ms against 182 ms at `rtol=1e-8`.
+
     **Attributes:**
 
     - `rtol`: Largest Euclidean norm, relative to that of the right-hand side,
@@ -117,10 +132,14 @@ class GridMultigridSolver(AbstractReusableStateSolver):
 
     !!! warning
 
-        `init` reads concrete sparse indices, so create the state outside
-        `jax.jit`, with `distance.init(graph)`. A state belongs to one grid: a
-        raster shape and contiguity, with any conductances. The matrix must be
-        positive definite: a grounded Laplacian of a connected graph.
+        `init` reads concrete sparse indices: `distance.init(graph)` builds the
+        state of a `GridGraph` from its shape and contiguity, also inside
+        `jax.jit`, and that of another graph outside `jax.jit`. A state belongs
+        to one grid: a raster shape and contiguity, with any conductances. The
+        matrix must be positive definite: a grounded Laplacian of a connected
+        graph. The solves of a singular matrix fail with
+        `lineax.RESULTS.singular` when their solution is not finite, and with
+        `lineax.RESULTS.max_steps_reached` otherwise.
     """
 
     rtol: float = 1e-5
@@ -169,8 +188,14 @@ class GridMultigridSolver(AbstractReusableStateSolver):
     ) -> tuple[Array, RESULTS, dict[str, Any]]:
         del options
         solution, solved = _solve(state, vector, self.rtol, self.max_steps)
-        result = RESULTS.where(solved, RESULTS.successful, RESULTS.max_steps_reached)
-        return solution, result, {}
+        # Singular matrices, such as the grounded Laplacians of disconnected
+        # graphs, give non-finite solutions, or solves that do not converge.
+        failed = RESULTS.where(
+            jnp.all(jnp.isfinite(solution)),
+            RESULTS.max_steps_reached,
+            RESULTS.singular,
+        )
+        return solution, RESULTS.where(solved, RESULTS.successful, failed), {}
 
     def transpose(self, state: GridMultigridState, options: dict[str, Any]):
         return state, options
@@ -203,9 +228,10 @@ def _grid(
     except jax_errors.TracerArrayConversionError:
         raise ValueError(
             "GridMultigridSolver reads its grid from concrete sparse indices, so it "
-            "initializes outside `jax.jit`. Create the state with "
-            "`distance.init(graph)` (or `solver.init(operator, {})`) before "
-            "compiling, and pass it as `state`."
+            "initializes outside `jax.jit`, except for the state of a `GridGraph`, "
+            "which `distance.init(graph)` builds from its shape and contiguity. "
+            "Create the state with `distance.init(graph)` (or "
+            "`solver.init(operator, {})`) before compiling, and pass it as `state`."
         ) from None
     n = matrix.shape[0]
     rows, columns = indices[:, 0], indices[:, 1]
@@ -223,7 +249,9 @@ def _grid(
             "GridMultigridSolver solves the matrices of grid graphs, whose stored "
             "entries couple each vertex `i * width + j` to its neighbours on a grid "
             "of `width` columns, such as those of a `GridGraph`. This matrix has "
-            "other entries."
+            "other entries. For other graphs, pass another solver, such as "
+            "`CholmodSolver` or `CuDSSSolver`, or `solver=None` for the dense solve "
+            "of a small graph, as in `ResistanceDistance(solver=None)`."
         )
     # The index of each stored entry's offset in a stencil of all nine offsets.
     position = (steps[:, 0] + 1) * 3 + steps[:, 1] + 1
