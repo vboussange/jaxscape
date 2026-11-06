@@ -42,7 +42,7 @@ high-performance solvers as extras:
 
 | Solver | Execution | Typical use and limits |
 |---|---|---|
-| `GridMultigridSolver` | JAX on CPU or GPU | Conjugate gradients with a geometric multigrid preconditioner for the matrices of `GridGraph`s, whose hierarchy `reinit` builds inside `jax.jit` in milliseconds. No host step and no extra dependency. |
+| `GridMultigridSolver` | JAX on CPU or GPU | Conjugate gradients with a geometric multigrid preconditioner for the matrices of `GridGraph`s, whose hierarchy each solve builds inside `jax.jit` in milliseconds. No host step and no extra dependency. |
 | `CholmodSolver` | CPU host callback | Direct factorization for fixed sparse systems; efficient reuse when factorization memory fits. GPU arrays cross the host-device boundary. |
 | `PyAMGSolver` | CPU host callback | AMG-preconditioned CG when factorization storage is too costly. Multiple right-hand sides are solved serially. |
 | `AMJaxCGSolver` | CPU setup; JAX solve on CPU or GPU | Reusable multigrid preconditioner for repeated solves, with fresh CG state when the operator changes. No per-solve host callback. |
@@ -109,9 +109,9 @@ Distances do this for you, as [Reusing solver state](#reusing-solver-state) desc
 `GridMultigridSolver` solves the grounded Laplacians of grid graphs with
 conjugate gradients, preconditioned by one V-cycle of a multigrid hierarchy per
 iteration. `init` reads the grid, a raster shape and contiguity, from the sparse
-indices; `reinit` builds the hierarchy of the current conductances inside
-`jax.jit`, in milliseconds, so that every tile of a windowed analysis is
-solved with its own hierarchy at no setup cost.
+indices; `reinit` takes the current conductances inside `jax.jit`, and each
+solve builds their hierarchy, in milliseconds, so that every tile of a windowed
+analysis is solved with its own hierarchy at no setup cost.
 
 ```python
 from jaxscape import ResistanceDistance, SpielmanApproximation
@@ -124,19 +124,42 @@ approximate = ResistanceDistance(
 )
 ```
 
-`rtol` bounds the residual of each solve relative to its right-hand side, and
-sets the cost: on the 894 x 925 tile of the Maryland land cover of the
-connectivity analysis example, with conductances from `1e-4` to 1, 64
-right-hand sides took 8 iterations at `rtol=1e-3`, 13 at `3e-4` and 27 at
-`1e-5`, about 7 ms each on an RTX 3090 in float32. Resistances to pixels behind
-barriers converge last. With `SpielmanApproximation(epsilon=0.15)`, `rtol=3e-4`
-kept the resistances of windows as close to float64 as those of `CuDSSSolver`
-in float32, and gave the same connectivity and sensitivity maps; at `rtol=3e-3`,
-the permeability sensitivity had a Pearson correlation of 0.48 with float64,
-against 0.989 at `3e-4` and 0.989 with `CuDSSSolver` in float32.
-Once compiled, the three resistance analyses of the example took 10 s on that
-GPU, against 25 s with `CuDSSSolver`, whose analysis of the tile took 5 s for
-each.
+`rtol` bounds the residual that conjugate gradients update, relative to the
+right-hand side, and sets the cost: on the 894 x 925 tile of the Maryland land
+cover of the connectivity analysis example, with conductances from `1e-4` to
+1, 64 right-hand sides took 8 iterations at `rtol=1e-3`, 13 at `3e-4` and 27 at
+`1e-5`, about 7 ms each on an RTX 3090 in float32. In float32, the residual of
+the solution stops decreasing: on a test grid, it stayed at `2e-5` to `6e-4`
+relative for every `rtol` from `3e-4` to `1e-5` (see the solver reference
+below). Resistances to pixels behind barriers converge last: at `rtol=3e-3`,
+the permeability sensitivity of `SpielmanApproximation(epsilon=0.15)` had a
+Pearson correlation of 0.48 with float64.
+
+The example runs six analyses in float32: the connectivity, the permeability
+sensitivity and the permeability sensitivity of a flat landscape, for
+`LCPDistance` and for `ResistanceDistance` with
+`SpielmanApproximation(epsilon=0.15)` on one tile. On an RTX 3090, with each
+solver for the resistances:
+
+| Six analyses of the example | `GridMultigridSolver(rtol=3e-4)` | `CuDSSSolver` |
+|---|---|---|
+| Time once compiled | 10.4 s | 9.7 s |
+| Time in a fresh process | 57.6 s | 42.5 s |
+| XLA compilation in a fresh process | 35.8 s | 22.8 s |
+| Pearson correlation of the normalized map with float64 | 1.0000 | 0.9838 |
+| 99.9th percentile of the per-pixel ratio to float64 | 1.18 | 8.96 |
+| Largest ratio to float64 around the ground vertex | 6.3 | 1204 |
+
+The normalized map, which the example draws, is the permeability sensitivity
+divided by that of the flat landscape, and the float64 reference drew the same
+random signs. With `CuDSSSolver` in float32, the permeability sensitivity is up
+to 1204 times that of float64 around the ground vertex of the tile, a spot
+visible on the log-scale maps (see the note on grounding of
+[`ResistanceDistance`][jaxscape.resistance_distance.ResistanceDistance]).
+Choose `GridMultigridSolver` for float32 resistances and their sensitivity on
+grid graphs, as the example does. Choose `CuDSSSolver` for graphs other than
+grids, in float64, or for connectivity alone when the time of a fresh process
+matters most.
 
 ## Reusing solver state
 
@@ -198,7 +221,7 @@ What a state keeps from one graph to the next:
 
 | Solver | Kept by the state |
 |---|---|
-| `GridMultigridSolver` | The grid; `reinit` builds the hierarchy of the new values |
+| `GridMultigridSolver` | The grid; each solve builds the hierarchy of the new values |
 | `AMJaxCGSolver` | The multigrid hierarchy |
 | `CuDSSSolver` | The sparse analysis, and the factorization while the values stay the same |
 | `CholmodSolver` | Its last factorization, while the values stay the same |

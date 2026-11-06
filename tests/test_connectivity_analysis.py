@@ -1,3 +1,4 @@
+import threading
 from collections import OrderedDict
 from typing import ClassVar
 
@@ -6,8 +7,10 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from jax.core import Tracer
 from jax.scipy.signal import convolve2d
 from jaxscape import (
+    connectivity_analysis,
     ConnectivityAnalysis,
     EuclideanDistance,
     FreeEnergyDistance,
@@ -43,7 +46,8 @@ def proximity(dist):
 
 
 def make(kind, distance, quality=QUALITY, permeability=PERMEABILITY, **kwargs):
-    # 42 windows: five full batches and a partial one.
+    # 42 block centres: six batches of 7 windows, or six tiles of 2 x 4 block
+    # centres for distances whose sources share work.
     kwargs = {"proximity": proximity, "batch_size": 8, "dependency_range": D, **kwargs}
     return kind(
         quality_raster=quality,
@@ -422,8 +426,7 @@ def test_randomized_distances_take_the_default_proximity_of_exact_ones(name, req
     assert_close(kernel(randomized)(distances), expected, 1e-8)
 
 
-def test_creating_an_analysis_analyses_the_tile_pattern_only(stub_spineax, monkeypatch):
-    monkeypatch.setattr(windowed_analysis, "_STATES", OrderedDict())
+def test_creating_an_analysis_analyses_the_tile_pattern_only(stub_spineax):
     analyses = stub_spineax.analyses()
     # Tiles of 2 x 2 pixels: their sparsity pattern differs from a window's,
     # which a given proximity does not need.
@@ -508,7 +511,6 @@ def notebook_runs(distance, monkeypatch, **kwargs):
 def test_analyses_of_one_distance_analyse_each_pattern_once(
     batch_size, stub_spineax, monkeypatch
 ):
-    monkeypatch.setattr(windowed_analysis, "_STATES", OrderedDict())
     distance = ResistanceDistance(CuDSSSolver(), method=SPIELMAN)
 
     def analyses():
@@ -539,6 +541,46 @@ def test_analyses_that_share_solver_state_keep_their_results(
             assert_close(actual, expected, 1e-8)
 
 
+@pytest.mark.parametrize("traced", ["run", "creation-and-run"])
+def test_traced_analyses_leave_no_solver_state_to_later_ones(traced, request):
+    distance = ResistanceDistance(solver("cholmod", request))
+
+    # With coarsening, the block correction is calibrated on a window.
+    def analysis(permeability=PERMEABILITY):
+        return make(
+            SensitivityAnalysis,
+            distance,
+            permeability=permeability,
+            coarsening_factor=0.5,
+        )
+
+    expected = analysis().run("permeability")
+    if traced == "run":
+        actual = eqx.filter_jit(lambda a: a.run("permeability"))(analysis())
+    else:
+        actual = jax.jit(lambda p: analysis(p).run("permeability"))(PERMEABILITY)
+    assert_close(actual, expected, 1e-8)
+    states = jax.tree.leaves(list(windowed_analysis._STATES.values()))
+    assert not any(isinstance(leaf, Tracer) for leaf in states)
+    # A later analysis starts from the latest state of the earlier ones.
+    assert_close(analysis().run("permeability"), expected, 1e-8)
+
+
+def test_analyses_with_the_default_proximity_run_inside_jit():
+    # Creating an analysis compiles the profile of its default proximity, and
+    # its runs compile their batches, without compiler options in a trace.
+    def connectivity(permeability):
+        return make(
+            ConnectivityAnalysis,
+            LCPDistance(),
+            permeability=permeability,
+            proximity=None,
+        ).run()
+
+    expected = connectivity(PERMEABILITY)
+    assert_close(jax.jit(connectivity)(PERMEABILITY), expected, 1e-12)
+
+
 def test_sensitivity_is_finite_for_proximity_singular_at_zero():
     def inverse(dist):
         return 1 / dist
@@ -564,6 +606,50 @@ def test_coarsened_analyses_cover_the_raster(name, request):
         sensitivity = coarsened(SensitivityAnalysis).run(var)
         assert sensitivity.shape == QUALITY.shape
         assert jnp.all(jnp.isfinite(sensitivity)) and jnp.any(sensitivity != 0)
+
+
+def test_the_block_calibration_pulls_back_both_gradients_at_once():
+    # The gradients of one window query with and without the pairs within the
+    # block: the dense Cholesky factor is solved twice for the query and twice
+    # for one backward pass of both cotangents.
+    sensitivity = make(
+        SensitivityAnalysis,
+        ResistanceDistance(method=SPIELMAN),
+        coarsening_factor=0.5,
+    )
+    calibration = connectivity_analysis._permeability_calibration
+    lowered = calibration.compiled.lower(sensitivity, sensitivity.window_state)
+    text = str(lowered.compile().compiled.as_text())
+    assert text.count("trsm") + text.count("triangularSolve") == 4
+
+
+def test_the_batches_compile_while_the_block_calibration_compiles():
+    # The batch program takes the shapes of the calibration: XLA compiles it
+    # in another thread, while the calibration compiles and runs.
+    threads = {}
+
+    def listener(event, duration_secs, **kwargs):
+        del duration_secs
+        if event == "/jax/core/compile/backend_compile_duration":
+            name = kwargs.get("fun_name")
+            threads.setdefault(name, set()).add(threading.get_ident())
+
+    jax.monitoring.register_event_duration_secs_listener(listener)
+    try:
+        # A dependency range of 6 compiles programs that no other test does.
+        sensitivity = make(
+            SensitivityAnalysis,
+            LCPDistance(),
+            dependency_range=6,
+            coarsening_factor=0.5,
+        )
+        sensitivity.run("permeability")
+    finally:
+        jax.monitoring.unregister_event_duration_listener(listener)
+    caller = threading.get_ident()
+    assert threads["jit(_permeability_calibration)"] == {caller}
+    assert len(threads["jit(_batch)"]) == 1
+    assert caller not in threads["jit(_batch)"]
 
 
 @pytest.mark.parametrize("name", ["lcp", "resistance-dense"])
@@ -832,10 +918,24 @@ def test_all_batches_and_runs_share_one_compiled_program(
     windowed.run(*args)
     assert compilations.count("jit(_batch)") == 1
 
-    # The analysis keeps its solver state: another run compiles nothing.
+    # The next run starts from the solver state that this one left, of the
+    # same structure: it compiles nothing.
     compilations.clear()
     windowed.run(*args)
     assert compilations == []
+
+
+def test_dummy_tiles_of_a_partial_last_batch_add_nothing():
+    # 42 windows in batches of at most 4: ten batches of 4, and a last batch
+    # of 2 windows that two dummy windows complete.
+    distance = LCPDistance()
+    sensitivity = make(SensitivityAnalysis, distance, batch_size=4)
+    assert sensitivity._tiles_per_batch == 4
+
+    connectivity = make(ConnectivityAnalysis, distance, batch_size=4).run()
+    assert_close(connectivity, own_windows(QUALITY, PERMEABILITY, distance), 1e-12)
+    expected = jax.grad(own_windows, 1)(QUALITY, PERMEABILITY, distance)
+    assert_close(sensitivity.run("permeability"), expected, 1e-12)
 
 
 def test_batches_compute_the_windows_of_the_raster_only():

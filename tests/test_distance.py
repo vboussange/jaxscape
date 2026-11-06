@@ -251,3 +251,28 @@ def test_window_query_gives_the_distances_from_each_source_to_its_window(distanc
 
     expected = windows_of(distance(grid)[sources])
     np.testing.assert_allclose(windows, expected, rtol=1e-10, atol=1e-12)
+
+
+@pytest.mark.parametrize(
+    "distance",
+    [*DISTANCES, ResistanceDistance(method=SPIELMAN)],
+    ids=lambda d: f"{type(d).__name__}-{type(getattr(d, 'method', d)).__name__}",
+)
+@pytest.mark.parametrize("compiled", [False, True])
+def test_window_query_raises_for_a_window_out_of_the_grid(distance, compiled):
+    # Slices of windows that leave the grid would wrap or clamp: a corner
+    # source would get a non-zero distance to itself. The last sources lie a
+    # pixel too close to the right and bottom edges.
+    grid = grid_of(jr.uniform(jr.key(1), (7, 9), minval=0.2, maxval=1.0))
+    inside = 3 * 9 + 4
+
+    def total(values, source):
+        sources = jnp.array([inside, source])
+        windows = distance.sources_to_windows_distance(grid_of(values), sources, 5)
+        return jnp.sum(windows)
+
+    query = jax.jit(jax.value_and_grad(total)) if compiled else total
+    jax.block_until_ready(query(grid.grid, inside))
+    for source in (0, 3 * 9 + 7, 5 * 9 + 4):
+        with pytest.raises(Exception, match="window of a source leaves the grid"):
+            jax.block_until_ready(query(grid.grid, source))

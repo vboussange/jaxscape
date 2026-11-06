@@ -10,7 +10,7 @@ from jax import Array, lax
 from jax.experimental.sparse import BCOO
 from jax.numpy.linalg import pinv
 
-from jaxscape.distance import AbstractSolverDistance
+from jaxscape.distance import _inside_windows, AbstractSolverDistance
 from jaxscape.graph import AbstractGraph, GridGraph
 from jaxscape.solvers.operator import _batched_linear_solve_impl, _solver_state
 from jaxscape.utils import _matmul, bcoo_diag, graph_laplacian
@@ -108,17 +108,35 @@ class ResistanceDistance(AbstractSolverDistance):
         Apart from the pseudo-inverse of dense all-pairs and nodes-to-nodes
         queries, queries solve the Laplacian grounded at one vertex: among the
         vertices whose weighted degree is at least half the largest, the
-        nearest to the middle vertex `n // 2` by index. On a grid, it is a
-        pixel of near-maximum permeability near the centre, such as the centre
-        of the window of a windowed analysis, from which distances involve no
-        cancellation. The ground's degree is added to its diagonal entry, so
-        that every ground gives one sparsity pattern. On windows of up to
-        101 x 101 pixels with a permeability floor of `1e-4`, float32
-        permeability gradients stayed within 0.4 % of float64 with
+        nearest to the middle vertex `n // 2` in Manhattan distance on a grid
+        of `w` columns, where `w` is the largest index difference between
+        neighbours, with the lowest index among the nearest. On a grid graph
+        of `h` rows and `w` columns with rook contiguity, the middle vertex is
+        the pixel of row `h // 2` and column `w // 2` for an odd `h`, and the
+        first pixel of row `h / 2`, on the left edge, for an even `h`. The
+        ground is then a pixel of near-maximum permeability at or near the
+        centre of the windows of a windowed analysis, whose sides are odd,
+        from which their distances involve no cancellation, and near the left
+        edge of tiles of an even number of rows: at pixel (347, 18) of the
+        raster on the 894 x 925 tile of the Maryland land cover of the
+        connectivity analysis example. The ground's degree is added to its
+        diagonal entry, so that every ground gives one sparsity pattern. On
+        windows of up to 101 x 101 pixels with a permeability floor of `1e-4`,
+        float32 permeability gradients stayed within 0.4 % of float64 with
         `CuDSSSolver`, and within 3.5 % with the dense solve and
         `CholmodSolver`, which takes under 10 % longer in float64. Grounded at
         a floored pixel, they were off by up to 17 times their norm with
         `CuDSSSolver`.
+
+        On large tiles, float32 solves of direct solvers are inaccurate around
+        the ground. On that Maryland tile, with
+        `SpielmanApproximation(epsilon=0.15)`, the float32 permeability
+        sensitivity over the 40 x 40 pixels around the ground was 4.15 times
+        that of float64 with the same random signs in median, and up to 1204
+        times, with `CuDSSSolver`, against 1.06 and 6.3 times with
+        `GridMultigridSolver(rtol=3e-4)`. For permeability sensitivity on
+        large tiles in float32, use `GridMultigridSolver`, or a direct solver
+        in float64.
 
         Exact sources-to-targets queries on `n` vertices, from `m` sources to
         `k` targets, hold the potentials of all targets when they are a few
@@ -306,12 +324,18 @@ class ResistanceDistance(AbstractSolverDistance):
         `projection_batch_size` at a time with two right-hand sides each. Each
         probe draws a sign per source and a sign per pixel, whose product
         weighs a pair. The estimate of each stored edge is unbiased. The
-        gradient of the estimates themselves varies much more between seeds:
-        on a crop of 120 x 120 pixels of the Maryland land cover of the
-        connectivity analysis example, with `dependency_range` 30, one tile
-        and `epsilon` 0.2, the permeability sensitivities of two seeds had a
-        Pearson correlation of 0.16 with it, and 0.96 with the probes, which
-        reached 0.99 at `epsilon` 0.1 and took about half the time.
+        gradient of the estimates themselves varies much more between seeds.
+        On the Maryland land cover of the connectivity analysis example, with
+        `dependency_range` 100, blocks of 21 pixels, one tile and
+        `CuDSSSolver` in float32, the permeability sensitivities of two seeds
+        had Pearson correlations of 0.9983, 0.9962 and 0.9862 with the probes
+        at `epsilon` 0.1, 0.15 and 0.2 (0.9979, 0.9930 and 0.9853 for the
+        sensitivity divided by that of a flat landscape), and of 0.31 with the
+        gradient of the estimates at `epsilon` 0.1. On a crop of 120 x 120
+        pixels with `dependency_range` 30, one tile and `epsilon` 0.2, two
+        seeds agreed to 0.96 with the probes, which took about half the time,
+        and to 0.16 with the gradient of the estimates; the probes reached
+        0.99 at `epsilon` 0.1.
 
         **Arguments:**
 
@@ -354,11 +378,14 @@ class SpielmanApproximation(AbstractResistanceMethod):
       sources-to-targets queries solve `k` linear systems and hold `k`
       potentials of every vertex; nodes-to-nodes queries solve one per node.
       Window queries, those of windowed analyses, solve `k` linear systems
-      and hold the potentials of `projection_batch_size` of them.
+      and hold the potentials of `projection_batch_size` of them. Their
+      gradient solves `2 * k` more, two right-hand sides for each of `k`
+      random probes, `projection_batch_size` probes at a time.
     - `seed`: Random seed for the Rademacher edge projections. Each projection
       draws its signs from `seed` and its index, so that all queries on a graph
       share their projections, in float32 and float64, with and without 64-bit
-      types (`jax_enable_x64`).
+      types (`jax_enable_x64`). The probes of the gradient of window queries
+      draw their signs from the same seed.
     - `projection_batch_size`: Number of projections that window queries solve
       together. Other queries draw the random signs of this many projections
       together when the signs of all projections, one per stored edge and
@@ -525,13 +552,16 @@ def _grounded_laplacian(A: BCOO) -> tuple[BCOO, Array]:
     """The Laplacian of `A` grounded at a vertex, and that vertex.
 
     The ground is, among the vertices whose weighted degree is at least half the
-    largest, the nearest to the middle vertex `n // 2` in a grid of `w` columns,
-    where `w` is the largest index difference between neighbours, with the
-    lowest index among the nearest. On a grid graph, it is the pixel of
-    near-maximum permeability nearest to the centre, in Manhattan distance. In
-    float32, a ground on a barrier or in floored padding makes the system too
-    ill-conditioned to solve, and a ground near the sources of windows and
-    tiles, at their centre, avoids cancellation in their distances.
+    largest, the nearest to the middle vertex `n // 2` in Manhattan distance on a
+    grid of `w` columns, where `w` is the largest index difference between
+    neighbours, with the lowest index among the nearest. On a grid graph of `h`
+    rows and `w` columns with rook contiguity, the middle vertex is the pixel of
+    row `h // 2` and column `w // 2` for an odd `h`, and the first pixel of row
+    `h / 2`, on the left edge, for an even `h`; the ground is the pixel of
+    near-maximum permeability nearest to it. In float32, a ground on a barrier or
+    in floored padding makes the system too ill-conditioned to solve, and a
+    ground near the sources of windows, at their centre, avoids cancellation in
+    their distances.
 
     The returned matrix `L + d e_g e_g^T` adds the degree `d` of the ground `g`
     to its diagonal entry: it keeps the sparsity pattern of the Laplacian `L`
@@ -1045,6 +1075,7 @@ def _spielman_window_query(
     state: Any,
 ) -> Array:
     """`ResistanceDistance.sources_to_windows_distance` with `method`."""
+    sources = _inside_windows(graph, sources, size)
     A = graph.get_adjacency_matrix()
     grid = (graph.height, graph.width)
     return _spielman_windows(
