@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from typing import ClassVar
 
 import equinox as eqx
@@ -5,6 +6,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from conftest import DenseCholesky
 from jax.scipy.signal import convolve2d
 from jaxscape import (
     ConnectivityAnalysis,
@@ -15,6 +17,7 @@ from jaxscape import (
     ResistanceDistance,
     SensitivityAnalysis,
     SpielmanApproximation,
+    windowed_analysis,
 )
 from jaxscape.distance import AbstractDistance
 from jaxscape.solvers import AMJaxCGSolver, CholmodSolver, CuDSSSolver, cudsssolver
@@ -112,6 +115,8 @@ def solver(name, request):
     if name == "cudss-on-cpu":
         request.getfixturevalue("stub_spineax")
         return CuDSSSolver()
+    if name == "dense-cholesky":
+        return DenseCholesky()
     return make_cudss()
 
 
@@ -421,19 +426,14 @@ def test_randomized_distances_take_the_default_proximity_of_exact_ones(name, req
 
 
 def test_creating_an_analysis_analyses_the_tile_pattern_only(stub_spineax, monkeypatch):
-    analyses = []
-
-    def analyze(values, *args, **kwargs):
-        analyses.append(values.shape)
-        return stub_spineax_analyze(values, *args, **kwargs)
-
-    stub_spineax_analyze = stub_spineax.analyze
-    monkeypatch.setattr(stub_spineax, "analyze", analyze)
+    monkeypatch.setattr(windowed_analysis, "_STATES", OrderedDict())
+    analyses = stub_spineax.analyses()
     # Tiles of 2 x 2 pixels: their sparsity pattern differs from a window's,
     # which a given proximity does not need.
     distance = ResistanceDistance(CuDSSSolver())
     make(ConnectivityAnalysis, distance, batch_size=4, dependency_range=10)
-    assert len(analyses) == 1
+    jax.effects_barrier()
+    assert stub_spineax.analyses() - analyses == 1
 
 
 def test_creating_an_analysis_compiles_few_programs(stub_spineax, compilations):
@@ -456,21 +456,90 @@ def test_creating_an_analysis_compiles_few_programs(stub_spineax, compilations):
     assert len(compilations) <= 40
 
 
-@pytest.mark.gpu
-def test_cudss_windows_carry_one_analysis():
-    distance = ResistanceDistance(solver=make_cudss())
-    spineax = cudsssolver._load_cudss()
+@pytest.fixture(params=["stub", pytest.param("spineax", marks=pytest.mark.gpu)])
+def spineax(request):
+    """spineax on a GPU, or `stub_spineax`, which keeps factorizations as it does."""
+    if request.param == "stub":
+        return request.getfixturevalue("stub_spineax")
+    make_cudss()
+    return cudsssolver._load_cudss()
+
+
+def test_cudss_runs_and_analyses_carry_one_analysis(spineax):
+    distance = ResistanceDistance(solver=CuDSSSolver())
+    connectivity = make(ConnectivityAnalysis, distance)
+    sensitivity = make(SensitivityAnalysis, distance)
+    # With coarsening, the block correction is calibrated on a window.
+    coarsened = make(SensitivityAnalysis, distance, coarsening_factor=0.5)
 
     rebuilds = spineax.rebuild_count()
-    jax.block_until_ready(make(ConnectivityAnalysis, distance).run())
-    jax.block_until_ready(make(SensitivityAnalysis, distance).run("permeability"))
-    # With coarsening, the windows carry on from the state of the block
-    # correction's calibration.
-    coarsened = make(SensitivityAnalysis, distance, coarsening_factor=0.5)
-    jax.block_until_ready(coarsened.run("permeability"))
-    # Each window refactorizes the state of the previous one: no handle is
-    # used up twice, so no analysis repeats.
+    for _ in range(2):
+        jax.block_until_ready(connectivity.run())
+        jax.block_until_ready(sensitivity.run("permeability"))
+        jax.block_until_ready(coarsened.run("permeability"))
+    # Each tile refactorizes the state that the previous one left, across runs
+    # and analyses: no state is used up twice, so no analysis repeats.
     assert spineax.rebuild_count() == rebuilds
+
+
+# Connectivity, permeability sensitivity, and that of a flat landscape, as in
+# the connectivity analysis example.
+NOTEBOOK = [
+    (ConnectivityAnalysis, PERMEABILITY, ()),
+    (SensitivityAnalysis, PERMEABILITY, ("permeability",)),
+    (SensitivityAnalysis, jnp.ones_like(PERMEABILITY), ("permeability",)),
+]
+
+
+def notebook_runs(distance, monkeypatch, **kwargs):
+    """Two runs of each analysis of `NOTEBOOK`, one after another, and a run of
+    each on its own, without the solver states of earlier analyses."""
+    shared = []
+    for kind, permeability, args in NOTEBOOK:
+        windowed = make(kind, distance, permeability=permeability, **kwargs)
+        shared.append([windowed.run(*args), windowed.run(*args)])
+    alone = []
+    for kind, permeability, args in NOTEBOOK:
+        monkeypatch.setattr(windowed_analysis, "_STATES", OrderedDict())
+        alone.append(
+            make(kind, distance, permeability=permeability, **kwargs).run(*args)
+        )
+    return shared, alone
+
+
+@pytest.mark.parametrize("batch_size", [1, 8])
+def test_analyses_of_one_distance_analyse_each_pattern_once(
+    batch_size, stub_spineax, monkeypatch
+):
+    monkeypatch.setattr(windowed_analysis, "_STATES", OrderedDict())
+    distance = ResistanceDistance(CuDSSSolver(), method=SPIELMAN)
+
+    def analyses():
+        return stub_spineax.analyses() + stub_spineax.rebuild_count()
+
+    before = analyses()
+    kwargs = dict(batch_size=batch_size, proximity=None, coarsening_factor=0.5)
+    shared, alone = notebook_runs(distance, monkeypatch, **kwargs)
+    # Tiles of one block centre are windows: one pattern, else a tile and a
+    # window. Each analysis on its own analyses them again.
+    patterns = 1 if batch_size == 1 else 2
+    assert analyses() - before == patterns + len(NOTEBOOK) * patterns
+    for runs, expected in zip(shared, alone):
+        for actual in runs:
+            assert_close(actual, expected, 1e-10)
+
+
+@pytest.mark.parametrize("name", ["dense-cholesky", "cholmod", "amjax"])
+@pytest.mark.parametrize("batch_size", [1, 8])
+def test_analyses_that_share_solver_state_keep_their_results(
+    name, batch_size, request, monkeypatch
+):
+    distance = ResistanceDistance(solver(name, request))
+    kwargs = dict(batch_size=batch_size, coarsening_factor=0.5)
+    shared, alone = notebook_runs(distance, monkeypatch, **kwargs)
+    for runs, expected in zip(shared, alone):
+        for actual in runs:
+            assert_close(actual, expected, 1e-8)
 
 
 def test_sensitivity_is_finite_for_proximity_singular_at_zero():

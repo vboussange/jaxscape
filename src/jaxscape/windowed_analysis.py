@@ -1,6 +1,8 @@
+import atexit
 import math
 from abc import abstractmethod
-from collections.abc import Callable
+from collections import OrderedDict
+from collections.abc import Callable, Hashable
 from typing import Any
 
 import equinox as eqx
@@ -23,8 +25,35 @@ from jaxscape.graph import GridGraph
 PERMEABILITY_FLOOR = 1e-4
 
 
+# The latest solver state of each distance, graph shape and dtype, which
+# windowed analyses share (see `WindowedAnalysis`), the most recently used last.
+# spineax keeps as many cuDSS factorizations by default.
+_STATES: OrderedDict[Hashable, Any] = OrderedDict()
+_MOST_STATES = 8
+# Native objects of states, such as CHOLMOD factorizations, are released
+# before the interpreter shuts their modules down.
+atexit.register(_STATES.clear)
+
+
 def _average(x: Array, y: Array) -> Array:
     return (x + y) / 2
+
+
+def _state_key(
+    distance: AbstractDistance, shape: tuple[int, int], dtype: Any
+) -> Hashable | None:
+    """The key of the solver states of `distance` on grid graphs of `shape` and
+    `dtype`, or `None` if it is unhashable.
+
+    Distances share their states with the exact distances that they estimate
+    (see `AbstractDistance.exact`).
+    """
+    key = (distance.exact(), shape, jnp.dtype(dtype))
+    try:
+        hash(key)
+    except TypeError:
+        return None
+    return key
 
 
 class _PixelExponential(eqx.Module):
@@ -195,11 +224,22 @@ class WindowedAnalysis(eqx.Module):
 
     Distances without solver state, such as `LCPDistance`, `EuclideanDistance`
     and `ResistanceDistance()`, process the tiles of a batch in parallel.
-    Distances with a solver process them one after another and share one
-    solver state, built when the analysis is created on a tile of uniform
-    permeability, and reinitialized for each tile (see
-    [Reusing solver state](linear_solvers.md#reusing-solver-state)). Every run
-    of the analysis starts from that state and reuses the compiled programs.
+    Distances with a solver process them one after another, each tile
+    reinitializing the solver state that the previous one left (see
+    [Reusing solver state](linear_solvers.md#reusing-solver-state)).
+    Windowed analyses share solver states within a process: for each
+    distance, graph shape and dtype, they keep the latest state, which the
+    next run, or calibration of the block correction on a window, starts from
+    and replaces. Randomized distances share the states of the exact
+    distances that they estimate. An analysis builds a state, on a graph of
+    uniform permeability, only for a shape without one, so that a sparse
+    direct solver analyses each sparsity pattern once, however many analyses
+    and runs use it. Queries reinitialize the state they receive: the results
+    do not depend on the state that a run starts from. The states of the 8
+    most recently used distances and shapes are kept. Distances that cannot
+    be hashed, such as those with an `AMJaxCGSolver`, keep the state that
+    each analysis builds, which its runs start from. Every run reuses the
+    compiled programs.
 
     **Arguments:**
 
@@ -323,30 +363,21 @@ class WindowedAnalysis(eqx.Module):
         self.batch_size = batch_size
         self.tile_sides = (sides[0], sides[1])
         size = 2 * dependency_range + 1
-        windows = self.tile_sides == (size, size)
-        # The solver states of tiles and of windows, built outside any trace.
-        # Tiles reinitialize the first; with coarsening, the block correction
-        # of the permeability sensitivity is calibrated on a window with the
-        # second.
-        self.state = distance.init(self._uniform_graph(1, self.tile_sides))
+        window = (size, size)
+        # The solver states of tiles and of windows: the latest of their
+        # shapes, or built outside any trace. Tiles reinitialize the first;
+        # with coarsening, the block correction of the permeability
+        # sensitivity is calibrated on a window with the second.
+        self.state = self._initial_state(self.tile_sides)
         self.window_state = None
         if block_size > 1:
-            self.window_state = distance.init(self._uniform_graph(1, (size, size)))
+            self.window_state = self._initial_state(window)
         if proximity is None:
-            # The distances from the centre of a window to the pixels on its
-            # right, up to its edge, with a state of windows if the analysis
-            # has one. Otherwise the query builds its own.
-            state = self.state if windows else self.window_state
-            row = dependency_range * size + jnp.arange(dependency_range, size)
-            # Randomized distances, such as `SpielmanApproximation`, read it
-            # off the exact distances that they estimate.
-            distances = distance.exact()(
-                self._uniform_graph(1, (size, size)),
-                sources=row[:1],
-                targets=row,
-                state=state,
-            )
-            profile = lax.cummax(distances[0])
+            state = self.state if self.tile_sides == window else self.window_state
+            if state is None:
+                state = self._initial_state(window)
+            profile, state = _profile(distance, self._uniform_graph(1, window), state)
+            self._leave_state(window, state)
             proximity = _PixelExponential(profile, dependency_range / 4)
         self.proximity = proximity
 
@@ -396,16 +427,39 @@ class WindowedAnalysis(eqx.Module):
         grid = jnp.full(shape, permeability, self.permeability_raster.dtype)
         return GridGraph(grid, fun=_average)
 
-    def _reinit(self, permeability: Array, dynamic: Any) -> tuple[Any, Any]:
-        """The solver state of the graph of `permeability`, and its array part.
+    def _initial_state(self, shape: tuple[int, int]) -> Any:
+        """The latest solver state of graphs of `shape`, or else a new state of
+        a graph of `shape` and uniform permeability, which becomes the latest."""
+        state = self._latest_state(shape, None)
+        if state is None:
+            state = self.distance.init(self._uniform_graph(1, shape))
+            self._leave_state(shape, state)
+        return state
 
-        `dynamic` is the array part of a state of the analysis, which the
-        state reinitializes.
-        """
-        static = eqx.partition(self.state, eqx.is_array)[1]
+    def _latest_state(self, shape: tuple[int, int], state: Any) -> Any:
+        """The latest solver state that windowed analyses left for graphs of
+        `shape`, or `state` if there is none."""
+        key = _state_key(self.distance, shape, self.permeability_raster.dtype)
+        if key not in _STATES:
+            return state
+        _STATES.move_to_end(key)
+        return _STATES[key]
+
+    def _leave_state(self, shape: tuple[int, int], state: Any) -> None:
+        """Make `state` the latest solver state of graphs of `shape`."""
+        key = _state_key(self.distance, shape, self.permeability_raster.dtype)
+        if key is None or state is None:
+            return
+        _STATES[key] = state
+        _STATES.move_to_end(key)
+        if len(_STATES) > _MOST_STATES:
+            _STATES.popitem(last=False)
+
+    def _reinit(self, permeability: Array, state: Any) -> Any:
+        """The solver state of the graph of `permeability`, reinitialized from
+        `state`."""
         graph = GridGraph(lax.stop_gradient(permeability), fun=_average)
-        state = self.distance.reinit(graph, eqx.combine(dynamic, static))
-        return state, eqx.partition(state, eqx.is_array)[0]
+        return self.distance.reinit(graph, state)
 
     def _accumulate(self, tile_fn: Callable, initial: Array, *args: Any) -> Array:
         """Accumulate `tile_fn` over the tiles of all block centres.
@@ -414,10 +468,11 @@ class WindowedAnalysis(eqx.Module):
         solver state to one value per block centre of the tile, in row-major
         order, or to a map of the tile. Values add to `initial`, of one entry
         per block centre, except those of repeated centres; maps add to the
-        padded raster `initial`. The first tile reinitializes the solver state
-        of the analysis.
+        padded raster `initial`. The first tile reinitializes the latest solver
+        state of the tile shape, and the state of the last tile becomes the
+        latest.
         """
-        state = eqx.partition(self.state, eqx.is_array)[0]
+        state = self._latest_state(self.tile_sides, self.state)
         accumulated = initial
         rows, columns = self.axes
         n_tiles = rows.members.shape[0] * columns.members.shape[0]
@@ -429,6 +484,7 @@ class WindowedAnalysis(eqx.Module):
         ):
             batch = _Batch(self, jnp.asarray(start), state, tile_fn, args)
             accumulated, state = _batch(batch, accumulated)
+        self._leave_state(self.tile_sides, state)
         return accumulated
 
 
@@ -502,8 +558,7 @@ class _Batch(eqx.Module):
 
     - `windowed`: The windowed analysis.
     - `start`: Index of the first tile of the batch.
-    - `state`: Array part of the solver state that the first tile
-      reinitializes.
+    - `state`: The solver state that the first tile reinitializes.
     - `tile_fn`, `args`: As in `WindowedAnalysis._accumulate`.
     """
 
@@ -518,8 +573,7 @@ class _Batch(eqx.Module):
 def _batch(batch: _Batch, accumulated: Array) -> tuple[Array, Any]:
     """Add the tiles of `batch` to `accumulated`, whose buffer it reuses.
 
-    Returns the accumulated value and the array part of the solver state after
-    the batch.
+    Returns the accumulated value and the solver state after the batch.
     """
     windowed, tile_fn, args = batch.windowed, batch.tile_fn, batch.args
     rows, columns = windowed.axes
@@ -545,22 +599,26 @@ def _batch(batch: _Batch, accumulated: Array) -> tuple[Array, Any]:
                 windowed, _extract_tile(windowed, members, valid), None, *args
             )
 
-        dynamic, outputs = None, jax.vmap(tile)(members, valid)
+        state, outputs = None, jax.vmap(tile)(members, valid)
     else:
         # Solvers that run on the host or hold one factorization cannot vmap:
         # tiles run one after another, each reinitializing the carried state.
+        dynamic, static = eqx.partition(batch.state, eqx.is_array)
+
         def step(dynamic, inputs):
             tile = _extract_tile(windowed, *inputs)
-            state, dynamic = windowed._reinit(tile.permeability, dynamic)
-            return dynamic, tile_fn(windowed, tile, state, *args)
+            state = windowed._reinit(tile.permeability, eqx.combine(dynamic, static))
+            outputs = tile_fn(windowed, tile, state, *args)
+            return eqx.partition(state, eqx.is_array)[0], outputs
 
-        dynamic, outputs = lax.scan(step, batch.state, (members, valid))
+        dynamic, outputs = lax.scan(step, dynamic, (members, valid))
+        state = eqx.combine(dynamic, static)
 
     if outputs.ndim == 2:
         # One value per block centre, zero for the repeated ones.
         values = jnp.where(valid, outputs.reshape(valid.shape), 0)
         indices = (members[0][:, :, None], members[1][:, None, :])
-        return accumulated.at[indices].add(values), dynamic
+        return accumulated.at[indices].add(values), state
 
     def add(raster, inputs):
         origin, output = inputs
@@ -569,4 +627,23 @@ def _batch(batch: _Batch, accumulated: Array) -> tuple[Array, Any]:
 
     origins = (rows.knots[members[0][:, 0], 1], columns.knots[members[1][:, 0], 1])
     outputs = jnp.where(real[:, None, None], outputs, 0)
-    return lax.scan(add, accumulated, (origins, outputs))[0], dynamic
+    return lax.scan(add, accumulated, (origins, outputs))[0], state
+
+
+@eqx.filter_jit
+def _profile(
+    distance: AbstractDistance, graph: GridGraph, state: Any
+) -> tuple[Array, Any]:
+    """The distances from the centre of the square window `graph` to the pixels
+    on its right, up to its edge, made non-decreasing, and the solver state of
+    `graph`, reinitialized from `state`.
+
+    Randomized distances, such as `SpielmanApproximation`, read them off the
+    exact distances that they estimate.
+    """
+    exact = distance.exact()
+    state = exact.reinit(graph, state)
+    half = graph.width // 2
+    row = half * graph.width + jnp.arange(half, graph.width)
+    distances = exact(graph, sources=row[:1], targets=row, state=state)
+    return lax.cummax(distances[0]), state

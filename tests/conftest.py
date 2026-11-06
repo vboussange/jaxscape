@@ -6,8 +6,10 @@ from typing import Any, final
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import numpy as np
 import pytest
 from jax import Array
+from jax.experimental import io_callback
 from jaxscape.solvers import AbstractSparseDirectSolver, CSRPattern, cudsssolver
 
 
@@ -74,11 +76,56 @@ class _StubToken(eqx.Module):
     factor: Array
     offsets: Array
     columns: Array
+    id: Array
+
+
+class _StubFactorizations:
+    """The factorizations of `stub_spineax`, which it keeps as spineax does.
+
+    An analysis mints an id. A factorization or refactorization uses up the id
+    of its input and mints a new one. A phase on an id that is no longer kept
+    rebuilds its factorization, which `rebuilds` counts, and keeps the id again.
+    Compiled programs call it from every test, so tests compare counts.
+    """
+
+    def __init__(self) -> None:
+        self.kept: set[int] = set()
+        self.last = 0
+        self.analyses = 0
+        self.rebuilds = 0
+
+    def analyse(self) -> np.ndarray:
+        self.analyses += 1
+        return self._mint()
+
+    def use_up(self, id: np.ndarray) -> np.ndarray:
+        self.use(id)
+        self.kept.remove(int(id))
+        return self._mint()
+
+    def use(self, id: np.ndarray) -> None:
+        if int(id) not in self.kept:
+            self.rebuilds += 1
+            self.kept.add(int(id))
+
+    def _mint(self) -> np.ndarray:
+        self.last += 1
+        self.kept.add(self.last)
+        return np.array(self.last, np.int32)
+
+
+STUB_FACTORIZATIONS = _StubFactorizations()
+_ID = jax.ShapeDtypeStruct((), jnp.int32)
 
 
 @pytest.fixture
 def stub_spineax(monkeypatch):
-    """Run `CuDSSSolver` on dense Cholesky, for what does not need a GPU."""
+    """Run `CuDSSSolver` on dense Cholesky, for what does not need a GPU.
+
+    Its factorizations are kept and used up as spineax keeps them, and its
+    `analyses` and `rebuild_count` count the analyses and rebuilds that ran.
+    """
+    kept = STUB_FACTORIZATIONS
 
     def factorize(token, values):
         n = token.offsets.shape[0] - 1
@@ -86,19 +133,26 @@ def stub_spineax(monkeypatch):
             jnp.arange(n), jnp.diff(token.offsets), total_repeat_length=values.shape[0]
         )
         factor = dense_cholesky(n, rows, token.columns, values)
-        return _StubToken(factor, token.offsets, token.columns)
+        id = io_callback(kept.use_up, _ID, token.id)
+        return _StubToken(factor, token.offsets, token.columns, id)
 
     def analyze(values, offsets, columns, *, mtype_id, mview_id):
         assert (mtype_id, mview_id) == ("spd", "full")
         n = offsets.shape[0] - 1
-        return _StubToken(jnp.zeros((n, n), values.dtype), offsets, columns)
+        id = io_callback(kept.analyse, _ID)
+        return _StubToken(jnp.zeros((n, n), values.dtype), offsets, columns, id)
+
+    def solve(token, b):
+        jax.debug.callback(kept.use, token.id)
+        return jax.scipy.linalg.cho_solve((token.factor, True), b)
 
     stub = SimpleNamespace(
         analyze=analyze,
         factorize=factorize,
         refactorize=factorize,
-        solve=lambda token, b: jax.scipy.linalg.cho_solve((token.factor, True), b),
-        rebuild_count=lambda: 0,
+        solve=solve,
+        analyses=lambda: kept.analyses,
+        rebuild_count=lambda: kept.rebuilds,
     )
     monkeypatch.setattr(cudsssolver, "_load_cudss", lambda: stub)
     return stub
