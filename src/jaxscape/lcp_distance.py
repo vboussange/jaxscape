@@ -409,8 +409,12 @@ def _fixed_point(step: Callable[[Array], Array], x: Array, edges: _Edges) -> Arr
 
 def _bellman_ford_solve(
     data: Array, edges: _Edges, is_source: Array
-) -> tuple[Array, Array]:
-    """Solve to an exact fixed point and check the final tight-edge DAG."""
+) -> tuple[Array, Array, Array]:
+    """Solve to an exact fixed point and check the final tight-edge DAG.
+
+    Returns the distances, the mask of the tight edges and the share of each
+    vertex that each of its tight incoming edges takes.
+    """
     present = data > 0
     safe_data = jnp.where(present, data, 1)
     reciprocal = 1 / safe_data
@@ -445,12 +449,14 @@ def _bellman_ford_solve(
     )
     tight = tight & ~edges.heads(is_source)
     counts = edges.sum_into(tight.astype(data.dtype))
-    shares = tight.astype(data.dtype) / jnp.maximum(edges.heads(counts), 1)
+    # Each tight edge into a vertex takes the share `1 / counts` of it.
+    share = 1 / jnp.maximum(counts, 1)
     missing = jnp.isfinite(distances) & ~is_source & (counts == 0)
-    # Attach checks to both outputs: a value-only call may discard shares, while
-    # a gradient-only call may discard distances after the custom-VJP forward.
+    # Attach checks to all outputs: a value-only call may discard the tight
+    # edges, while a gradient-only call may discard distances after the
+    # custom-VJP forward.
     return eqx.error_if(
-        (distances, shares),
+        (distances, tight, share),
         jnp.any(missing),
         "bellman-ford found a finite non-source distance without a tight "
         "predecessor. Rescale the conductances or use float64.",
@@ -463,8 +469,8 @@ def _bellman_ford_distance(data: Array, edges: _Edges, is_source: Array) -> Arra
 
 
 def _bellman_ford_forward(data, edges, is_source):
-    distances, shares = _bellman_ford_solve(data, edges, is_source)
-    return distances, (data, edges, shares)
+    distances, tight, share = _bellman_ford_solve(data, edges, is_source)
+    return distances, (data, edges, tight, share)
 
 
 def _bellman_ford_backward(residual, cotangent):
@@ -490,15 +496,19 @@ def _bellman_ford_backward(residual, cotangent):
     # lambda <- g + B lambda. This holds for arbitrary finite signed g.
     # Finally c_uv = 1/a_uv gives dL/da_uv = -alpha_uv lambda_v / a_uv^2;
     # shared conductances receive the sum of these contributions over sources.
-    data, edges, shares = residual
+    data, edges, tight, share = residual
+
+    def along_tight(adjoint):
+        """alpha_uv lambda_v on each edge."""
+        return jnp.where(tight, edges.heads(adjoint * share), 0)
 
     def propagate(previous):
-        return cotangent + edges.sum_out_of(edges.heads(previous) * shares)
+        return cotangent + edges.sum_out_of(along_tight(previous))
 
     # The strictly ordered tight graph is acyclic, so lambda = g + B lambda
     # reaches its fixed point within n - 1 updates, including signed g.
     adjoint = _fixed_point(propagate, cotangent, edges)
-    flow = jnp.sum(edges.heads(adjoint) * shares, axis=0)
+    flow = jnp.sum(along_tight(adjoint), axis=0)
     # Zero-flow edges, including absent entries, have zero derivative. Mask
     # their denominator before arithmetic so unused tiny conductances stay safe.
     safe_data = jnp.where((data > 0) & (flow != 0), data, 1)
