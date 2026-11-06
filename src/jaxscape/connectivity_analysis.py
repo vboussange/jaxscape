@@ -174,7 +174,10 @@ def _block_correction(
     # `half`. The interpolation weights of the raster pixels reach at most
     # `reach` pixels beyond the tile's first and last block centres, which are
     # at least `half` pixels from its edges.
-    weights = inside * jnp.einsum("ij,iy,jx->yx", tile.valid, rows, columns)
+    weights = jnp.einsum(
+        "ij,iy,jx->yx", tile.valid, rows, columns, precision=lax.Precision.HIGHEST
+    )
+    weights = inside * weights
     weights = weights[
         half - reach : height - half + reach, half - reach : width - half + reach
     ]
