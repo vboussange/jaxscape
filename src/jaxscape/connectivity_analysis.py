@@ -8,7 +8,12 @@ from jax import Array, lax
 
 from jaxscape.distance import AbstractDistance
 from jaxscape.graph import GridGraph
-from jaxscape.windowed_analysis import _average, _TileData, WindowedAnalysis
+from jaxscape.windowed_analysis import (
+    _average,
+    _program,
+    _TileData,
+    WindowedAnalysis,
+)
 
 
 def _excluded(windowed: WindowedAnalysis, block: bool) -> Array:
@@ -219,7 +224,7 @@ def _convolve(
     )[0, 0]
 
 
-@eqx.filter_jit
+@_program()
 def _permeability_calibration(
     windowed: WindowedAnalysis, state: Any
 ) -> tuple[tuple[Array, Array], Any]:

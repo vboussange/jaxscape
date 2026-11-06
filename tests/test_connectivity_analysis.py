@@ -565,6 +565,21 @@ def test_traced_analyses_leave_no_solver_state_to_later_ones(traced, request):
     assert_close(analysis().run("permeability"), expected, 1e-8)
 
 
+def test_analyses_with_the_default_proximity_run_inside_jit():
+    # Creating an analysis compiles the profile of its default proximity, and
+    # its runs compile their batches, without compiler options in a trace.
+    def connectivity(permeability):
+        return make(
+            ConnectivityAnalysis,
+            LCPDistance(),
+            permeability=permeability,
+            proximity=None,
+        ).run()
+
+    expected = connectivity(PERMEABILITY)
+    assert_close(jax.jit(connectivity)(PERMEABILITY), expected, 1e-12)
+
+
 def test_sensitivity_is_finite_for_proximity_singular_at_zero():
     def inverse(dist):
         return 1 / dist
@@ -602,8 +617,8 @@ def test_the_block_calibration_pulls_back_both_gradients_at_once():
         coarsening_factor=0.5,
     )
     calibration = connectivity_analysis._permeability_calibration
-    program = jax.jit(lambda: calibration(sensitivity, sensitivity.window_state))
-    text = str(program.lower().compile().as_text())
+    lowered = calibration.compiled.lower(sensitivity, sensitivity.window_state)
+    text = str(lowered.compile().compiled.as_text())
     assert text.count("trsm") + text.count("triangularSolve") == 4
 
 
