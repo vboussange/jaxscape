@@ -419,6 +419,10 @@ class SensitivityAnalysis(WindowedAnalysis):
           sensitivity of `SpielmanApproximation` had a Pearson correlation of
           0.996 with that of exact resistance at `epsilon` 0.1, 0.991 at 0.15
           and 0.985 at 0.2, and two seeds agreed to 0.992, 0.983 and 0.963.
+          On the full land cover, with `dependency_range` 100, blocks of 21
+          pixels, one tile and `CuDSSSolver` in float32, two seeds agreed to
+          0.9983, 0.9962 and 0.9862, and to 0.9979, 0.9930 and 0.9853 for the
+          sensitivity divided by that of a flat landscape.
         - The block correction is calibrated on a uniform landscape. With
           barriers and blocks of several pixels, the coarsened permeability
           sensitivity is biased and keeps a lattice through the block

@@ -24,6 +24,10 @@ _Avoid_: Refresh, materialization, update
 A solver state prepared for other values than the system matrix of the current graph.
 _Avoid_: Stale state
 
+**Latest state**:
+The solver state that windowed analyses left last for a distance, graph shape and dtype, which the next windowed analysis, run, calibration or default-proximity profile with them starts from and replaces. A process keeps those of the 8 most recently used combinations.
+_Avoid_: Cached state, shared cache
+
 ### Sparse direct solvers
 
 **Sparsity pattern**:
@@ -58,7 +62,10 @@ The union of the windows of a grid of up to `batch_size` block centres; with as 
 _Avoid_: Batch window, chunk
 
 **Window query**:
-The distances from each source to the pixels of its window, the only query of windowed analyses (`AbstractDistance.sources_to_windows_distance`).
+The distances from each source to the pixels of its window (`AbstractDistance.sources_to_windows_distance`), the query of windowed analyses for their block centres. Their default proximity reads its profile off a sources-to-targets query.
+
+**Probe**:
+One of the random sign vectors from which the gradient of a Spielman window query estimates the gradient of exact resistances: it draws a sign per source and a sign per pixel, whose product weighs the pair of a source and a pixel of its window.
 
 **Sources that share work**:
-A distance whose query from several sources costs much less than one query per source, such as resistance, whose solves share one factorization. Windowed analyses run it on tiles, and other distances on windows.
+A distance whose query from several sources costs much less than one query per source, such as resistance, whose solves on a graph serve every source with one solver state, a factorization or a multigrid hierarchy. Windowed analyses run it on tiles, and other distances on windows.

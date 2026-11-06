@@ -10,7 +10,12 @@ import numpy as np
 from jax import Array, lax, ops
 from jax.experimental.sparse import BCOO
 
-from jaxscape.distance import _windows, AbstractDistance
+from jaxscape.distance import (
+    _WINDOW_OUT_OF_GRID,
+    _windows,
+    _windows_out_of_grid,
+    AbstractDistance,
+)
 from jaxscape.graph import AbstractGraph, GridGraph
 
 
@@ -249,7 +254,10 @@ def _grid_offsets(graph: GridGraph) -> tuple[tuple[int, int], ...] | None:
 
 
 def _grid_bellman_ford(
-    graph: GridGraph, sources: Array, offsets: tuple[tuple[int, int], ...]
+    graph: GridGraph,
+    sources: Array,
+    offsets: tuple[tuple[int, int], ...],
+    *checks: tuple[Array, str],
 ) -> Array:
     """Compute least-cost distances from multiple sources on a grid graph.
 
@@ -262,6 +270,7 @@ def _grid_bellman_ford(
     - `graph`: Grid graph.
     - `sources`: Integer vertex indices with shape `(s,)`.
     - `offsets`: The rows of `graph.neighbors` (see `_grid_offsets`).
+    - `checks`: Further masks and messages of `_checked`.
 
     **Returns:**
 
@@ -278,7 +287,7 @@ def _grid_bellman_ford(
         inside = _shifted(jnp.ones(shape, bool), offset, False)
         tail = jnp.where(inside, _shifted(permeability, offset, 0), permeability)
         data.append(jnp.where(inside, graph.fun(tail, permeability), 0))
-    data, is_source = _checked_inputs(jnp.stack(data), sources, graph.nv)
+    data, is_source = _checked_inputs(jnp.stack(data), sources, graph.nv, *checks)
     is_source = is_source.reshape(-1, *shape)
     return _bellman_ford_distance(data, _GridEdges(offsets), is_source)
 
@@ -287,8 +296,13 @@ def _grid_bellman_ford(
 def _grid_windows(
     graph: GridGraph, sources: Array, size: int, offsets: tuple[tuple[int, int], ...]
 ) -> Array:
-    """The windows of `size` pixels of `_grid_bellman_ford` around each source."""
-    return _windows(_grid_bellman_ford(graph, sources, offsets), sources, size)
+    """The windows of `size` pixels of `_grid_bellman_ford` around each source.
+
+    The check that every window lies inside `graph` joins those of the
+    conductances, in one branch."""
+    outside = (_windows_out_of_grid(graph, sources, size), _WINDOW_OUT_OF_GRID)
+    distances = _grid_bellman_ford(graph, sources, offsets, outside)
+    return _windows(distances, sources, size)
 
 
 def _shifted(x: Array, offset: tuple[int, int], fill: Any) -> Array:

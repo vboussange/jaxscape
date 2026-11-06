@@ -1,5 +1,6 @@
 """Precision configuration and a reference sparse direct solver for the test suite."""
 
+from collections import OrderedDict
 from types import SimpleNamespace
 from typing import Any, final
 
@@ -10,6 +11,7 @@ import numpy as np
 import pytest
 from jax import Array
 from jax.experimental import io_callback
+from jaxscape import windowed_analysis
 from jaxscape.solvers import AbstractSparseDirectSolver, CSRPattern, cudsssolver
 
 
@@ -40,6 +42,15 @@ def _release_compiled_programs():
     yield
     if _memory_mappings() > 30_000:
         jax.clear_caches()
+
+
+@pytest.fixture(autouse=True)
+def _no_shared_solver_states(monkeypatch):
+    """Give each test an empty registry of the solver states that windowed
+    analyses share, so that no test starts from the states of another, such as
+    those of `stub_spineax`, and counts of analyses and compilations do not
+    depend on the order of the tests."""
+    monkeypatch.setattr(windowed_analysis, "_STATES", OrderedDict())
 
 
 class DenseFactorization(eqx.Module):
