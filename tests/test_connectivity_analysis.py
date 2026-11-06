@@ -699,6 +699,8 @@ def test_a_failed_compilation_of_the_batches_leaves_the_analysis_to_run(monkeypa
 
 
 def test_an_interrupted_block_calibration_leaves_the_batches_compiling(monkeypatch):
+    # The interruption propagates at once, while the other thread still
+    # compiles the batch program.
     compile = jax.stages.Lowered.compile
     release, compiled = threading.Event(), threading.Event()
 
