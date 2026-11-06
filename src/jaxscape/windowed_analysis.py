@@ -302,7 +302,7 @@ class WindowedAnalysis(eqx.Module):
     depend on the state that a run starts from. The states of the 8 most
     recently used combinations of distance, shape and dtype are kept, until
     the interpreter exits: on the 894 x 925 tile of the Maryland land cover
-    in float32, a state of `GridMultigridSolver` holds 52 MiB of JAX arrays,
+    in float32, a state of `GridMultigridSolver` holds 32 MiB of JAX arrays,
     and one of `CuDSSSolver` 132 MiB besides its cuDSS factorization.
     Distances that cannot be hashed, such as those with an `AMJaxCGSolver`,
     keep the state that each analysis builds, which its runs start from.
