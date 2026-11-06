@@ -1,3 +1,4 @@
+import re
 import threading
 from collections import OrderedDict
 from typing import ClassVar
@@ -611,21 +612,25 @@ def test_coarsened_analyses_cover_the_raster(name, request):
 def test_the_block_calibration_pulls_back_both_gradients_at_once():
     # The gradients of one window query with and without the pairs within the
     # block: the dense Cholesky factor is solved twice for the query and twice
-    # for one backward pass of both cotangents.
+    # for one backward pass of both cotangents: LAPACK's trsm on a CPU, and
+    # cuBLAS's triangularSolve on a GPU.
     sensitivity = make(
         SensitivityAnalysis,
         ResistanceDistance(method=SPIELMAN),
         coarsening_factor=0.5,
     )
     calibration = connectivity_analysis._permeability_calibration
-    lowered = calibration.compiled.lower(sensitivity, sensitivity.window_state)
+    lowered = calibration.top_level.lower(sensitivity, sensitivity.window_state)
     text = str(lowered.compile().compiled.as_text())
-    assert text.count("trsm") + text.count("triangularSolve") == 4
+    targets = re.findall(r'custom_call_target="([^"]*)"', text)
+    solves = [t for t in targets if "trsm" in t or "triangularSolve" in t]
+    assert len(solves) == 4
 
 
 def test_the_batches_compile_while_the_block_calibration_compiles():
     # The batch program takes the shapes of the calibration: XLA compiles it
     # in another thread, while the calibration compiles and runs.
+    jax.clear_caches()
     threads = {}
 
     def listener(event, duration_secs, **kwargs):
@@ -636,13 +641,7 @@ def test_the_batches_compile_while_the_block_calibration_compiles():
 
     jax.monitoring.register_event_duration_secs_listener(listener)
     try:
-        # A dependency range of 6 compiles programs that no other test does.
-        sensitivity = make(
-            SensitivityAnalysis,
-            LCPDistance(),
-            dependency_range=6,
-            coarsening_factor=0.5,
-        )
+        sensitivity = make(SensitivityAnalysis, LCPDistance(), coarsening_factor=0.5)
         sensitivity.run("permeability")
     finally:
         jax.monitoring.unregister_event_duration_listener(listener)
@@ -650,6 +649,145 @@ def test_the_batches_compile_while_the_block_calibration_compiles():
     assert threads["jit(_permeability_calibration)"] == {caller}
     assert len(threads["jit(_batch)"]) == 1
     assert caller not in threads["jit(_batch)"]
+
+
+def test_the_batches_compile_in_the_settings_of_the_calling_thread(compilations):
+    # JAX keeps the settings of `jax.enable_x64` and of other contexts for each
+    # thread: the batch program compiles once, with those of the thread that
+    # runs the analysis.
+    jax.clear_caches()
+    jax.config.update("jax_enable_x64", False)
+    try:
+        with jax.enable_x64():
+            sensitivity = make(
+                SensitivityAnalysis, LCPDistance(), coarsening_factor=0.5
+            )
+            actual = sensitivity.run("permeability")
+    finally:
+        jax.config.update("jax_enable_x64", True)
+    assert compilations.count("jit(_batch)") == 1
+    assert actual.dtype == jnp.float64
+
+    compilations.clear()
+    sensitivity = make(SensitivityAnalysis, LCPDistance(), coarsening_factor=0.5)
+    with jax.default_matmul_precision("float32"):
+        expected = sensitivity.run("permeability")
+    assert compilations.count("jit(_batch)") == 1
+    assert_close(actual, expected, 1e-12)
+
+
+def test_a_failed_compilation_of_the_batches_leaves_the_analysis_to_run(monkeypatch):
+    # The analysis compiles the batch program again when it runs it, and
+    # reports the errors of that compilation.
+    compile = jax.stages.Lowered.compile
+
+    def failing(self, *args, **kwargs):
+        if threading.current_thread() is not threading.main_thread():
+            raise RuntimeError("compilation failed")
+        return compile(self, *args, **kwargs)
+
+    def sensitivity():
+        return make(SensitivityAnalysis, LCPDistance(), coarsening_factor=0.5).run(
+            "permeability"
+        )
+
+    jax.clear_caches()
+    with monkeypatch.context() as patch:
+        patch.setattr(jax.stages.Lowered, "compile", failing)
+        actual = sensitivity()
+    assert_close(actual, sensitivity(), 1e-12)
+
+
+def test_an_interrupted_block_calibration_leaves_the_batches_compiling(monkeypatch):
+    # The interruption propagates at once, while the other thread still
+    # compiles the batch program.
+    compile = jax.stages.Lowered.compile
+    release, compiled = threading.Event(), threading.Event()
+
+    def held(self, *args, **kwargs):
+        release.wait(30)
+        try:
+            return compile(self, *args, **kwargs)
+        finally:
+            compiled.set()
+
+    def interrupted(*args):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(jax.stages.Lowered, "compile", held)
+    monkeypatch.setattr(connectivity_analysis, "_permeability_calibration", interrupted)
+    sensitivity = make(SensitivityAnalysis, LCPDistance(), coarsening_factor=0.5)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            sensitivity.run("permeability")
+        assert not compiled.is_set()
+    finally:
+        release.set()
+
+
+class _Recorded:
+    """A jitted function that records the arguments that hold tracers of its
+    calls and lowerings."""
+
+    def __init__(self, fun, traced):
+        self.fun, self.traced = fun, traced
+
+    def __call__(self, *args):
+        self._record(args)
+        return self.fun(*args)
+
+    def lower(self, *args):
+        self._record(args)
+        return self.fun.lower(*args)
+
+    def _record(self, args):
+        if any(isinstance(leaf, Tracer) for leaf in jax.tree.leaves(args)):
+            self.traced.append(args)
+
+
+@pytest.fixture
+def traced_top_level_calls(monkeypatch):
+    """The arguments that hold tracers of the calls and lowerings of the
+    programs of windowed analyses jitted with compiler options."""
+    traced = []
+    for module, name in [
+        (windowed_analysis, "_batch"),
+        (windowed_analysis, "_profile"),
+        (connectivity_analysis, "_permeability_calibration"),
+    ]:
+        program = getattr(module, name)
+        top_level = _Recorded(program.top_level, traced)
+        program = windowed_analysis._Program(top_level=top_level, traced=program.traced)
+        monkeypatch.setattr(module, name, program)
+    return traced
+
+
+def test_transformed_runs_take_the_programs_without_compiler_options(
+    traced_top_level_calls,
+):
+    # Under `jax.vjp` and `jax.vmap`, outside `jax.jit`, the programs of an
+    # analysis take tracers: JAX takes compiler options for the programs that
+    # it compiles alone only, and `jax.jit` of the pullback traces them.
+    def connectivity(permeability):
+        return make(ConnectivityAnalysis, LCPDistance(), QUALITY, permeability).run()
+
+    def sensitivity(permeability):
+        return make(
+            SensitivityAnalysis,
+            LCPDistance(),
+            QUALITY,
+            permeability,
+            coarsening_factor=0.5,
+        ).run("permeability")
+
+    pullback = jax.vjp(connectivity, PERMEABILITY)[1]
+    gradient = jax.jit(pullback)(jnp.ones(()))[0]
+    permeabilities = jnp.stack([PERMEABILITY, 2 * PERMEABILITY])
+    batched = jax.vmap(sensitivity)(permeabilities)
+    assert traced_top_level_calls == []
+    assert_close(gradient, jax.grad(connectivity)(PERMEABILITY), 1e-12)
+    for one, permeability in zip(batched, permeabilities):
+        assert_close(one, sensitivity(permeability), 1e-12)
 
 
 @pytest.mark.parametrize("name", ["lcp", "resistance-dense"])

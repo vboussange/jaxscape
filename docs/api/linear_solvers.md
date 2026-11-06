@@ -109,9 +109,10 @@ Distances do this for you, as [Reusing solver state](#reusing-solver-state) desc
 `GridMultigridSolver` solves the grounded Laplacians of grid graphs with
 conjugate gradients, preconditioned by one V-cycle of a multigrid hierarchy per
 iteration. `init` reads the grid, a raster shape and contiguity, from the sparse
-indices; `reinit` takes the current conductances inside `jax.jit`, and each
-solve builds their hierarchy, in milliseconds, so that every tile of a windowed
-analysis is solved with its own hierarchy at no setup cost.
+indices, and `reinit` scatters the current conductances into the stencil of the
+grid inside `jax.jit`. Each solve builds the multigrid hierarchy of these
+conductances, in 2.3 ms for the 894 x 925 tile below on an RTX 3090, so that
+every tile of a windowed analysis is solved with its own hierarchy.
 
 ```python
 from jaxscape import ResistanceDistance, SpielmanApproximation
@@ -128,12 +129,13 @@ approximate = ResistanceDistance(
 right-hand side, and sets the cost: on the 894 x 925 tile of the Maryland land
 cover of the connectivity analysis example, with conductances from `1e-4` to
 1, 64 right-hand sides took 8 iterations at `rtol=1e-3`, 13 at `3e-4` and 27 at
-`1e-5`, about 7 ms each on an RTX 3090 in float32. In float32, the residual of
-the solution stops decreasing: on a test grid, it stayed at `2e-5` to `6e-4`
-relative for every `rtol` from `3e-4` to `1e-5` (see the solver reference
-below). Resistances to pixels behind barriers converge last: at `rtol=3e-3`,
-the permeability sensitivity of `SpielmanApproximation(epsilon=0.15)` had a
-Pearson correlation of 0.48 with float64.
+`1e-5`: solves of 63, 106 and 201 ms with their hierarchy, on an RTX 3090 in
+float32. In float32, the residual of the solution stops decreasing: on a test
+grid, it stayed at `2e-5` to `6e-4` relative for every `rtol` from `3e-4` to
+`1e-5` (see the solver reference below). Resistances to pixels behind barriers
+converge last: at `rtol=3e-3`, the permeability sensitivity of
+`SpielmanApproximation(epsilon=0.15)` had a Pearson correlation of 0.48 with
+float64.
 
 The example runs six analyses in float32: the connectivity, the permeability
 sensitivity and the permeability sensitivity of a flat landscape, for
@@ -143,9 +145,9 @@ solver for the resistances:
 
 | Six analyses of the example | `GridMultigridSolver(rtol=3e-4)` | `CuDSSSolver` |
 |---|---|---|
-| Time once compiled | 10.4 s | 9.7 s |
-| Time in a fresh process | 57.6 s | 42.5 s |
-| XLA compilation in a fresh process | 35.8 s | 22.8 s |
+| Time once compiled | 10.3 s | 9.5 s |
+| Time in a fresh process | 33.7 s | 33.6 s |
+| XLA compilation in a fresh process | 21.0 s | 16.2 s |
 | Pearson correlation of the normalized map with float64 | 1.0000 | 0.9838 |
 | 99.9th percentile of the per-pixel ratio to float64 | 1.18 | 8.96 |
 | Largest ratio to float64 around the ground vertex | 6.3 | 1204 |
@@ -156,10 +158,12 @@ random signs. With `CuDSSSolver` in float32, the permeability sensitivity is up
 to 1204 times that of float64 around the ground vertex of the tile, a spot
 visible on the log-scale maps (see the note on grounding of
 [`ResistanceDistance`][jaxscape.resistance_distance.ResistanceDistance]).
-Choose `GridMultigridSolver` for float32 resistances and their sensitivity on
-grid graphs, as the example does. Choose `CuDSSSolver` for graphs other than
-grids, in float64, or for connectivity alone when the time of a fresh process
-matters most.
+The two solvers take as long in a fresh process: `CuDSSSolver` compiles for 5 s
+less, and spends about as long on the sparse analysis of the tile. Once
+compiled, `CuDSSSolver` takes 0.8 s less. Choose `GridMultigridSolver` for
+float32 resistances and their sensitivity on grid graphs, as the example does:
+its normalized map matches that of float64. Choose `CuDSSSolver` for graphs
+other than grids, or in float64.
 
 ## Reusing solver state
 
