@@ -691,7 +691,9 @@ def test_reseeded_spielman_distances_draw_other_projections(query):
     def reseeded(index):
         return distance.reseeded(index)(grid, **query)
 
-    np.testing.assert_array_equal(reseeded(1), reseeded(1))
+    # Equal to rounding: on an RTX 3090, two runs of one program with the
+    # default `GridMultigridSolver` differed by up to 4e-15.
+    np.testing.assert_allclose(reseeded(1), reseeded(1), rtol=1e-12, atol=1e-12)
     assert not np.allclose(reseeded(1), reseeded(2))
     assert not np.allclose(reseeded(1), distance(grid, **query))
 
