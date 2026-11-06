@@ -302,3 +302,27 @@ def test_programs_trace_the_hierarchy_once(monkeypatch):
 
     jax.jit(jax.grad(total)).lower(conductance)
     assert len(traces) == 1
+
+
+def test_the_hierarchy_traces_the_coarse_grids_after_the_first_once(monkeypatch):
+    # A grid of 130 x 140 pixels has three coarse grids before one of at most
+    # 1024 points: the first from the rook stencil, the others from queen
+    # stencils of padded grids, in one loop.
+    traces = []
+    galerkin = gridmultigridsolver._galerkin
+
+    def counted(*args):
+        traces.append(1)
+        return galerkin(*args)
+
+    monkeypatch.setattr(gridmultigridsolver, "_galerkin", counted)
+    distance = ResistanceDistance(solver=GridMultigridSolver())
+    state = distance.init(GridGraph(landscape((130, 140)), fun=avg))
+    hierarchy = gridmultigridsolver._hierarchy(state)
+    assert [s[0].shape for s in hierarchy.stencils] == [
+        (130, 140),
+        (65, 70),
+        (33, 35),
+        (17, 18),
+    ]
+    assert len(traces) == 2

@@ -76,7 +76,7 @@ class GridMultigridSolver(AbstractReusableStateSolver):
     inside `jax.jit`. Each solve builds the multigrid hierarchy of the state,
     in a few milliseconds. A compiled program then holds one hierarchy for
     each place where it solves, whatever the states it reinitializes: XLA took
-    1.6 s to compile the hierarchy of the 894 x 925 grid below on an RTX 3090.
+    0.7 s to compile the hierarchy of the 894 x 925 grid below on an RTX 3090.
 
     Each V-cycle smooths with a sweep of damped Jacobi before and after the
     coarse correction. Coarse grids keep every other point along each axis, and
@@ -294,25 +294,66 @@ def _stencil(
 def _hierarchy(state: GridMultigridState) -> _Hierarchy:
     """The multigrid hierarchy of the matrix of `state`."""
     offsets = state.offsets
-    stencils = [state.stencil]
     height, width = state.stencil[0].shape
-    dtype = state.stencil[0].dtype
-    interpolations = []
-    level_offsets = offsets
-    while height * width > _COARSEST:
-        height, width = (height + 1) // 2, (width + 1) // 2
-        weights = _interpolation(level_offsets, stencils[-1])
-        stencils.append(
-            _galerkin(level_offsets, stencils[-1], weights, (height, width))
-        )
+    shapes = [(height, width)]
+    while shapes[-1][0] * shapes[-1][1] > _COARSEST:
+        height, width = shapes[-1]
+        shapes.append(((height + 1) // 2, (width + 1) // 2))
+    stencils, interpolations = [state.stencil], []
+    if len(shapes) > 1:
+        weights = _interpolation(offsets, state.stencil)
+        stencils.append(_galerkin(offsets, state.stencil, weights, shapes[1]))
         interpolations.append(weights)
-        level_offsets = _QUEEN
+    if len(shapes) > 2:
+        coarser, weights = _coarser_grids(stencils[-1], shapes[1:])
+        stencils += coarser
+        interpolations += weights
+    height, width = shapes[-1]
     n = height * width
-    eye = jnp.eye(n, dtype=dtype)
+    level_offsets = offsets if len(shapes) == 1 else _QUEEN
+    eye = jnp.eye(n, dtype=state.stencil[0].dtype)
     matrix = _apply(level_offsets, stencils[-1], eye.reshape(height, width, n))
     matrix = matrix.reshape(n, n)
     factor = jnp.linalg.cholesky((matrix + matrix.T) / 2)
     return _Hierarchy(tuple(stencils), tuple(interpolations), factor, offsets)
+
+
+def _coarser_grids(
+    stencil: tuple[Array, ...], shapes: list[tuple[int, int]]
+) -> tuple[list[tuple[Array, ...]], list[tuple[Array, ...]]]:
+    """The stencils of the grids of `shapes[1:]`, and the interpolation weights
+    from each to the grid before it, from the queen `stencil` of a grid of
+    `shapes[0]`.
+
+    One loop builds each grid from the one before it, in arrays of the shape
+    of `shapes[0]`. Their points beyond a grid have zero coefficients: they
+    couple to no point of the grid, and leave its stencil and weights
+    unchanged. XLA compiles the loop once: for the 894 x 925 grid of the
+    connectivity analysis example, the hierarchy compiled in 0.7 s on an RTX
+    3090, against 1.6 s with one copy of the code per grid.
+    """
+    height, width = shapes[0]
+    coarse = ((height + 1) // 2, (width + 1) // 2)
+    padding = ((0, height - coarse[0]), (0, width - coarse[1]))
+
+    def coarser(stencil, _):
+        weights = _interpolation(_QUEEN, stencil)
+        coarser = _galerkin(_QUEEN, stencil, weights, coarse)
+        return tuple(jnp.pad(c, padding) for c in coarser), (coarser, weights)
+
+    _, (stencils, weights) = lax.scan(coarser, stencil, length=len(shapes) - 1)
+    grids, interpolations = [], []
+    for i, ((rows, columns), (coarse_rows, coarse_columns)) in enumerate(
+        zip(shapes, shapes[1:])
+    ):
+        grids.append(tuple(c[i, :coarse_rows, :coarse_columns] for c in stencils))
+        # The shapes of the weights, as `_interpolation` returns them.
+        sizes = [(coarse_rows, columns // 2)] * 2 + [(rows // 2, coarse_columns)] * 2
+        sizes += [(rows // 2, columns // 2)] * 4
+        interpolations.append(
+            tuple(w[i, :a, :b] for w, (a, b) in zip(weights, sizes, strict=True))
+        )
+    return grids, interpolations
 
 
 def _shift(x: Array, i: int, j: int) -> Array:
