@@ -234,7 +234,7 @@ def test_a_state_rejects_graphs_of_another_grid():
             jax.block_until_ready(distance(grid, nodes=jnp.array([0, 5]), state=state))
 
 
-def test_reinit_builds_the_hierarchy_inside_jit():
+def test_reinit_takes_new_values_inside_jit():
     distance = ResistanceDistance(solver=GridMultigridSolver(rtol=1e-12))
     state = distance.init(GridGraph(jnp.ones((16, 18)), fun=avg))
     conductance = landscape((16, 18))
@@ -250,3 +250,25 @@ def test_reinit_builds_the_hierarchy_inside_jit():
     expected = ResistanceDistance()(GridGraph(conductance, fun=avg), nodes=nodes)
     np.testing.assert_allclose(actual, expected, rtol=1e-10)
     assert jax.tree.structure(new_state) == jax.tree.structure(state)
+
+
+def test_reinit_leaves_the_hierarchy_to_the_solves():
+    # A windowed analysis reinitializes the state of each tile, and its query
+    # reinitializes and solves it again, in one compiled program: the program
+    # compiles the hierarchy once, with the solves.
+    distance = ResistanceDistance(solver=GridMultigridSolver())
+    conductance = landscape((40, 41))
+    state = distance.init(GridGraph(conductance, fun=avg))
+
+    def reinit(conductance):
+        return distance.reinit(GridGraph(conductance, fun=avg), state)
+
+    def query(conductance):
+        grid = GridGraph(conductance, fun=avg)
+        return distance(grid, nodes=jnp.array([0, 9]), state=reinit(conductance))
+
+    def factorizations(f):
+        return jax.jit(f).lower(conductance).as_text().count("potrf")
+
+    assert factorizations(reinit) == 0
+    assert factorizations(query) == 1

@@ -42,7 +42,7 @@ high-performance solvers as extras:
 
 | Solver | Execution | Typical use and limits |
 |---|---|---|
-| `GridMultigridSolver` | JAX on CPU or GPU | Conjugate gradients with a geometric multigrid preconditioner for the matrices of `GridGraph`s, whose hierarchy `reinit` builds inside `jax.jit` in milliseconds. No host step and no extra dependency. |
+| `GridMultigridSolver` | JAX on CPU or GPU | Conjugate gradients with a geometric multigrid preconditioner for the matrices of `GridGraph`s, whose hierarchy each solve builds inside `jax.jit` in milliseconds. No host step and no extra dependency. |
 | `CholmodSolver` | CPU host callback | Direct factorization for fixed sparse systems; efficient reuse when factorization memory fits. GPU arrays cross the host-device boundary. |
 | `PyAMGSolver` | CPU host callback | AMG-preconditioned CG when factorization storage is too costly. Multiple right-hand sides are solved serially. |
 | `AMJaxCGSolver` | CPU setup; JAX solve on CPU or GPU | Reusable multigrid preconditioner for repeated solves, with fresh CG state when the operator changes. No per-solve host callback. |
@@ -109,9 +109,9 @@ Distances do this for you, as [Reusing solver state](#reusing-solver-state) desc
 `GridMultigridSolver` solves the grounded Laplacians of grid graphs with
 conjugate gradients, preconditioned by one V-cycle of a multigrid hierarchy per
 iteration. `init` reads the grid, a raster shape and contiguity, from the sparse
-indices; `reinit` builds the hierarchy of the current conductances inside
-`jax.jit`, in milliseconds, so that every tile of a windowed analysis is
-solved with its own hierarchy at no setup cost.
+indices; `reinit` takes the current conductances inside `jax.jit`, and each
+solve builds their hierarchy, in milliseconds, so that every tile of a windowed
+analysis is solved with its own hierarchy at no setup cost.
 
 ```python
 from jaxscape import ResistanceDistance, SpielmanApproximation
@@ -221,7 +221,7 @@ What a state keeps from one graph to the next:
 
 | Solver | Kept by the state |
 |---|---|
-| `GridMultigridSolver` | The grid; `reinit` builds the hierarchy of the new values |
+| `GridMultigridSolver` | The grid; each solve builds the hierarchy of the new values |
 | `AMJaxCGSolver` | The multigrid hierarchy |
 | `CuDSSSolver` | The sparse analysis, and the factorization while the values stay the same |
 | `CholmodSolver` | Its last factorization, while the values stay the same |

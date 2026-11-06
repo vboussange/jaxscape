@@ -28,13 +28,28 @@ _DAMPING = 2 / 3
 
 @final
 class GridMultigridState(eqx.Module):
-    """State of a `GridMultigridSolver`: the multigrid hierarchy of one matrix.
+    """State of a `GridMultigridSolver`: the stencil of one matrix on its grid.
 
     **Attributes:**
 
     - `slots`: For each stored entry of the BCOO matrix, the index of its
-      coefficient in the flattened stencil of the finest grid, or the size of
-      that stencil for padding entries.
+      coefficient in the flattened stencil, or the size of the stencil for
+      padding entries.
+    - `stencil`: The stencil coefficients of the matrix: for each offset, an
+      array of the grid's shape.
+    - `offsets`: The offsets (row, column) of the stencil.
+    """
+
+    slots: Array
+    stencil: tuple[Array, ...]
+    offsets: tuple[tuple[int, int], ...] = eqx.field(static=True)
+
+
+class _Hierarchy(eqx.Module):
+    """The multigrid hierarchy of a matrix, which each solve builds.
+
+    **Attributes:**
+
     - `stencils`: The stencil coefficients of each grid, from the finest: for
       each offset, an array of the grid's shape.
     - `interpolations`: The weights of the interpolation from each coarse grid
@@ -43,7 +58,6 @@ class GridMultigridState(eqx.Module):
     - `offsets`: The offsets (row, column) of the stencil of the finest grid.
     """
 
-    slots: Array
     stencils: tuple[tuple[Array, ...], ...]
     interpolations: tuple[tuple[Array, ...], ...]
     factor: Array
@@ -57,9 +71,12 @@ class GridMultigridSolver(AbstractReusableStateSolver):
     Solves the symmetric positive definite matrices whose sparsity pattern is a
     grid stencil, such as the grounded Laplacians of a `GridGraph`, with rook or
     queen contiguity, that `ResistanceDistance` solves. It runs in JAX, on any
-    device. The state is a multigrid hierarchy built from the matrix values in
-    a few milliseconds, inside `jax.jit`: `reinit` builds the hierarchy of new
-    values, and only `init` reads the grid from concrete sparse indices.
+    device. The state holds the matrix coefficients on the grid: only `init`
+    reads the grid from concrete sparse indices, and `reinit` takes new values
+    inside `jax.jit`. Each solve builds the multigrid hierarchy of the state,
+    in a few milliseconds. A compiled program then holds one hierarchy for
+    each place where it solves, whatever the states it reinitializes: XLA took
+    1.6 s to compile the hierarchy of the 894 x 925 grid below on an RTX 3090.
 
     Each V-cycle smooths with a sweep of damped Jacobi before and after the
     coarse correction. Coarse grids keep every other point along each axis, and
@@ -128,7 +145,7 @@ class GridMultigridSolver(AbstractReusableStateSolver):
         options: dict[str, Any],
         state: GridMultigridState,
     ) -> GridMultigridState:
-        """Return the hierarchy of the values of `operator`.
+        """Return the state of the values of `operator`.
 
         **Arguments:**
 
@@ -143,8 +160,8 @@ class GridMultigridSolver(AbstractReusableStateSolver):
         """
         del options
         data = _checked_data(_matrix(operator), state)
-        shape = state.stencils[0][0].shape
-        return _hierarchy(state.slots, (shape[0], shape[1]), state.offsets, data)
+        shape = state.stencil[0].shape
+        return _stencil(state.slots, (shape[0], shape[1]), state.offsets, data)
 
     def compute(
         self, state: GridMultigridState, vector: Array, options: dict[str, Any]
@@ -232,7 +249,7 @@ def _checked_data(matrix: BCOO, state: GridMultigridState) -> Array:
     )
     if matrix.indices.shape != (state.slots.shape[0], 2):
         raise ValueError(mismatch)
-    height, width = state.stencils[0][0].shape
+    height, width = state.stencil[0].shape
     n = height * width
     stored = state.slots < len(state.offsets) * n
     slot = jnp.where(stored, state.slots, 0)
@@ -252,21 +269,31 @@ def _initial_state(
     offsets: tuple[tuple[int, int], ...],
     data: Array,
 ) -> GridMultigridState:
-    """`_hierarchy` in one compiled program."""
-    return _hierarchy(slots, shape, offsets, data)
+    """`_stencil` in one compiled program."""
+    return _stencil(slots, shape, offsets, data)
 
 
-def _hierarchy(
+def _stencil(
     slots: Array,
     shape: tuple[int, int],
     offsets: tuple[tuple[int, int], ...],
     data: Array,
 ) -> GridMultigridState:
-    """The multigrid hierarchy of the matrix that stores `data` at `slots`."""
+    """The state of the matrix that stores `data` at `slots`."""
     height, width = shape
     stencil = jnp.zeros(len(offsets) * height * width, data.dtype)
     stencil = stencil.at[slots].add(data, mode="drop")
-    stencils = [tuple(stencil.reshape(len(offsets), height, width))]
+    return GridMultigridState(
+        slots, tuple(stencil.reshape(len(offsets), height, width)), offsets
+    )
+
+
+def _hierarchy(state: GridMultigridState) -> _Hierarchy:
+    """The multigrid hierarchy of the matrix of `state`."""
+    offsets = state.offsets
+    stencils = [state.stencil]
+    height, width = state.stencil[0].shape
+    dtype = state.stencil[0].dtype
     interpolations = []
     level_offsets = offsets
     while height * width > _COARSEST:
@@ -278,13 +305,11 @@ def _hierarchy(
         interpolations.append(weights)
         level_offsets = _QUEEN
     n = height * width
-    eye = jnp.eye(n, dtype=data.dtype)
+    eye = jnp.eye(n, dtype=dtype)
     matrix = _apply(level_offsets, stencils[-1], eye.reshape(height, width, n))
     matrix = matrix.reshape(n, n)
     factor = jnp.linalg.cholesky((matrix + matrix.T) / 2)
-    return GridMultigridState(
-        slots, tuple(stencils), tuple(interpolations), factor, offsets
-    )
+    return _Hierarchy(tuple(stencils), tuple(interpolations), factor, offsets)
 
 
 def _shift(x: Array, i: int, j: int) -> Array:
@@ -437,7 +462,7 @@ def _smooth(
     return x
 
 
-def _v_cycle(state: GridMultigridState, b: Array, level: int = 0) -> Array:
+def _v_cycle(state: _Hierarchy, b: Array, level: int = 0) -> Array:
     if level == len(state.interpolations):
         n, m = state.factor.shape[0], b.shape[-1]
         # Right-hand sides as rows, solved on the right: XLA laid out all the
@@ -471,7 +496,7 @@ def _dot(x: Array, y: Array) -> Array:
 
 
 def _conjugate_gradients(
-    state: GridMultigridState, b: Array, rtol: float, max_steps: int
+    state: _Hierarchy, b: Array, rtol: float, max_steps: int
 ) -> tuple[Array, Array]:
     """Solve for the columns of `b`, of shape `(height, width, m)`.
 
@@ -518,12 +543,12 @@ def _solve(
 ) -> tuple[Array, Array]:
     """The solution of one right-hand side, and whether it converged. Under
     `jax.vmap`, the right-hand sides of a batch solve together."""
-    height, width = state.stencils[0][0].shape
+    height, width = state.stencil[0].shape
 
     def solve(state, vectors):
         # Right-hand sides as columns.
         b = vectors.reshape(height, width, -1)
-        x, solved = _conjugate_gradients(state, b, rtol, max_steps)
+        x, solved = _conjugate_gradients(_hierarchy(state), b, rtol, max_steps)
         return x.reshape(height * width, -1), solved
 
     @jax.custom_batching.custom_vmap
