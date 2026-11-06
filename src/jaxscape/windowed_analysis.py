@@ -10,6 +10,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from jax import Array, lax
+from jax.core import Tracer
 from tqdm import tqdm
 
 from jaxscape.distance import AbstractDistance
@@ -37,6 +38,17 @@ atexit.register(_STATES.clear)
 
 def _average(x: Array, y: Array) -> Array:
     return (x + y) / 2
+
+
+def _tracing() -> bool:
+    """Whether JAX is tracing the running code, as `jax.jit` does: its
+    operations then give tracers, also on constants."""
+    return isinstance(jnp.array(1) + 1, Tracer)
+
+
+def _traced(tree: Any) -> bool:
+    """Whether a leaf of `tree` is a tracer."""
+    return any(isinstance(leaf, Tracer) for leaf in jax.tree.leaves(tree))
 
 
 def _state_key(
@@ -236,11 +248,13 @@ class WindowedAnalysis(eqx.Module):
     sparse direct solver analyses each sparsity pattern once, however many
     windowed analyses and runs use it. Queries reinitialize the state they
     receive: up to rounding, the results do not depend on the state that a
-    run starts from. The states of the 8
-    most recently used distances and shapes are kept. Distances that cannot
-    be hashed, such as those with an `AMJaxCGSolver`, keep the state that
-    each analysis builds, which its runs start from. Every run reuses the
-    compiled programs.
+    run starts from. The states of the 8 most recently used combinations of
+    distance, shape and dtype are kept. Distances that cannot be hashed, such
+    as those with an `AMJaxCGSolver`, keep the state that each analysis
+    builds, which its runs start from. Analyses created or run while JAX
+    traces them, as inside `jax.jit`, neither read nor replace the shared
+    states: their runs start from the state that the analysis holds. Every
+    run reuses the compiled programs.
 
     **Arguments:**
 
@@ -439,17 +453,18 @@ class WindowedAnalysis(eqx.Module):
 
     def _latest_state(self, shape: tuple[int, int], state: Any) -> Any:
         """The latest solver state that windowed analyses left for graphs of
-        `shape`, or `state` if there is none."""
+        `shape`, or `state` if there is none or if JAX is tracing."""
         key = _state_key(self.distance, shape, self.permeability_raster.dtype)
-        if key not in _STATES:
+        if key not in _STATES or _tracing():
             return state
         _STATES.move_to_end(key)
         return _STATES[key]
 
     def _leave_state(self, shape: tuple[int, int], state: Any) -> None:
-        """Make `state` the latest solver state of graphs of `shape`."""
+        """Make `state` the latest solver state of graphs of `shape`, unless it
+        holds tracers: those of a traced computation are invalid outside it."""
         key = _state_key(self.distance, shape, self.permeability_raster.dtype)
-        if key is None or state is None:
+        if key is None or state is None or _traced(state):
             return
         _STATES[key] = state
         _STATES.move_to_end(key)

@@ -6,6 +6,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from jax.core import Tracer
 from jax.scipy.signal import convolve2d
 from jaxscape import (
     ConnectivityAnalysis,
@@ -537,6 +538,31 @@ def test_analyses_that_share_solver_state_keep_their_results(
     for runs, expected in zip(shared, alone):
         for actual in runs:
             assert_close(actual, expected, 1e-8)
+
+
+@pytest.mark.parametrize("traced", ["run", "creation-and-run"])
+def test_traced_analyses_leave_no_solver_state_to_later_ones(traced, request):
+    distance = ResistanceDistance(solver("cholmod", request))
+
+    # With coarsening, the block correction is calibrated on a window.
+    def analysis(permeability=PERMEABILITY):
+        return make(
+            SensitivityAnalysis,
+            distance,
+            permeability=permeability,
+            coarsening_factor=0.5,
+        )
+
+    expected = analysis().run("permeability")
+    if traced == "run":
+        actual = eqx.filter_jit(lambda a: a.run("permeability"))(analysis())
+    else:
+        actual = jax.jit(lambda p: analysis(p).run("permeability"))(PERMEABILITY)
+    assert_close(actual, expected, 1e-8)
+    states = jax.tree.leaves(list(windowed_analysis._STATES.values()))
+    assert not any(isinstance(leaf, Tracer) for leaf in states)
+    # A later analysis starts from the latest state of the earlier ones.
+    assert_close(analysis().run("permeability"), expected, 1e-8)
 
 
 def test_sensitivity_is_finite_for_proximity_singular_at_zero():
