@@ -235,14 +235,7 @@ class AbstractDistance(eqx.Module):
         if size % 2 == 0:
             raise ValueError("`size` must be odd.")
         distances = self(graph, sources=sources, state=state)
-        half = size // 2
-
-        def window(distances, source):
-            start = (source // graph.width - half, source % graph.width - half)
-            rows = distances.reshape(graph.height, graph.width)
-            return jax.lax.dynamic_slice(rows, start, (size, size))
-
-        return jax.vmap(window)(distances, sources)
+        return _windows(distances.reshape(-1, graph.height, graph.width), sources, size)
 
     @abstractmethod
     def nodes_to_nodes_distance(
@@ -263,6 +256,21 @@ class AbstractDistance(eqx.Module):
     @abstractmethod
     def all_pairs_distance(self, graph: AbstractGraph, state: Any = None) -> Array:
         pass
+
+
+def _windows(distances: Array, sources: Array, size: int) -> Array:
+    """The windows of `size` pixels a side centred on each source.
+
+    `distances` holds the distances from each source to every pixel, with
+    shape `(m, height, width)`; the result has shape `(m, size, size)`.
+    """
+    half, width = size // 2, distances.shape[-1]
+
+    def window(distances, source):
+        start = (source // width - half, source % width - half)
+        return jax.lax.dynamic_slice(distances, start, (size, size))
+
+    return jax.vmap(window)(distances, sources)
 
 
 @eqx.filter_jit

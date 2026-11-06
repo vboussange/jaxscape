@@ -1,14 +1,17 @@
-from functools import partial
+import math
+from collections.abc import Callable
+from functools import reduce
 from typing import Any, ClassVar, final
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import numpy as np
 from jax import Array, lax, ops
 from jax.experimental.sparse import BCOO
 
-from jaxscape.distance import AbstractDistance
-from jaxscape.graph import AbstractGraph
+from jaxscape.distance import _windows, AbstractDistance
+from jaxscape.graph import AbstractGraph, GridGraph
 
 
 @final
@@ -96,6 +99,38 @@ class LCPDistance(AbstractDistance):
             distances = bellman_ford_multi_sources(A, sources)
             return distances[:, targets]
 
+    def sources_to_windows_distance(
+        self, graph: GridGraph, sources: Array, size: int, state: Any = None
+    ) -> Array:
+        """Return the distances from each source to the pixels of its window.
+
+        As `AbstractDistance.sources_to_windows_distance`. With Bellman–Ford,
+        the relaxation rounds and the adjoint propagation of the gradient
+        shift the distance rasters of all sources by each neighbour offset of
+        `graph`, with the same values and gradients as the sparse edges. This
+        needs concrete `graph.neighbors`; when they are traced, as for a
+        `graph` passed into `jax.jit`, the query relaxes the sparse edges.
+
+        **Arguments:**
+
+        - `graph`: Grid graph on which to compute distances.
+        - `sources`: Source vertex indices with shape `(m,)`.
+        - `size`: Odd number of pixels along a side of the windows.
+        - `state`: Ignored.
+
+        **Returns:**
+
+        Distances with shape `(m, size, size)`.
+        """
+        offsets = None
+        if self.algorithm == "bellman-ford" and isinstance(graph, GridGraph):
+            offsets = _grid_offsets(graph)
+        if offsets is None:
+            return super().sources_to_windows_distance(graph, sources, size, state)
+        if size % 2 == 0:
+            raise ValueError("`size` must be odd.")
+        return _grid_windows(graph, sources, size, offsets)
+
     @eqx.filter_jit
     def all_pairs_distance(self, graph: AbstractGraph, state: Any = None) -> Array:
         del state
@@ -172,32 +207,8 @@ def bellman_ford_multi_sources(A: BCOO, sources: Array) -> Array:
         raise ValueError(
             "bellman-ford requires a square, unbatched scalar BCOO adjacency."
         )
-    if A.data.dtype not in (jnp.float32, jnp.float64):
-        raise ValueError("bellman-ford requires float32 or float64 conductances.")
-    if sources.ndim != 1 or not jnp.issubdtype(sources.dtype, jnp.integer):
-        raise ValueError("bellman-ford requires a 1D array of integer sources.")
-
     n = A.shape[0]
-    # Some devices flush subnormal inputs to zero in floating-point comparisons.
-    # Inspect the magnitude bits so a nonzero stored edge cannot become padding.
-    bits_dtype = jnp.uint32 if A.data.dtype == jnp.float32 else jnp.uint64
-    magnitude_bits = lax.bitcast_convert_type(A.data, bits_dtype) << 1
-    normal_threshold = jnp.array(1, dtype=bits_dtype) << (
-        jnp.finfo(A.data.dtype).nmant + 1
-    )
-    subnormal = (magnitude_bits != 0) & (magnitude_bits < normal_threshold)
-    data = eqx.error_if(
-        A.data,
-        jnp.any(subnormal),
-        "bellman-ford cannot represent reciprocal conductance costs when "
-        "subnormal conductances may flush to zero. Rescale them or use float64.",
-    )
-    data = eqx.error_if(
-        data,
-        jnp.any(~jnp.isfinite(data) | (data < 0)),
-        "bellman-ford requires finite positive present conductances; "
-        "zero conductance denotes an absent edge.",
-    )
+    data = _checked_conductances(A.data)
     present = data > 0
     in_bounds = jnp.all((A.indices >= 0) & (A.indices < n), axis=1)
     data = eqx.error_if(
@@ -208,16 +219,196 @@ def bellman_ford_multi_sources(A: BCOO, sources: Array) -> Array:
     # BCOO capacity padding may use out-of-range indices. Sanitize before any
     # gather or segment reduction; a zero entry never becomes a parallel edge.
     indices = jnp.where((present & in_bounds)[:, None], A.indices, 0)
+    return _bellman_ford_distance(data, _EdgeList(indices, n), _is_source(sources, n))
+
+
+def _grid_offsets(graph: GridGraph) -> tuple[tuple[int, int], ...] | None:
+    """The offsets `graph.neighbors` as static integers, or `None` when traced."""
+    try:
+        neighbors = np.asarray(graph.neighbors)
+    except jax.errors.TracerArrayConversionError:
+        return None
+    return tuple((int(dy), int(dx)) for dy, dx in neighbors)
+
+
+def _grid_bellman_ford(
+    graph: GridGraph, sources: Array, offsets: tuple[tuple[int, int], ...]
+) -> Array:
+    """Compute least-cost distances from multiple sources on a grid graph.
+
+    The same distances and gradients as `bellman_ford_multi_sources` on the
+    adjacency of `graph`, whose edges join the pixels `offsets` apart. The
+    relaxation and the adjoint propagation shift whole rasters by each offset.
+
+    **Arguments:**
+
+    - `graph`: Grid graph.
+    - `sources`: Integer vertex indices with shape `(s,)`.
+    - `offsets`: The rows of `graph.neighbors` (see `_grid_offsets`).
+
+    **Returns:**
+
+    Distances with shape `(s, height, width)`, zero at each source and infinity
+    if unreachable.
+    """
+    permeability = graph.grid
+    shape = permeability.shape
+    data = []
+    for offset in offsets:
+        # Edges into each pixel from the pixel `offset` before it. Pixels
+        # without that neighbour pair with themselves, so that `fun` sees real
+        # pixels, and their edge is absent.
+        inside = _shifted(jnp.ones(shape, bool), offset, False)
+        tail = jnp.where(inside, _shifted(permeability, offset, 0), permeability)
+        data.append(jnp.where(inside, graph.fun(tail, permeability), 0))
+    data = _checked_conductances(jnp.stack(data))
+    is_source = _is_source(sources, graph.nv).reshape(-1, *shape)
+    return _bellman_ford_distance(data, _GridEdges(offsets), is_source)
+
+
+@eqx.filter_jit
+def _grid_windows(
+    graph: GridGraph, sources: Array, size: int, offsets: tuple[tuple[int, int], ...]
+) -> Array:
+    """The windows of `size` pixels of `_grid_bellman_ford` around each source."""
+    return _windows(_grid_bellman_ford(graph, sources, offsets), sources, size)
+
+
+def _shifted(x: Array, offset: tuple[int, int], fill: Any) -> Array:
+    """`y[..., i, j] = x[..., i - dy, j - dx]` for `offset = (dy, dx)`, and `fill`
+    where `x` has no such entry."""
+    dy, dx = offset
+    padding = [(0, 0, 0)] * (x.ndim - 2) + [(dy, -dy, 0), (dx, -dx, 0)]
+    return lax.pad(x, jnp.asarray(fill, x.dtype), padding)
+
+
+def _checked_conductances(data: Array) -> Array:
+    """`data`, checked to hold finite, nonnegative, normal conductances."""
+    if data.dtype not in (jnp.float32, jnp.float64):
+        raise ValueError("bellman-ford requires float32 or float64 conductances.")
+    # Some devices flush subnormal inputs to zero in floating-point comparisons.
+    # Inspect the magnitude bits so a nonzero stored edge cannot become padding.
+    bits_dtype = jnp.uint32 if data.dtype == jnp.float32 else jnp.uint64
+    magnitude_bits = lax.bitcast_convert_type(data, bits_dtype) << 1
+    normal_threshold = jnp.array(1, dtype=bits_dtype) << (
+        jnp.finfo(data.dtype).nmant + 1
+    )
+    subnormal = (magnitude_bits != 0) & (magnitude_bits < normal_threshold)
+    data = eqx.error_if(
+        data,
+        jnp.any(subnormal),
+        "bellman-ford cannot represent reciprocal conductance costs when "
+        "subnormal conductances may flush to zero. Rescale them or use float64.",
+    )
+    return eqx.error_if(
+        data,
+        jnp.any(~jnp.isfinite(data) | (data < 0)),
+        "bellman-ford requires finite positive present conductances; "
+        "zero conductance denotes an absent edge.",
+    )
+
+
+def _is_source(sources: Array, n: int) -> Array:
+    """Mask of each source among `n` vertices, with shape `(s, n)`."""
+    if sources.ndim != 1 or not jnp.issubdtype(sources.dtype, jnp.integer):
+        raise ValueError("bellman-ford requires a 1D array of integer sources.")
     sources = eqx.error_if(
         sources,
         jnp.any((sources < 0) | (sources >= n)),
         "bellman-ford source indices must be within adjacency bounds.",
     )
-    return _bellman_ford_distance(data, indices, sources, n)
+    return jnp.arange(n)[None, :] == sources[:, None]
+
+
+class _EdgeList(eqx.Module):
+    """The stored edges of a graph of `n` vertices.
+
+    Vertex arrays have shape `(s, n)`, one row per source, and edge arrays
+    `(s, E)`: edge `e` goes from vertex `indices[e, 0]` to `indices[e, 1]`.
+    """
+
+    indices: Array
+    n: int = eqx.field(static=True)
+
+    # Each round gathers and scatters: check for convergence after each.
+    rounds_per_check: ClassVar[int] = 1
+
+    def tails(self, x: Array) -> Array:
+        return x[:, self.indices[:, 0]]
+
+    def heads(self, x: Array) -> Array:
+        return x[:, self.indices[:, 1]]
+
+    def min_into(self, x: Array) -> Array:
+        return ops.segment_min(x.T, self.indices[:, 1], num_segments=self.n).T
+
+    def sum_into(self, x: Array) -> Array:
+        return ops.segment_sum(x.T, self.indices[:, 1], num_segments=self.n).T
+
+    def sum_out_of(self, x: Array) -> Array:
+        return ops.segment_sum(x.T, self.indices[:, 0], num_segments=self.n).T
+
+
+class _GridEdges(eqx.Module):
+    """The edges of a grid graph, between the pixels `offsets` apart.
+
+    Vertex arrays have shape `(s, height, width)`, one raster per source, and
+    edge arrays `(s, k, height, width)`: entry `[:, k, i, j]` is the edge into
+    pixel `(i, j)` from pixel `(i - dy, j - dx)`, for `(dy, dx) = offsets[k]`.
+    """
+
+    offsets: tuple[tuple[int, int], ...] = eqx.field(static=True)
+
+    # A round is a few fused elementwise operations: check for convergence
+    # every few rounds. Rounds past convergence change nothing.
+    rounds_per_check: ClassVar[int] = 8
+
+    def tails(self, x: Array) -> Array:
+        return jnp.stack([_shifted(x, o, jnp.inf) for o in self.offsets], axis=1)
+
+    def heads(self, x: Array) -> Array:
+        return x[:, None]
+
+    def min_into(self, x: Array) -> Array:
+        return reduce(jnp.minimum, [x[:, k] for k in range(len(self.offsets))])
+
+    def sum_into(self, x: Array) -> Array:
+        return reduce(jnp.add, [x[:, k] for k in range(len(self.offsets))])
+
+    def sum_out_of(self, x: Array) -> Array:
+        return reduce(
+            jnp.add,
+            [
+                _shifted(x[:, k], (-dy, -dx), 0)
+                for k, (dy, dx) in enumerate(self.offsets)
+            ],
+        )
+
+
+_Edges = _EdgeList | _GridEdges
+
+
+def _fixed_point(step: Callable[[Array], Array], x: Array, edges: _Edges) -> Array:
+    """Apply `step` to `x` until it stops changing, at most once per vertex."""
+    n = math.prod(x.shape[1:])
+    rounds = edges.rounds_per_check
+
+    def apply(state):
+        iteration, previous, _ = state
+        updated = previous
+        for _ in range(rounds):
+            updated = step(updated)
+        return iteration + rounds, updated, jnp.any(updated != previous)
+
+    return lax.while_loop(
+        lambda state: (state[0] < n - 1) & state[2],
+        apply,
+        (jnp.int32(0), x, jnp.bool_(True)),
+    )[1]
 
 
 def _bellman_ford_solve(
-    data: Array, indices: Array, sources: Array, n: int
+    data: Array, edges: _Edges, is_source: Array
 ) -> tuple[Array, Array]:
     """Solve to an exact fixed point and check the final tight-edge DAG."""
     present = data > 0
@@ -233,25 +424,18 @@ def _bellman_ford_solve(
         "conductance costs. Rescale the conductances or use float64.",
     )
     costs = jnp.where(present, reciprocal, jnp.inf)
-    u, v = indices.T
-    distances = jnp.full((sources.size, n), jnp.inf, dtype=data.dtype)
-    distances = distances.at[jnp.arange(sources.size), sources].set(0)
+    distances = jnp.where(is_source, 0, jnp.inf).astype(data.dtype)
 
-    def relax(state):
-        iteration, previous, _ = state
-        candidates = previous[:, u] + costs[None, :]
-        best = ops.segment_min(candidates.T, v, num_segments=n).T
-        updated = jnp.minimum(previous, best)
-        return iteration + 1, updated, jnp.any(updated != previous)
+    def relax(previous):
+        best = edges.min_into(edges.tails(previous) + costs)
+        return jnp.minimum(previous, best)
 
-    _, distances, _ = lax.while_loop(
-        lambda state: (state[0] < n - 1) & state[2],
-        relax,
-        (jnp.int32(0), distances, jnp.bool_(True)),
-    )
+    # The bound of n - 1 rounds holds: the first changes nothing past
+    # convergence, which is exact.
+    distances = _fixed_point(relax, distances, edges)
 
-    before, after = distances[:, u], distances[:, v]
-    tight = present[None, :] & jnp.isfinite(after) & (before + costs == after)
+    before, after = edges.tails(distances), edges.heads(distances)
+    tight = present & jnp.isfinite(after) & (before + costs == after)
     distances, tight = eqx.error_if(
         (distances, tight),
         jnp.any(tight & ~(before < after)),
@@ -259,14 +443,10 @@ def _bellman_ford_solve(
         "every reachable tight edge. A positive cost rounded away; rescale "
         "the conductances or use float64.",
     )
-    tight = tight & (v[None, :] != sources[:, None])
-    counts = ops.segment_sum(tight.T.astype(data.dtype), v, num_segments=n).T
-    shares = tight.astype(data.dtype) / jnp.maximum(counts[:, v], 1)
-    missing = (
-        jnp.isfinite(distances)
-        & (jnp.arange(n)[None, :] != sources[:, None])
-        & (counts == 0)
-    )
+    tight = tight & ~edges.heads(is_source)
+    counts = edges.sum_into(tight.astype(data.dtype))
+    shares = tight.astype(data.dtype) / jnp.maximum(edges.heads(counts), 1)
+    missing = jnp.isfinite(distances) & ~is_source & (counts == 0)
     # Attach checks to both outputs: a value-only call may discard shares, while
     # a gradient-only call may discard distances after the custom-VJP forward.
     return eqx.error_if(
@@ -277,19 +457,17 @@ def _bellman_ford_solve(
     )
 
 
-@partial(jax.custom_vjp, nondiff_argnums=(3,))
-def _bellman_ford_distance(
-    data: Array, indices: Array, sources: Array, n: int
-) -> Array:
-    return _bellman_ford_solve(data, indices, sources, n)[0]
+@jax.custom_vjp
+def _bellman_ford_distance(data: Array, edges: _Edges, is_source: Array) -> Array:
+    return _bellman_ford_solve(data, edges, is_source)[0]
 
 
-def _bellman_ford_forward(data, indices, sources, n):
-    distances, shares = _bellman_ford_solve(data, indices, sources, n)
-    return distances, (data, indices, shares)
+def _bellman_ford_forward(data, edges, is_source):
+    distances, shares = _bellman_ford_solve(data, edges, is_source)
+    return distances, (data, edges, shares)
 
 
-def _bellman_ford_backward(n, residual, cotangent):
+def _bellman_ford_backward(residual, cotangent):
     # For each source s, let T(v) be all tight incoming edges, and let
     # alpha_uv = 1 / |T(v)| on T(v), zero elsewhere. The selected linearization
     # of the hard shortest-path objective is
@@ -312,23 +490,15 @@ def _bellman_ford_backward(n, residual, cotangent):
     # lambda <- g + B lambda. This holds for arbitrary finite signed g.
     # Finally c_uv = 1/a_uv gives dL/da_uv = -alpha_uv lambda_v / a_uv^2;
     # shared conductances receive the sum of these contributions over sources.
-    data, indices, shares = residual
-    u, v = indices.T
+    data, edges, shares = residual
 
-    def propagate(state):
-        iteration, previous, _ = state
-        contributions = previous[:, v] * shares
-        updated = cotangent + ops.segment_sum(contributions.T, u, num_segments=n).T
-        return iteration + 1, updated, jnp.any(updated != previous)
+    def propagate(previous):
+        return cotangent + edges.sum_out_of(edges.heads(previous) * shares)
 
     # The strictly ordered tight graph is acyclic, so lambda = g + B lambda
     # reaches its fixed point within n - 1 updates, including signed g.
-    _, adjoint, _ = lax.while_loop(
-        lambda state: (state[0] < n - 1) & state[2],
-        propagate,
-        (jnp.int32(0), cotangent, jnp.bool_(True)),
-    )
-    flow = jnp.sum(adjoint[:, v] * shares, axis=0)
+    adjoint = _fixed_point(propagate, cotangent, edges)
+    flow = jnp.sum(edges.heads(adjoint) * shares, axis=0)
     # Zero-flow edges, including absent entries, have zero derivative. Mask
     # their denominator before arithmetic so unused tiny conductances stay safe.
     safe_data = jnp.where((data > 0) & (flow != 0), data, 1)
