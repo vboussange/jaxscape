@@ -51,11 +51,11 @@ curl -sL https://github.com/vboussange/jaxscape/releases/download/v0.0.6/data.zi
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
-from jaxscape import GridGraph, LCPDistance, ResistanceDistance
+from jaxscape import FreeEnergyDistance, GridGraph, LCPDistance, ResistanceDistance
 
 permeability = jnp.array(
     np.loadtxt("data/permeability.csv", delimiter=","), dtype=jnp.float32
-) + 0.001
+) + 0.01
 barriers = np.asarray(permeability <= 0.1)
 
 # Symmetric conductances are the mean permeability of neighboring cells.
@@ -66,12 +66,13 @@ source = grid.coord_to_index(jnp.array([0]), jnp.array([0]))
 distances = {
     "LCP distance": LCPDistance()(grid, sources=source),
     "Resistance distance": ResistanceDistance()(grid, sources=source),
+    "Free-energy distance": FreeEnergyDistance(theta=0.03)(grid, sources=source),
 }
 
 distance_cmap = plt.cm.magma.copy()
 distance_cmap.set_bad(color="lightgray")
 
-fig, axs = plt.subplots(1, 3, figsize=(9, 3.3))
+fig, axs = plt.subplots(1, 4, figsize=(12, 3.3))
 
 permeability_im = axs[0].imshow(permeability, cmap="gray", vmin=0, vmax=1)
 axs[0].set_xticks([])
@@ -99,7 +100,11 @@ plt.show()
 
 The example runs in float32. `ResistanceDistance()` solves the grid graph
 with its default solver, `GridMultigridSolver`, on CPU or GPU, without an
-optional dependency. The
+optional dependency. `theta` is the inverse temperature of the free-energy
+distance: larger values bring it closer to the least-cost distance. In float32
+on this grid, `theta` from 0.01 to 0.1 resolves every distance: below, the
+linear system is nearly singular, and above, distances into the barriers
+underflow. The
 [solver guide](https://vboussange.github.io/jaxscape/api/linear_solvers/)
 covers solver choices for other graphs and larger landscapes.
 

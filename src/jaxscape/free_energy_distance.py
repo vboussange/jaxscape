@@ -27,6 +27,10 @@ class FreeEnergyDistance(AbstractSolverDistance):
       differentiable with respect to `theta`.
     - `solver`: Optional Lineax solver, with the same options as
       `ResistanceDistance`. `None` uses a dense solve, suitable for small graphs.
+      Larger graphs need a direct solver, `CholmodSolver` on CPU and
+      `CuDSSSolver` on GPU: iterative solvers, `GridMultigridSolver` included,
+      need tolerances far below their defaults to resolve distant entries. See
+      [Choosing a solver](linear_solvers.md#choosing-a-solver).
 
     For conductances $a_{ij}$, let $c_{ij}=1/a_{ij}$ on present edges,
     $P_{ij}=a_{ij}/\sum_k a_{ik}$, and $Z=(I-P\odot e^{-\theta C})^{-1}$.

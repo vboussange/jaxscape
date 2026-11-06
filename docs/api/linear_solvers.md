@@ -27,27 +27,42 @@ gradient, on a smooth permeability over two decades with a barrier at `1e-3`;
 errors are relative to float64. Times are those of warm runs, medians of three
 for the inverse benchmark, at the default `rtol=1e-5` unless stated.
 
-Choose another solver in these cases:
+### Choosing a solver
 
-- Graphs other than grid graphs, on which the default raises. On CPU, use
-  `CholmodSolver` when a sparse factorization fits in memory, and
-  `PyAMGSolver` when factorization storage is too costly. On an NVIDIA GPU, use
-  `CuDSSSolver` when a sparse Cholesky factorization fits in GPU memory. For
-  other JIT-compiled CPU or GPU execution, use Lineax CG, or `AMJaxCGSolver`
-  when a reusable algebraic multigrid preconditioner helps convergence; AMJax
-  setup runs on CPU.
-- Float64 on an NVIDIA GPU: `CuDSSSolver` took 55 ms where the multigrid took
-  182 ms in the table above.
-- Small graphs of any kind: `solver=None` takes the pseudo-inverse of the dense
-  Laplacian for exact all-pairs and nodes-to-nodes queries, and a dense
-  Cholesky factorization of the grounded Laplacian for other queries. Its
-  memory grows with the square of the number of vertices. In float32, the
-  pseudo-inverse loses accuracy: on a grid of 24 x 40 pixels with conductances
-  over two decades, its all-pairs resistances had a relative error of 40 %
-  against float64, and those of the default `2.6e-6`. Use it in float64.
-- Exact windowed analyses on a CPU. Their window queries solve for every
-  vertex of a tile, and a direct solver reuses one factorization for all of
-  them, where conjugate gradients iterate for each.
+| Distance and query | GPU | CPU |
+|---|---|---|
+| `ResistanceDistance`, few sources and targets: `nodes_to_nodes_distance`, inverse fitting, `SpielmanApproximation` | `GridMultigridSolver`, the default; `CuDSSSolver` in float64 | `GridMultigridSolver`, the default |
+| `ResistanceDistance`, one or all sources to every vertex: `all_pairs_distance`, exact windowed analyses | `solver=None` up to about 5,000 vertices per graph or tile, `GridMultigridSolver` above | `solver=None` up to about 5,000 vertices, `CholmodSolver` above |
+| `FreeEnergyDistance` | `solver=None`, the default, for small graphs; `CuDSSSolver` above | `solver=None` for small graphs; `CholmodSolver` above |
+| Graphs other than grid graphs | `CuDSSSolver` | `CholmodSolver` |
+
+Memory decides first. `solver=None` holds dense matrices of the size of the
+graph squared, 1.6 GB in float32 at 20,000 vertices, and so fits small graphs
+only. `GridMultigridSolver` holds a few arrays of the size of the graph per
+right-hand side. Direct solvers hold a sparse factorization: `CuDSSSolver` used
+about 0.7 GB of GPU memory on a grid of 827,000 vertices. When a factorization does
+not fit, use `AMJaxCGSolver` on a GPU and `PyAMGSolver` on a CPU.
+
+Measured on an RTX 3090 and two AMD EPYC 7742, in float32 with values and
+gradients unless stated:
+
+- Few sources and targets: on the GPU, the resistances among 20 nodes of a
+  grid of 10,000 vertices took 5.7 ms with the default, against 9.5 s for the pseudo-inverse
+  of `solver=None`; the tables above compare the other solvers.
+- One source to every vertex, whose query solves for every vertex: on the GPU,
+  `solver=None` took 85 ms at 5,000 vertices and 2.6 s at 20,000, against
+  80 ms and 0.81 s for the default and 0.13 s and 1.3 s for `CuDSSSolver`. On
+  the CPU at 10,000 vertices, `CholmodSolver` took 7.1 s, against 15 s for
+  `solver=None` and 17 s for the default, whose conjugate gradients iterate for
+  each vertex.
+- `FreeEnergyDistance` in float64, values only, on a grid of 10,000 vertices,
+  `theta` 0.03:
+  the distances among 20 nodes took 2.5 ms with `CuDSSSolver` and 98 ms with
+  `CholmodSolver`, against 1.4 s and 7.1 s for dense solves, and those from one
+  source to every vertex 0.48 s and 10 s, against 5.3 s and 13 s. Iterative
+  solvers need tolerances far below their defaults to resolve its distant
+  entries: `GridMultigridSolver` at its default `rtol` failed its check of
+  resolved entries. In float32, only short distances resolve.
 
 The exact windowed analyses below ran on a smooth raster of 200 x 200 pixels,
 with `dependency_range=20`, `coarsening_factor=0.25` and `batch_size=64`: 25
@@ -73,7 +88,7 @@ Windowed analyses raise permeability to a floor, so that their graphs are
 connected.
 
 `FreeEnergyDistance()` solves with dense solves by default, `solver=None`,
-which suits small graphs; it takes the same solvers.
+which suits small graphs; above, use a direct solver, as the table says.
 
 Solver tolerances depend on the workload and precision. Check accuracy for your
 queries; solver convergence alone does not establish accurate distances.

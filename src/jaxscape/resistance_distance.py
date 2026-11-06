@@ -65,8 +65,10 @@ class ResistanceDistance(AbstractSolverDistance):
       which solve for every vertex of a tile, took up to three times longer on
       a CPU than with `solver=None`. Other graphs raise with the default: pass
       `jaxscape.solvers.CholmodSolver`, `PyAMGSolver`, `AMJaxCGSolver` or
-      `CuDSSSolver` (see [Linear solvers](linear_solvers.md)), or
-      `solver=None`. Without a solver, exact all-pairs and nodes-to-nodes
+      `CuDSSSolver`, or `solver=None`. The solver guide gives the solver of
+      each device and query
+      ([Choosing a solver](linear_solvers.md#choosing-a-solver)). Without a
+      solver, exact all-pairs and nodes-to-nodes
       queries take the pseudo-inverse of the dense Laplacian, and other
       queries a dense Cholesky factorization of the grounded Laplacian: their
       memory grows with the square of the number of vertices, which suits
