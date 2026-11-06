@@ -239,17 +239,17 @@ def _permeability_calibration(
         graph = GridGraph(permeability, fun=_average)
         return distance.sources_to_windows_distance(graph, centre, size, state)[0]
 
-    # One window query, whose pullback takes both cotangents.
+    # One window query, whose pullback takes both cotangents at once.
     distances, pullback = jax.vjp(window, graph.grid)
     proximity = distance.debiased_proximity(windowed.proximity, graph)
     ones = jnp.ones_like(graph.grid)
 
-    def gradient(block):
+    def cotangent(block):
         excluded = _excluded(windowed, block)
-        cotangent = jax.grad(_window_sum, 1)(proximity, distances, ones, excluded)
-        return pullback(cotangent)[0]
+        return jax.grad(_window_sum, 1)(proximity, distances, ones, excluded)
 
-    pixels, far = gradient(False), gradient(True)
+    cotangents = jnp.stack([cotangent(False), cotangent(True)])
+    pixels, far = jax.vmap(pullback)(cotangents)[0]
     far = jnp.where(jnp.abs(far) > 1e-6 * jnp.max(jnp.abs(far)), far, 0)
     return (pixels, far), state
 

@@ -9,6 +9,7 @@ import pytest
 from jax.core import Tracer
 from jax.scipy.signal import convolve2d
 from jaxscape import (
+    connectivity_analysis,
     ConnectivityAnalysis,
     EuclideanDistance,
     FreeEnergyDistance,
@@ -589,6 +590,21 @@ def test_coarsened_analyses_cover_the_raster(name, request):
         sensitivity = coarsened(SensitivityAnalysis).run(var)
         assert sensitivity.shape == QUALITY.shape
         assert jnp.all(jnp.isfinite(sensitivity)) and jnp.any(sensitivity != 0)
+
+
+def test_the_block_calibration_pulls_back_both_gradients_at_once():
+    # The gradients of one window query with and without the pairs within the
+    # block: the dense Cholesky factor is solved twice for the query and twice
+    # for one backward pass of both cotangents.
+    sensitivity = make(
+        SensitivityAnalysis,
+        ResistanceDistance(method=SPIELMAN),
+        coarsening_factor=0.5,
+    )
+    calibration = connectivity_analysis._permeability_calibration
+    program = jax.jit(lambda: calibration(sensitivity, sensitivity.window_state))
+    text = str(program.lower().compile().as_text())
+    assert text.count("trsm") + text.count("triangularSolve") == 4
 
 
 @pytest.mark.parametrize("name", ["lcp", "resistance-dense"])
