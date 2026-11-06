@@ -90,10 +90,11 @@ class GridMultigridSolver(AbstractReusableStateSolver):
 
     On the 894 x 925 grid of the Maryland land cover of the connectivity
     analysis example, with conductances from `1e-4` to 1, on an RTX 3090 in
-    float32, the hierarchy took 3 ms, and 64 right-hand sides of
-    `SpielmanApproximation` took 61 ms at `rtol=1e-3` (8 iterations), 98 ms at
-    `3e-4` (13), 134 ms at `1e-4` (18) and 199 ms at `1e-5` (27), against an
-    analysis of 5 s and solves of 65 ms with `CuDSSSolver`. Against float64,
+    float32, the hierarchy took 2.3 ms, and a solve of 64 right-hand sides of
+    `SpielmanApproximation`, which builds it, took 63 ms at `rtol=1e-3` (8
+    iterations), 106 ms at `3e-4` (13), 143 ms at `1e-4` (18) and 201 ms at
+    `1e-5` (27), against an analysis of 5.2 s and solves of 58 ms with
+    `CuDSSSolver`. Against float64,
     the proximity-weighted errors of the resistances of the windows of 8
     sources were 8.6 % at `rtol=1e-3`, 1.5 % at `3e-4`, 0.06 % at `3e-5`, and
     1.0 % with `CuDSSSolver` in float32: resistances to pixels behind barriers

@@ -5,6 +5,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+import scipy.sparse
+import scipy.sparse.linalg
 from jax.experimental.sparse import BCOO
 from jaxscape import (
     ConnectivityAnalysis,
@@ -68,6 +70,61 @@ def test_solves_match_dense_solves(shape, neighbors):
     scale = float(np.max(np.abs(expected)))
     np.testing.assert_allclose(one, expected[:, 0], rtol=0, atol=1e-9 * scale)
     np.testing.assert_allclose(batch, expected, rtol=0, atol=1e-9 * scale)
+
+
+@eqx.filter_jit
+def grids_one_after_another(state):
+    """The stencils of the grids of the multigrid hierarchy of `state`, and the
+    interpolation weights from each coarse grid, each built from the grid
+    before it in arrays of its own shape."""
+    offsets, stencil = state.offsets, state.stencil
+    stencils, interpolations = [stencil], []
+    while stencil[0].size > 1024:
+        coarse = ((stencil[0].shape[0] + 1) // 2, (stencil[0].shape[1] + 1) // 2)
+        weights = gridmultigridsolver._interpolation(offsets, stencil)
+        stencil = gridmultigridsolver._galerkin(offsets, stencil, weights, coarse)
+        offsets = gridmultigridsolver._QUEEN
+        stencils.append(stencil)
+        interpolations.append(weights)
+    return stencils, interpolations
+
+
+@pytest.mark.parametrize(
+    "neighbors", [ROOK_CONTIGUITY, QUEEN_CONTIGUITY], ids=["rook", "queen"]
+)
+def test_hierarchies_of_four_grids_match_grids_built_one_after_another(neighbors):
+    # A grid of 129 x 131 pixels has three coarse grids, of odd and even
+    # sides: 65 x 66, 33 x 33 and 17 x 17. One loop builds the last two, in
+    # arrays of the shape of the first.
+    matrix = system_matrix(landscape((129, 131)), neighbors)
+    # Measured: 41 iterations for rook contiguity, 17 for queen.
+    solver = GridMultigridSolver(rtol=1e-12, max_steps=60)
+    state = solver.init(BCOOLinearOperator(matrix), {})
+    hierarchy = gridmultigridsolver._hierarchy(state)
+
+    shapes = [s[0].shape for s in hierarchy.stencils]
+    assert shapes == [(129, 131), (65, 66), (33, 33), (17, 17)]
+    actual = jax.tree.leaves((hierarchy.stencils, hierarchy.interpolations))
+    expected = jax.tree.leaves(grids_one_after_another(state))
+    for a, e in zip(actual, expected, strict=True):
+        assert a.shape == e.shape
+        scale = float(jnp.max(jnp.abs(e)))
+        np.testing.assert_allclose(a, e, rtol=1e-12, atol=1e-14 * scale)
+
+    # Solves against a sparse direct solve.
+    n = matrix.shape[0]
+    indices = np.asarray(matrix.indices)
+    stored = np.all((indices >= 0) & (indices < n), axis=1)
+    rows, columns = indices[stored].T
+    data = np.asarray(matrix.data)[stored]
+    reference = scipy.sparse.csc_matrix((data, (rows, columns)), shape=(n, n))
+    b = np.random.default_rng(1).standard_normal((n, 2))
+    expected = scipy.sparse.linalg.spsolve(reference, b)
+    actual = jax.jit(lambda b: _batched_linear_solve(matrix, b, solver, state=state))(
+        jnp.asarray(b)
+    )
+    scale = float(np.max(np.abs(expected)))
+    np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-9 * scale)
 
 
 def test_float32_solves_converge_in_few_iterations():
@@ -288,8 +345,9 @@ def test_programs_trace_the_hierarchy_once(monkeypatch):
         traces.append(1)
         return interpolation(*args)
 
+    jax.clear_caches()
     monkeypatch.setattr(gridmultigridsolver, "_interpolation", counted)
-    # A grid of 37 x 43 pixels has one coarse grid, and no other test uses it.
+    # A grid of 37 x 43 pixels has one coarse grid.
     conductance = landscape((37, 43)).astype(jnp.float32)
     method = SpielmanApproximation(epsilon=0.5, projection_batch_size=8)
     distance = ResistanceDistance(solver=GridMultigridSolver(), method=method)
@@ -305,9 +363,9 @@ def test_programs_trace_the_hierarchy_once(monkeypatch):
 
 
 def test_the_hierarchy_traces_the_coarse_grids_after_the_first_once(monkeypatch):
-    # A grid of 130 x 140 pixels has three coarse grids before one of at most
-    # 1024 points: the first from the rook stencil, the others from queen
-    # stencils of padded grids, in one loop.
+    # A grid of 130 x 140 pixels has three coarse grids, the last of 17 x 18,
+    # at most 1024 points: the first from the rook stencil, the others from
+    # queen stencils of padded grids, in one loop.
     traces = []
     galerkin = gridmultigridsolver._galerkin
 
@@ -315,6 +373,7 @@ def test_the_hierarchy_traces_the_coarse_grids_after_the_first_once(monkeypatch)
         traces.append(1)
         return galerkin(*args)
 
+    jax.clear_caches()
     monkeypatch.setattr(gridmultigridsolver, "_galerkin", counted)
     distance = ResistanceDistance(solver=GridMultigridSolver())
     state = distance.init(GridGraph(landscape((130, 140)), fun=avg))
