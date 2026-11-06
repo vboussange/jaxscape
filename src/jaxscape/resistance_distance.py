@@ -28,9 +28,15 @@ _UNCHUNKED_POTENTIALS = 2**22
 # gradient. Sparse direct solvers reach their full throughput from a few hundred
 # columns on.
 _TARGET_CHUNK_SIZE = 1024
-# Spielman window queries take the differences of about this many potentials
-# at once, and again for the gradient.
+# Spielman window queries take the squared differences of about this many
+# potentials at once, from windows of up to `_LARGEST_GATHERED_WINDOW`
+# differences, and from larger windows one at a time: XLA gathers several large
+# windows more slowly than it slices one. With 64 projections on an RTX 3090,
+# 1225 windows of 201 pixels a side took 27 ms one at a time and 53 ms two or
+# more at a time, and 4096 windows of 41 pixels a side 62 ms one at a time and
+# 8 ms 64 at a time.
 _WINDOW_DIFFERENCES_PER_STEP = 2**24
+_LARGEST_GATHERED_WINDOW = 2**18
 
 
 class ResistanceDistance(AbstractSolverDistance):
@@ -1077,7 +1083,10 @@ def _spielman_windows_fwd(
         signs = _signs(key, projections, k, data.shape[0]).astype(data.dtype)
         projection = _project_incidence(signs, data, indices, shape, k)
         potentials = _solve(system, projection.T, solver).reshape(*grid, -1)
-        per_step = max(1, _WINDOW_DIFFERENCES_PER_STEP // (size**2 * signs.shape[0]))
+        differences = size**2 * signs.shape[0]
+        per_step = max(1, _WINDOW_DIFFERENCES_PER_STEP // differences)
+        if differences > _LARGEST_GATHERED_WINDOW:
+            per_step = 1
         squares = lax.map(
             lambda source: window(potentials, *source),
             (rows, columns),
