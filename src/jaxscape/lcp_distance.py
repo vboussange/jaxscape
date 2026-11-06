@@ -1,6 +1,6 @@
 import math
 from collections.abc import Callable
-from functools import reduce
+from functools import partial, reduce
 from typing import Any, ClassVar, final
 
 import equinox as eqx
@@ -116,8 +116,10 @@ class LCPDistance(AbstractDistance):
         edges, exactly, and the gradients the same to rounding. On an RTX 3090
         in float32, the connectivity, permeability sensitivity and flat
         permeability sensitivity of the connectivity analysis example (1260
-        windows of 201 x 201 pixels) took 0.6, 1.1 and 0.6 s, against 4.3,
-        5.9 and 2.5 s with sparse edges.
+        windows of 201 x 201 pixels) took 0.6, 1.0 and 0.6 s, against 4.3,
+        5.9 and 2.5 s with sparse edges. On CPUs, the connectivity and
+        permeability sensitivity of a random raster of 200 x 200 pixels with
+        `dependency_range` 20 took 16 and 49 s, against 65 and 108 s.
 
         Rounds cannot be fewer: each distance is the sum of the edge costs of
         a shortest path, rounded after each edge, which the backward pass
@@ -297,6 +299,27 @@ def _shifted(x: Array, offset: tuple[int, int], fill: Any) -> Array:
     return lax.pad(x, jnp.asarray(fill, x.dtype), padding)
 
 
+def _shifter(
+    x: Array, fill: Any, reach: int, sliced: bool
+) -> Callable[[tuple[int, int]], Array]:
+    """The function that shifts `x` as `_shifted` by offsets of at most `reach`.
+
+    If `sliced`, it slices `x` padded once, which an optimization barrier keeps
+    from being fused into each shift.
+    """
+    if not sliced:
+        return lambda offset: _shifted(x, offset, fill)
+    height, width = x.shape[-2:]
+    padding = [(0, 0)] * (x.ndim - 2) + [(reach, reach)] * 2
+    padded = lax.optimization_barrier(jnp.pad(x, padding, constant_values=fill))
+
+    def shifted(offset):
+        top, left = reach - offset[0], reach - offset[1]
+        return padded[..., top : top + height, left : left + width]
+
+    return shifted
+
+
 def _checked(x: Any, *checks: tuple[Array, str]) -> Any:
     """`x`, which raises the message of the first check whose mask holds `True`.
 
@@ -411,6 +434,10 @@ class _GridEdges(eqx.Module):
     step. With eight neighbours, two rounds hold 64 walks: they save 7 % of
     the time for 7 times the compilation, and a step runs one round. Two
     adjoint updates per step gained nothing.
+
+    GPUs shift rasters with padding operations, which bound-check every read.
+    On CPUs, which vectorize those reads poorly, a step pads its rasters once
+    and slices them: 20 to 40 times faster there, and 2 times slower on GPUs.
     """
 
     offsets: tuple[tuple[int, int], ...] = eqx.field(static=True)
@@ -461,28 +488,56 @@ class _GridEdges(eqx.Module):
         each pixel of their costs, added in walk order to the distance of their
         start: exactly the same distances.
         """
-        best = distances
-        for length in range(1, self.relax_rounds + 1):
-            for walk in self.walks(length):
-                (row, column) = end = walk[-1][1]
-                total = _shifted(distances, end, jnp.inf)
-                for k, (dy, dx) in walk:
-                    # The cost of edge k at its head, `end - head` before
-                    # the end of the walk.
-                    total = total + _shifted(costs[k], (row - dy, column - dx), jnp.inf)
-                best = jnp.minimum(best, total)
-        return best
+
+        def relax(distances, costs, sliced):
+            reach = self.relax_rounds * self.reach
+            shifted = _shifter(distances, jnp.inf, reach, sliced)
+            shifted_costs = _shifter(costs, jnp.inf, reach, sliced)
+            best = distances
+            for length in range(1, self.relax_rounds + 1):
+                for walk in self.walks(length):
+                    (row, column) = end = walk[-1][1]
+                    total = shifted(end)
+                    for k, (dy, dx) in walk:
+                        # The cost of edge k at its head, `end - head` before
+                        # the end of the walk.
+                        total = total + shifted_costs((row - dy, column - dx))[k]
+                    best = jnp.minimum(best, total)
+            return best
+
+        return lax.platform_dependent(
+            distances,
+            costs,
+            cpu=partial(relax, sliced=True),
+            default=partial(relax, sliced=False),
+        )
 
     def propagate(
         self, adjoint: Array, cotangent: Array, tight: Array, share: Array
     ) -> Array:
         """One update `lambda <- g + B lambda` of the adjoint."""
-        along_tight = jnp.where(tight, self.heads(adjoint * share), 0)
-        flows = [
-            _shifted(along_tight[:, k], (-dy, -dx), 0)
-            for k, (dy, dx) in enumerate(self.offsets)
-        ]
-        return cotangent + reduce(jnp.add, flows)
+
+        def propagate(scaled, tight, sliced):
+            # alpha_uv lambda_v on the edge from each pixel to its neighbour v.
+            shifted = _shifter(scaled, 0, self.reach, sliced)
+            shifted_tight = _shifter(tight, False, self.reach, sliced)
+            flows = [
+                jnp.where(shifted_tight((-dy, -dx))[:, k], shifted((-dy, -dx)), 0)
+                for k, (dy, dx) in enumerate(self.offsets)
+            ]
+            return cotangent + reduce(jnp.add, flows)
+
+        return lax.platform_dependent(
+            adjoint * share,
+            tight,
+            cpu=partial(propagate, sliced=True),
+            default=partial(propagate, sliced=False),
+        )
+
+    @property
+    def reach(self) -> int:
+        """The largest offset of a neighbour along an axis."""
+        return max(max(abs(dy), abs(dx)) for dy, dx in self.offsets)
 
 
 _Edges = _EdgeList | _GridEdges
