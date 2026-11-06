@@ -231,11 +231,12 @@ class WindowedAnalysis(eqx.Module):
     distance, graph shape and dtype, they keep the latest state, which the
     next run, or calibration of the block correction on a window, starts from
     and replaces. Randomized distances share the states of the exact
-    distances that they estimate. An analysis builds a state, on a graph of
-    uniform permeability, only for a shape without one, so that a sparse
-    direct solver analyses each sparsity pattern once, however many analyses
-    and runs use it. Queries reinitialize the state they receive: the results
-    do not depend on the state that a run starts from. The states of the 8
+    distances that they estimate. A windowed analysis builds a state, on a
+    graph of uniform permeability, only for a shape without one, so that a
+    sparse direct solver analyses each sparsity pattern once, however many
+    windowed analyses and runs use it. Queries reinitialize the state they
+    receive: up to rounding, the results do not depend on the state that a
+    run starts from. The states of the 8
     most recently used distances and shapes are kept. Distances that cannot
     be hashed, such as those with an `AMJaxCGSolver`, keep the state that
     each analysis builds, which its runs start from. Every run reuses the
