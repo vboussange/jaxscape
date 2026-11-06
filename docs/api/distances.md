@@ -20,7 +20,8 @@
 
 ::: jaxscape.lcp_distance.LCPDistance
     options:
-      members: false
+      members:
+        - sources_to_windows_distance
 
 ::: jaxscape.resistance_distance.ResistanceDistance
     options:

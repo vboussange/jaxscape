@@ -22,8 +22,10 @@ class LCPDistance(AbstractDistance):
     For `V` vertices, `E` stored edges and `S` requested sources:
 
     - **Bellman–Ford** (default): Relaxes sparse edges until distances stop
-      changing. Each round costs O(S(V + E)), with at most V − 1 rounds. Favor it
-      for sparse graphs or a small number of sources.
+      changing. Each round costs O(S(V + E)), and it takes one round more than
+      the most edges on a shortest path, at most V − 1. Favor it for sparse
+      graphs or a small number of sources. Window queries on a `GridGraph`
+      relax the grid by shifting rasters (see `sources_to_windows_distance`).
     - **Floyd–Warshall**: Computes a dense all-pairs distance matrix by considering
       each vertex as an intermediate stop. Costs O(V³) time, even when requesting
       only selected pairs. Favor it for small dense graphs when most or all pairs
@@ -105,11 +107,25 @@ class LCPDistance(AbstractDistance):
         """Return the distances from each source to the pixels of its window.
 
         As `AbstractDistance.sources_to_windows_distance`. With Bellman–Ford,
-        the relaxation rounds and the adjoint propagation of the gradient
-        shift the distance rasters of all sources by each neighbour offset of
-        `graph`, with the same values and gradients as the sparse edges. This
-        needs concrete `graph.neighbors`; when they are traced, as for a
-        `graph` passed into `jax.jit`, the query relaxes the sparse edges.
+        a relaxation round shifts the distance rasters of all sources by each
+        neighbour offset of `graph`, adds the edge costs and takes elementwise
+        minima: a few fused operations, without the gathers and scatters of
+        sparse edges, which are slow on GPUs. With four neighbours, one
+        expression runs two rounds. The adjoint propagation of the gradient
+        shifts rasters the same way. The distances are those of the sparse
+        edges, exactly, and the gradients the same to rounding. On an RTX 3090
+        in float32, the connectivity, permeability sensitivity and flat
+        permeability sensitivity of the connectivity analysis example (1260
+        windows of 201 x 201 pixels) took 0.6, 1.1 and 0.6 s, against 4.3,
+        5.9 and 2.5 s with sparse edges.
+
+        Rounds cannot be fewer: each distance is the sum of the edge costs of
+        a shortest path, rounded after each edge, which the backward pass
+        relies on to find the edges of shortest paths. Sweeps along rows and
+        columns as prefix scans would add costs in another order.
+
+        The query needs concrete `graph.neighbors`; when they are traced, as
+        for a `graph` passed into `jax.jit`, it relaxes the sparse edges.
 
         **Arguments:**
 
@@ -208,18 +224,17 @@ def bellman_ford_multi_sources(A: BCOO, sources: Array) -> Array:
             "bellman-ford requires a square, unbatched scalar BCOO adjacency."
         )
     n = A.shape[0]
-    data = _checked_conductances(A.data)
-    present = data > 0
+    present = A.data > 0
     in_bounds = jnp.all((A.indices >= 0) & (A.indices < n), axis=1)
-    data = eqx.error_if(
-        data,
-        jnp.any(present & ~in_bounds),
+    out_of_bounds = (
+        present & ~in_bounds,
         "bellman-ford requires present-edge indices within adjacency bounds.",
     )
+    data, is_source = _checked_inputs(A.data, sources, n, out_of_bounds)
     # BCOO capacity padding may use out-of-range indices. Sanitize before any
     # gather or segment reduction; a zero entry never becomes a parallel edge.
     indices = jnp.where((present & in_bounds)[:, None], A.indices, 0)
-    return _bellman_ford_distance(data, _EdgeList(indices, n), _is_source(sources, n))
+    return _bellman_ford_distance(data, _EdgeList(indices, n), is_source)
 
 
 def _grid_offsets(graph: GridGraph) -> tuple[tuple[int, int], ...] | None:
@@ -261,8 +276,8 @@ def _grid_bellman_ford(
         inside = _shifted(jnp.ones(shape, bool), offset, False)
         tail = jnp.where(inside, _shifted(permeability, offset, 0), permeability)
         data.append(jnp.where(inside, graph.fun(tail, permeability), 0))
-    data = _checked_conductances(jnp.stack(data))
-    is_source = _is_source(sources, graph.nv).reshape(-1, *shape)
+    data, is_source = _checked_inputs(jnp.stack(data), sources, graph.nv)
+    is_source = is_source.reshape(-1, *shape)
     return _bellman_ford_distance(data, _GridEdges(offsets), is_source)
 
 
@@ -282,10 +297,28 @@ def _shifted(x: Array, offset: tuple[int, int], fill: Any) -> Array:
     return lax.pad(x, jnp.asarray(fill, x.dtype), padding)
 
 
-def _checked_conductances(data: Array) -> Array:
-    """`data`, checked to hold finite, nonnegative, normal conductances."""
+def _checked(x: Any, *checks: tuple[Array, str]) -> Any:
+    """`x`, which raises the message of the first check whose mask holds `True`.
+
+    One branched check compiles faster than one check each.
+    """
+    failed = jnp.stack([jnp.any(mask) for mask, _ in checks])
+    messages = [message for _, message in checks]
+    return eqx.branched_error_if(x, jnp.any(failed), jnp.argmax(failed), messages)
+
+
+def _checked_inputs(
+    data: Array, sources: Array, n: int, *checks: tuple[Array, str]
+) -> tuple[Array, Array]:
+    """Check the conductances `data` of the edges, the `sources`, and `checks`.
+
+    Returns `data` and the mask of each source among `n` vertices, with shape
+    `(s, n)`.
+    """
     if data.dtype not in (jnp.float32, jnp.float64):
         raise ValueError("bellman-ford requires float32 or float64 conductances.")
+    if sources.ndim != 1 or not jnp.issubdtype(sources.dtype, jnp.integer):
+        raise ValueError("bellman-ford requires a 1D array of integer sources.")
     # Some devices flush subnormal inputs to zero in floating-point comparisons.
     # Inspect the magnitude bits so a nonzero stored edge cannot become padding.
     bits_dtype = jnp.uint32 if data.dtype == jnp.float32 else jnp.uint64
@@ -294,30 +327,36 @@ def _checked_conductances(data: Array) -> Array:
         jnp.finfo(data.dtype).nmant + 1
     )
     subnormal = (magnitude_bits != 0) & (magnitude_bits < normal_threshold)
-    data = eqx.error_if(
-        data,
-        jnp.any(subnormal),
-        "bellman-ford cannot represent reciprocal conductance costs when "
-        "subnormal conductances may flush to zero. Rescale them or use float64.",
+    present = data > 0
+    reciprocal = 1 / jnp.where(present, data, 1)
+    # XLA:CPU flushes subnormal reciprocals to zero; GPUs keep them, so test
+    # against the smallest normal number.
+    tiny = jnp.finfo(data.dtype).tiny
+    data, sources = _checked(
+        (data, sources),
+        (
+            subnormal,
+            "bellman-ford cannot represent reciprocal conductance costs when "
+            "subnormal conductances may flush to zero. Rescale them or use "
+            "float64.",
+        ),
+        (
+            ~jnp.isfinite(data) | (data < 0),
+            "bellman-ford requires finite positive present conductances; "
+            "zero conductance denotes an absent edge.",
+        ),
+        (
+            present & (~jnp.isfinite(reciprocal) | (reciprocal < tiny)),
+            "bellman-ford requires finite positive representable reciprocal "
+            "conductance costs. Rescale the conductances or use float64.",
+        ),
+        (
+            (sources < 0) | (sources >= n),
+            "bellman-ford source indices must be within adjacency bounds.",
+        ),
+        *checks,
     )
-    return eqx.error_if(
-        data,
-        jnp.any(~jnp.isfinite(data) | (data < 0)),
-        "bellman-ford requires finite positive present conductances; "
-        "zero conductance denotes an absent edge.",
-    )
-
-
-def _is_source(sources: Array, n: int) -> Array:
-    """Mask of each source among `n` vertices, with shape `(s, n)`."""
-    if sources.ndim != 1 or not jnp.issubdtype(sources.dtype, jnp.integer):
-        raise ValueError("bellman-ford requires a 1D array of integer sources.")
-    sources = eqx.error_if(
-        sources,
-        jnp.any((sources < 0) | (sources >= n)),
-        "bellman-ford source indices must be within adjacency bounds.",
-    )
-    return jnp.arange(n)[None, :] == sources[:, None]
+    return data, jnp.arange(n)[None, :] == sources[:, None]
 
 
 class _EdgeList(eqx.Module):
@@ -480,18 +519,7 @@ def _bellman_ford_solve(
     vertex that each of its tight incoming edges takes.
     """
     present = data > 0
-    safe_data = jnp.where(present, data, 1)
-    reciprocal = 1 / safe_data
-    # XLA:CPU flushes subnormal reciprocals to zero; GPUs keep them, so test
-    # against the smallest normal number.
-    tiny = jnp.finfo(reciprocal.dtype).tiny
-    reciprocal = eqx.error_if(
-        reciprocal,
-        jnp.any(present & (~jnp.isfinite(reciprocal) | (reciprocal < tiny))),
-        "bellman-ford requires finite positive representable reciprocal "
-        "conductance costs. Rescale the conductances or use float64.",
-    )
-    costs = jnp.where(present, reciprocal, jnp.inf)
+    costs = jnp.where(present, 1 / jnp.where(present, data, 1), jnp.inf)
     distances = jnp.where(is_source, 0, jnp.inf).astype(data.dtype)
 
     # Rounds past convergence change nothing.
@@ -501,13 +529,7 @@ def _bellman_ford_solve(
 
     before, after = edges.tails(distances), edges.heads(distances)
     tight = present & jnp.isfinite(after) & (before + costs == after)
-    distances, tight = eqx.error_if(
-        (distances, tight),
-        jnp.any(tight & ~(before < after)),
-        "bellman-ford requires strict representable distance ordering on "
-        "every reachable tight edge. A positive cost rounded away; rescale "
-        "the conductances or use float64.",
-    )
+    disordered = tight & ~(before < after)
     tight = tight & ~edges.heads(is_source)
     counts = edges.sum_into(tight.astype(data.dtype))
     # Each tight edge into a vertex takes the share `1 / counts` of it.
@@ -516,11 +538,19 @@ def _bellman_ford_solve(
     # Attach checks to all outputs: a value-only call may discard the tight
     # edges, while a gradient-only call may discard distances after the
     # custom-VJP forward.
-    return eqx.error_if(
+    return _checked(
         (distances, tight, share),
-        jnp.any(missing),
-        "bellman-ford found a finite non-source distance without a tight "
-        "predecessor. Rescale the conductances or use float64.",
+        (
+            disordered,
+            "bellman-ford requires strict representable distance ordering on "
+            "every reachable tight edge. A positive cost rounded away; rescale "
+            "the conductances or use float64.",
+        ),
+        (
+            missing,
+            "bellman-ford found a finite non-source distance without a tight "
+            "predecessor. Rescale the conductances or use float64.",
+        ),
     )
 
 
