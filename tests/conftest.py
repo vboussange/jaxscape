@@ -18,6 +18,30 @@ from jaxscape.solvers import AbstractSparseDirectSolver, CSRPattern, cudsssolver
 jax.config.update("jax_enable_x64", True)
 
 
+def _memory_mappings() -> int:
+    """The number of memory mappings of this process, or 0 where Linux's
+    `/proc` file system is missing."""
+    try:
+        with open("/proc/self/maps") as maps:
+            return sum(1 for _ in maps)
+    except OSError:
+        return 0
+
+
+@pytest.fixture(autouse=True)
+def _release_compiled_programs():
+    """Release the compiled programs after a test once the process holds many.
+
+    Every XLA:CPU executable keeps memory mappings for its code. A process that
+    held the programs of the whole suite reached Linux's default limit of 65530
+    mappings (`vm.max_map_count`), and XLA then crashed while compiling.
+    Releasing them after every test took 22 minutes instead of 13.
+    """
+    yield
+    if _memory_mappings() > 30_000:
+        jax.clear_caches()
+
+
 class DenseFactorization(eqx.Module):
     factor: Array
     refactorizations: Array
