@@ -12,7 +12,6 @@ from jax.core import Tracer
 from jax.experimental.sparse import BCOO
 
 from .graph import AbstractGraph, GridGraph, QUEEN_CONTIGUITY, ROOK_CONTIGUITY
-from .solvers.gridmultigridsolver import GridMultigridSolver
 from .solvers.operator import _solver_state
 
 
@@ -343,12 +342,10 @@ class AbstractSolverDistance(AbstractDistance):
     def init(self, graph: AbstractGraph) -> Any:
         """Build the solver state for `graph`.
 
-        `GridMultigridSolver` reads the grid of its state from concrete sparse
-        indices, which the shape and contiguity of a `GridGraph` set: the state
-        of a `GridGraph` builds inside `jax.jit` too, and that of another graph
-        outside it. Other solvers that read concrete sparse indices or build a
-        preconditioner on the host, such as `AMJaxCGSolver`, build their state
-        outside `jax.jit`.
+        Some solvers read concrete sparse indices or build a preconditioner on
+        the host, such as `GridMultigridSolver` and `AMJaxCGSolver`, so call it
+        outside `jax.jit`. `ResistanceDistance` also builds the
+        `GridMultigridSolver` state of a `GridGraph` inside `jax.jit`.
 
         **Arguments:**
 
@@ -358,10 +355,6 @@ class AbstractSolverDistance(AbstractDistance):
 
         State to pass to queries and to `reinit`, or `None` without a solver.
         """
-        if isinstance(self.solver, GridMultigridSolver) and isinstance(
-            graph, GridGraph
-        ):
-            return _grid_multigrid_state(self, graph)
         return self.reinit(graph, None)
 
     def reinit(self, graph: AbstractGraph, state: Any) -> Any:

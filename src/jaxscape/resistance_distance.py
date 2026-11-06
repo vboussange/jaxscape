@@ -10,7 +10,11 @@ from jax import Array, lax
 from jax.experimental.sparse import BCOO
 from jax.numpy.linalg import pinv
 
-from jaxscape.distance import _inside_windows, AbstractSolverDistance
+from jaxscape.distance import (
+    _grid_multigrid_state,
+    _inside_windows,
+    AbstractSolverDistance,
+)
 from jaxscape.graph import AbstractGraph, GridGraph
 from jaxscape.solvers.gridmultigridsolver import GridMultigridSolver
 from jaxscape.solvers.operator import _batched_linear_solve_impl, _solver_state
@@ -61,8 +65,10 @@ class ResistanceDistance(AbstractSolverDistance):
       which solve for every vertex of a tile, took up to three times longer on
       a CPU than with `solver=None`. Other graphs raise with the default: pass
       `jaxscape.solvers.CholmodSolver`, `PyAMGSolver`, `AMJaxCGSolver` or
-      `CuDSSSolver` (see [Linear solvers](linear_solvers.md)), or
-      `solver=None`. Without a solver, exact all-pairs and nodes-to-nodes
+      `CuDSSSolver`, or `solver=None`. The solver guide gives the solver of
+      each device and query
+      ([Choosing a solver](linear_solvers.md#choosing-a-solver)). Without a
+      solver, exact all-pairs and nodes-to-nodes
       queries take the pseudo-inverse of the dense Laplacian, and other
       queries a dense Cholesky factorization of the grounded Laplacian: their
       memory grows with the square of the number of vertices, which suits
@@ -256,6 +262,29 @@ class ResistanceDistance(AbstractSolverDistance):
             return value - distance**2 * curvature / k
 
         return debiased
+
+    def init(self, graph: AbstractGraph) -> Any:
+        """Build the solver state for `graph`.
+
+        With `GridMultigridSolver`, the default, the state of a `GridGraph`
+        builds inside `jax.jit` too: the solver reads its grid from concrete
+        sparse indices, which the shape and contiguity of the graph set. Other
+        solvers and graphs build their state as `AbstractSolverDistance.init`
+        does.
+
+        **Arguments:**
+
+        - `graph`: Graph whose grounded Laplacian the state is built for.
+
+        **Returns:**
+
+        State to pass to queries and to `reinit`, or `None` without a solver.
+        """
+        if isinstance(self.solver, GridMultigridSolver) and isinstance(
+            graph, GridGraph
+        ):
+            return _grid_multigrid_state(self, graph)
+        return super().init(graph)
 
     @eqx.filter_jit
     def all_pairs_distance(self, graph: AbstractGraph, state: Any = None) -> Array:
