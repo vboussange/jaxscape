@@ -300,7 +300,7 @@ def _shifted(x: Array, offset: tuple[int, int], fill: Any) -> Array:
 def _checked(x: Any, *checks: tuple[Array, str]) -> Any:
     """`x`, which raises the message of the first check whose mask holds `True`.
 
-    One branched check compiles faster than one check each.
+    One branched check holds one host callback for all the messages.
     """
     failed = jnp.stack([jnp.any(mask) for mask, _ in checks])
     messages = [message for _, message in checks]
@@ -438,7 +438,7 @@ class _GridEdges(eqx.Module):
         offset of its head from the start of the walk. A walk through a pixel
         twice holds a cycle. Without it, the walk is shorter, and its rounded
         sum of positive costs is no larger, so the rounds may leave such walks
-        out. Tight edges hold no cycle, so adjoint walks through one add zero.
+        out.
         """
         walks = [[]]
         for _ in range(length):
