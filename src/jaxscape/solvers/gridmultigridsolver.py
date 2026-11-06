@@ -288,6 +288,9 @@ def _stencil(
     )
 
 
+# Each solve traces it, and Lineax traces a solve up to three times: a jitted
+# function is traced once for its shapes.
+@eqx.filter_jit
 def _hierarchy(state: GridMultigridState) -> _Hierarchy:
     """The multigrid hierarchy of the matrix of `state`."""
     offsets = state.offsets
@@ -495,6 +498,8 @@ def _dot(x: Array, y: Array) -> Array:
     return jnp.sum(x * y, axis=(0, 1))
 
 
+# Traced once for its shapes, as `_hierarchy`.
+@eqx.filter_jit
 def _conjugate_gradients(
     state: _Hierarchy, b: Array, rtol: float, max_steps: int
 ) -> tuple[Array, Array]:

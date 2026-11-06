@@ -15,7 +15,11 @@ from jaxscape import (
     SpielmanApproximation,
 )
 from jaxscape.graph import QUEEN_CONTIGUITY, ROOK_CONTIGUITY
-from jaxscape.solvers import BCOOLinearOperator, GridMultigridSolver
+from jaxscape.solvers import (
+    BCOOLinearOperator,
+    GridMultigridSolver,
+    gridmultigridsolver,
+)
 from jaxscape.solvers.operator import _batched_linear_solve, _linear_solve
 
 
@@ -272,3 +276,29 @@ def test_reinit_leaves_the_hierarchy_to_the_solves():
 
     assert factorizations(reinit) == 0
     assert factorizations(query) == 1
+
+
+def test_programs_trace_the_hierarchy_once(monkeypatch):
+    # The gradient of a Spielman window query solves in two places, and Lineax
+    # traces each solve up to three times.
+    traces = []
+    interpolation = gridmultigridsolver._interpolation
+
+    def counted(*args):
+        traces.append(1)
+        return interpolation(*args)
+
+    monkeypatch.setattr(gridmultigridsolver, "_interpolation", counted)
+    # A grid of 37 x 43 pixels has one coarse grid, and no other test uses it.
+    conductance = landscape((37, 43)).astype(jnp.float32)
+    method = SpielmanApproximation(epsilon=0.5, projection_batch_size=8)
+    distance = ResistanceDistance(solver=GridMultigridSolver(), method=method)
+    state = distance.init(GridGraph(conductance, fun=avg))
+
+    def total(conductance):
+        grid = GridGraph(conductance, fun=avg)
+        sources = jnp.array([18 * 43 + 21])
+        return jnp.sum(distance.sources_to_windows_distance(grid, sources, 7, state))
+
+    jax.jit(jax.grad(total)).lower(conductance)
+    assert len(traces) == 1
