@@ -41,9 +41,10 @@ def _average(x: Array, y: Array) -> Array:
 
 
 def _tracing() -> bool:
-    """Whether JAX is tracing the running code, as `jax.jit` does: its
-    operations then give tracers, also on constants."""
-    return isinstance(jnp.array(1) + 1, Tracer)
+    """Whether JAX is tracing the running code, as `jax.jit` does: a transfer
+    to the device then gives a tracer. Outside a trace, the transfer compiles
+    no program; `jnp.array(1) + 1` would compile two, in 36 ms on a CPU."""
+    return isinstance(jax.device_put(0), Tracer)
 
 
 def _traced(tree: Any) -> bool:
