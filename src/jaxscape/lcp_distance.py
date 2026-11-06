@@ -332,7 +332,7 @@ class _EdgeList(eqx.Module):
 
     # Each round gathers and scatters: check for convergence after each.
     relax_rounds: ClassVar[int] = 1
-    steps_per_check: ClassVar[int] = 1
+    rounds_per_check: ClassVar[int] = 1
 
     def tails(self, x: Array) -> Array:
         return x[:, self.indices[:, 0]]
@@ -376,8 +376,8 @@ class _GridEdges(eqx.Module):
 
     offsets: tuple[tuple[int, int], ...] = eqx.field(static=True)
 
-    # Check for convergence every few steps; steps past it change nothing.
-    steps_per_check: ClassVar[int] = 4
+    # Check for convergence every few rounds; rounds past it change nothing.
+    rounds_per_check: ClassVar[int] = 8
 
     @property
     def relax_rounds(self) -> int:
@@ -455,14 +455,14 @@ def _fixed_point(
     """Apply `step`, which runs `rounds` rounds, to `x` until it stops changing,
     for at most one round per vertex."""
     n = math.prod(x.shape[1:])
+    steps = max(1, edges.rounds_per_check // rounds)
 
     def apply(state):
         iteration, previous, _ = state
-        updated = previous
-        for _ in range(edges.steps_per_check):
-            updated = step(updated)
+        # Traced once and unrolled: without a loop between steps.
+        updated = lax.fori_loop(0, steps, lambda _, x: step(x), previous, unroll=True)
         changed = jnp.any(updated != previous)
-        return iteration + rounds * edges.steps_per_check, updated, changed
+        return iteration + rounds * steps, updated, changed
 
     return lax.while_loop(
         lambda state: (state[0] < n - 1) & state[2],
