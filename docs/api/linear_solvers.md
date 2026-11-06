@@ -145,9 +145,9 @@ solver for the resistances:
 
 | Six analyses of the example | `GridMultigridSolver(rtol=3e-4)` | `CuDSSSolver` |
 |---|---|---|
-| Time once compiled | 10.4 s | 9.7 s |
-| Time in a fresh process | 57.6 s | 42.5 s |
-| XLA compilation in a fresh process | 35.8 s | 22.8 s |
+| Time once compiled | 10.3 s | 9.5 s |
+| Time in a fresh process | 33.7 s | 33.6 s |
+| XLA compilation in a fresh process | 21.0 s | 16.2 s |
 | Pearson correlation of the normalized map with float64 | 1.0000 | 0.9838 |
 | 99.9th percentile of the per-pixel ratio to float64 | 1.18 | 8.96 |
 | Largest ratio to float64 around the ground vertex | 6.3 | 1204 |
@@ -158,10 +158,12 @@ random signs. With `CuDSSSolver` in float32, the permeability sensitivity is up
 to 1204 times that of float64 around the ground vertex of the tile, a spot
 visible on the log-scale maps (see the note on grounding of
 [`ResistanceDistance`][jaxscape.resistance_distance.ResistanceDistance]).
-Choose `GridMultigridSolver` for float32 resistances and their sensitivity on
-grid graphs, as the example does. Choose `CuDSSSolver` for graphs other than
-grids, in float64, or for connectivity alone when the time of a fresh process
-matters most.
+The two solvers take as long in a fresh process: `CuDSSSolver` compiles for 5 s
+less, and spends about as long on the sparse analysis of the tile. Once
+compiled, `CuDSSSolver` takes 0.8 s less. Choose `GridMultigridSolver` for
+float32 resistances and their sensitivity on grid graphs, as the example does:
+its normalized map matches that of float64. Choose `CuDSSSolver` for graphs
+other than grids, or in float64.
 
 ## Reusing solver state
 
