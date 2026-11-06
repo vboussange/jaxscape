@@ -548,17 +548,27 @@ class WindowedAnalysis(eqx.Module):
         of `_accumulate(tile_fn, initial, *args)`, which `_accumulate` then
         runs. Arrays of the shapes and dtypes of those of `args` can stand in
         for them. In a trace, as inside `jax.jit`, nothing compiles alone.
+
+        The program lowers in this thread, with the JAX settings that JAX keeps
+        for each thread, such as those of `jax.enable_x64` and
+        `jax.default_device`. After a failed compilation, `_accumulate`
+        compiles the program again and reports the error. If `work()` raises,
+        the error propagates without waiting for the compilation.
         """
         if _tracing():
             return work()
         state = self._latest_state(self.tile_sides, self.state)
         batch = _Batch(self, jnp.asarray(0), state, tile_fn, args)
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            compiled = pool.submit(
-                lambda: _batch.compiled.lower(batch, initial).compile()
-            )
+        lowered = _batch.compiled.lower(batch, initial)
+        pool = ThreadPoolExecutor(max_workers=1)
+        pool.submit(lowered.compile)
+        try:
             result = work()
-            compiled.result()
+        except BaseException:
+            pool.shutdown(wait=False, cancel_futures=True)
+            raise
+        # Waiting keeps `_accumulate` from compiling the program a second time.
+        pool.shutdown()
         return result
 
     def _accumulate(self, tile_fn: Callable, initial: Array, *args: Any) -> Array:

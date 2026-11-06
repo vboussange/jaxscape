@@ -652,6 +652,78 @@ def test_the_batches_compile_while_the_block_calibration_compiles():
     assert caller not in threads["jit(_batch)"]
 
 
+def test_the_batches_compile_in_the_settings_of_the_calling_thread(compilations):
+    # JAX keeps the settings of `jax.enable_x64` and of other contexts for each
+    # thread: the batch program compiles once, with those of the thread that
+    # runs the analysis.
+    jax.clear_caches()
+    jax.config.update("jax_enable_x64", False)
+    try:
+        with jax.enable_x64():
+            sensitivity = make(
+                SensitivityAnalysis, LCPDistance(), coarsening_factor=0.5
+            )
+            actual = sensitivity.run("permeability")
+    finally:
+        jax.config.update("jax_enable_x64", True)
+    assert compilations.count("jit(_batch)") == 1
+    assert actual.dtype == jnp.float64
+
+    compilations.clear()
+    sensitivity = make(SensitivityAnalysis, LCPDistance(), coarsening_factor=0.5)
+    with jax.default_matmul_precision("float32"):
+        expected = sensitivity.run("permeability")
+    assert compilations.count("jit(_batch)") == 1
+    assert_close(actual, expected, 1e-12)
+
+
+def test_a_failed_compilation_of_the_batches_leaves_the_analysis_to_run(monkeypatch):
+    # The analysis compiles the batch program again when it runs it, and
+    # reports the errors of that compilation.
+    compile = jax.stages.Lowered.compile
+
+    def failing(self, *args, **kwargs):
+        if threading.current_thread() is not threading.main_thread():
+            raise RuntimeError("compilation failed")
+        return compile(self, *args, **kwargs)
+
+    def sensitivity():
+        return make(SensitivityAnalysis, LCPDistance(), coarsening_factor=0.5).run(
+            "permeability"
+        )
+
+    jax.clear_caches()
+    monkeypatch.setattr(jax.stages.Lowered, "compile", failing)
+    actual = sensitivity()
+    monkeypatch.undo()
+    assert_close(actual, sensitivity(), 1e-12)
+
+
+def test_an_interrupted_block_calibration_leaves_the_batches_compiling(monkeypatch):
+    compile = jax.stages.Lowered.compile
+    release, compiled = threading.Event(), threading.Event()
+
+    def held(self, *args, **kwargs):
+        release.wait(30)
+        try:
+            return compile(self, *args, **kwargs)
+        finally:
+            compiled.set()
+
+    def interrupted(*args):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(jax.stages.Lowered, "compile", held)
+    monkeypatch.setattr(connectivity_analysis, "_permeability_calibration", interrupted)
+    sensitivity = make(SensitivityAnalysis, LCPDistance(), coarsening_factor=0.5)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            sensitivity.run("permeability")
+        assert not compiled.is_set()
+    finally:
+        release.set()
+
+
 @pytest.mark.parametrize("name", ["lcp", "resistance-dense"])
 def test_coarsened_permeability_sensitivity_ignores_permeability_out_of_reach(
     name, request
