@@ -8,7 +8,12 @@ from jax import Array, lax
 
 from jaxscape.distance import AbstractDistance
 from jaxscape.graph import GridGraph
-from jaxscape.windowed_analysis import _average, _TileData, WindowedAnalysis
+from jaxscape.windowed_analysis import (
+    _average,
+    _program,
+    _TileData,
+    WindowedAnalysis,
+)
 
 
 def _excluded(windowed: WindowedAnalysis, block: bool) -> Array:
@@ -174,7 +179,10 @@ def _block_correction(
     # `half`. The interpolation weights of the raster pixels reach at most
     # `reach` pixels beyond the tile's first and last block centres, which are
     # at least `half` pixels from its edges.
-    weights = inside * jnp.einsum("ij,iy,jx->yx", tile.valid, rows, columns)
+    weights = jnp.einsum(
+        "ij,iy,jx->yx", tile.valid, rows, columns, precision=lax.Precision.HIGHEST
+    )
+    weights = inside * weights
     weights = weights[
         half - reach : height - half + reach, half - reach : width - half + reach
     ]
@@ -216,7 +224,7 @@ def _convolve(
     )[0, 0]
 
 
-@eqx.filter_jit
+@_program()
 def _permeability_calibration(
     windowed: WindowedAnalysis, state: Any
 ) -> tuple[tuple[Array, Array], Any]:
@@ -239,17 +247,17 @@ def _permeability_calibration(
         graph = GridGraph(permeability, fun=_average)
         return distance.sources_to_windows_distance(graph, centre, size, state)[0]
 
-    # One window query, whose pullback takes both cotangents.
+    # One window query, whose pullback takes both cotangents at once.
     distances, pullback = jax.vjp(window, graph.grid)
     proximity = distance.debiased_proximity(windowed.proximity, graph)
     ones = jnp.ones_like(graph.grid)
 
-    def gradient(block):
+    def cotangent(block):
         excluded = _excluded(windowed, block)
-        cotangent = jax.grad(_window_sum, 1)(proximity, distances, ones, excluded)
-        return pullback(cotangent)[0]
+        return jax.grad(_window_sum, 1)(proximity, distances, ones, excluded)
 
-    pixels, far = gradient(False), gradient(True)
+    cotangents = jnp.stack([cotangent(False), cotangent(True)])
+    pixels, far = jax.vmap(pullback)(cotangents)[0]
     far = jnp.where(jnp.abs(far) > 1e-6 * jnp.max(jnp.abs(far)), far, 0)
     return (pixels, far), state
 
@@ -484,13 +492,25 @@ class SensitivityAnalysis(WindowedAnalysis):
                 return 2 * self._interpolate(reachable)
             raster = self.quality_raster
         elif var == "permeability":
+            raster = self.permeability_raster
             if coarse:
                 size = 2 * self.dependency_range + 1
                 window = (size, size)
                 state = self._latest_state(window, self.window_state)
-                calibration, state = _permeability_calibration(self, state)
+                # The batch program takes the shapes of the calibration: XLA
+                # compiles it in another thread while the calibration compiles
+                # and runs. The first resistance sensitivity of the
+                # connectivity analysis example took 2.6 s less on an RTX 3090.
+                shapes = (jnp.zeros(window, raster.dtype),) * 2
+                calibration, state = self._while_compiling(
+                    lambda: _permeability_calibration(self, state),
+                    _tile_sensitivity,
+                    jnp.zeros_like(raster),
+                    var,
+                    q_weighted,
+                    shapes,
+                )
                 self._leave_state(window, state)
-            raster = self.permeability_raster
         else:
             raise ValueError("`var` must be either 'quality' or 'permeability'")
 

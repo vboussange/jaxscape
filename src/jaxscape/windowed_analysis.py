@@ -3,6 +3,7 @@ import math
 from abc import abstractmethod
 from collections import OrderedDict
 from collections.abc import Callable, Hashable
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import equinox as eqx
@@ -50,6 +51,47 @@ def _tracing() -> bool:
 def _traced(tree: Any) -> bool:
     """Whether a leaf of `tree` is a tracer."""
     return any(isinstance(leaf, Tracer) for leaf in jax.tree.leaves(tree))
+
+
+# XLA:GPU options of the programs that windowed analyses compile. Their matrix
+# products and convolutions are small next to their distance queries, and ran
+# as fast with the heuristics of cuBLAS and cuDNN as autotuned: autotuning,
+# with candidate Triton kernels for each matrix product, took 7 s of the
+# compilation of the connectivity analysis example on an RTX 3090. Other
+# backends ignore these options.
+_COMPILER_OPTIONS = {"xla_gpu_autotune_level": 0, "xla_gpu_enable_triton_gemm": False}
+
+
+class _Program(eqx.Module):
+    """A function jitted with `_COMPILER_OPTIONS`, and without them for the
+    calls that JAX traces, as inside `jax.jit`: JAX takes compiler options
+    for the programs that it compiles alone only.
+
+    **Attributes:**
+
+    - `compiled`: The function jitted with the options.
+    - `traced`: The function jitted without them.
+    """
+
+    compiled: Callable
+    traced: Callable
+
+    def __call__(self, *args: Any) -> Any:
+        return (self.traced if _tracing() else self.compiled)(*args)
+
+
+def _program(**kwargs: Any) -> Callable[[Callable], _Program]:
+    """Decorator that makes a `_Program` with the `eqx.filter_jit` arguments
+    `kwargs`."""
+
+    def program(fun: Callable) -> _Program:
+        # `eqx.filter_jit` passes `compiler_options` to `jax.jit`, which its
+        # type overloads leave out.
+        options = {"compiler_options": _COMPILER_OPTIONS}
+        compiled = eqx.filter_jit(fun, **kwargs, **options)  # pyright: ignore
+        return _Program(compiled, eqx.filter_jit(fun, **kwargs))
+
+    return program
 
 
 def _state_key(
@@ -260,7 +302,7 @@ class WindowedAnalysis(eqx.Module):
     depend on the state that a run starts from. The states of the 8 most
     recently used combinations of distance, shape and dtype are kept, until
     the interpreter exits: on the 894 x 925 tile of the Maryland land cover
-    in float32, a state of `GridMultigridSolver` holds 52 MiB of JAX arrays,
+    in float32, a state of `GridMultigridSolver` holds 32 MiB of JAX arrays,
     and one of `CuDSSSolver` 132 MiB besides its cuDSS factorization.
     Distances that cannot be hashed, such as those with an `AMJaxCGSolver`,
     keep the state that each analysis builds, which its runs start from.
@@ -499,6 +541,26 @@ class WindowedAnalysis(eqx.Module):
         graph = GridGraph(lax.stop_gradient(permeability), fun=_average)
         return self.distance.reinit(graph, state)
 
+    def _while_compiling(
+        self, work: Callable[[], Any], tile_fn: Callable, initial: Array, *args: Any
+    ) -> Any:
+        """Return `work()`, run while another thread compiles the batch program
+        of `_accumulate(tile_fn, initial, *args)`, which `_accumulate` then
+        runs. Arrays of the shapes and dtypes of those of `args` can stand in
+        for them. In a trace, as inside `jax.jit`, nothing compiles alone.
+        """
+        if _tracing():
+            return work()
+        state = self._latest_state(self.tile_sides, self.state)
+        batch = _Batch(self, jnp.asarray(0), state, tile_fn, args)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            compiled = pool.submit(
+                lambda: _batch.compiled.lower(batch, initial).compile()
+            )
+            result = work()
+            compiled.result()
+        return result
+
     def _accumulate(self, tile_fn: Callable, initial: Array, *args: Any) -> Array:
         """Accumulate `tile_fn` over the tiles of all block centres.
 
@@ -607,7 +669,7 @@ class _Batch(eqx.Module):
     args: tuple
 
 
-@eqx.filter_jit(donate="all-except-first")
+@_program(donate="all-except-first")
 def _batch(batch: _Batch, accumulated: Array) -> tuple[Array, Any]:
     """Add the tiles of `batch` to `accumulated`, whose buffer it reuses.
 
@@ -668,7 +730,7 @@ def _batch(batch: _Batch, accumulated: Array) -> tuple[Array, Any]:
     return lax.scan(add, accumulated, (origins, outputs))[0], state
 
 
-@eqx.filter_jit
+@_program()
 def _profile(
     distance: AbstractDistance, graph: GridGraph, state: Any
 ) -> tuple[Array, Any]:

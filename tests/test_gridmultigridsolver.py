@@ -15,7 +15,11 @@ from jaxscape import (
     SpielmanApproximation,
 )
 from jaxscape.graph import QUEEN_CONTIGUITY, ROOK_CONTIGUITY
-from jaxscape.solvers import BCOOLinearOperator, GridMultigridSolver
+from jaxscape.solvers import (
+    BCOOLinearOperator,
+    GridMultigridSolver,
+    gridmultigridsolver,
+)
 from jaxscape.solvers.operator import _batched_linear_solve, _linear_solve
 
 
@@ -234,7 +238,7 @@ def test_a_state_rejects_graphs_of_another_grid():
             jax.block_until_ready(distance(grid, nodes=jnp.array([0, 5]), state=state))
 
 
-def test_reinit_builds_the_hierarchy_inside_jit():
+def test_reinit_takes_new_values_inside_jit():
     distance = ResistanceDistance(solver=GridMultigridSolver(rtol=1e-12))
     state = distance.init(GridGraph(jnp.ones((16, 18)), fun=avg))
     conductance = landscape((16, 18))
@@ -250,3 +254,75 @@ def test_reinit_builds_the_hierarchy_inside_jit():
     expected = ResistanceDistance()(GridGraph(conductance, fun=avg), nodes=nodes)
     np.testing.assert_allclose(actual, expected, rtol=1e-10)
     assert jax.tree.structure(new_state) == jax.tree.structure(state)
+
+
+def test_reinit_leaves_the_hierarchy_to_the_solves():
+    # A windowed analysis reinitializes the state of each tile, and its query
+    # reinitializes and solves it again, in one compiled program: the program
+    # compiles the hierarchy once, with the solves.
+    distance = ResistanceDistance(solver=GridMultigridSolver())
+    conductance = landscape((40, 41))
+    state = distance.init(GridGraph(conductance, fun=avg))
+
+    def reinit(conductance):
+        return distance.reinit(GridGraph(conductance, fun=avg), state)
+
+    def query(conductance):
+        grid = GridGraph(conductance, fun=avg)
+        return distance(grid, nodes=jnp.array([0, 9]), state=reinit(conductance))
+
+    def factorizations(f):
+        return jax.jit(f).lower(conductance).as_text().count("potrf")
+
+    assert factorizations(reinit) == 0
+    assert factorizations(query) == 1
+
+
+def test_programs_trace_the_hierarchy_once(monkeypatch):
+    # The gradient of a Spielman window query solves in two places, and Lineax
+    # traces each solve up to three times.
+    traces = []
+    interpolation = gridmultigridsolver._interpolation
+
+    def counted(*args):
+        traces.append(1)
+        return interpolation(*args)
+
+    monkeypatch.setattr(gridmultigridsolver, "_interpolation", counted)
+    # A grid of 37 x 43 pixels has one coarse grid, and no other test uses it.
+    conductance = landscape((37, 43)).astype(jnp.float32)
+    method = SpielmanApproximation(epsilon=0.5, projection_batch_size=8)
+    distance = ResistanceDistance(solver=GridMultigridSolver(), method=method)
+    state = distance.init(GridGraph(conductance, fun=avg))
+
+    def total(conductance):
+        grid = GridGraph(conductance, fun=avg)
+        sources = jnp.array([18 * 43 + 21])
+        return jnp.sum(distance.sources_to_windows_distance(grid, sources, 7, state))
+
+    jax.jit(jax.grad(total)).lower(conductance)
+    assert len(traces) == 1
+
+
+def test_the_hierarchy_traces_the_coarse_grids_after_the_first_once(monkeypatch):
+    # A grid of 130 x 140 pixels has three coarse grids before one of at most
+    # 1024 points: the first from the rook stencil, the others from queen
+    # stencils of padded grids, in one loop.
+    traces = []
+    galerkin = gridmultigridsolver._galerkin
+
+    def counted(*args):
+        traces.append(1)
+        return galerkin(*args)
+
+    monkeypatch.setattr(gridmultigridsolver, "_galerkin", counted)
+    distance = ResistanceDistance(solver=GridMultigridSolver())
+    state = distance.init(GridGraph(landscape((130, 140)), fun=avg))
+    hierarchy = gridmultigridsolver._hierarchy(state)
+    assert [s[0].shape for s in hierarchy.stencils] == [
+        (130, 140),
+        (65, 70),
+        (33, 35),
+        (17, 18),
+    ]
+    assert len(traces) == 2

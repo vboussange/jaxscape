@@ -1,3 +1,4 @@
+import threading
 from collections import OrderedDict
 from typing import ClassVar
 
@@ -9,6 +10,7 @@ import pytest
 from jax.core import Tracer
 from jax.scipy.signal import convolve2d
 from jaxscape import (
+    connectivity_analysis,
     ConnectivityAnalysis,
     EuclideanDistance,
     FreeEnergyDistance,
@@ -564,6 +566,21 @@ def test_traced_analyses_leave_no_solver_state_to_later_ones(traced, request):
     assert_close(analysis().run("permeability"), expected, 1e-8)
 
 
+def test_analyses_with_the_default_proximity_run_inside_jit():
+    # Creating an analysis compiles the profile of its default proximity, and
+    # its runs compile their batches, without compiler options in a trace.
+    def connectivity(permeability):
+        return make(
+            ConnectivityAnalysis,
+            LCPDistance(),
+            permeability=permeability,
+            proximity=None,
+        ).run()
+
+    expected = connectivity(PERMEABILITY)
+    assert_close(jax.jit(connectivity)(PERMEABILITY), expected, 1e-12)
+
+
 def test_sensitivity_is_finite_for_proximity_singular_at_zero():
     def inverse(dist):
         return 1 / dist
@@ -589,6 +606,50 @@ def test_coarsened_analyses_cover_the_raster(name, request):
         sensitivity = coarsened(SensitivityAnalysis).run(var)
         assert sensitivity.shape == QUALITY.shape
         assert jnp.all(jnp.isfinite(sensitivity)) and jnp.any(sensitivity != 0)
+
+
+def test_the_block_calibration_pulls_back_both_gradients_at_once():
+    # The gradients of one window query with and without the pairs within the
+    # block: the dense Cholesky factor is solved twice for the query and twice
+    # for one backward pass of both cotangents.
+    sensitivity = make(
+        SensitivityAnalysis,
+        ResistanceDistance(method=SPIELMAN),
+        coarsening_factor=0.5,
+    )
+    calibration = connectivity_analysis._permeability_calibration
+    lowered = calibration.compiled.lower(sensitivity, sensitivity.window_state)
+    text = str(lowered.compile().compiled.as_text())
+    assert text.count("trsm") + text.count("triangularSolve") == 4
+
+
+def test_the_batches_compile_while_the_block_calibration_compiles():
+    # The batch program takes the shapes of the calibration: XLA compiles it
+    # in another thread, while the calibration compiles and runs.
+    threads = {}
+
+    def listener(event, duration_secs, **kwargs):
+        del duration_secs
+        if event == "/jax/core/compile/backend_compile_duration":
+            name = kwargs.get("fun_name")
+            threads.setdefault(name, set()).add(threading.get_ident())
+
+    jax.monitoring.register_event_duration_secs_listener(listener)
+    try:
+        # A dependency range of 6 compiles programs that no other test does.
+        sensitivity = make(
+            SensitivityAnalysis,
+            LCPDistance(),
+            dependency_range=6,
+            coarsening_factor=0.5,
+        )
+        sensitivity.run("permeability")
+    finally:
+        jax.monitoring.unregister_event_duration_listener(listener)
+    caller = threading.get_ident()
+    assert threads["jit(_permeability_calibration)"] == {caller}
+    assert len(threads["jit(_batch)"]) == 1
+    assert caller not in threads["jit(_batch)"]
 
 
 @pytest.mark.parametrize("name", ["lcp", "resistance-dense"])
