@@ -134,8 +134,9 @@ kept the resistances of windows as close to float64 as those of `CuDSSSolver`
 in float32, and gave the same connectivity and sensitivity maps; at `rtol=3e-3`,
 the permeability sensitivity had a Pearson correlation of 0.48 with float64,
 against 0.989 at `3e-4` and 0.989 with `CuDSSSolver` in float32.
-The three resistance analyses of the example took 11 s on that GPU, against
-25 s with `CuDSSSolver`, whose analysis of the tile took 5 s for each.
+Once compiled, the three resistance analyses of the example took 10 s on that
+GPU, against 25 s with `CuDSSSolver`, whose analysis of the tile took 5 s for
+each.
 
 ## Reusing solver state
 
