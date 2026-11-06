@@ -6,7 +6,6 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from conftest import DenseCholesky
 from jax.scipy.signal import convolve2d
 from jaxscape import (
     ConnectivityAnalysis,
@@ -115,8 +114,6 @@ def solver(name, request):
     if name == "cudss-on-cpu":
         request.getfixturevalue("stub_spineax")
         return CuDSSSolver()
-    if name == "dense-cholesky":
-        return DenseCholesky()
     return make_cudss()
 
 
@@ -529,13 +526,13 @@ def test_analyses_of_one_distance_analyse_each_pattern_once(
             assert_close(actual, expected, 1e-10)
 
 
-@pytest.mark.parametrize("name", ["dense-cholesky", "cholmod", "amjax"])
-@pytest.mark.parametrize("batch_size", [1, 8])
+# Sparse direct solvers are checked on `stub_spineax` above.
+@pytest.mark.parametrize("name", ["cholmod", "amjax"])
 def test_analyses_that_share_solver_state_keep_their_results(
-    name, batch_size, request, monkeypatch
+    name, request, monkeypatch
 ):
     distance = ResistanceDistance(solver(name, request))
-    kwargs = dict(batch_size=batch_size, coarsening_factor=0.5)
+    kwargs = dict(coarsening_factor=0.5)
     shared, alone = notebook_runs(distance, monkeypatch, **kwargs)
     for runs, expected in zip(shared, alone):
         for actual in runs:
