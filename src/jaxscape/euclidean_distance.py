@@ -11,6 +11,8 @@ from jaxscape.graph import AbstractGraph, GridGraph
 class EuclideanDistance(AbstractDistance):
     """
     Straight-line distance in grid coordinates. Only works with `GridGraph`.
+    Distances take the floating dtype of the grid, or JAX's default floating
+    dtype for an integer or boolean grid.
 
     !!! example
 
@@ -53,10 +55,11 @@ class EuclideanDistance(AbstractDistance):
 
 
 def _coordinates(graph: AbstractGraph, nodes: Array) -> Array:
-    """The grid coordinates of `nodes`."""
+    """The grid coordinates of `nodes`, in the floating dtype of the grid, or
+    JAX's default floating dtype for an integer or boolean grid."""
     if not isinstance(graph, GridGraph):
         raise ValueError("`EuclideanDistance` needs a `GridGraph`.")
-    return graph.index_to_coord(nodes)
+    return graph.index_to_coord(nodes).astype(jnp.result_type(graph.grid, float))
 
 
 @eqx.filter_jit

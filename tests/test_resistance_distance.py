@@ -943,9 +943,10 @@ SINGLE_PIXEL_QUERIES = {
 
 @pytest.mark.parametrize("solver", ["default", "dense"])
 @pytest.mark.parametrize("query", SINGLE_PIXEL_QUERIES)
-def test_a_grid_of_one_pixel_is_at_zero_resistance_from_itself(solver, query):
+def test_a_grid_of_one_pixel_has_zero_resistance_and_gradient(solver, query):
     # The pixel has no neighbours: its ground has degree zero.
-    distance = ResistanceDistance() if solver == "default" else ResistanceDistance(None)
+    solvers = {"default": GridMultigridSolver, **SOURCES_TO_TARGETS_SOLVERS}
+    distance = ResistanceDistance(solver=solvers[solver]())
 
     def objective(permeability):
         grid = GridGraph(permeability, fun=avg)
