@@ -932,3 +932,28 @@ def test_the_default_raises_on_disconnected_graphs(query):
     grid = GridGraph(permeability, fun=jnp.minimum)
     with pytest.raises(Exception, match="non-finite"):
         jax.block_until_ready(ResistanceDistance()(grid, **DEFAULT_QUERIES[query]))
+
+
+SINGLE_PIXEL_QUERIES = {
+    "all-pairs": {},
+    "nodes": {"nodes": jnp.array([0])},
+    "sources-to-targets": {"sources": jnp.array([0]), "targets": jnp.array([0])},
+}
+
+
+@pytest.mark.parametrize("solver", ["default", "dense"])
+@pytest.mark.parametrize("query", SINGLE_PIXEL_QUERIES)
+def test_a_grid_of_one_pixel_is_at_zero_resistance_from_itself(solver, query):
+    # The pixel has no neighbours: its ground has degree zero.
+    distance = ResistanceDistance() if solver == "default" else ResistanceDistance(None)
+
+    def objective(permeability):
+        grid = GridGraph(permeability, fun=avg)
+        distances = distance(grid, **SINGLE_PIXEL_QUERIES[query])
+        return jnp.sum(distances), distances
+
+    (_, distances), gradient = jax.value_and_grad(objective, has_aux=True)(
+        jnp.ones((1, 1))
+    )
+    np.testing.assert_array_equal(distances, [[0.0]])
+    np.testing.assert_array_equal(gradient, [[0.0]])
