@@ -861,6 +861,23 @@ def test_coarsened_permeability_sensitivity_is_finite_where_proximities_underflo
     np.testing.assert_array_equal(coarsened, sensitivity(0.0))
 
 
+@pytest.mark.parametrize("var", ["quality", "permeability"])
+@pytest.mark.parametrize("dtypes", [("float32", "float64"), ("float64", "float32")])
+def test_coarsened_sensitivity_takes_rasters_of_mixed_float_dtypes(var, dtypes):
+    # The interpolation weights take the dtype of the quality raster, and the
+    # block calibration that of the permeability raster.
+    def sensitivity(quality_dtype, permeability_dtype):
+        return make(
+            SensitivityAnalysis,
+            LCPDistance(),
+            QUALITY.astype(quality_dtype),
+            PERMEABILITY.astype(permeability_dtype),
+            coarsening_factor=0.5,
+        ).run(var)
+
+    assert_close(sensitivity(*dtypes), sensitivity("float64", "float64"), 1e-5)
+
+
 def test_coarsening_runs_on_a_raster_thinner_than_a_block():
     # Blocks of 3 x 3 pixels, on a raster of one row: every centre is in it.
     def coarsened(kind):

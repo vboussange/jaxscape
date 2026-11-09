@@ -156,7 +156,8 @@ def _tile_sensitivity(
     gradient = jax.grad(connectivity, argnums)(tile.quality, tile.permeability)
     if calibration is None:
         return gradient
-    return _block_correction(windowed, tile, calibration) * gradient
+    correction = _block_correction(windowed, tile, calibration)
+    return correction.astype(gradient.dtype) * gradient
 
 
 def _block_correction(
@@ -203,10 +204,12 @@ def _convolve(
     x: Array, y: Array, start: tuple[int, ...], shape: tuple[int, int]
 ) -> Array:
     """The entries of shape `shape` from index `start` of the convolution of `x`
-    and `y`, which has `x.shape + y.shape - 1` entries.
+    and `y`, which has `x.shape + y.shape - 1` entries, in their common dtype.
 
     The smaller array is the kernel: the cost is the entries times its size.
     """
+    dtype = jnp.result_type(x, y)
+    x, y = x.astype(dtype), y.astype(dtype)
     if x.size < y.size:
         x, y = y, x
     # The convolution's entry `k - 1 - low` is the first one that a
