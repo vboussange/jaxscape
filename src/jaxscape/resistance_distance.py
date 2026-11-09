@@ -622,7 +622,8 @@ def _grounded_laplacian(A: BCOO) -> tuple[BCOO, Array]:
     their distances.
 
     The returned matrix `L + d e_g e_g^T` adds the degree `d` of the ground `g`
-    to its diagonal entry: it keeps the sparsity pattern of the Laplacian `L`
+    to its diagonal entry, or `d = 1` for a ground without neighbours, as in a
+    graph of one vertex: it keeps the sparsity pattern of the Laplacian `L`
     whatever the ground, and it is positive definite for a connected graph. Its
     solutions minus their value at `g` are those of `L` without the row and the
     column of `g`, and give the same resistances.
@@ -637,7 +638,8 @@ def _grounded_laplacian(A: BCOO) -> tuple[BCOO, Array]:
         vertices % width - middle % width
     )
     ground = jnp.argmin(jnp.where(degree >= jnp.max(degree) / 2, offset, 2 * n))
-    diagonal = bcoo_diag(degree.at[ground].multiply(2), A.indices.dtype)
+    grounding = jnp.where(degree[ground] > 0, degree[ground], 1)
+    diagonal = bcoo_diag(degree.at[ground].add(grounding), A.indices.dtype)
     return diagonal - A, ground
 
 
