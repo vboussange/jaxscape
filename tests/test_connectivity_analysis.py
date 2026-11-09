@@ -365,43 +365,42 @@ def test_euclidean_connectivity_matches_all_pairs(q_weighted):
     assert_close(run(SensitivityAnalysis, "quality"), expected, 1e-12)
 
 
-@pytest.mark.parametrize("q_weighted", [True, False])
-@pytest.mark.parametrize("dtype", [jnp.int32, jnp.bool_])
-def test_integer_and_boolean_quality_give_the_connectivity_of_floats(dtype, q_weighted):
-    # Qualities 0, 1 and 2, or False and True.
-    quality = (3 * QUALITY).astype(dtype)
-
-    def connectivity(quality):
-        return make(ConnectivityAnalysis, EuclideanDistance(), quality).run(
-            q_weighted=q_weighted
-        )
-
-    actual = connectivity(quality)
-    assert actual.dtype == PERMEABILITY.dtype
-    assert_close(actual, connectivity(quality.astype(PERMEABILITY.dtype)), 1e-12)
-
-
-@pytest.mark.parametrize("coarsening_factor", [0.0, 0.5])
-@pytest.mark.parametrize("dtype", [jnp.int32, jnp.bool_])
-def test_integer_and_boolean_quality_give_the_sensitivity_of_floats(
-    dtype, coarsening_factor
+# JAX warns of a sum into an array of another dtype, and will raise.
+@pytest.mark.filterwarnings("error::FutureWarning")
+@pytest.mark.parametrize(
+    "quality_dtype, permeability_dtype, distance",
+    [
+        ("int32", "float64", LCPDistance()),
+        ("bool", "float32", LCPDistance()),
+        ("float32", "float64", LCPDistance()),
+        ("float64", "float32", LCPDistance()),
+        # Its distances come from integer pixel coordinates.
+        ("float32", "float32", EuclideanDistance()),
+    ],
+)
+def test_rasters_of_any_dtypes_give_the_float64_results_in_their_common_dtype(
+    quality_dtype, permeability_dtype, distance
 ):
-    quality = (3 * QUALITY).astype(dtype)
+    # Qualities 0, 1 and 2, or False and True.
+    quality = (3 * QUALITY).astype(quality_dtype)
+    permeability = PERMEABILITY.astype(permeability_dtype)
 
-    def sensitivity(quality, var):
-        windowed = make(
-            SensitivityAnalysis,
-            LCPDistance(),
-            quality,
-            coarsening_factor=coarsening_factor,
-        )
-        return windowed.run(var)
+    def results(quality, permeability):
+        def coarsened(kind):
+            return make(kind, distance, quality, permeability, coarsening_factor=0.5)
 
-    for var in ["quality", "permeability"]:
-        actual = sensitivity(quality, var)
-        assert actual.dtype == PERMEABILITY.dtype
-        expected = sensitivity(quality.astype(PERMEABILITY.dtype), var)
-        assert_close(actual, expected, 1e-12)
+        sensitivity = coarsened(SensitivityAnalysis)
+        return [
+            coarsened(ConnectivityAnalysis).run(),
+            sensitivity.run("quality"),
+            sensitivity.run("permeability"),
+        ]
+
+    dtype = "float64" if "float64" in (quality_dtype, permeability_dtype) else "float32"
+    expected = results(quality.astype("float64"), permeability.astype("float64"))
+    for actual, expected in zip(results(quality, permeability), expected):
+        assert actual.dtype == dtype
+        assert_close(actual, expected, 1e-5 if dtype == "float32" else 1e-12)
 
 
 @pytest.mark.parametrize(
@@ -898,23 +897,6 @@ def test_coarsened_permeability_sensitivity_is_finite_where_proximities_underflo
     coarsened = sensitivity(0.5)
     assert jnp.all(jnp.isfinite(coarsened))
     np.testing.assert_array_equal(coarsened, sensitivity(0.0))
-
-
-@pytest.mark.parametrize("var", ["quality", "permeability"])
-@pytest.mark.parametrize("dtypes", [("float32", "float64"), ("float64", "float32")])
-def test_coarsened_sensitivity_takes_rasters_of_mixed_float_dtypes(var, dtypes):
-    # The interpolation weights take the dtype of the quality raster, and the
-    # block calibration that of the permeability raster.
-    def sensitivity(quality_dtype, permeability_dtype):
-        return make(
-            SensitivityAnalysis,
-            LCPDistance(),
-            QUALITY.astype(quality_dtype),
-            PERMEABILITY.astype(permeability_dtype),
-            coarsening_factor=0.5,
-        ).run(var)
-
-    assert_close(sensitivity(*dtypes), sensitivity("float64", "float64"), 1e-5)
 
 
 def test_coarsening_runs_on_a_raster_thinner_than_a_block():
