@@ -6,10 +6,7 @@
 
 `ResistanceDistance()` solves with `GridMultigridSolver()`: conjugate gradients
 preconditioned by geometric multigrid, which solves the grounded Laplacians of
-grid graphs, such as those of a `GridGraph`. It runs in JAX on CPU and GPU,
-inside `jax.jit`, in float32 and float64, and needs no optional dependency. It
-solves grids of up to 1024 pixels with one Cholesky factorization, up to
-rounding. On grid graphs in float32, it matched or beat the other solvers
+grid graphs, such as those of a `GridGraph`. On grid graphs in float32, it matched or beat the other solvers
 measured, in time and accuracy:
 
 | Workload | `GridMultigridSolver` | `CholmodSolver` | `AMJaxCGSolver` | `CuDSSSolver` |
