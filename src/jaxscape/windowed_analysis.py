@@ -312,7 +312,9 @@ class WindowedAnalysis(eqx.Module):
 
     **Arguments:**
 
-    - `quality_raster`: Habitat quality values.
+    - `quality_raster`: Habitat quality values. An integer or boolean raster
+      takes the floating dtype of the permeability, or JAX's default floating
+      dtype if the permeability is also integer or boolean.
     - `permeability_raster`: Movement permeability, or function
       `quality -> permeability`.
     - `distance`: Distance metric (e.g., `LCPDistance()`,
@@ -414,6 +416,10 @@ class WindowedAnalysis(eqx.Module):
         permeability_raster = jnp.where(
             permeability_raster > floor, permeability_raster, floor
         )
+        # The analyses sum and differentiate in the dtype of the quality, which
+        # takes the floating dtype of the floored permeability.
+        if not jnp.issubdtype(quality_raster.dtype, jnp.inexact):
+            quality_raster = quality_raster.astype(permeability_raster.dtype)
         height, width = quality_raster.shape
         blocks = tuple(len(_block_centres(n, block_size)) for n in (height, width))
         counts = _tile_shape(distance, batch_size, blocks)

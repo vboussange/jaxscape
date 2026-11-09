@@ -365,6 +365,45 @@ def test_euclidean_connectivity_matches_all_pairs(q_weighted):
     assert_close(run(SensitivityAnalysis, "quality"), expected, 1e-12)
 
 
+@pytest.mark.parametrize("q_weighted", [True, False])
+@pytest.mark.parametrize("dtype", [jnp.int32, jnp.bool_])
+def test_integer_and_boolean_quality_give_the_connectivity_of_floats(dtype, q_weighted):
+    # Qualities 0, 1 and 2, or False and True.
+    quality = (3 * QUALITY).astype(dtype)
+
+    def connectivity(quality):
+        return make(ConnectivityAnalysis, EuclideanDistance(), quality).run(
+            q_weighted=q_weighted
+        )
+
+    actual = connectivity(quality)
+    assert actual.dtype == PERMEABILITY.dtype
+    assert_close(actual, connectivity(quality.astype(PERMEABILITY.dtype)), 1e-12)
+
+
+@pytest.mark.parametrize("coarsening_factor", [0.0, 0.5])
+@pytest.mark.parametrize("dtype", [jnp.int32, jnp.bool_])
+def test_integer_and_boolean_quality_give_the_sensitivity_of_floats(
+    dtype, coarsening_factor
+):
+    quality = (3 * QUALITY).astype(dtype)
+
+    def sensitivity(quality, var):
+        windowed = make(
+            SensitivityAnalysis,
+            LCPDistance(),
+            quality,
+            coarsening_factor=coarsening_factor,
+        )
+        return windowed.run(var)
+
+    for var in ["quality", "permeability"]:
+        actual = sensitivity(quality, var)
+        assert actual.dtype == PERMEABILITY.dtype
+        expected = sensitivity(quality.astype(PERMEABILITY.dtype), var)
+        assert_close(actual, expected, 1e-12)
+
+
 @pytest.mark.parametrize(
     "name, kernel",
     [
