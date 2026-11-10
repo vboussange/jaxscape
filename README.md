@@ -120,6 +120,10 @@ covers solver choices for other graphs and larger landscapes.
 
 But what's really cool about `JAXscape` is that you can autodiff through thoses distances! Check out the [documentation](#documentation) to learn about applications and more!
 
+Inverse landscape genetics built on JAXScape, which fits landscape permeability
+to genetic data by differentiating through resistance distances, lives in
+[ilg-toolkit](https://github.com/vboussange/ilg-toolkit).
+
 
 ## Documentation
 
