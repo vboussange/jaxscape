@@ -18,12 +18,13 @@ from .operator import AbstractReusableStateSolver
 # grids, whose Galerkin stencils couple the 3 x 3 neighbourhood of a point.
 _ROOK = ((-1, 0), (0, -1), (0, 0), (0, 1), (1, 0))
 _QUEEN = tuple((i, j) for i in (-1, 0, 1) for j in (-1, 0, 1))
-# Grids of at most this many points are solved with a Cholesky factorization.
-_COARSEST = 1024
-# Damped Jacobi smoothing: sweeps before and after the coarse correction, and
-# damping.
-_SWEEPS = 1
-_DAMPING = 2 / 3
+# The largest number of points of the coarsest level, which a Cholesky
+# factorization solves (pyamg's `max_coarse`).
+_MAX_COARSE = 1024
+# Damped Jacobi relaxation, as pyamg's `jacobi`: iterations before and after the
+# coarse correction, and weight.
+_ITERATIONS = 1
+_OMEGA = 2 / 3
 
 
 @final
@@ -45,21 +46,34 @@ class GridMultigridState(eqx.Module):
     offsets: tuple[tuple[int, int], ...] = eqx.field(static=True)
 
 
-class _Hierarchy(eqx.Module):
-    """The multigrid hierarchy of a matrix, which each solve builds.
+class _Level(eqx.Module):
+    """One level of a `_MultilevelSolver`: a grid, as pyamg's levels.
 
     **Attributes:**
 
-    - `stencils`: The stencil coefficients of each grid, from the finest: for
-      each offset, an array of the grid's shape.
-    - `interpolations`: The weights of the interpolation from each coarse grid
-      to the grid before it.
-    - `factor`: The lower Cholesky factor of the matrix of the coarsest grid.
-    - `offsets`: The offsets (row, column) of the stencil of the finest grid.
+    - `A`: The stencil coefficients of the matrix of the level: for each offset,
+      an array of the grid's shape.
+    - `P`: The weights of the interpolation from the next coarser level to this
+      one, or `None` on the coarsest level.
     """
 
-    stencils: tuple[tuple[Array, ...], ...]
-    interpolations: tuple[tuple[Array, ...], ...]
+    A: tuple[Array, ...]
+    P: tuple[Array, ...] | None
+
+
+class _MultilevelSolver(eqx.Module):
+    """The multigrid hierarchy of a matrix, as pyamg's `MultilevelSolver`.
+
+    Each solve builds it.
+
+    **Attributes:**
+
+    - `levels`: The levels, from the finest.
+    - `factor`: The lower Cholesky factor of the matrix of the coarsest level.
+    - `offsets`: The offsets (row, column) of the stencil of the finest level.
+    """
+
+    levels: tuple[_Level, ...]
     factor: Array
     offsets: tuple[tuple[int, int], ...] = eqx.field(static=True)
 
@@ -79,11 +93,12 @@ class GridMultigridSolver(AbstractReusableStateSolver):
     the solve. A compiled program then holds one hierarchy for each place
     where it solves, whatever the states it reinitializes.
 
-    Each V-cycle smooths with a sweep of damped Jacobi before and after the
-    coarse correction. Coarse grids keep every other point along each axis, and
-    interpolate the others from the matrix coefficients, as black-box multigrid
-    does ([Dendy, 1982](https://doi.org/10.1016/0021-9991(82)90057-2)), which
-    keeps convergence fast across jumps of conductance. Their matrices are the
+    Each V-cycle relaxes with one iteration of damped Jacobi before and after
+    the coarse correction. Coarse grids keep every other point along each axis,
+    and interpolate the others from the matrix coefficients, as black-box
+    multigrid does
+    ([Dendy, 1982](https://doi.org/10.1016/0021-9991(82)90057-2)), which keeps
+    convergence fast across jumps of conductance. Their matrices are the
     Galerkin products of the interpolation. The first grid of at most 1024
     points is solved with a Cholesky factorization. A batch of right-hand
     sides, as `jax.vmap` makes, runs as one solve with the right-hand sides
@@ -296,12 +311,12 @@ def _stencil(
 # Each solve traces it, and Lineax traces a solve up to three times: a jitted
 # function is traced once for its shapes.
 @eqx.filter_jit
-def _hierarchy(state: GridMultigridState) -> _Hierarchy:
+def _hierarchy(state: GridMultigridState) -> _MultilevelSolver:
     """The multigrid hierarchy of the matrix of `state`."""
     offsets = state.offsets
     height, width = state.stencil[0].shape
     shapes = [(height, width)]
-    while shapes[-1][0] * shapes[-1][1] > _COARSEST:
+    while shapes[-1][0] * shapes[-1][1] > _MAX_COARSE:
         height, width = shapes[-1]
         shapes.append(((height + 1) // 2, (width + 1) // 2))
     stencils, interpolations = [state.stencil], []
@@ -317,10 +332,11 @@ def _hierarchy(state: GridMultigridState) -> _Hierarchy:
     n = height * width
     level_offsets = offsets if len(shapes) == 1 else _QUEEN
     eye = jnp.eye(n, dtype=state.stencil[0].dtype)
-    matrix = _apply(level_offsets, stencils[-1], eye.reshape(height, width, n))
+    matrix = _matvec(level_offsets, stencils[-1], eye.reshape(height, width, n))
     matrix = matrix.reshape(n, n)
     factor = jnp.linalg.cholesky((matrix + matrix.T) / 2)
-    return _Hierarchy(tuple(stencils), tuple(interpolations), factor, offsets)
+    levels = map(_Level, stencils, [*interpolations, None])
+    return _MultilevelSolver(tuple(levels), factor, offsets)
 
 
 def _coarser_grids(
@@ -367,7 +383,7 @@ def _shift(x: Array, i: int, j: int) -> Array:
     return jnp.pad(x, padding)[1 + i : 1 + i + height, 1 + j : 1 + j + width]
 
 
-def _apply(offsets: tuple, stencil: tuple[Array, ...], x: Array) -> Array:
+def _matvec(offsets: tuple, stencil: tuple[Array, ...], x: Array) -> Array:
     """The product of the stencil matrix and `x`, of shape `(height, width, m)`."""
     terms = [a[:, :, None] * _shift(x, *o) for a, o in zip(stencil, offsets)]
     return sum(terms[1:], terms[0])
@@ -481,7 +497,7 @@ def _galerkin(
     colour = np.arange(9)
     probes = jnp.asarray(i == colour // 3) & jnp.asarray(j == colour % 3)
     fine = _prolong(weights, probes.astype(stencil[0].dtype), stencil[0].shape)
-    products = _restrict(weights, _apply(offsets, stencil, fine), coarse)
+    products = _restrict(weights, _matvec(offsets, stencil, fine), coarse)
     # The product of the vector that holds the neighbour (i + di, j + dj) gives
     # the coefficient of the offset (di, dj) at (i, j).
     di, dj = (np.array([o[axis] for o in _QUEEN]) for axis in (0, 1))
@@ -496,47 +512,42 @@ def _galerkin(
     )
 
 
-def _smooth(
-    offsets: tuple, stencil: tuple[Array, ...], b: Array, x: Array | None = None
-) -> Array:
-    """Damped Jacobi sweeps from `x`, or from zero."""
-    diagonal = stencil[offsets.index((0, 0))][:, :, None]
-    step = _ratio(jnp.asarray(_DAMPING, b.dtype), diagonal)
-    sweeps = _SWEEPS
+def _jacobi(offsets: tuple, A: tuple[Array, ...], x: Array | None, b: Array) -> Array:
+    """Damped Jacobi iterations on `A x = b` from `x`, or from zero for `None`."""
+    diagonal = A[offsets.index((0, 0))][:, :, None]
+    step = _ratio(jnp.asarray(_OMEGA, b.dtype), diagonal)
+    iterations = _ITERATIONS
     if x is None:
-        x, sweeps = step * b, sweeps - 1
-    for _ in range(sweeps):
-        x = x + step * (b - _apply(offsets, stencil, x))
+        x, iterations = step * b, iterations - 1
+    for _ in range(iterations):
+        x = x + step * (b - _matvec(offsets, A, x))
     return x
 
 
-def _v_cycle(state: _Hierarchy, b: Array, level: int = 0) -> Array:
-    if level == len(state.interpolations):
-        n, m = state.factor.shape[0], b.shape[-1]
+def _v_cycle(ml: _MultilevelSolver, b: Array, lvl: int = 0) -> Array:
+    if lvl == len(ml.levels) - 1:
+        n, m = ml.factor.shape[0], b.shape[-1]
         # Right-hand sides as rows, solved on the right: XLA laid out all the
         # vectors of a batch with the batch axis major for triangular solves on
         # the left, which made V-cycles several times slower on a GPU, and
         # autotuned a product with the inverse at each compilation.
         rows = lax.linalg.triangular_solve(
-            state.factor,
+            ml.factor,
             b.reshape(n, m).T,
             left_side=False,
             lower=True,
             transpose_a=True,
         )
-        rows = lax.linalg.triangular_solve(
-            state.factor, rows, left_side=False, lower=True
-        )
+        rows = lax.linalg.triangular_solve(ml.factor, rows, left_side=False, lower=True)
         return rows.T.reshape(b.shape)
-    offsets = state.offsets if level == 0 else _QUEEN
-    stencil = state.stencils[level]
-    weights = state.interpolations[level]
-    x = _smooth(offsets, stencil, b)
-    residual = b - _apply(offsets, stencil, x)
-    coarse = state.stencils[level + 1][0].shape
-    correction = _v_cycle(state, _restrict(weights, residual, coarse), level + 1)
-    x = x + _prolong(weights, correction, b.shape[:2])
-    return _smooth(offsets, stencil, b, x)
+    offsets = ml.offsets if lvl == 0 else _QUEEN
+    A, P = ml.levels[lvl].A, ml.levels[lvl].P
+    assert P is not None
+    x = _jacobi(offsets, A, None, b)
+    coarse_b = _restrict(P, b - _matvec(offsets, A, x), ml.levels[lvl + 1].A[0].shape)
+    coarse_x = _v_cycle(ml, coarse_b, lvl + 1)
+    x = x + _prolong(P, coarse_x, b.shape[:2])
+    return _jacobi(offsets, A, x, b)
 
 
 def _dot(x: Array, y: Array) -> Array:
@@ -545,8 +556,8 @@ def _dot(x: Array, y: Array) -> Array:
 
 # Traced once for its shapes, as `_hierarchy`.
 @eqx.filter_jit
-def _conjugate_gradients(
-    state: _Hierarchy, b: Array, rtol: float, max_steps: int
+def _cg(
+    ml: _MultilevelSolver, b: Array, rtol: float, max_steps: int
 ) -> tuple[Array, Array]:
     """Solve for the columns of `b`, of shape `(height, width, m)`.
 
@@ -562,16 +573,16 @@ def _conjugate_gradients(
     largest = jnp.max(jnp.abs(b), axis=(0, 1))
     exponent = jnp.frexp(largest)[1]
     b = jnp.where(largest >= jnp.finfo(b.dtype).tiny, jnp.ldexp(b, -exponent), 0)
-    offsets, stencil = state.offsets, state.stencils[0]
+    offsets, A = ml.offsets, ml.levels[0].A
     tolerance = (rtol**2) * _dot(b, b)
 
     def step(carry):
         x, r, p, rz, squared_residual, steps = carry
-        z = _v_cycle(state, r)
+        z = _v_cycle(ml, r)
         rz_new = _dot(r, z)
         # The first step starts from p = 0.
         p = z + _ratio(rz_new, rz) * p
-        q = _apply(offsets, stencil, p)
+        q = _matvec(offsets, A, p)
         alpha = _ratio(rz_new, _dot(p, q))
         r = r - alpha * q
         return x + alpha * p, r, p, rz_new, _dot(r, r), steps + 1
@@ -598,7 +609,7 @@ def _solve(
     def solve(state, vectors):
         # Right-hand sides as columns.
         b = vectors.reshape(height, width, -1)
-        x, solved = _conjugate_gradients(_hierarchy(state), b, rtol, max_steps)
+        x, solved = _cg(_hierarchy(state), b, rtol, max_steps)
         return x.reshape(height * width, -1), solved
 
     @jax.custom_batching.custom_vmap
