@@ -307,17 +307,13 @@ def _windows(distances: Array, sources: Array, size: int) -> Array:
     return jax.vmap(window)(distances, sources)
 
 
-@eqx.filter_jit
-def _system_matrix(distance: "AbstractSolverDistance", graph: AbstractGraph) -> BCOO:
-    """The system matrix of `distance` on `graph`, in one compiled program."""
-    return distance.system_matrix(graph)
-
-
 class AbstractSolverDistance(AbstractDistance):
     """Distance whose queries solve linear systems with one sparse matrix per graph.
 
-    Subclass it with `solver` and `system_matrix` to get the solver state lifecycle
-    of `init` and `reinit`.
+    That matrix is the system matrix of the graph: sparse, symmetric and positive
+    definite, such as the grounded Laplacian of `ResistanceDistance`. Subclass it
+    with `solver` and `system_matrix` to get the solver state lifecycle of `init`
+    and `reinit`.
 
     **Attributes:**
 
@@ -328,7 +324,10 @@ class AbstractSolverDistance(AbstractDistance):
 
     @abstractmethod
     def system_matrix(self, graph: AbstractGraph) -> BCOO:
-        """Return the sparse matrix that queries on `graph` solve with.
+        """Return the system matrix of `graph`.
+
+        Implementations compile it with `eqx.filter_jit`, so that an eager call
+        compiles one program instead of one per operation.
 
         **Arguments:**
 
@@ -336,7 +335,7 @@ class AbstractSolverDistance(AbstractDistance):
 
         **Returns:**
 
-        Sparse symmetric positive definite matrix.
+        The system matrix, as a `BCOO` matrix.
         """
 
     def init(self, graph: AbstractGraph) -> Any:
@@ -360,7 +359,7 @@ class AbstractSolverDistance(AbstractDistance):
     def reinit(self, graph: AbstractGraph, state: Any) -> Any:
         if self.solver is None:
             return None
-        return _solver_state(_system_matrix(self, graph), self.solver, None, state)
+        return _solver_state(self.system_matrix(graph), self.solver, None, state)
 
     def init_preconditioner(self, graph: AbstractGraph) -> Any:
         """Deprecated alias of `init`, which queries now reinitialize for any graph."""
@@ -372,8 +371,8 @@ class AbstractSolverDistance(AbstractDistance):
         return self.init(graph)
 
 
-def _traced(tree: Any) -> bool:
-    """Whether a leaf of `tree` is a tracer."""
+def _has_tracers(tree: Any) -> bool:
+    """Whether a leaf of `tree` is a tracer, as inside `jax.jit` or `jax.grad`."""
     return any(isinstance(leaf, Tracer) for leaf in jax.tree.leaves(tree))
 
 
@@ -394,9 +393,13 @@ def _grid_multigrid_state(distance: AbstractSolverDistance, graph: GridGraph) ->
     indices the solver checks.
     """
     concrete = graph
-    if _traced(graph):
+    # The solver reads its grid from concrete sparse indices, which a traced
+    # graph may lack: the state then comes from a concrete stand-in.
+    if _has_tracers(graph):
         neighbors = graph.neighbors
-        if _traced(neighbors):
+        # `eqx.filter_jit` traces the neighbours of a graph it takes whole:
+        # their number then tells the contiguity.
+        if _has_tracers(neighbors):
             neighbors = _CONTIGUITIES.get(neighbors.shape[0])
         if neighbors is None:
             # The solver raises: its grid needs concrete sparse indices.
