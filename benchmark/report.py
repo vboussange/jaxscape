@@ -83,7 +83,9 @@ SETUPS = {
         "query holds the dense inverse of the 40,401 pixels of a window, and in "
         "float64, the only precision that resolves its windows, one window ran "
         "out of the 24 GB of the GPU, and out of memory on the CPU after taking "
-        "300 GB."
+        "300 GB. The agreement of another tool is Spearman's ρ between its map "
+        "and JAXScape's map under the same distance, over the pixels where both "
+        "maps are defined."
     ),
     "E3": (
         "JAXScape computes the map of $\\partial C / \\partial p_k$ with "
@@ -270,6 +272,8 @@ def value(record):
         return record["status"]
     if record["agreement"] is None:
         return "missing"
+    if record["measure"] == "Spearman's ρ":
+        return f"{record['agreement']:.2f}"
     return f"{record['agreement']:.1e}"
 
 

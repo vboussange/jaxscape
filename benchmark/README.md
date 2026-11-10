@@ -35,8 +35,9 @@ change the pin, run, and report.
 - `install.sh`: installs the toolchains of the external tools and the data,
   each pinned: Julia and the packages of `julia/Manifest.toml`, through
   juliaup, the R packages of `renv.lock` in the renv library of this
-  directory, which `Rscript` loads here through `.Rprofile`, and the land
-  cover of Maryland in `data/`.
+  directory, which `Rscript` loads here through `.Rprofile`, the Graphab jar
+  and the Java runtime that it needs in `java/`, and the land cover of
+  Maryland in `data/`. The Python tools are dependencies of this project.
 - `run.py`: the runner. Each cell runs in its own process, pinned with
   `taskset` to the cores of the configuration, with the OpenMP, BLAS, Julia
   and R thread variables matched to them; XLA sizes its thread pools to the
@@ -47,8 +48,9 @@ change the pin, run, and report.
   Julia and R adapters, and `reference.py` computes the float64 reference of
   E1.
 - `results/<run>/`: `records.jsonl`, the environment snapshot
-  `environment.json`, the references of E1, the logs of the cells (not
-  committed), and what the report writes: `results.csv`, one figure per
+  `environment.json`, the references of E1, the logs of the cells and
+  `maps/`, JAXScape's maps of E2 and E3 against which the other tools'
+  maps are ranked (neither committed), and what the report writes: `results.csv`, one figure per
   question, `e1.png` to `e3.png`, and the page `index.md`.
 
 ## The cell record
@@ -72,16 +74,19 @@ A tool takes one adapter script and one configuration entry.
    this comment into the table of parameter mappings. The adapter follows the
    protocol of `adapters/protocol.py`: it reads the cell file named by its
    argument, touches `progress` at the start of each call, saves the output
-   of its last call to `output` (for E1, the distances among the sites), and
-   writes `result`. Julia adapters include `adapters/protocol.jl` and run
+   of its last call to `output` (for E1, the distances among the sites; for
+   E2 and E3, a map of the raster's shape, NaN where the tool gives no
+   value), and writes `result`. Julia adapters include `adapters/protocol.jl` and run
    with `julia --project=julia`. R adapters source `adapters/protocol.R` and
    run with `Rscript` in this directory. To add an R package, load it in the
    adapter, run `Rscript -e 'renv::install("samc"); renv::snapshot()'` here,
    and add it to `R_PACKAGES` in `run.py`, which records its version with each
    run.
 2. Add an entry to `config.toml`, with the tool's settings for each distance.
-   A setting given per device is a table keyed by device, and a list of
-   solvers runs each:
+   A tool of E2 or E3 with a tier takes the distance of the JAXScape map that
+   its map is ranked against, and its entry comes after JAXScape's. A setting
+   given per device is a table keyed by device, and a list of solvers runs
+   each:
 
    ```toml
    [[tools]]

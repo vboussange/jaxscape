@@ -9,6 +9,11 @@ cells recorded there when it restarts. Smoke mode runs every cell on a raster of
 `smoke_side` pixels a side, with windows of `smoke_dependency_range` and one
 timed call, into a new run directory, and exits with an error when a cell fails
 or lacks its agreement.
+
+The agreement of a tool with a tier is, for E1, the largest relative error
+against a float64 reference, and for E2 and E3, Spearman's ρ against the map of
+JAXScape's first cell of the same case, question and distance, which the runner
+saves in `RUN_DIR/maps`: JAXScape's entries come first in the configuration.
 """
 
 import argparse
@@ -30,11 +35,12 @@ from pathlib import Path
 
 import numpy as np
 from landscape import maryland, sites, synthetic
+from scipy.stats import spearmanr
 
 
 HERE = Path(__file__).resolve().parent
 KEY = ("question", "tool", "distance", "device", "dtype", "solver", "case")
-MEASURES = {"E1": "largest relative error"}
+MEASURES = {"E1": "largest relative error", "E2": "Spearman's ρ", "E3": "Spearman's ρ"}
 REFERENCE = "adapters/reference.py"
 INTERPRETERS = {".jl": ["julia", f"--project={HERE / 'julia'}"], ".R": ["Rscript"]}
 OOM = re.compile(
@@ -81,6 +87,7 @@ def run(config, run_dir, smoke):
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "logs").mkdir(exist_ok=True)
     (run_dir / "references").mkdir(exist_ok=True)
+    (run_dir / "maps").mkdir(exist_ok=True)
     if not (run_dir / "environment.json").exists():
         snapshot = json.dumps(environment(config), indent=2)
         (run_dir / "environment.json").write_text(snapshot + "\n")
@@ -261,12 +268,19 @@ def run_cell(config, cell, case_dir, run_dir, smoke):
         version=result["version"],
         files=result["files"],
     )
-    if cell["tier"]:
+    output = work / "output.npy"
+    jaxscape_map = (
+        run_dir / "maps" / f"{cell['case']}-{cell['question']}-{cell['distance']}.npy"
+    )
+    if cell["tool"] == "JAXScape" and cell["question"] != "E1":
+        if not jaxscape_map.exists():
+            shutil.copy(output, jaxscape_map)
+    elif cell["tier"] and cell["question"] == "E1":
         reference = reference_of(config, cell, case_dir, run_dir)
         if reference is not None:
-            record["agreement"] = largest_relative_error(
-                np.load(work / "output.npy"), reference
-            )
+            record["agreement"] = largest_relative_error(np.load(output), reference)
+    elif cell["tier"] and jaxscape_map.exists():
+        record["agreement"] = spearman(np.load(output), np.load(jaxscape_map))
     return record
 
 
@@ -322,6 +336,14 @@ def largest_relative_error(output, reference):
     pairs = np.triu_indices(len(reference), 1)
     error = np.abs(output[pairs] - reference[pairs]) / np.abs(reference[pairs])
     return float(np.max(error))
+
+
+def spearman(output, reference):
+    """Return Spearman's ρ between two maps, over the pixels where both are
+    finite, or `None` when it is undefined."""
+    finite = np.isfinite(output) & np.isfinite(reference)
+    rho, _ = spearmanr(output[finite], reference[finite])
+    return float(rho) if np.isfinite(rho) else None
 
 
 def execute(config, adapter, device, specification, work, log):
@@ -448,10 +470,12 @@ def environment(config):
                     "numpy",
                     "scipy",
                     "scikit-image",
+                    "eco-connectivity",
                 )
             },
             **julia_packages(),
             **r_packages(),
+            **java_packages(),
         },
     }
 
@@ -473,6 +497,18 @@ def r_packages():
     return {
         "R": lock["R"]["Version"],
         **{name: lock["Packages"][name]["Version"] for name in R_PACKAGES},
+    }
+
+
+def java_packages():
+    """Return the versions of Graphab and of its Java runtime, which install.sh
+    installs in `java/`."""
+    jar = next((HERE / "java").glob("graphab-*.jar"))
+    lines = (HERE / "java" / "jre" / "release").read_text().splitlines()
+    release = dict(line.split("=", 1) for line in lines if "=" in line)
+    return {
+        "Graphab": jar.stem.removeprefix("graphab-"),
+        "Java": release["JAVA_VERSION"].strip('"'),
     }
 
 

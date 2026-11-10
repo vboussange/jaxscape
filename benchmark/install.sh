@@ -18,6 +18,16 @@ julia --project=julia -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
 # libraries.
 MAKEFLAGS="-j$(nproc)" Rscript -e 'renv::restore(prompt = FALSE)'
 
+# Graphab 3.0.8, and the Java 21 runtime (Temurin) that it needs, in java/,
+# each checked against its checksum.
+mkdir -p java/jre
+curl -fsSL -o java/graphab-3.0.8.jar https://gitlab-mshe.univ-fcomte.fr/api/v4/projects/206/packages/generic/graphab/3.0.8/graphab-3.0.8.jar
+echo "9b38cdffc11794f3cebbf1e3846ffc14a1e46acb9102746a446501b1897eca43  java/graphab-3.0.8.jar" | sha256sum --check
+curl -fsSL -o java/jre.tar.gz https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jre_x64_linux_hotspot_21.0.13_9.tar.gz
+echo "a535a1df9c6284d9618872984e026ae0352d1f7e9e0605425c0e6114f47351dd  java/jre.tar.gz" | sha256sum --check
+tar -xzf java/jre.tar.gz -C java/jre --strip-components=1
+rm java/jre.tar.gz
+
 # The land cover of Frederick, Maryland, of Omniscape's example, from
 # Circuitscape/datasets at a fixed commit, checked against its checksum.
 mkdir -p data

@@ -84,6 +84,27 @@ devices = ["cpu"]
 
 [tools.distances.resistance]
 dtype = "float32"
+
+[[tools]]
+tool = "JAXScape"
+question = "E2"
+adapter = "tests/fake_adapter.py"
+devices = ["cpu"]
+
+[tools.distances.resistance]
+
+[[tools]]
+tool = "Fake E2 map"
+question = "E2"
+adapter = "tests/fake_adapter.py"
+devices = ["cpu"]
+tier = 2
+
+[tools.distances.resistance]
+negate = true
+
+[tools.distances.lcp]
+negate = true
 """
 # A land cover of 20 x 24 pixels, of classes 1 (resistance 1), 2 (resistance 10)
 # and 3 (a barrier).
@@ -178,6 +199,24 @@ def test_runner_records_no_agreement_for_a_tool_without_tier(run_dir):
     assert record["agreement"] is None
 
 
+def test_runner_records_spearman_rho_against_the_jaxscape_map(run_dir):
+    cells = records(run_dir, "Fake E2 map")
+
+    for case in ("synthetic-8", "maryland"):
+        record = cells[("resistance", case)]
+        assert record["tier"] == 2
+        assert record["measure"] == "Spearman's ρ"
+        assert record["agreement"] == pytest.approx(-1)
+
+
+def test_runner_records_no_agreement_without_a_jaxscape_map(run_dir):
+    record = records(run_dir, "Fake E2 map")[("lcp", "synthetic-8")]
+
+    assert record["status"] == "ok"
+    assert record["measure"] == "Spearman's ρ"
+    assert record["agreement"] is None
+
+
 def test_runner_records_why_a_cell_failed_or_was_skipped(run_dir):
     cells = records(run_dir)
 
@@ -198,6 +237,9 @@ def test_runner_snapshots_the_environment(run_dir):
     assert environment["packages"]["ConScape"] == "0.3.0"
     assert environment["packages"]["R"] == "4.1.2"
     assert environment["packages"]["gdistance"] == "1.6.5"
+    assert environment["packages"]["eco-connectivity"] == "2.5.0"
+    assert environment["packages"]["Graphab"] == "3.0.8"
+    assert environment["packages"]["Java"] == "21.0.13"
 
 
 def test_restart_skips_the_recorded_cells(run_dir, tmp_path):

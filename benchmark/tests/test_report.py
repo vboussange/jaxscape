@@ -38,7 +38,7 @@ def test_report_writes_the_csv_with_one_row_per_record(tmp_path):
     with open(run_dir / "results.csv", newline="") as file:
         rows = list(csv.DictReader(file))
 
-    assert len(rows) == 28
+    assert len(rows) == 33
     assert {row["status"] for row in rows} == {
         "ok",
         "failed",
@@ -98,6 +98,11 @@ def test_e2_and_e3_tables_list_each_configuration_with_its_status(tmp_path):
     assert table_row(e2, "JAXScape", "lcp", "CPU")[-4:] == ["ok", "ok", "", ""]
     cpu = table_row(e2, "JAXScape", "resistance", "CPU")
     assert cpu[-4:] == ["oom", "skipped", "skipped", ""]
+    eco = table_row(e2, "eco-connectivity", "lcp", "CPU", "float32", "")
+    assert eco[-5:] == ["2", "0.98", "0.81", "timeout", ""]
+    graphab = table_row(e2, "Graphab", "lcp", "CPU", "float64", "")
+    assert graphab[-5:] == ["3", "-0.06", "missing", "", ""]
+    assert "Spearman's ρ" in e2
     assert table_row(e3, "Tool")[-2:] == ["256²", "Maryland"]
     assert table_row(e3, "JAXScape", "resistance", "GPU")[-2:] == ["ok", "ok"]
     assert table_row(e3, "JAXScape", "lcp", "GPU")[-2:] == ["failed", "skipped"]
@@ -127,7 +132,8 @@ def test_page_has_its_sections_and_references_the_figure(tmp_path):
     assert table_row(page, "Cores")[1] == "48-63"
     assert (
         table_row(page, "Tools")[1]
-        == "JAXScape 0.0.16, Circuitscape.jl 6.1.0, ConScape.jl 0.3.0"
+        == "JAXScape 0.0.16, Circuitscape.jl 6.1.0, ConScape.jl 0.3.0, "
+        "eco-connectivity 2.5.0, Graphab 3.0.8"
     )
     mapping = table_row(page, "JAXScape", "E1, E2, E3")
     assert mapping[2] == "`adapters/jaxscape.py`"
@@ -138,4 +144,10 @@ def test_page_has_its_sections_and_references_the_figure(tmp_path):
     conscape = table_row(page, "ConScape.jl", "E1")
     assert conscape[2] == "`adapters/conscape.jl`"
     assert "AverageWeight" in conscape[3]
+    eco = table_row(page, "eco-connectivity", "E2")
+    assert eco[2] == "`adapters/eco_connectivity.py`"
+    assert "exp(-d/25)" in eco[3]
+    graphab = table_row(page, "Graphab", "E2")
+    assert graphab[2] == "`adapters/graphab.py`"
+    assert "F_I + a_I" in graphab[3]
     assert table_row(page, "Linkage Mapper")[1] == "Needs ArcGIS."
