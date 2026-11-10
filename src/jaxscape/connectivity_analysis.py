@@ -362,88 +362,66 @@ class ConnectivityAnalysis(WindowedAnalysis):
 class SensitivityAnalysis(WindowedAnalysis):
     r"""Compute connectivity sensitivity via automatic differentiation.
 
-    Calculates gradients $\partial C / \partial q_i$ or $\partial C / \partial p_i$
-    showing how connectivity responds to changes in habitat quality or permeability
-    at each pixel. Without coarsening, the result is the gradient of
+    Returns $\partial C / \partial q_i$ or $\partial C / \partial p_i$: how the
+    connectivity $C$ of
+    [`ConnectivityAnalysis`][jaxscape.connectivity_analysis.ConnectivityAnalysis]
+    responds to the habitat quality or permeability of each pixel. Parameters,
+    distance units and the default `proximity` are those of
+    `ConnectivityAnalysis`.
+
+    Without coarsening, the result is the gradient of
     [`ConnectivityAnalysis.run`][jaxscape.connectivity_analysis.ConnectivityAnalysis.run]
-    with the same arguments. For `SpielmanApproximation`, the permeability
-    gradient of the estimated distances is estimated from that of exact
-    resistances (see `ResistanceDistance.sources_to_windows_distance`).
+    with the same arguments. With `SpielmanApproximation`, the permeability
+    gradient is estimated from that of the exact resistances (see
+    `ResistanceDistance.sources_to_windows_distance`).
 
-    With coarsening, the windows of block centres $c$ estimate it:
+    With coarsening, the windows of block centres $c$, with interpolation
+    weights $T_c(i)$ and blocks of $b$ pixels a side (see
+    [`WindowedAnalysis`][jaxscape.windowed_analysis.WindowedAnalysis]),
+    estimate the gradient.
 
-    - **Quality.** For a symmetric proximity $K$, the derivative of
-      $\sum_i \sum_{j \neq i} q_i K_{ij} q_j$ is twice the term
-      $\sum_{j \neq i} K_{ij} q_j$, which is interpolated from the block
-      centres: one distance query per window, without differentiation, for
-      distances that declare themselves symmetric (see
-      `AbstractDistance.symmetric`), as `EuclideanDistance`, `LCPDistance`,
-      `ResistanceDistance` and `FreeEnergyDistance` do on the window graphs,
-      whose edges average permeability. For other distances, the result is the
-      gradient of the coarsened connectivity. Within `dependency_range` of the
-      raster edges, the term falls steeply towards the edge and the
-      interpolation underestimates it: by up to 20 % in a uniform landscape
-      with `dependency_range` 8, the default proximity and `b = 3` or 5.
-    - **Permeability.** The gradient of each tile's connectivity without the
-      pairs within blocks,
-      $\sum_c \big(\sum_i T_c(i) \, q_i\big) \sum_{j \notin \text{block}(c)} K_{cj} q_j$
-      over its block centres $c$, is multiplied pixel by pixel by a correction
-      for the block artifacts, after Omniscape's block correction:
-      $\sum_c \sum_s w_c(s) \, g(\cdot - c - s)$ divided by
-      $\sum_c g_\text{far}(\cdot - c) \sum_s w_c(s)$. Here $g$ and
-      $g_\text{far}$ are the permeability gradients of
-      $\sum_{j \neq c} K_{cj}$ and $\sum_{j \notin \text{block}} K_{cj}$ for one
-      block centre $c$ at the centre of a window of quality 1 and of the
-      raster's maximum permeability, computed once per run, and the weights
-      $w_c(s) = T_c(c + s)$ of the raster pixels $c + s$ select the pixel
-      windows that each block centre stands for. The correction is 1 at or
-      below its noise floor, where the denominator is at most `1e-6` times the
-      maximum of $|g_\text{far}|$, for example where proximities underflow.
-      In a uniform landscape, away from its edges, the corrected gradient of a
-      block window is the weighted sum of the gradients of these pixel
-      windows, except at or below the noise floor and in the band of up to
-      $b - 1$ pixels that the pixel windows reach beyond the block window.
-      The gradients in that band are lost, so the coarsened permeability
-      sensitivity of windows is biased low. Measured in a uniform landscape
-      with `dependency_range` 8 and the default proximity, away from the
-      edges, it is 0.96 to 1.00 times the uncoarsened one for
-      `ResistanceDistance` with `b = 5` and one block centre per batch (0.97
-      to 1.00 with `b = 3`), and 0.99 to 1.00 for `LCPDistance`. Within
-      `dependency_range` of the edges, where the calibration window differs
-      most from the block windows, resistance sensitivity is as low as 0.7
-      times the uncoarsened one in the outer rows. The calibration window
-      departs from tiles larger than windows, whose graph extends beyond the
-      windows: in the same uniform landscape, with one tile for the raster,
-      the coarsened resistance sensitivity was 1.01 to 1.11 times the
-      uncoarsened one of the same tile, away from the edges, with `b = 5`,
-      and 0.99 to 1.03 with `b = 3`.
+    **Quality.** With `q_weighted` and a symmetric distance (see
+    `AbstractDistance.symmetric`), the derivative is
+    $2 \sum_{j \neq i} K_{ij} q_j$, interpolated from the block centres
+    without differentiation:
+
+    $$\frac{\partial C}{\partial q_i}
+    \approx 2 \sum_c T_c(i) \sum_{j \neq c} K_{cj} q_j$$
+
+    Otherwise, the result is the gradient of the coarsened connectivity.
+
+    **Permeability.** The gradient of
+    $\sum_c \big(\sum_i T_c(i)\, q_i\big) \sum_{j \notin \text{block}(c)} K_{cj} q_j$,
+    without the pairs within blocks, is multiplied pixel by pixel by a block
+    correction after Omniscape's:
+
+    $$\kappa(x) = \frac{\sum_c \sum_s w_c(s)\, g(x - c - s)}
+    {\sum_c g_\text{far}(x - c) \sum_s w_c(s)},
+    \qquad w_c(s) = T_c(c + s).$$
+
+    The weights $w_c(s)$ select the pixel windows that block centre $c$ stands
+    for. $g$ and $g_\text{far}$ are the permeability gradients of
+    $\sum_{j \neq c} K_{cj}$ and $\sum_{j \notin \text{block}(c)} K_{cj}$ for one
+    source at the centre of a window of quality 1 and of the raster's maximum
+    permeability, computed once per run. $g_\text{far}$ is set to 0 where its
+    magnitude is at most `1e-6` times its largest, and $\kappa = 1$ where the
+    denominator is 0, as where proximities underflow.
 
     !!! warning "Limitations"
 
+        - Coarsened sensitivities are approximate. The quality term falls
+          steeply within `dependency_range` of the raster edges, where the
+          interpolation underestimates it.
+        - In a uniform landscape, away from its edges, the corrected
+          permeability gradient of a block window is the weighted sum of the
+          gradients of its pixel windows, except in the band of up to $b - 1$
+          pixels that they reach beyond it, whose gradients are lost. The
+          block correction is biased near the raster edges, on tiles larger
+          than windows, whose graphs extend beyond the windows, and around
+          barriers, where it leaves marks along the lattice of block centres.
         - Randomized distances give noisy permeability sensitivity where
-          permeability varies over orders of magnitude. On a crop of 120 x 120
-          pixels of the Maryland land cover of the connectivity analysis
-          example, with `dependency_range` 30 and one tile, the permeability
-          sensitivity of `SpielmanApproximation` had a Pearson correlation of
-          0.996 with that of exact resistance at `epsilon` 0.1, 0.991 at 0.15
-          and 0.985 at 0.2, and two seeds agreed to 0.992, 0.983 and 0.963.
-          On the full land cover, with `dependency_range` 100, blocks of 21
-          pixels, one tile and `CuDSSSolver` in float32, two seeds agreed to
-          0.9983, 0.9962 and 0.9862, and to 0.9979, 0.9930 and 0.9853 for the
-          sensitivity divided by that of a flat landscape.
-        - The block correction is calibrated on a uniform landscape. With
-          barriers and blocks of several pixels, the coarsened permeability
-          sensitivity is biased and keeps a lattice through the block
-          centres: on the same land cover, with `dependency_range` 100 and
-          `b` from 3 to 21, the totals of `LCPDistance` were 29 to 45 % too
-          high, with grid lines, and `ResistanceDistance` showed "+" marks at
-          the block centres.
-
-    Parameters and windowing strategy are identical to
-    [`ConnectivityAnalysis`][jaxscape.connectivity_analysis.ConnectivityAnalysis],
-    including the units of `proximity` and its default, the negative
-    exponential of the distance in equivalent pixels with decay length
-    `dependency_range / 4`.
+          permeability varies over orders of magnitude: lower `epsilon`, or
+          compare seeds.
 
     !!! example
 

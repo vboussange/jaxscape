@@ -58,24 +58,18 @@ class ResistanceDistance(AbstractSolverDistance):
       `jaxscape.solvers.GridMultigridSolver()`, conjugate gradients with a
       geometric multigrid preconditioner, which solves grid graphs, such as
       those of a `GridGraph`, on any device without an optional dependency,
-      also in float32 and inside `jax.jit`. It solves grids of up to 1024
-      pixels with one Cholesky factorization, up to rounding. On a grid of
-      1000 x 1000 pixels in float32, its exact resistances among 20 nodes had
-      a relative error of `6.5e-5` against float64. Exact windowed analyses,
-      which solve for every vertex of a tile, took up to three times longer on
-      a CPU than with `solver=None`. Other graphs raise with the default: pass
-      `jaxscape.solvers.CholmodSolver`, `PyAMGSolver`, `AMJaxCGSolver` or
-      `CuDSSSolver`, or `solver=None`. The solver guide gives the solver of
-      each device and query
+      also in float32 and inside `jax.jit`. Other graphs raise with the
+      default: pass `jaxscape.solvers.CholmodSolver`, `PyAMGSolver`,
+      `AMJaxCGSolver` or `CuDSSSolver`, or `solver=None`. The solver guide
+      gives the solver of each device and query
       ([Choosing a solver](linear_solvers.md#choosing-a-solver)). Without a
-      solver, exact all-pairs and nodes-to-nodes
-      queries take the pseudo-inverse of the dense Laplacian, and other
-      queries a dense Cholesky factorization of the grounded Laplacian: their
-      memory grows with the square of the number of vertices, which suits
-      small graphs. The float32 pseudo-inverse loses accuracy: on a grid of
-      24 x 40 pixels with conductances over two decades, its all-pairs
-      resistances had a relative error of 40 % against float64, and those of
-      the default `2.6e-6`.
+      solver, exact all-pairs and nodes-to-nodes queries take the
+      pseudo-inverse of the dense Laplacian, and other queries a dense
+      Cholesky factorization of the grounded Laplacian: their memory grows
+      with the square of the number of vertices, which suits small graphs.
+      Exact windowed analyses, which solve for every vertex of a tile, can
+      run faster on a CPU without a solver. In float32, the pseudo-inverse
+      loses accuracy when conductances span orders of magnitude.
     - `method`: A resistance distance method. Defaults to `ExactResistance()`.
       Use `SpielmanApproximation(epsilon=..., seed=...)` for the randomized
       Spielman-Srivastava approximation.
@@ -126,35 +120,20 @@ class ResistanceDistance(AbstractSolverDistance):
         Apart from the pseudo-inverse of dense all-pairs and nodes-to-nodes
         queries, queries solve the Laplacian grounded at one vertex: among the
         vertices whose weighted degree is at least half the largest, the
-        nearest to the middle vertex `n // 2` in Manhattan distance on a grid
-        of `w` columns, where `w` is the largest index difference between
-        neighbours, with the lowest index among the nearest. On a grid graph
-        of `h` rows and `w` columns with rook contiguity, the middle vertex is
-        the pixel of row `h // 2` and column `w // 2` for an odd `h`, and the
-        first pixel of row `h / 2`, on the left edge, for an even `h`. The
-        ground is then a pixel of near-maximum permeability at or near the
-        centre of the windows of a windowed analysis, whose sides are odd,
-        from which their distances involve no cancellation, and near the left
-        edge of tiles of an even number of rows: at pixel (347, 18) of the
-        raster on the 894 x 925 tile of the Maryland land cover of the
-        connectivity analysis example. The ground's degree is added to its
-        diagonal entry, so that every ground gives one sparsity pattern. On
-        windows of up to 101 x 101 pixels with a permeability floor of `1e-4`,
-        float32 permeability gradients stayed within 0.4 % of float64 with
-        `CuDSSSolver`, and within 3.5 % with the dense solve and
-        `CholmodSolver`, which takes under 10 % longer in float64. Grounded at
-        a floored pixel, they were off by up to 17 times their norm with
-        `CuDSSSolver`.
+        nearest to the middle vertex `n // 2`. On a grid graph of `h` rows and
+        `w` columns with rook contiguity, the middle vertex is the pixel of row
+        `h // 2` and column `w // 2` for an odd `h`, and the first pixel of row
+        `h / 2`, on the left edge, for an even `h`. The ground of a window of
+        a windowed analysis, whose sides are odd, is thus a pixel of high
+        permeability at or near its centre, where its source lies, which keeps
+        float32 distances free of cancellation. That of a tile of an even
+        number of rows lies near its left edge. A ground on a barrier would
+        make the float32 system too ill-conditioned to solve.
 
-        On large tiles, float32 solves of direct solvers are inaccurate around
-        the ground. On that Maryland tile, with
-        `SpielmanApproximation(epsilon=0.15)`, the float32 permeability
-        sensitivity over the 40 x 40 pixels around the ground was 4.15 times
-        that of float64 with the same random signs in median, and up to 1204
-        times, with `CuDSSSolver`, against 1.06 and 6.3 times with
-        `GridMultigridSolver(rtol=3e-4)`. For permeability sensitivity on
-        large tiles in float32, use `GridMultigridSolver`, the default, or a
-        direct solver in float64.
+        On large tiles, float32 solves of sparse direct solvers are inaccurate
+        around the ground. For permeability sensitivity on large tiles in
+        float32, use `GridMultigridSolver`, the default, or a direct solver in
+        float64.
 
         Exact sources-to-targets queries on `n` vertices, from `m` sources to
         `k` targets, hold the potentials of all targets when they are a few
@@ -226,10 +205,9 @@ class ResistanceDistance(AbstractSolverDistance):
 
         With `SpielmanApproximation`, an estimate $\hat R$ of the resistance
         $R$ is unbiased, with variance $2 R^2 / k$ for $k$ projections. A
-        proximity $K$ convex in $R$ is then biased upward: by about 5 %, 15 %
-        and 30 % for `epsilon` 0.1, 0.2 and 0.3 with the default proximity of
-        the windowed analyses. The returned proximity is corrected to second
-        order:
+        proximity $K$ convex in $R$ is then biased upward, by about
+        $R^2 K''(R) / k$, which grows with `epsilon`. The returned proximity
+        is corrected to second order:
 
         $$K(\hat R) - \frac{\hat R^2}{k} K''(\hat R)$$
 
@@ -381,19 +359,9 @@ class ResistanceDistance(AbstractSolverDistance):
         probes of the pairs of a source and a pixel of its window, solved
         `projection_batch_size` at a time with two right-hand sides each. Each
         probe draws a sign per source and a sign per pixel, whose product
-        weighs a pair. The estimate of each stored edge is unbiased. The
-        gradient of the estimates themselves varies much more between seeds.
-        On the Maryland land cover of the connectivity analysis example, with
-        `dependency_range` 100, blocks of 21 pixels, one tile and
-        `CuDSSSolver` in float32, the permeability sensitivities of two seeds
-        had Pearson correlations of 0.9983, 0.9962 and 0.9862 with the probes
-        at `epsilon` 0.1, 0.15 and 0.2 (0.9979, 0.9930 and 0.9853 for the
-        sensitivity divided by that of a flat landscape), and of 0.31 with the
-        gradient of the estimates at `epsilon` 0.1. On a crop of 120 x 120
-        pixels with `dependency_range` 30, one tile and `epsilon` 0.2, two
-        seeds agreed to 0.96 with the probes, which took about half the time,
-        and to 0.16 with the gradient of the estimates; the probes reached
-        0.99 at `epsilon` 0.1.
+        weighs a pair. The estimate of each stored edge is unbiased, and
+        varies much less between seeds than the gradient of the estimates
+        themselves. Its noise falls as `epsilon` decreases.
 
         **Arguments:**
 
@@ -670,7 +638,7 @@ def _grounded_system(
 
     A solver reinitializes `state` for it. Without a solver, the grounded
     Laplacian of a connected graph is positive definite: a dense Cholesky
-    factorization solves it 1.3 times faster than an LU factorization.
+    factorization solves it faster than an LU factorization.
     """
     matrix, ground = _grounded_laplacian(BCOO((data, indices), shape=shape))
     if solver is None:
@@ -1292,9 +1260,8 @@ def _probe_right_hand_sides(
     sources. A pass adds, for each chunk, the windows of its sources within
     `size // 2` rows of its first remaining source to a strip of rows, with
     one matrix product, and passes repeat until every window is added: one
-    pass for a grid of sources, row after row. On an RTX 3090, the 1260
-    windows of 201 pixels a side of the notebook's tile took 40 ms per batch
-    of 64 probes, against 130 ms one window after another.
+    pass for a grid of sources, row after row, which runs faster than one
+    window after another.
 
     **Returns:**
 
