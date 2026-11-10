@@ -27,6 +27,9 @@ seed = 1
 sites = 4
 seed = 2
 
+[graph]
+conductance = "mean"
+
 [distances.resistance]
 sides = [8]
 
@@ -150,6 +153,11 @@ def test_runner_snapshots_the_environment(run_dir):
     assert environment["cores"] == CORES
     assert environment["threads"]["OMP_NUM_THREADS"] == "2"
     assert environment["packages"]["jaxscape"] == "0.0.16"
+    lock = json.loads((BENCHMARK / "renv.lock").read_text())
+    assert environment["packages"]["R"] == lock["R"]["Version"]
+    assert (
+        environment["packages"]["gdistance"] == lock["Packages"]["gdistance"]["Version"]
+    )
 
 
 def test_restart_skips_the_recorded_cells(run_dir, tmp_path):

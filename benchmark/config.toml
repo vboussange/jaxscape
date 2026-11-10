@@ -19,6 +19,13 @@ seed = 74
 sites = 32
 seed = 75
 
+# The graph that every E1 tool builds from the permeability raster: rook
+# contiguity, and the conductance of an edge between pixels of permeability a
+# and b, "mean" for (a + b) / 2, as JAXScape's windowed analyses take it, or
+# "harmonic" for 2 / (1 / a + 1 / b) (see `conductance` in adapters/protocol.py).
+[graph]
+conductance = "mean"
+
 # The raster sides of each distance, and its shared parameters.
 [distances.resistance]
 sides = [256, 1024, 4096, 8192]
@@ -54,3 +61,23 @@ dtype = "float32"
 [tools.distances.free_energy]
 dtype = "float64"
 solver = { gpu = "CuDSSSolver", cpu = "CholmodSolver" }
+
+[[tools]]
+tool = "gdistance"
+question = "E1"
+adapter = "adapters/gdistance.R"
+devices = ["cpu"]
+tier = 1
+
+[tools.distances.resistance]
+
+[tools.distances.lcp]
+
+[[tools]]
+tool = "skimage.graph.MCP"
+question = "E1"
+adapter = "adapters/skimage.py"
+devices = ["cpu"]
+tier = 1
+
+[tools.distances.lcp]

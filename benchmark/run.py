@@ -42,6 +42,7 @@ OOM = re.compile(
     re.IGNORECASE,
 )
 ERROR = re.compile(r"^([\w.]*(Error|Exception)\b|ERROR:)")
+R_PACKAGES = ["gdistance"]  # the R tools, whose versions each run records
 
 
 def main():
@@ -233,6 +234,7 @@ def specification(config, cell, case_dir, work, smoke):
         "device": cell["device"],
         "settings": cell["settings"],
         "parameters": parameters,
+        "graph": config["graph"],
         "case": str(case_dir),
         "repeats": 1 if smoke else config["run"]["repeats"],
         "single_call_after": config["run"]["single_call_after"],
@@ -387,10 +389,36 @@ def environment(config):
         "threads": threads(config["run"]["cores"]),
         "python": platform.python_version(),
         "packages": {
-            name: version(name)
-            for name in ("jaxscape", "jax", "jaxlib", "numpy", "scipy")
+            **{
+                name: version(name)
+                for name in (
+                    "jaxscape",
+                    "jax",
+                    "jaxlib",
+                    "numpy",
+                    "scipy",
+                    "scikit-image",
+                )
+            },
+            **r_packages(),
         },
     }
+
+
+def r_packages():
+    """Return the versions of R and of `R_PACKAGES`, or nothing without R."""
+    if not shutil.which("Rscript"):
+        return {}
+    names = ", ".join(map(json.dumps, R_PACKAGES))
+    script = (
+        f"v <- c(R = format(getRversion()), sapply(c({names}), "
+        "function(p) format(packageVersion(p))));"
+        "cat(jsonlite::toJSON(as.list(v), auto_unbox = TRUE))"
+    )
+    output = subprocess.run(
+        ["Rscript", "-e", script], cwd=HERE, capture_output=True, text=True, check=True
+    ).stdout
+    return json.loads(output.splitlines()[-1])
 
 
 if __name__ == "__main__":

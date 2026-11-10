@@ -5,6 +5,8 @@ The runner calls an adapter with the path of a cell file, a JSON object with:
 - `question`, `distance`, `device`: what the cell computes, and where;
 - `settings`: the tool's settings for the distance, with `dtype` and `solver`;
 - `parameters`: the shared parameters of the distance, such as `theta`;
+- `graph`: how the graph of a raster is built, its `conductance` naming the
+  conductance of an edge between two pixels (see `conductance`);
 - `case`: a directory with `quality.npy`, `permeability.npy` and, for E1,
   `sites.npy`, the row and column of each site;
 - `repeats`, `single_call_after`: the timing protocol;
@@ -30,6 +32,23 @@ def read_cell():
     case = Path(cell["case"])
     arrays = {path.stem: np.load(path) for path in case.glob("*.npy")}
     return cell, arrays
+
+
+CONDUCTANCES = {
+    "mean": lambda a, b: (a + b) / 2,
+    "harmonic": lambda a, b: 2 / (1 / a + 1 / b),
+}
+
+
+def conductance(cell):
+    """Return the conductance of an edge as a function of the permeabilities
+    `a` and `b` of its two pixels: their mean `(a + b) / 2` for `"mean"`, or
+    their harmonic mean `2 / (1 / a + 1 / b)` for `"harmonic"`.
+
+    Each name gives the same function object on every call, so that JAX
+    compiles a graph that takes it once.
+    """
+    return CONDUCTANCES[cell["graph"]["conductance"]]
 
 
 def time_calls(cell, call):
