@@ -214,7 +214,7 @@ What a state keeps from one graph to the next:
 | `GridMultigridSolver` | The grid; each solve builds the hierarchy of the new values |
 | `AMJaxCGSolver` | The multigrid hierarchy |
 | `CuDSSSolver` | The sparse analysis, and the factorization while the values stay the same |
-| `CholmodSolver` | Its last factorization, while the values stay the same |
+| `CholmodSolver` | Its last factorization, while the values stay the same, for the 8 most recently used states |
 | `PyAMGSolver`, Lineax solvers | Nothing: each query runs `init`, which only records the matrix |
 
 Windowed analyses build their own states and carry them from tile to tile. See
