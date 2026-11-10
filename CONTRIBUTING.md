@@ -50,6 +50,21 @@ git push
 
 ---
 
+### Class design
+
+Follow Equinox's coding practices, including its
+[abstract/final pattern](https://docs.kidger.site/equinox/pattern/): every class
+is either abstract or final.
+
+- An abstract class is named `Abstract*` and is meant to be subclassed, as
+  `AbstractDistance` is.
+- A final class is concrete and is never subclassed, as `LCPDistance` is.
+
+The rule applies to new code. Some existing classes predate it and have yet to
+follow it.
+
+---
+
 ### Documentation changes
 
 Use Markdown docstrings with a short summary, `**Arguments:**` (or
