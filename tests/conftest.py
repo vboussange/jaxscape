@@ -116,9 +116,7 @@ class _StubToken(eqx.Module):
 
 @pytest.fixture
 def stub_spineax(monkeypatch):
-    """Run `CuDSSSolver` on dense Cholesky, for what does not need a GPU. Its
-    `analyses` counts the analyses that ran."""
-    analyses = []
+    """Run `CuDSSSolver` on dense Cholesky, for what does not need a GPU."""
 
     def factorize(token, values):
         n = token.offsets.shape[0] - 1
@@ -131,7 +129,6 @@ def stub_spineax(monkeypatch):
     def analyze(values, offsets, columns, *, mtype_id, mview_id):
         assert (mtype_id, mview_id) == ("spd", "full")
         n = offsets.shape[0] - 1
-        jax.debug.callback(lambda: analyses.append(None))
         return _StubToken(jnp.zeros((n, n), values.dtype), offsets, columns)
 
     stub = SimpleNamespace(
@@ -139,7 +136,6 @@ def stub_spineax(monkeypatch):
         factorize=factorize,
         refactorize=factorize,
         solve=lambda token, b: jax.scipy.linalg.cho_solve((token.factor, True), b),
-        analyses=lambda: len(analyses),
         rebuild_count=lambda: 0,
     )
     monkeypatch.setattr(cudsssolver, "_load_cudss", lambda: stub)

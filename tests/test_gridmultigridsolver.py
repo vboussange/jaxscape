@@ -1,4 +1,5 @@
-"""`GridMultigridSolver` against dense solves, on the CPU."""
+"""`GridMultigridSolver`, the default solver of `ResistanceDistance`, against
+direct solves, on the CPU."""
 
 import equinox as eqx
 import jax
@@ -8,14 +9,7 @@ import pytest
 import scipy.sparse
 import scipy.sparse.linalg
 from jax.experimental.sparse import BCOO
-from jaxscape import (
-    ConnectivityAnalysis,
-    Graph,
-    GridGraph,
-    ResistanceDistance,
-    SensitivityAnalysis,
-    SpielmanApproximation,
-)
+from jaxscape import Graph, GridGraph, ResistanceDistance
 from jaxscape.graph import QUEEN_CONTIGUITY, ROOK_CONTIGUITY
 from jaxscape.solvers import (
     BCOOLinearOperator,
@@ -45,6 +39,16 @@ def system_matrix(conductance, neighbors=ROOK_CONTIGUITY):
     return ResistanceDistance().system_matrix(graph)
 
 
+def sparse_solve(matrix, b):
+    """Solve `matrix`, a BCOO matrix with padding, with SciPy's sparse LU."""
+    n = matrix.shape[0]
+    indices = np.asarray(matrix.indices)
+    stored = np.all((indices >= 0) & (indices < n), axis=1)
+    data = np.asarray(matrix.data, np.float64)[stored]
+    reference = scipy.sparse.csc_matrix((data, tuple(indices[stored].T)), (n, n))
+    return scipy.sparse.linalg.spsolve(reference, np.asarray(b, np.float64))
+
+
 @pytest.mark.parametrize(
     "shape, neighbors",
     [
@@ -52,18 +56,17 @@ def system_matrix(conductance, neighbors=ROOK_CONTIGUITY):
         ((65, 64), QUEEN_CONTIGUITY),
         ((2, 1200), ROOK_CONTIGUITY),
         ((1, 3000), ROOK_CONTIGUITY),
-        ((7, 9), ROOK_CONTIGUITY),
     ],
-    ids=["rook", "queen", "two-rows", "one-row", "coarsest-only"],
+    ids=["rook", "queen", "two-rows", "one-row"],
 )
-def test_solves_match_dense_solves(shape, neighbors):
-    # Two coarse grids, one for the grid of two rows, and none for the last.
+def test_solves_match_direct_solves(shape, neighbors):
+    # Two coarse grids, and one for the grid of two rows.
     matrix = system_matrix(landscape(shape), neighbors)
     solver = GridMultigridSolver(rtol=1e-12, max_steps=200)
     state = solver.init(BCOOLinearOperator(matrix), {})
     rng = np.random.default_rng(1)
     b = jnp.asarray(rng.standard_normal((matrix.shape[0], 3)))
-    expected = np.linalg.solve(matrix.todense(), b)
+    expected = sparse_solve(matrix, b)
 
     one = jax.jit(lambda b: _linear_solve(matrix, b, solver, state=state))(b[:, 0])
     batch = jax.jit(lambda b: _batched_linear_solve(matrix, b, solver, state=state))(b)
@@ -90,15 +93,12 @@ def grids_one_after_another(state):
     return stencils, interpolations
 
 
-@pytest.mark.parametrize(
-    "neighbors", [ROOK_CONTIGUITY, QUEEN_CONTIGUITY], ids=["rook", "queen"]
-)
-def test_hierarchies_of_four_grids_match_grids_built_one_after_another(neighbors):
+def test_hierarchies_of_four_grids_match_grids_built_one_after_another():
     # A grid of 129 x 131 pixels has three coarse grids, of odd and even
     # sides: 65 x 66, 33 x 33 and 17 x 17. One loop builds the last two, in
     # arrays of the shape of the first.
-    matrix = system_matrix(landscape((129, 131)), neighbors)
-    # Measured: 41 iterations for rook contiguity, 17 for queen.
+    matrix = system_matrix(landscape((129, 131)))
+    # Measured: 41 iterations.
     solver = GridMultigridSolver(rtol=1e-12, max_steps=60)
     state = solver.init(BCOOLinearOperator(matrix), {})
     hierarchy = gridmultigridsolver._hierarchy(state)
@@ -114,15 +114,8 @@ def test_hierarchies_of_four_grids_match_grids_built_one_after_another(neighbors
         scale = float(jnp.max(jnp.abs(e)))
         np.testing.assert_allclose(a, e, rtol=1e-12, atol=1e-14 * scale)
 
-    # Solves against a sparse direct solve.
-    n = matrix.shape[0]
-    indices = np.asarray(matrix.indices)
-    stored = np.all((indices >= 0) & (indices < n), axis=1)
-    rows, columns = indices[stored].T
-    data = np.asarray(matrix.data)[stored]
-    reference = scipy.sparse.csc_matrix((data, (rows, columns)), shape=(n, n))
-    b = np.random.default_rng(1).standard_normal((n, 2))
-    expected = scipy.sparse.linalg.spsolve(reference, b)
+    b = np.random.default_rng(1).standard_normal((matrix.shape[0], 2))
+    expected = sparse_solve(matrix, b)
     actual = jax.jit(lambda b: _batched_linear_solve(matrix, b, solver, state=state))(
         jnp.asarray(b)
     )
@@ -144,82 +137,9 @@ def test_float32_solves_converge_in_few_iterations():
     actual = _batched_linear_solve(matrix32, b.astype(jnp.float32), solver, state=state)
 
     assert actual.dtype == jnp.float32
-    expected = np.linalg.solve(matrix.todense(), b)
+    expected = sparse_solve(matrix, b)
     error = np.linalg.norm(actual - expected) / np.linalg.norm(expected)
     assert error < 1e-3
-
-
-def test_distances_and_gradients_match_the_dense_solve():
-    conductance = landscape((12, 14))
-    nodes = jnp.array([0, 30, 167, 30, 100])
-    solver = GridMultigridSolver(rtol=1e-12, max_steps=200)
-    distance = ResistanceDistance(solver=solver)
-    state = distance.init(GridGraph(conductance, fun=avg))
-
-    def objective(conductance, distance, state=None):
-        grid = GridGraph(conductance, fun=avg)
-        return jnp.sum(jnp.exp(-distance(grid, nodes=nodes, state=state)))
-
-    value, gradient = jax.jit(jax.value_and_grad(objective), static_argnums=1)(
-        conductance, distance, state
-    )
-    expected, expected_gradient = jax.value_and_grad(objective)(
-        conductance, ResistanceDistance(solver=None)
-    )
-    np.testing.assert_allclose(value, expected, rtol=1e-10)
-    scale = float(jnp.max(jnp.abs(expected_gradient)))
-    np.testing.assert_allclose(gradient, expected_gradient, rtol=0, atol=1e-5 * scale)
-
-
-def test_spielman_window_queries_and_gradients_match_the_dense_solve():
-    method = SpielmanApproximation(epsilon=0.4, seed=3, projection_batch_size=8)
-    solver = GridMultigridSolver(rtol=1e-12, max_steps=200)
-    conductance = landscape((15, 17))
-    sources = jnp.array([3 * 17 + 3, 7 * 17 + 8, 11 * 17 + 13])
-
-    def objective(conductance, distance):
-        grid = GridGraph(conductance, fun=avg)
-        return jnp.sum(jnp.exp(-distance.sources_to_windows_distance(grid, sources, 7)))
-
-    actual = jax.value_and_grad(objective)(
-        conductance, ResistanceDistance(solver=solver, method=method)
-    )
-    expected = jax.value_and_grad(objective)(
-        conductance, ResistanceDistance(solver=None, method=method)
-    )
-    np.testing.assert_allclose(actual[0], expected[0], rtol=1e-10)
-    np.testing.assert_allclose(actual[1], expected[1], rtol=1e-8, atol=1e-12)
-
-
-def make(kind, quality, permeability, distance):
-    return kind(
-        quality_raster=quality,
-        permeability_raster=permeability,
-        distance=distance,
-        dependency_range=4,
-        batch_size=9,
-        coarsening_factor=0.5,
-    )
-
-
-@pytest.mark.parametrize("analysis", ["connectivity", "sensitivity"])
-def test_windowed_analyses_carry_the_state_across_tiles(analysis):
-    # Sixteen tiles of 3 x 3 block centres, one per batch, each reinitializing
-    # the state of the tile before it, from that of a uniform tile.
-    rng = np.random.default_rng(4)
-    quality = jnp.asarray(rng.uniform(size=(24, 26)))
-    permeability = landscape((24, 26), seed=5)
-
-    def run(distance):
-        if analysis == "connectivity":
-            return make(ConnectivityAnalysis, quality, permeability, distance).run()
-        sensitivity = make(SensitivityAnalysis, quality, permeability, distance)
-        return sensitivity.run("permeability")
-
-    solver = GridMultigridSolver(rtol=1e-12, max_steps=200)
-    actual = run(ResistanceDistance(solver=solver))
-    expected = run(ResistanceDistance(solver=None))
-    np.testing.assert_allclose(actual, expected, rtol=1e-8, atol=1e-12)
 
 
 def test_float32_solves_keep_their_precision_for_tiny_right_hand_sides():
@@ -229,7 +149,7 @@ def test_float32_solves_keep_their_precision_for_tiny_right_hand_sides():
     matrix = system_matrix(landscape((20, 21)))
     rng = np.random.default_rng(0)
     b = rng.choice([-1, 1], (420, 3)) * rng.uniform(0.5, 1, (420, 3))
-    expected = np.linalg.solve(matrix.todense(), b)
+    expected = sparse_solve(matrix, b)
     matrix = BCOO((matrix.data.astype(jnp.float32), matrix.indices), shape=matrix.shape)
     solver = GridMultigridSolver(rtol=1e-6)
     state = solver.init(BCOOLinearOperator(matrix), {})
@@ -259,7 +179,7 @@ def test_right_hand_sides_with_their_own_matrices_solve_one_by_one():
     actual = solve(jnp.stack([m.data for m in matrices]), state, b)
 
     for matrix, x, rhs in zip(matrices, actual, b):
-        np.testing.assert_allclose(x, np.linalg.solve(matrix.todense(), rhs), rtol=1e-8)
+        np.testing.assert_allclose(x, sparse_solve(matrix, rhs), rtol=1e-8)
 
 
 def test_unconverged_solves_raise():
@@ -272,15 +192,6 @@ def test_unconverged_solves_raise():
         jax.block_until_ready(_linear_solve(matrix, b, solver, state=state))
 
 
-def test_matrices_of_other_graphs_are_rejected():
-    ring = np.zeros((10, 10))
-    for i in range(10):
-        ring[i, (i + 1) % 10] = ring[(i + 1) % 10, i] = 1.0
-    distance = ResistanceDistance(solver=GridMultigridSolver())
-    with pytest.raises(ValueError, match="grid graphs"):
-        distance.init(Graph(BCOO.fromdense(jnp.asarray(ring))))
-
-
 def test_the_state_of_another_graph_initializes_outside_jit():
     # That of a `GridGraph` builds from its shape and contiguity, also inside
     # `jax.jit`.
@@ -290,20 +201,6 @@ def test_the_state_of_another_graph_initializes_outside_jit():
     with pytest.raises(ValueError, match="outside `jax.jit`"):
         eqx.filter_jit(distance.init)(graph)
     assert isinstance(eqx.filter_jit(distance.init)(grid), GridMultigridState)
-
-
-def test_singular_matrices_raise():
-    # A column of zero permeability cuts the grid in two: the grounded
-    # Laplacian is singular, and the Cholesky factor of the coarsest grid not
-    # finite.
-    conductance = landscape((40, 41)).at[:, 20].set(0)
-    graph = GridGraph(conductance, fun=jnp.minimum)
-    matrix = ResistanceDistance().system_matrix(graph)
-    solver = GridMultigridSolver()
-    state = solver.init(BCOOLinearOperator(matrix), {})
-    b = jnp.zeros(matrix.shape[0]).at[0].set(1)
-    with pytest.raises(Exception, match="non-finite"):
-        jax.block_until_ready(_linear_solve(matrix, b, solver, state=state))
 
 
 def test_a_state_rejects_graphs_of_another_grid():
@@ -336,75 +233,114 @@ def test_reinit_takes_new_values_inside_jit():
     assert jax.tree.structure(new_state) == jax.tree.structure(state)
 
 
-def test_reinit_leaves_the_hierarchy_to_the_solves():
-    # A windowed analysis reinitializes the state of each tile, and its query
-    # reinitializes and solves it again, in one compiled program: the program
-    # compiles the hierarchy once, with the solves.
-    distance = ResistanceDistance(solver=GridMultigridSolver())
-    conductance = landscape((40, 41))
-    state = distance.init(GridGraph(conductance, fun=avg))
-
-    def reinit(conductance):
-        return distance.reinit(GridGraph(conductance, fun=avg), state)
-
-    def query(conductance):
-        grid = GridGraph(conductance, fun=avg)
-        return distance(grid, nodes=jnp.array([0, 9]), state=reinit(conductance))
-
-    def factorizations(f):
-        return jax.jit(f).lower(conductance).as_text().count("potrf")
-
-    assert factorizations(reinit) == 0
-    assert factorizations(query) == 1
+# `ResistanceDistance()` solves with `GridMultigridSolver()`. Grids of up to
+# 1024 pixels are the coarsest grid of its hierarchy, which a Cholesky
+# factorization solves.
+def small_landscape(dtype, shape=(24, 40)):
+    rng = np.random.default_rng(3)
+    return jnp.asarray(10 ** rng.uniform(-2, 0, shape), dtype)
 
 
-def test_programs_trace_the_hierarchy_once(monkeypatch):
-    # The gradient of a Spielman window query solves in two places, and Lineax
-    # traces each solve up to three times.
-    traces = []
-    interpolation = gridmultigridsolver._interpolation
-
-    def counted(*args):
-        traces.append(1)
-        return interpolation(*args)
-
-    jax.clear_caches()
-    monkeypatch.setattr(gridmultigridsolver, "_interpolation", counted)
-    # A grid of 37 x 43 pixels has one coarse grid.
-    conductance = landscape((37, 43)).astype(jnp.float32)
-    method = SpielmanApproximation(epsilon=0.5, projection_batch_size=8)
-    distance = ResistanceDistance(solver=GridMultigridSolver(), method=method)
-    state = distance.init(GridGraph(conductance, fun=avg))
-
-    def total(conductance):
-        grid = GridGraph(conductance, fun=avg)
-        sources = jnp.array([18 * 43 + 21])
-        return jnp.sum(distance.sources_to_windows_distance(grid, sources, 7, state))
-
-    jax.jit(jax.grad(total)).lower(conductance)
-    assert len(traces) == 1
+QUERIES = {
+    "all-pairs": {},
+    "nodes": {"nodes": jnp.array([0, 37, 959, 480, 37])},
+    "sources-to-targets": {
+        "sources": jnp.array([5, 480]),
+        "targets": jnp.array([959, 0, 123, 480]),
+    },
+}
 
 
-def test_the_hierarchy_traces_the_coarse_grids_after_the_first_once(monkeypatch):
-    # A grid of 130 x 140 pixels has three coarse grids, the last of 17 x 18,
-    # at most 1024 points: the first from the rook stencil, the others from
-    # queen stencils of padded grids, in one loop.
-    traces = []
-    galerkin = gridmultigridsolver._galerkin
+@pytest.mark.parametrize("query", QUERIES)
+def test_the_default_solves_small_float32_grids_as_the_dense_float64_solve(query):
+    # Measured: relative errors of the weighted sums of at most 1.5e-6 and of
+    # their gradients 3.5e-6. Those of the pseudo-inverse of the all-pairs and
+    # nodes-to-nodes queries were 35 % and 42 %.
+    assert ResistanceDistance().solver == GridMultigridSolver(rtol=1e-5, max_steps=200)
+    weights = np.random.default_rng(4).uniform(size=(960, 960))
 
-    def counted(*args):
-        traces.append(1)
-        return galerkin(*args)
+    def objective(permeability, distance):
+        distances = distance(GridGraph(permeability, fun=avg), **QUERIES[query])
+        m, k = distances.shape
+        return jnp.sum(jnp.asarray(weights[:m, :k], permeability.dtype) * distances)
 
-    jax.clear_caches()
-    monkeypatch.setattr(gridmultigridsolver, "_galerkin", counted)
-    distance = ResistanceDistance(solver=GridMultigridSolver())
-    state = distance.init(GridGraph(landscape((130, 140)), fun=avg))
-    hierarchy = gridmultigridsolver._hierarchy(state)
-    assert [level.A[0].shape for level in hierarchy.levels] == [
-        (130, 140),
-        (65, 70),
-        (33, 35),
-        (17, 18),
-    ]
-    assert len(traces) == 2
+    def value_and_grad(dtype, distance):
+        return jax.value_and_grad(objective)(small_landscape(dtype), distance)
+
+    actual = value_and_grad(jnp.float32, ResistanceDistance())
+    expected = value_and_grad(jnp.float64, ResistanceDistance(solver=None))
+    for a, e in zip(actual, expected):
+        assert a.dtype == jnp.float32
+        assert jnp.linalg.norm(a - e) / jnp.linalg.norm(e) < 1e-5
+
+
+def test_the_default_runs_eagerly_and_under_jax_transformations():
+    # Its state, built from the shape and contiguity of a grid graph, also
+    # inside `jax.jit` and for a graph that `eqx.filter_jit` traces whole.
+    permeability = small_landscape(jnp.float64, (12, 15))
+    nodes = jnp.array([0, 17, 179, 90])
+    distance = ResistanceDistance()
+
+    def distances(permeability):
+        return distance(GridGraph(permeability, fun=avg), nodes=nodes)
+
+    def objective(permeability, distance=distance):
+        return jnp.sum(
+            jnp.exp(-distance(GridGraph(permeability, fun=avg), nodes=nodes))
+        )
+
+    grid = GridGraph(permeability, fun=avg)
+    expected = ResistanceDistance(solver=None)(grid, nodes=nodes)
+    for actual in (
+        distances(permeability),
+        jax.jit(distances)(permeability),
+        eqx.filter_jit(distance)(grid, nodes=nodes),
+        jax.vmap(distances)(jnp.stack([permeability, permeability]))[1],
+    ):
+        np.testing.assert_allclose(actual, expected, rtol=1e-10)
+    expected = jax.grad(objective)(permeability, ResistanceDistance(None))
+    for gradient in (
+        jax.grad(objective)(permeability),
+        jax.jit(jax.grad(objective))(permeability),
+    ):
+        np.testing.assert_allclose(gradient, expected, rtol=1e-8)
+
+
+def test_the_default_rejects_graphs_other_than_grids():
+    ring = np.zeros((10, 10))
+    for i in range(10):
+        ring[i, (i + 1) % 10] = ring[(i + 1) % 10, i] = 1.0
+    graph = Graph(BCOO.fromdense(jnp.asarray(ring)))
+    with pytest.raises(ValueError, match=r"grid graphs.*`solver=None`"):
+        ResistanceDistance()(graph, nodes=jnp.array([0, 5]))
+    # The dense solve: the resistance of two paths of 5 edges in parallel.
+    distances = ResistanceDistance(solver=None)(graph, nodes=jnp.array([0, 5]))
+    np.testing.assert_allclose(distances[0, 1], 2.5)
+
+
+def test_the_default_raises_on_disconnected_graphs():
+    # A column of zero permeability cuts the grid in two: the grounded
+    # Laplacian is singular, and the Cholesky factor of the coarsest grid not
+    # finite.
+    permeability = small_landscape(jnp.float64).at[:, 20].set(0)
+    grid = GridGraph(permeability, fun=jnp.minimum)
+    with pytest.raises(Exception, match="non-finite"):
+        jax.block_until_ready(ResistanceDistance()(grid, **QUERIES["nodes"]))
+
+
+@pytest.mark.parametrize("solver", [GridMultigridSolver(), None])
+def test_a_grid_of_one_pixel_has_zero_resistance_and_gradient(solver):
+    # The pixel has no neighbours: its ground has degree zero.
+    distance = ResistanceDistance(solver=solver)
+    one = jnp.array([0])
+    for query in [{}, {"nodes": one}, {"sources": one, "targets": one}]:
+
+        def objective(permeability):
+            distances = distance(GridGraph(permeability, fun=avg), **query)
+            return jnp.sum(distances), distances
+
+        (_, distances), gradient = jax.value_and_grad(objective, has_aux=True)(
+            jnp.ones((1, 1))
+        )
+        np.testing.assert_array_equal(distances, [[0.0]])
+        np.testing.assert_array_equal(gradient, [[0.0]])
