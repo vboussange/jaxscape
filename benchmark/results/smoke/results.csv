@@ -1,29 +1,45 @@
 question,tool,distance,device,dtype,solver,case,cells,status,reason,warmup_s,median_s,times_s,measure,agreement,tier,version,files,adapter
-E2,JAXScape,resistance,gpu,float32,GridMultigridSolver,maryland,1024,ok,,9.938907520961948,0.11499645898584276,0.11499645898584276,,,,0.0.16,False,adapters/jaxscape.py
-E2,JAXScape,resistance,cpu,float32,GridMultigridSolver,maryland,1024,ok,,8.672808420960791,2.20371350296773,2.20371350296773,,,,0.0.16,False,adapters/jaxscape.py
-E2,JAXScape,lcp,gpu,float32,,maryland,1024,ok,,4.583590297028422,0.031043861992657185,0.031043861992657185,,,,0.0.16,False,adapters/jaxscape.py
-E2,JAXScape,lcp,cpu,float32,,maryland,1024,ok,,4.776722899987362,0.08439795300364494,0.08439795300364494,,,,0.0.16,False,adapters/jaxscape.py
-E3,JAXScape,resistance,gpu,float32,GridMultigridSolver,maryland,1024,ok,,13.297540731960908,0.08683864097110927,0.08683864097110927,,,,0.0.16,False,adapters/jaxscape.py
-E3,JAXScape,resistance,cpu,float32,GridMultigridSolver,maryland,1024,ok,,7.487056562094949,1.9252853569341823,1.9252853569341823,,,,0.0.16,False,adapters/jaxscape.py
-E3,JAXScape,lcp,gpu,float32,,maryland,1024,ok,,4.621741042006761,0.01905994303524494,0.01905994303524494,,,,0.0.16,False,adapters/jaxscape.py
-E3,JAXScape,lcp,cpu,float32,,maryland,1024,ok,,3.7266610470833257,0.07153006503358483,0.07153006503358483,,,,0.0.16,False,adapters/jaxscape.py
-E1,JAXScape,resistance,gpu,float32,GridMultigridSolver,synthetic-32,1024,ok,,2.5959512260742486,0.0066935940412804484,0.0066935940412804484,largest relative error,1.1387806451100035e-05,1,0.0.16,False,adapters/jaxscape.py
-E1,JAXScape,resistance,cpu,float32,GridMultigridSolver,synthetic-32,1024,ok,,1.9336696290411055,0.07156558497808874,0.07156558497808874,largest relative error,5.8411395775114476e-06,1,0.0.16,False,adapters/jaxscape.py
-E1,JAXScape,lcp,gpu,float32,,synthetic-32,1024,ok,,0.7728987929876894,0.009792651981115341,0.009792651981115341,largest relative error,2.4757965697693653e-07,1,0.0.16,False,adapters/jaxscape.py
-E1,JAXScape,lcp,cpu,float32,,synthetic-32,1024,ok,,0.6595362190855667,0.04436032194644213,0.04436032194644213,largest relative error,2.3523686874068055e-07,1,0.0.16,False,adapters/jaxscape.py
-E1,JAXScape,free_energy,gpu,float64,CuDSSSolver,synthetic-32,1024,ok,,4.813782110926695,0.030842151027172804,0.030842151027172804,largest relative error,3.777795705737307e-14,1,0.0.16,False,adapters/jaxscape.py
-E1,JAXScape,free_energy,cpu,float64,CholmodSolver,synthetic-32,1024,ok,,3.665719454991631,0.8227411069674417,0.8227411069674417,largest relative error,0.0,1,0.0.16,False,adapters/jaxscape.py
-E2,JAXScape,resistance,gpu,float32,GridMultigridSolver,synthetic-32,1024,ok,,9.746803804999217,0.10311213100794703,0.10311213100794703,,,,0.0.16,False,adapters/jaxscape.py
-E2,JAXScape,resistance,cpu,float32,GridMultigridSolver,synthetic-32,1024,ok,,8.746304473024793,1.8698734920471907,1.8698734920471907,,,,0.0.16,False,adapters/jaxscape.py
-E2,JAXScape,lcp,gpu,float32,,synthetic-32,1024,ok,,4.580544040072709,0.03393506002612412,0.03393506002612412,,,,0.0.16,False,adapters/jaxscape.py
-E2,JAXScape,lcp,cpu,float32,,synthetic-32,1024,ok,,4.765702825970948,0.07303873507771641,0.07303873507771641,,,,0.0.16,False,adapters/jaxscape.py
-E3,JAXScape,resistance,gpu,float32,GridMultigridSolver,synthetic-32,1024,ok,,13.330561129027046,0.07797707908321172,0.07797707908321172,,,,0.0.16,False,adapters/jaxscape.py
-E3,JAXScape,resistance,cpu,float32,GridMultigridSolver,synthetic-32,1024,ok,,7.232201784965582,1.7540864909533411,1.7540864909533411,,,,0.0.16,False,adapters/jaxscape.py
-E3,JAXScape,lcp,gpu,float32,,synthetic-32,1024,ok,,4.553397921961732,0.017121376004070044,0.017121376004070044,,,,0.0.16,False,adapters/jaxscape.py
-E3,JAXScape,lcp,cpu,float32,,synthetic-32,1024,ok,,3.7132757919607684,0.053865490946918726,0.053865490946918726,,,,0.0.16,False,adapters/jaxscape.py
-E1,Circuitscape.jl,resistance,cpu,float64,cg+amg,synthetic-32,1024,ok,,7.258704386,0.006629684,0.006629684,largest relative error,8.887182312974649e-07,1,6.1.0,True,adapters/circuitscape.jl
-E1,Circuitscape.jl,resistance,cpu,float64,cholmod,synthetic-32,1024,ok,,6.825675754,0.002935471,0.002935471,largest relative error,4.646823309244361e-12,1,6.1.0,True,adapters/circuitscape.jl
-E1,ConScape.jl,free_energy,cpu,float64,,synthetic-32,1024,ok,,6.045225882,0.004309532,0.004309532,largest relative error,1.2548203574301929e-14,1,0.3.0,False,adapters/conscape.jl
-E1,gdistance,resistance,cpu,float64,,synthetic-32,1024,ok,,0.148,0.135,0.135,largest relative error,7.297204845419145e-14,1,1.6.5,False,adapters/gdistance.R
-E1,gdistance,lcp,cpu,float64,,synthetic-32,1024,ok,,0.145,0.133000000000001,0.133000000000001,largest relative error,8.142501467163082e-16,1,1.6.5,False,adapters/gdistance.R
-E1,skimage.graph.MCP,lcp,cpu,float64,,synthetic-32,1024,ok,,0.01113479002378881,0.01080408995039761,0.01080408995039761,largest relative error,3.322498301542651e-16,1,0.26.0,False,adapters/skimage.py
+E2,JAXScape,resistance,gpu,float32,GridMultigridSolver,maryland,1024,ok,,11.07571287394967,0.3569587749661878,0.3569587749661878,,,,0.0.16,False,adapters/jaxscape.py
+E2,JAXScape,resistance,cpu,float32,GridMultigridSolver,maryland,1024,ok,,12.115624716039747,4.642206107964739,4.642206107964739,,,,0.0.16,False,adapters/jaxscape.py
+E2,JAXScape,lcp,gpu,float32,,maryland,1024,ok,,4.9098682379117236,0.20445057493634522,0.20445057493634522,,,,0.0.16,False,adapters/jaxscape.py
+E2,JAXScape,lcp,cpu,float32,,maryland,1024,ok,,4.712378319934942,0.058406052994541824,0.058406052994541824,,,,0.0.16,False,adapters/jaxscape.py
+E3,JAXScape,resistance,gpu,float32,GridMultigridSolver,maryland,1024,ok,,14.259228906943463,0.2809237650362775,0.2809237650362775,,,,0.0.16,False,adapters/jaxscape.py
+E3,JAXScape,resistance,cpu,float32,GridMultigridSolver,maryland,1024,ok,,10.59294414089527,4.312983701005578,4.312983701005578,,,,0.0.16,False,adapters/jaxscape.py
+E3,JAXScape,lcp,gpu,float32,,maryland,1024,ok,,5.431983381975442,0.1740987120429054,0.1740987120429054,,,,0.0.16,False,adapters/jaxscape.py
+E3,JAXScape,lcp,cpu,float32,,maryland,1024,ok,,3.7752295959508047,0.07128850906156003,0.07128850906156003,,,,0.0.16,False,adapters/jaxscape.py
+E2,ConScape.jl,free_energy,cpu,float64,,maryland,1024,ok,,8.766672344,0.008891564,0.008891564,Spearman's ρ,0.41788512161481195,3,0.3.0,False,adapters/conscape.jl
+E3,ConScape.jl,free_energy,cpu,float64,,maryland,1024,ok,,7.295643223,0.039801038,0.039801038,Spearman's ρ,0.683504172164065,3,0.3.0,False,adapters/conscape.jl
+E3,EcoScape,lcp,gpu,float32,,maryland,1024,ok,,3.5799426410812885,2.8272905920166522,2.8272905920166522,Spearman's ρ,0.9149008302536513,3,0.2.5,True,adapters/ecoscape.py
+E3,samc,resistance,cpu,float64,direct,maryland,1024,ok,,1.221,1.219,1.219,Spearman's ρ,0.12636336814247906,3,4.2.1,False,adapters/samc.R
+E2,eco-connectivity,lcp,cpu,float32,,maryland,1024,ok,,0.040932725998573005,0.0187989849364385,0.0187989849364385,Spearman's ρ,0.7993095459634103,2,2.5.0,True,adapters/eco_connectivity.py
+E2,Graphab,lcp,cpu,float64,,maryland,1024,ok,,3.418110554921441,3.072804743074812,3.072804743074812,Spearman's ρ,0.6997947953638082,3,3.0.8,True,adapters/graphab.py
+E3,Omniscape.jl,resistance,cpu,float64,cg+amg,maryland,1024,ok,,16.211494055,0.218505246,0.218505246,Spearman's ρ,-0.1035473030362635,3,0.6.4,False,adapters/omniscape.jl
+E3,Omniscape.jl,resistance,cpu,float64,cholmod,maryland,1024,ok,,14.710494763,0.209921992,0.209921992,Spearman's ρ,-0.1035473030362635,3,0.6.4,False,adapters/omniscape.jl
+E1,JAXScape,resistance,gpu,float32,GridMultigridSolver,synthetic-32,1024,ok,,2.6543997150147334,0.007376087014563382,0.007376087014563382,largest relative error,1.1387806451100035e-05,1,0.0.16,False,adapters/jaxscape.py
+E1,JAXScape,resistance,cpu,float32,GridMultigridSolver,synthetic-32,1024,ok,,1.953683918924071,0.23489020590204746,0.23489020590204746,largest relative error,5.8411395775114476e-06,1,0.0.16,False,adapters/jaxscape.py
+E1,JAXScape,lcp,gpu,float32,,synthetic-32,1024,ok,,0.8356623830040917,0.005398940062150359,0.005398940062150359,largest relative error,2.4757965697693653e-07,1,0.0.16,False,adapters/jaxscape.py
+E1,JAXScape,lcp,cpu,float32,,synthetic-32,1024,ok,,0.7104178100125864,0.04771912400610745,0.04771912400610745,largest relative error,2.3523686874068055e-07,1,0.0.16,False,adapters/jaxscape.py
+E1,JAXScape,free_energy,gpu,float64,CuDSSSolver,synthetic-32,1024,ok,,5.242048577987589,0.026638358016498387,0.026638358016498387,largest relative error,2.914791955944072e-14,1,0.0.16,False,adapters/jaxscape.py
+E1,JAXScape,free_energy,cpu,float64,CholmodSolver,synthetic-32,1024,ok,,3.618222550023347,0.9080934020457789,0.9080934020457789,largest relative error,0.0,1,0.0.16,False,adapters/jaxscape.py
+E2,JAXScape,resistance,gpu,float32,GridMultigridSolver,synthetic-32,1024,ok,,9.459783933940344,0.10654901002999395,0.10654901002999395,,,,0.0.16,False,adapters/jaxscape.py
+E2,JAXScape,resistance,cpu,float32,GridMultigridSolver,synthetic-32,1024,ok,,11.803360776044428,4.639638791093603,4.639638791093603,,,,0.0.16,False,adapters/jaxscape.py
+E2,JAXScape,lcp,gpu,float32,,synthetic-32,1024,ok,,4.109004896949045,0.02897415403276682,0.02897415403276682,,,,0.0.16,False,adapters/jaxscape.py
+E2,JAXScape,lcp,cpu,float32,,synthetic-32,1024,ok,,4.8130349239800125,0.05810846691019833,0.05810846691019833,,,,0.0.16,False,adapters/jaxscape.py
+E3,JAXScape,resistance,gpu,float32,GridMultigridSolver,synthetic-32,1024,ok,,14.209720550919883,0.1290117340395227,0.1290117340395227,,,,0.0.16,False,adapters/jaxscape.py
+E3,JAXScape,resistance,cpu,float32,GridMultigridSolver,synthetic-32,1024,ok,,9.945755199994892,3.4240366889862344,3.4240366889862344,,,,0.0.16,False,adapters/jaxscape.py
+E3,JAXScape,lcp,gpu,float32,,synthetic-32,1024,ok,,4.309361463994719,0.009039463941007853,0.009039463941007853,,,,0.0.16,False,adapters/jaxscape.py
+E3,JAXScape,lcp,cpu,float32,,synthetic-32,1024,ok,,3.8841669330140576,0.05574167298618704,0.05574167298618704,,,,0.0.16,False,adapters/jaxscape.py
+E1,Circuitscape.jl,resistance,cpu,float64,cg+amg,synthetic-32,1024,ok,,7.435248657,0.013013017,0.013013017,largest relative error,8.887182312974649e-07,1,6.1.0,True,adapters/circuitscape.jl
+E1,Circuitscape.jl,resistance,cpu,float64,cholmod,synthetic-32,1024,ok,,7.106441727,0.003259546,0.003259546,largest relative error,4.646823309244361e-12,1,6.1.0,True,adapters/circuitscape.jl
+E1,ConScape.jl,free_energy,cpu,float64,,synthetic-32,1024,ok,,6.338119352,0.004254424,0.004254424,largest relative error,1.2548203574301929e-14,1,0.3.0,False,adapters/conscape.jl
+E2,ConScape.jl,free_energy,cpu,float64,,synthetic-32,1024,ok,,8.394729915,0.006026721,0.006026721,Spearman's ρ,0.8450704090511489,3,0.3.0,False,adapters/conscape.jl
+E3,ConScape.jl,free_energy,cpu,float64,,synthetic-32,1024,ok,,7.775541346,0.008233456,0.008233456,Spearman's ρ,0.8480942982812264,3,0.3.0,False,adapters/conscape.jl
+E1,gdistance,resistance,cpu,float64,,synthetic-32,1024,ok,,0.146999999999998,0.138,0.138,largest relative error,7.297204845419145e-14,1,1.6.5,False,adapters/gdistance.R
+E1,gdistance,lcp,cpu,float64,,synthetic-32,1024,ok,,0.147,0.141,0.141,largest relative error,8.142501467163082e-16,1,1.6.5,False,adapters/gdistance.R
+E1,skimage.graph.MCP,lcp,cpu,float64,,synthetic-32,1024,ok,,0.011150313075631857,0.010887042968533933,0.010887042968533933,largest relative error,3.322498301542651e-16,1,0.26.0,False,adapters/skimage.py
+E3,EcoScape,lcp,gpu,float32,,synthetic-32,1024,ok,,3.349566839984618,2.9137704949826,2.9137704949826,Spearman's ρ,0.9361129988440212,3,0.2.5,True,adapters/ecoscape.py
+E3,samc,resistance,cpu,float64,direct,synthetic-32,1024,ok,,1.187,1.187,1.187,Spearman's ρ,0.5842736794578356,3,4.2.1,False,adapters/samc.R
+E2,eco-connectivity,lcp,cpu,float32,,synthetic-32,1024,ok,,0.0736226059962064,0.024630311992950737,0.024630311992950737,Spearman's ρ,0.9502304363979673,2,2.5.0,True,adapters/eco_connectivity.py
+E2,Graphab,lcp,cpu,float64,,synthetic-32,1024,ok,,3.411766253062524,3.3537057139910758,3.3537057139910758,Spearman's ρ,0.3872245111382914,3,3.0.8,True,adapters/graphab.py
+E3,Omniscape.jl,resistance,cpu,float64,cg+amg,synthetic-32,1024,ok,,16.093485534,0.178058884,0.178058884,Spearman's ρ,0.5818688956206527,3,0.6.4,False,adapters/omniscape.jl
+E3,Omniscape.jl,resistance,cpu,float64,cholmod,synthetic-32,1024,ok,,14.404791186,0.175226438,0.175226438,Spearman's ρ,0.5818688956206527,3,0.6.4,False,adapters/omniscape.jl

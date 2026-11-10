@@ -85,6 +85,34 @@ devices = ["cpu"]
 [tools.distances.resistance]
 dtype = "float32"
 
+[[tools]]
+tool = "JAXScape"
+question = "E2"
+adapter = "tests/fake_adapter.py"
+devices = ["cpu"]
+
+[tools.distances.lcp]
+
+[[tools]]
+tool = "Fake map"
+question = "E2"
+adapter = "tests/fake_adapter.py"
+devices = ["cpu"]
+tier = 3
+compared_with = "lcp"
+
+[tools.distances.free_energy]
+off_graph = true
+
+[[tools]]
+tool = "Fake map without JAXScape"
+question = "E2"
+adapter = "tests/fake_adapter.py"
+devices = ["cpu"]
+tier = 3
+
+[tools.distances.resistance]
+
 [solver_view]
 tool = "Fake solvers"
 adapter = "tests/fake_adapter.py"
@@ -257,6 +285,45 @@ def test_runner_records_no_agreement_for_a_tool_without_tier(run_dir):
     assert record["agreement"] is None
 
 
+def test_runner_records_the_rank_correlation_with_the_jaxscape_map_it_is_compared_with(
+    run_dir,
+):
+    cells = records(run_dir, "Fake map")
+
+    assert set(cells) == {
+        ("free_energy", "synthetic-8"),
+        ("free_energy", "synthetic-16"),
+        ("free_energy", "maryland"),
+    }
+    for record in cells.values():
+        assert record["status"] == "ok"
+        assert record["tier"] == 3
+        assert record["measure"] == "Spearman's ρ"
+        # The map is a monotone function of JAXScape's map, apart from a pixel
+        # off its graph.
+        assert record["agreement"] == pytest.approx(1)
+
+
+def test_runner_records_no_rank_correlation_without_a_jaxscape_map(run_dir):
+    record = records(run_dir, "Fake map without JAXScape")[
+        ("resistance", "synthetic-8")
+    ]
+
+    assert record["status"] == "ok"
+    assert record["measure"] == "Spearman's ρ"
+    assert record["agreement"] is None
+
+
+def test_runner_keeps_the_maryland_map_of_a_tool_with_a_tier(run_dir):
+    kept = np.load(
+        run_dir / "maps" / "E2-Fake map-free_energy-cpu-float64-maryland.npy"
+    )
+
+    # The fake map of Maryland, NaN on its first pixel.
+    assert kept.shape == (20, 24)
+    assert np.isnan(kept[0, 0])
+
+
 def test_runner_records_why_a_cell_failed_or_was_skipped(run_dir):
     cells = records(run_dir)
 
@@ -275,8 +342,14 @@ def test_runner_snapshots_the_environment(run_dir):
     assert environment["packages"]["jaxscape"] == "0.0.16"
     assert environment["packages"]["Circuitscape"] == "6.1.0"
     assert environment["packages"]["ConScape"] == "0.3.0"
+    assert environment["packages"]["Omniscape"] == "0.6.4"
     assert environment["packages"]["R"] == "4.1.2"
     assert environment["packages"]["gdistance"] == "1.6.5"
+    assert environment["packages"]["samc"] == "4.2.1"
+    assert environment["packages"]["ecoscape-connectivity"] == "0.2.5"
+    assert environment["packages"]["eco-connectivity"] == "2.5.0"
+    assert environment["packages"]["Graphab"] == "3.0.8"
+    assert environment["packages"]["Java"] == "21.0.13"
 
 
 def test_restart_skips_the_recorded_cells(run_dir, tmp_path):
@@ -300,7 +373,9 @@ def test_smoke_mode_exits_with_an_error_when_a_cell_fails(tmp_path):
 
 
 def test_smoke_mode_passes_a_solver_that_fails_a_check_of_jaxscape(tmp_path):
-    config = CONFIG.split("[[tools]]")[0] + """
+    config = (
+        CONFIG.split("[[tools]]")[0]
+        + """
 [[tools]]
 tool = "Fake E2"
 question = "E2"
@@ -323,6 +398,7 @@ resistance = { sides = [8] }
 Direct = {}
 Unresolved = { check_from = 16 }
 """
+    )
 
     result = run(tmp_path, tmp_path / "smoke", "--smoke", config_text=config)
 

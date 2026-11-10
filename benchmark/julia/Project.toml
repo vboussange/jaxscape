@@ -3,7 +3,9 @@ Circuitscape = "2b7a1792-8151-5239-925d-e2b8fdfa3201"
 ConScape = "2ba2d6f2-f651-5162-bda8-601e45ce5244"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 NPZ = "15e1cf62-19b3-5cfa-8e77-841668bca605"
+Omniscape = "a38d70fc-99f5-11e9-1e3d-cbca093024c3"
 
 [compat]
 Circuitscape = "=6.1.0"
 ConScape = "=0.3.0"
+Omniscape = "=0.6.4"

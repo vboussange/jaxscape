@@ -51,7 +51,9 @@ resistance = { 11 = 100, 21 = 500, 22 = 1000, 31 = 100, 41 = 1, 42 = 1, 43 = 1, 
 
 # One entry per tool and question. `adapter` runs a cell, and the table of a
 # distance holds the tool's settings for it, `dtype` and `solver` included. A
-# setting given per device is a table keyed by device.
+# setting given per device is a table keyed by device. A tool of E2 or E3 is
+# compared with JAXScape's map under the distance `compared_with`, by default
+# its own.
 [[tools]]
 tool = "JAXScape"
 question = "E1"
@@ -132,6 +134,29 @@ tier = 1
 
 [tools.distances.free_energy]
 
+# ConScape.jl's maps, under free energy, are compared with JAXScape's under
+# least-cost distance: JAXScape has no free-energy map, and least-cost distance
+# ranks pairs of sites most like free energy at its theta (see the adapter).
+[[tools]]
+tool = "ConScape.jl"
+question = "E2"
+adapter = "adapters/conscape.jl"
+devices = ["cpu"]
+tier = 3
+compared_with = "lcp"
+
+[tools.distances.free_energy]
+
+[[tools]]
+tool = "ConScape.jl"
+question = "E3"
+adapter = "adapters/conscape.jl"
+devices = ["cpu"]
+tier = 3
+compared_with = "lcp"
+
+[tools.distances.free_energy]
+
 [[tools]]
 tool = "gdistance"
 question = "E1"
@@ -151,6 +176,62 @@ devices = ["cpu"]
 tier = 1
 
 [tools.distances.lcp]
+
+# EcoScape and samc map flows under no distance of their own: the distance of
+# each is the JAXScape distance its map is compared with, which its adapter
+# justifies.
+[[tools]]
+tool = "EcoScape"
+question = "E3"
+adapter = "adapters/ecoscape.py"
+devices = ["gpu"]
+tier = 3
+
+# The largest batch of simulations whose tiles fit in the 24 GB of an RTX 3090
+# (8 runs out).
+[tools.distances.lcp]
+dtype = "float32"
+batch_size = 4
+
+[[tools]]
+tool = "samc"
+question = "E3"
+adapter = "adapters/samc.R"
+devices = ["cpu"]
+tier = 3
+
+[tools.distances.resistance]
+solver = "direct"
+
+# E2 against eco-connectivity and Graphab, both under least-cost distances.
+[[tools]]
+tool = "eco-connectivity"
+question = "E2"
+adapter = "adapters/eco_connectivity.py"
+devices = ["cpu"]
+tier = 2
+
+[tools.distances.lcp]
+dtype = "float32"
+
+[[tools]]
+tool = "Graphab"
+question = "E2"
+adapter = "adapters/graphab.py"
+devices = ["cpu"]
+tier = 3
+
+[tools.distances.lcp]
+
+[[tools]]
+tool = "Omniscape.jl"
+question = "E3"
+adapter = "adapters/omniscape.jl"
+devices = ["cpu"]
+tier = 3
+
+[tools.distances.resistance]
+solver = ["cg+amg", "cholmod"]
 
 # The solver view (#83): JAXScape with each solver, in float32 and float64 on
 # the GPU, on the cases of E1, E2 and E3. A record's error is measured against

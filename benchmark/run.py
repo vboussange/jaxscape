@@ -6,10 +6,13 @@
 A cell is one question, tool, distance, device and case, in the comparison or in
 the solver view, which runs JAXScape with each solver. The runner appends the
 record of each cell to `RUN_DIR/records.jsonl` as it finishes, and skips the
-cells recorded there when it restarts. Smoke mode runs every cell on a raster of
-`smoke_side` pixels a side, with windows of `smoke_dependency_range` and one
-timed call, into a new run directory, and exits with an error when a cell fails
-or lacks its agreement.
+cells recorded there when it restarts. It keeps the maps of JAXScape's E2 and
+E3 cells of the comparison in `RUN_DIR/maps`, against which it measures the
+other tools' maps, and the other tools' maps of Maryland, for the report's
+Maryland figure. Smoke mode runs every cell on a raster of `smoke_side` pixels a
+side, with windows of `smoke_dependency_range` and one timed call, into a new
+run directory, and exits with an error when a cell fails or lacks its
+agreement.
 """
 
 import argparse
@@ -31,11 +34,16 @@ from pathlib import Path
 
 import numpy as np
 from landscape import maryland, sites, synthetic
+from scipy.stats import spearmanr
 
 
 HERE = Path(__file__).resolve().parent
 KEY = ("view", "question", "tool", "distance", "device", "dtype", "solver", "case")
-MEASURES = {"E1": "largest relative error"}
+MEASURES = {
+    "E1": "largest relative error",
+    "E2": "Spearman's ρ",
+    "E3": "Spearman's ρ",
+}
 SOLVER_MEASURES = {
     "E1": "largest relative error",
     "E2": "relative L2 error",
@@ -50,7 +58,7 @@ OOM = re.compile(
 )
 ERROR = re.compile(r"^([\w.]*(Error|Exception)\b|ERROR:)")
 CHECK = re.compile(r"^(equinox\.)?EquinoxRuntimeError\b")  # a check of JAXScape
-R_PACKAGES = ["gdistance"]  # the R tools, whose versions each run records
+R_PACKAGES = ["gdistance", "samc"]  # the R tools, whose versions each run records
 
 
 def main():
@@ -100,6 +108,7 @@ def run(config, run_dir, smoke):
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "logs").mkdir(exist_ok=True)
     (run_dir / "references").mkdir(exist_ok=True)
+    (run_dir / "maps").mkdir(exist_ok=True)
     if not (run_dir / "environment.json").exists():
         snapshot = json.dumps(environment(config), indent=2)
         (run_dir / "environment.json").write_text(snapshot + "\n")
@@ -224,6 +233,7 @@ def configurations(config):
                         "measure": MEASURES.get(entry["question"])
                         if entry.get("tier")
                         else None,
+                        "compared_with": entry.get("compared_with", distance),
                         "adapter": entry["adapter"],
                         "settings": {**resolved, "solver": solver}
                         if solver
@@ -323,8 +333,15 @@ def blank(cell, status, reason):
     }
 
 
+def cell_id(cell):
+    """Return the name of a cell's log, and of its map of Maryland: its fields,
+    led by `solver` for a cell of the solver view."""
+    fields = KEY if cell.get("view") == "solver" else KEY[1:]
+    return "-".join(str(cell[field]) for field in fields if cell[field])
+
+
 def run_cell(config, cell, case_dir, run_dir, smoke):
-    name = "-".join(str(cell[field]) for field in KEY if cell[field])
+    name = cell_id(cell)
     work = case_dir.parent / "cells" / name
     log = run_dir / "logs" / f"{name}.log"
     cell_file = specification(config, cell, case_dir, work, smoke)
@@ -343,12 +360,39 @@ def run_cell(config, cell, case_dir, run_dir, smoke):
         version=result["version"],
         files=result["files"],
     )
-    if cell["measure"]:
+    output = np.load(work / "output.npy")
+    comparison = cell["view"] == "comparison"
+    if comparison and cell["tool"] == "JAXScape" and cell["question"] != "E1":
+        path = map_path(run_dir, cell, cell["distance"])
+        if not path.exists():
+            np.save(path, output)
+    if cell["tier"] == 1 or not comparison:
         reference = reference_of(config, cell, case_dir, run_dir, smoke)
         if reference is not None:
-            output = np.load(work / "output.npy")
             record["agreement"] = AGREEMENTS[cell["measure"]](output, reference)
+    elif cell["tier"]:
+        path = map_path(run_dir, cell, cell["compared_with"])
+        if path.exists():
+            record["agreement"] = rank_correlation(output, np.load(path))
+        if cell["case"] == "maryland":  # for the Maryland figure of the report
+            np.save(run_dir / "maps" / f"{name}.npy", output)
     return record
+
+
+def map_path(run_dir, cell, distance):
+    """Return where the JAXScape map of a question, case and distance is kept.
+
+    The first JAXScape cell of the comparison to succeed, in the order of the
+    configuration, keeps its map: the map that the tools of E2 and E3 compared
+    with this distance are compared with.
+    """
+    return run_dir / "maps" / f"{cell['question']}-{cell['case']}-{distance}.npy"
+
+
+def rank_correlation(output, reference):
+    """Return Spearman's ρ between two maps, over the pixels finite in both."""
+    finite = np.isfinite(output) & np.isfinite(reference)
+    return float(spearmanr(output[finite], reference[finite]).statistic)
 
 
 def specification(config, cell, case_dir, work, smoke):
@@ -554,10 +598,14 @@ def environment(config):
                     "numpy",
                     "scipy",
                     "scikit-image",
+                    "ecoscape-connectivity",
+                    "torch",
+                    "eco-connectivity",
                 )
             },
             **julia_packages(),
             **r_packages(),
+            **java_packages(),
         },
     }
 
@@ -579,6 +627,18 @@ def r_packages():
     return {
         "R": lock["R"]["Version"],
         **{name: lock["Packages"][name]["Version"] for name in R_PACKAGES},
+    }
+
+
+def java_packages():
+    """Return the versions of Graphab and of its Java runtime, which install.sh
+    installs in `java/`."""
+    jar = next((HERE / "java").glob("graphab-*.jar"))
+    lines = (HERE / "java" / "jre" / "release").read_text().splitlines()
+    release = dict(line.split("=", 1) for line in lines if "=" in line)
+    return {
+        "Graphab": jar.stem.removeprefix("graphab-"),
+        "Java": release["JAVA_VERSION"].strip('"'),
     }
 
 
