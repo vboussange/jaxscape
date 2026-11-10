@@ -12,7 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO: currently, pre-commit is not run in CI
+# Ruff and pyright run from the project environment, at the versions pinned by
+# the `lint` extra, so that the hooks, editors and CI agree. Install it with
+# the extras of CONTRIBUTING.md, then run every hook on every file with
+# `uv run pre-commit run --all-files`, as CI does.
+
+# The benchmark is a project of its own (#74), outside the hooks' scope.
+exclude: ^benchmark/|^tests/test_benchmark\.py$
 
 repos:
   - repo: local
@@ -23,16 +29,21 @@ repos:
         language: python
         files: ^pyproject\.toml$
         additional_dependencies: ["toml-sort==0.23.1"]
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.1.7
-    hooks:
-      - id: ruff-format
-        types_or: [ python, pyi, jupyter ]
       - id: ruff
-        types_or: [ python, pyi, jupyter ]
-        args: [ --fix ]
-  - repo: https://github.com/RobertCraigie/pyright-python
-    rev: v1.1.330
-    hooks:
-    - id: pyright
-      additional_dependencies: ["jax", "equinox", "pytest", "lineax", "networkx"]
+        name: ruff
+        entry: uv run --no-sync ruff check --fix
+        language: system
+        types_or: [python, pyi, jupyter]
+      - id: ruff-format
+        name: ruff-format
+        entry: uv run --no-sync ruff format
+        language: system
+        types_or: [python, pyi, jupyter]
+      # Pyright checks the scope of the project's configuration as a whole, so
+      # that a change also surfaces the errors it causes in files it leaves.
+      - id: pyright
+        name: pyright
+        entry: uv run --no-sync pyright
+        language: system
+        pass_filenames: false
+        files: ^(src/|tests/|pyproject\.toml$)
