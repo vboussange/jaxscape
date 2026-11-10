@@ -1,13 +1,12 @@
 # JAXScape builds a `GridGraph` of the permeability raster with rook
-# contiguity, the conductance of an edge being the mean or the harmonic mean of
-# the permeabilities of its two pixels, as `graph` in the configuration sets
-# it; its windowed analyses take the mean. Least-cost and free-energy distances
+# contiguity, the conductance of an edge being the mean permeability of its two
+# pixels, as its windowed analyses do. Least-cost and free-energy distances
 # take 1 / conductance as the edge cost, and the free energy takes the shared
 # `theta`. E1 is a nodes-to-nodes query among the sites. The distance runs with
 # the solver and dtype of its settings, and every call builds the graph and the
 # solver state.
 import jax
-from adapters.protocol import conductance, read_cell, time_calls, write_result
+from adapters.protocol import read_cell, time_calls, write_result
 
 
 cell, arrays = read_cell()
@@ -24,6 +23,10 @@ from jaxscape import (
     ResistanceDistance,
     solvers,
 )
+
+
+def average(x, y):
+    return (x + y) / 2
 
 
 solver = (
@@ -44,7 +47,7 @@ sites = jnp.asarray(arrays["sites"])
 
 
 def call():
-    graph = GridGraph(permeability, fun=conductance(cell))
+    graph = GridGraph(permeability, fun=average)
     return distance(graph, nodes=sites).block_until_ready()
 
 

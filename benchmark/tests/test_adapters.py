@@ -4,8 +4,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 
 BENCHMARK = Path(__file__).resolve().parents[1]
 CORES = ",".join(str(core) for core in sorted(os.sched_getaffinity(0))[:2])
@@ -26,9 +24,6 @@ seed = 1
 [E1]
 sites = 6
 seed = 2
-
-[graph]
-conductance = "{{conductance}}"
 
 [distances.resistance]
 sides = [16]
@@ -58,10 +53,9 @@ tier = 1
 """
 
 
-@pytest.mark.parametrize("conductance", ["mean", "harmonic"])
-def test_tier_1_adapters_agree_with_the_float64_reference(tmp_path, conductance):
+def test_tier_1_adapters_agree_with_the_float64_reference(tmp_path):
     config = tmp_path / "config.toml"
-    config.write_text(CONFIG.format(conductance=conductance))
+    config.write_text(CONFIG)
     subprocess.run(
         [sys.executable, "run.py", tmp_path / "run", "--config", config],
         cwd=BENCHMARK,

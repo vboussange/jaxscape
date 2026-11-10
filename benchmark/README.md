@@ -26,8 +26,8 @@ change the pin, run, and report.
 ## Layout
 
 - `config.toml`: how cells run (timeout, repeats, cores, GPU), the landscape,
-  the graph that E1 tools build from it, the raster sides and shared parameters
-  of each distance, and one entry per tool and question.
+  the raster sides and shared parameters of each distance, and one entry per
+  tool and question.
 - `install.sh`: installs the pinned toolchains: the uv project, and the R
   packages of `renv.lock` in the renv library of this directory, which
   `Rscript` loads here through `.Rprofile`.
