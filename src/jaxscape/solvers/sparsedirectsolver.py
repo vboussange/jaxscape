@@ -35,8 +35,8 @@ class CSRPattern(eqx.Module):
     - `ell_slots`, `ell_columns`: The CSR values and columns of each row, padded
       to the longest row with the number of CSR values and column 0, with shape
       `(n, width)`, or `None` when they would hold more than twice as many
-      entries as the CSR values. Products of the matrix with vectors read them
-      row by row.
+      entries as the CSR values, or rows of more than 32 entries. Products of
+      the matrix with vectors add up one term per column of them.
     """
 
     offsets: Array
@@ -332,7 +332,7 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
         value_map[valid] = slots
         ell_slots = ell_columns = None
         width = int(row_counts.max(initial=0))
-        if n * width <= 2 * nnz:
+        if n * width <= 2 * nnz and width <= _ELL_WIDTH:
             position = np.arange(width)
             stored = position[None, :] < row_counts[:, None]
             ell = np.where(stored, offsets[:-1, None] + position[None, :], nnz)
@@ -397,10 +397,14 @@ def _csr_values(data: Array, pattern: CSRPattern) -> Array:
 def _product(pattern: CSRPattern, values: Array, vector: Array) -> Array:
     """The product of the matrix with CSR `values` and `vector`.
 
-    Under `jax.vmap` over vectors alone, it computes the products one vector
-    after another, with rows padded to the longest (see `CSRPattern`). XLA
-    gathers the entries of a batch of vectors as a slice per index, which
-    reads the batch in strides of the vector size and runs slower.
+    With rows padded to the longest (see `CSRPattern`), it adds up one term per
+    column of the padded rows, and `jax.vmap` gathers each term from the whole
+    batch of vectors: the residual checks of 4096 solutions of 40400 vertices
+    took 3.7 ms on an RTX 3090, beside a 232 ms solve, and 28 ms as one sum over
+    the padded rows. Without padded rows, under `jax.vmap` over vectors alone,
+    it computes the products one vector after another. XLA gathers the entries
+    of a batch of vectors as a slice per index, which reads the batch in strides
+    of the vector size and runs slower.
     """
     return _product_of(pattern, values, vector)
 
@@ -410,12 +414,13 @@ def _(
     axis_size: int, in_batched: Any, pattern: CSRPattern, values: Array, vector: Array
 ):
     del axis_size
-    if any(jax.tree.leaves(in_batched[:2])) or not in_batched[2]:
-        axes = jax.tree.map(lambda batched: 0 if batched else None, in_batched)
-        return jax.vmap(_product_of, in_axes=axes)(pattern, values, vector), True
-    return jax.lax.map(
-        lambda vector: _product_of(pattern, values, vector), vector
-    ), True
+    vectors_alone = in_batched[2] and not any(jax.tree.leaves(in_batched[:2]))
+    if pattern.ell_slots is None and vectors_alone:
+        return jax.lax.map(
+            lambda vector: _product_of(pattern, values, vector), vector
+        ), True
+    axes = jax.tree.map(lambda batched: 0 if batched else None, in_batched)
+    return jax.vmap(_product_of, in_axes=axes)(pattern, values, vector), True
 
 
 def _product_of(pattern: CSRPattern, values: Array, vector: Array) -> Array:
@@ -427,4 +432,13 @@ def _product_of(pattern: CSRPattern, values: Array, vector: Array) -> Array:
             indices_are_sorted=True,
         )
     padded = jnp.append(values, jnp.zeros((1,), values.dtype))[pattern.ell_slots]
-    return jnp.sum(padded * vector[pattern.ell_columns], axis=1)
+    product = jnp.zeros(pattern.n, jnp.result_type(values, vector))
+    for k in range(padded.shape[1]):
+        product = product + padded[:, k] * vector[pattern.ell_columns[:, k]]
+    return product
+
+
+# Longest rows that products pad (see `CSRPattern`). They add up one term per
+# entry of a row, which XLA compiles separately: an unrolled product of rows of
+# 101 entries took 1.5 s to compile on a CPU, and of 1001 entries 31 s.
+_ELL_WIDTH = 32
