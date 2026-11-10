@@ -89,10 +89,9 @@ class GridMultigridSolver(AbstractReusableStateSolver):
     float64, and needs no optional dependency. The state holds the matrix
     coefficients on the grid: only `init` reads the grid from concrete sparse
     indices, and `reinit` takes new values inside `jax.jit`. Each solve builds
-    the multigrid hierarchy of the state, in a few milliseconds. A compiled
-    program then holds one hierarchy for each place where it solves, whatever
-    the states it reinitializes: XLA took 0.7 s to compile the hierarchy of the
-    894 x 925 grid below on an RTX 3090.
+    the multigrid hierarchy of the state, at a small fraction of the cost of
+    the solve. A compiled program then holds one hierarchy for each place
+    where it solves, whatever the states it reinitializes.
 
     Each V-cycle relaxes with one iteration of damped Jacobi before and after
     the coarse correction. Coarse grids keep every other point along each axis,
@@ -105,43 +104,20 @@ class GridMultigridSolver(AbstractReusableStateSolver):
     sides, as `jax.vmap` makes, runs as one solve with the right-hand sides
     contiguous in memory, until all have converged.
 
-    On the 894 x 925 grid of the Maryland land cover of the connectivity
-    analysis example, with conductances from `1e-4` to 1, on an RTX 3090 in
-    float32, the hierarchy took 2.3 ms, and a solve of 64 right-hand sides of
-    `SpielmanApproximation`, which builds it, took 63 ms at `rtol=1e-3` (8
-    iterations), 106 ms at `3e-4` (13), 143 ms at `1e-4` (18) and 201 ms at
-    `1e-5` (27), against an analysis of 5.2 s and solves of 58 ms with
-    `CuDSSSolver`. Against float64,
-    the proximity-weighted errors of the resistances of the windows of 8
-    sources were 8.6 % at `rtol=1e-3`, 1.5 % at `3e-4`, 0.06 % at `3e-5`, and
-    1.0 % with `CuDSSSolver` in float32: resistances to pixels behind barriers
-    converge last.
-
-    On the inverse landscape genetics benchmark of the repository, an L-BFGS
-    fit of the resistances among 20 points of a 100 x 100 grid, the fit took
-    2.1 to 2.2 s on a CPU at the default `rtol=1e-5`, in float64 and float32,
-    and 1.4 s at `rtol=1e-3`, against 6.05 s with `CholmodSolver` and 10.7 to
-    11.7 s with `AMJaxCGSolver`. On an RTX 3090 in float32, it took 0.24 s at
-    `rtol=1e-5` and 0.15 s at `1e-3`, against 0.24 s with `AMJaxCGSolver` and
-    0.89 s with `CuDSSSolver`.
-    The exact resistances among 20 nodes of a 1000 x 1000 grid in float32, and
-    their gradient, took 33 ms on that GPU, with a relative error of `6.5e-5`
-    against float64 and a state built in 0.7 s, against 32 ms, `9.4e-4` and
-    6.3 s with `CuDSSSolver`; `AMJaxCGSolver` failed in float32. In float64,
-    `CuDSSSolver` is faster: 55 ms against 182 ms at `rtol=1e-8`.
+    A larger `rtol` takes fewer iterations, at the cost of the resistances to
+    pixels behind barriers, which converge last. On large grids in float32,
+    its solutions stay accurate where those of sparse direct solvers degrade
+    around the ground of `ResistanceDistance`, and it factorizes only the
+    coarsest grid, which suits conductances that change at every step, as in
+    optimization loops. In float64, sparse direct solvers can be faster.
 
     **Attributes:**
 
     - `rtol`: Largest Euclidean norm, relative to that of the right-hand side,
       of the residual that conjugate gradients update at each iteration. In
       exact arithmetic it equals the residual `b - A x` of the solution `x`.
-      In float32, rounding stops the decrease of `b - A x`: on a grid of
-      201 x 201 pixels of conductances log-uniform from `1e-4` to 1, with a
-      tenth of the pixels and a barrier at `1e-4`, the relative residuals of
-      float32 solutions, computed in float64, stayed from `2e-5` to `6e-4` for
-      every `rtol` from `3e-4` to `1e-5`, and those of the exact solutions
-      rounded to float32 were `6e-6` to `1.2e-4`. Such solves converge with a
-      residual `b - A x` above `rtol`.
+      In float32, rounding stops the decrease of `b - A x`, so that solves
+      can converge with a residual `b - A x` above `rtol`.
     - `max_steps`: Largest number of iterations. A solve that has not converged
       then fails with `lineax.RESULTS.max_steps_reached`.
 
@@ -373,9 +349,8 @@ def _coarser_grids(
     One loop builds each grid from the one before it, in arrays of the shape
     of `shapes[0]`. Their points beyond a grid have zero coefficients: they
     couple to no point of the grid, and leave its stencil and weights
-    unchanged. XLA compiles the loop once: for the 894 x 925 grid of the
-    connectivity analysis example, the hierarchy compiled in 0.7 s on an RTX
-    3090, against 1.6 s with one copy of the code per grid.
+    unchanged. XLA compiles the loop once, faster than one copy of the code
+    per grid.
     """
     height, width = shapes[0]
     coarse = ((height + 1) // 2, (width + 1) // 2)
@@ -554,7 +529,7 @@ def _v_cycle(ml: _MultilevelSolver, b: Array, lvl: int = 0) -> Array:
         n, m = ml.factor.shape[0], b.shape[-1]
         # Right-hand sides as rows, solved on the right: XLA laid out all the
         # vectors of a batch with the batch axis major for triangular solves on
-        # the left, which made V-cycles 3 times slower on an RTX 3090, and
+        # the left, which made V-cycles several times slower on a GPU, and
         # autotuned a product with the inverse at each compilation.
         rows = lax.linalg.triangular_solve(
             ml.factor,

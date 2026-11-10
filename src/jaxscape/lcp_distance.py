@@ -118,13 +118,9 @@ class LCPDistance(AbstractDistance):
         sparse edges, which are slow on GPUs. With four neighbours, one
         expression runs two rounds. The adjoint propagation of the gradient
         shifts rasters the same way. The distances are those of the sparse
-        edges, exactly, and the gradients the same to rounding. On an RTX 3090
-        in float32, the connectivity, permeability sensitivity and flat
-        permeability sensitivity of the connectivity analysis example (1260
-        windows of 201 x 201 pixels) took 0.6, 1.0 and 0.6 s, against 4.3,
-        5.9 and 2.5 s with sparse edges. On CPUs, the connectivity and
-        permeability sensitivity of a random raster of 200 x 200 pixels with
-        `dependency_range` 20 took 16 and 49 s, against 65 and 108 s.
+        edges, exactly, and the gradients the same to rounding. Windowed
+        analyses run faster this way than with sparse edges, on GPUs and on
+        CPUs.
 
         Rounds cannot be fewer: each distance is the sum of the edge costs of
         a shortest path, rounded after each edge, which the backward pass
@@ -443,15 +439,14 @@ class _GridEdges(eqx.Module):
 
     With four neighbours, a relaxation step runs two rounds as one elementwise
     expression of shifted rasters over the walks of up to two edges, which
-    reads and writes every raster once. On an RTX 3090, a round on 64 windows
-    of 201 x 201 pixels takes 43 µs this way, and 74 µs with one round per
-    step. With eight neighbours, two rounds hold 64 walks: they save 7 % of
-    the time for 7 times the compilation, and a step runs one round. Two
-    adjoint updates per step gained nothing.
+    reads and writes every raster once, faster than one round per step. With
+    eight neighbours, two rounds hold 64 walks, which save little time for a
+    much longer compilation, so a step runs one round. Two adjoint updates
+    per step gained nothing.
 
     GPUs shift rasters with padding operations, which bound-check every read.
     On CPUs, which vectorize those reads poorly, a step pads its rasters once
-    and slices them: 20 to 40 times faster there, and 2 times slower on GPUs.
+    and slices them, which is much faster there and slower on GPUs.
     """
 
     offsets: tuple[tuple[int, int], ...] = eqx.field(static=True)

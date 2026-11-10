@@ -56,13 +56,8 @@ class CuDSSSolver(AbstractSparseDirectSolver[Any]):
     !!! note
 
         In float32, solutions on large grids are inaccurate around the ground
-        vertex of `ResistanceDistance` (see its note on grounding, float32 and
-        memory). On the 894 x 925 tile of the Maryland land cover of the
-        connectivity analysis example, the float32 permeability sensitivity of
-        `SpielmanApproximation(epsilon=0.15)` near the ground was up to 1204
-        times that of float64 with the same random signs, against 6.3 times
-        with `GridMultigridSolver(rtol=3e-4)`. For permeability sensitivity on
-        large tiles, use float64, or `GridMultigridSolver` in float32.
+        vertex of `ResistanceDistance`. For permeability sensitivity on large
+        tiles, use float64, or `GridMultigridSolver` in float32.
     """
 
     def __check_init__(self):
