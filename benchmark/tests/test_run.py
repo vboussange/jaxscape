@@ -84,6 +84,34 @@ devices = ["cpu"]
 
 [tools.distances.resistance]
 dtype = "float32"
+
+[[tools]]
+tool = "JAXScape"
+question = "E2"
+adapter = "tests/fake_adapter.py"
+devices = ["cpu"]
+
+[tools.distances.lcp]
+
+[[tools]]
+tool = "Fake map"
+question = "E2"
+adapter = "tests/fake_adapter.py"
+devices = ["cpu"]
+tier = 3
+compared_with = "lcp"
+
+[tools.distances.free_energy]
+off_graph = true
+
+[[tools]]
+tool = "Fake map without JAXScape"
+question = "E2"
+adapter = "tests/fake_adapter.py"
+devices = ["cpu"]
+tier = 3
+
+[tools.distances.resistance]
 """
 # A land cover of 20 x 24 pixels, of classes 1 (resistance 1), 2 (resistance 10)
 # and 3 (a barrier).
@@ -175,6 +203,35 @@ def test_runner_records_no_agreement_for_a_tool_without_tier(run_dir):
     assert record["status"] == "ok"
     assert record["tier"] is None
     assert record["measure"] is None
+    assert record["agreement"] is None
+
+
+def test_runner_records_the_rank_correlation_with_the_jaxscape_map_it_is_compared_with(
+    run_dir,
+):
+    cells = records(run_dir, "Fake map")
+
+    assert set(cells) == {
+        ("free_energy", "synthetic-8"),
+        ("free_energy", "synthetic-16"),
+        ("free_energy", "maryland"),
+    }
+    for record in cells.values():
+        assert record["status"] == "ok"
+        assert record["tier"] == 3
+        assert record["measure"] == "Spearman's ρ"
+        # The map is a monotone function of JAXScape's map, apart from a pixel
+        # off its graph.
+        assert record["agreement"] == pytest.approx(1)
+
+
+def test_runner_records_no_rank_correlation_without_a_jaxscape_map(run_dir):
+    record = records(run_dir, "Fake map without JAXScape")[
+        ("resistance", "synthetic-8")
+    ]
+
+    assert record["status"] == "ok"
+    assert record["measure"] == "Spearman's ρ"
     assert record["agreement"] is None
 
 

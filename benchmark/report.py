@@ -83,7 +83,12 @@ SETUPS = {
         "query holds the dense inverse of the 40,401 pixels of a window, and in "
         "float64, the only precision that resolves its windows, one window ran "
         "out of the 24 GB of the GPU, and out of memory on the CPU after taking "
-        "300 GB."
+        "300 GB. ConScape.jl computes its maps under free energy on the whole "
+        "raster, with targets at landmarks every 21 pixels and the kernel "
+        "$e^{-d/25}$ on its free-energy distance $d$; JAXScape has no "
+        "free-energy map to compare them with, and they are compared with its "
+        "maps under least-cost distance, which ranks pairs of sites most like "
+        "free energy at the $\\theta$ of the run."
     ),
     "E3": (
         "JAXScape computes the map of $\\partial C / \\partial p_k$ with "
@@ -270,6 +275,8 @@ def value(record):
         return record["status"]
     if record["agreement"] is None:
         return "missing"
+    if record["tier"] > 1:
+        return f"{record['agreement']:.2f}"
     return f"{record['agreement']:.1e}"
 
 
