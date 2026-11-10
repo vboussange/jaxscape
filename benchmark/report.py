@@ -595,22 +595,24 @@ def solver_view_text(config):
     view = config["solver_view"]
     runs = []
     for question, distances in view["questions"].items():
+        on = {}  # the rasters of the question -> its distances that run on them
         for distance, settings in distances.items():
             sides = settings.get("sides")
-            rasters = " and ".join(f"{side}²" for side in sides) if sides else None
-            runs.append(
-                f"{question} with {distance} on "
-                + (rasters or "every raster of the distance")
-            )
+            rasters = "every raster of its distance"
+            if sides:
+                rasters = " and ".join(f"{side}²" for side in sides)
+            on.setdefault(rasters, []).append(distance)
+        runs += [f"{question} with {' and '.join(d)} on {r}" for r, d in on.items()]
     left_out = "; ".join(map(combination, view.get("fails_by_design", [])))
     return (
         "The solver view runs JAXScape with each of its linear solvers, in "
         f"{' and '.join(view['dtypes'])} on the {view['device'].upper()}, so "
         "that a user can trade speed for accuracy. `dense` is the dense solve "
-        f"(`solver=None`). It runs {', '.join(runs)}: free energy does not run "
-        "on windows, and exact windowed resistance takes about 23 minutes a "
-        "call of E2 or E3 at 1024² with `GridMultigridSolver` in float32, "
-        "which keeps E2 and E3 on fewer rasters than E1. Each cell runs like a "
+        f"(`solver=None`). It runs {', '.join(runs[:-1])} and {runs[-1]}: free "
+        "energy does not run on windows, and exact windowed resistance takes "
+        "about 23 minutes a call of E2 or E3 at 1024² with "
+        "`GridMultigridSolver` in float32, which keeps E2 and E3 on fewer "
+        "rasters than E1. Each cell runs like a "
         f"cell of the comparison, except that a call stops after "
         f"{duration(view['timeout'])}. The error of a cell, for E1, is the "
         "largest relative error over the pairs against the reference of E1, and "
