@@ -24,10 +24,6 @@ _Avoid_: Refresh, materialization, update
 A solver state prepared for other values than the system matrix of the current graph.
 _Avoid_: Stale state
 
-**Latest state**:
-The solver state that windowed analyses left last for a distance, graph shape and dtype, which the next windowed analysis, run, calibration or default-proximity profile with them starts from and replaces. A process keeps those of the 8 most recently used combinations.
-_Avoid_: Cached state, shared cache
-
 ### Sparse direct solvers
 
 **Sparsity pattern**:

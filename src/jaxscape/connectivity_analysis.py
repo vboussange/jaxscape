@@ -11,7 +11,6 @@ from jaxscape.graph import GridGraph
 from jaxscape.utils import _VALUES_PER_STEP
 from jaxscape.windowed_analysis import (
     _average,
-    _program,
     _TileData,
     WindowedAnalysis,
 )
@@ -219,17 +218,17 @@ def _convolve(
     )[0, 0]
 
 
-@_program()
+@eqx.filter_jit
 def _permeability_calibration(
     windowed: WindowedAnalysis, state: Any
-) -> tuple[tuple[Array, Array], Any]:
+) -> tuple[Array, Array]:
     """Block correction gradients on a window of the maximum permeability.
 
     With quality 1 and one source at the centre of the window: the
     permeability gradients of the proximity-weighted quality reachable from
     it, and of the same without the pairs within its block, set to 0 at or
-    below its noise floor, `1e-6` times its maximum. Also returns the solver
-    state of the window, reinitialized from `state`.
+    below its noise floor, `1e-6` times its maximum. `state` is a solver state
+    of a window graph, which the query reinitializes.
     """
     level = lax.stop_gradient(jnp.max(windowed.permeability_raster))
     size = 2 * windowed.dependency_range + 1
@@ -254,7 +253,7 @@ def _permeability_calibration(
     cotangents = jnp.stack([cotangent(False), cotangent(True)])
     pixels, far = jax.vmap(pullback)(cotangents)[0]
     far = jnp.where(jnp.abs(far) > 1e-6 * jnp.max(jnp.abs(far)), far, 0)
-    return (pixels, far), state
+    return pixels, far
 
 
 class ConnectivityAnalysis(WindowedAnalysis):
@@ -466,23 +465,7 @@ class SensitivityAnalysis(WindowedAnalysis):
         elif var == "permeability":
             raster = self.permeability_raster
             if coarse:
-                size = 2 * self.dependency_range + 1
-                window = (size, size)
-                state = self._latest_state(window, self.window_state)
-                # The batch program takes the shapes of the calibration: XLA
-                # compiles it in another thread while the calibration compiles
-                # and runs. The first resistance sensitivity of the
-                # connectivity analysis example took 2.6 s less on an RTX 3090.
-                shapes = (jnp.zeros(window, raster.dtype),) * 2
-                calibration, state = self._while_compiling(
-                    lambda: _permeability_calibration(self, state),
-                    _tile_sensitivity,
-                    jnp.zeros_like(raster),
-                    var,
-                    q_weighted,
-                    shapes,
-                )
-                self._leave_state(window, state)
+                calibration = _permeability_calibration(self, self.window_state)
         else:
             raise ValueError("`var` must be either 'quality' or 'permeability'")
 
