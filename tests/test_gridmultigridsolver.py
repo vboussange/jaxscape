@@ -274,7 +274,10 @@ def test_the_default_solves_small_float32_grids_as_the_dense_float64_solve(query
         assert jnp.linalg.norm(a - e) / jnp.linalg.norm(e) < 1e-5
 
 
-def test_the_default_runs_eagerly_and_under_jax_transformations():
+@pytest.mark.parametrize(
+    "neighbors", [ROOK_CONTIGUITY, QUEEN_CONTIGUITY], ids=["rook", "queen"]
+)
+def test_the_default_runs_eagerly_and_under_jax_transformations(neighbors):
     # Its state, built from the shape and contiguity of a grid graph, also
     # inside `jax.jit` and for a graph that `eqx.filter_jit` traces whole.
     permeability = small_landscape(jnp.float64, (12, 15))
@@ -282,12 +285,13 @@ def test_the_default_runs_eagerly_and_under_jax_transformations():
     distance = ResistanceDistance()
 
     def distances(permeability, distance=distance):
-        return distance(GridGraph(permeability, fun=avg), nodes=nodes)
+        graph = GridGraph(permeability, fun=avg, neighbors=neighbors)
+        return distance(graph, nodes=nodes)
 
     def objective(permeability, distance=distance):
         return jnp.sum(jnp.exp(-distances(permeability, distance)))
 
-    grid = GridGraph(permeability, fun=avg)
+    grid = GridGraph(permeability, fun=avg, neighbors=neighbors)
     expected = ResistanceDistance(solver=None)(grid, nodes=nodes)
     for actual in (
         distances(permeability),
