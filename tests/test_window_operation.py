@@ -81,9 +81,9 @@ def test_iterate_windows(window_op, sample_raster_data):
     """Test iterate_windows method yields correct windows."""
     windows = list(window_op.lazy_iterator(sample_raster_data))
 
-    assert (
-        len(windows) == 1
-    ), "iterate_windows did not yield the expected number of windows"
+    assert len(windows) == 1, (
+        "iterate_windows did not yield the expected number of windows"
+    )
 
     xy, _ = windows[0]
     assert xy[0] == 0
@@ -243,6 +243,6 @@ def test_update_raster_with_window():
         xy[1] : xy[1] + window_op.total_window_size,
     ].add(window)
 
-    assert jnp.allclose(
-        updated_raster, expected_raster
-    ), "add_window_to_raster did not add the window values correctly"
+    assert jnp.allclose(updated_raster, expected_raster), (
+        "add_window_to_raster did not add the window values correctly"
+    )

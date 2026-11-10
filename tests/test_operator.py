@@ -122,9 +122,9 @@ def test_solver(solver):
     state = solver_state(solver, A_jax)
     x = _linear_solve(A_jax, b, solver, state=state)
     residual = A_jax @ x - b
-    assert (
-        jnp.linalg.norm(residual) < 1e-4
-    ), f"Residual too large: {jnp.linalg.norm(residual)}"
+    assert jnp.linalg.norm(residual) < 1e-4, (
+        f"Residual too large: {jnp.linalg.norm(residual)}"
+    )
 
     B = jnp.stack([b, 2 * b, 3 * b], axis=-1)
     X = _batched_linear_solve(A_jax, B, solver, state=state)
@@ -132,9 +132,9 @@ def test_solver(solver):
     rtol, atol = (1e-5, 1e-6) if isinstance(solver, CholmodSolver) else (2e-3, 1e-4)
     assert jnp.allclose(X, X_reference, rtol=rtol, atol=atol)
     residuals = A_jax @ X - B
-    assert (
-        jnp.linalg.norm(residuals) < 3 * 1e-4
-    ), f"Residual too large: {jnp.linalg.norm(residuals)}"
+    assert jnp.linalg.norm(residuals) < 3 * 1e-4, (
+        f"Residual too large: {jnp.linalg.norm(residuals)}"
+    )
 
 
 @pytest.mark.skipif(not AMJAX_AVAILABLE, reason="AMJax not available")

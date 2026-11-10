@@ -54,12 +54,12 @@ def coarse_graining(grid: GridGraph, buffer_size: int) -> BCOO:
     See https://docs.circuitscape.org/Omniscape.jl/latest/usage/#General-Options for documentation.
     """
     assert isinstance(buffer_size, int)
-    assert (
-        grid.height % (2 * buffer_size + 1) == 0
-    ), f"`grid height`  must be divisible by `(2*buffer_size + 1)`, consider padding the raster data."
-    assert (
-        grid.width % (2 * buffer_size + 1) == 0
-    ), f"`grid width`  must be divisible by `(2*buffer_size + 1)`, consider padding the raster data."
+    assert grid.height % (2 * buffer_size + 1) == 0, (
+        f"`grid height`  must be divisible by `(2*buffer_size + 1)`, consider padding the raster data."
+    )
+    assert grid.width % (2 * buffer_size + 1) == 0, (
+        f"`grid width`  must be divisible by `(2*buffer_size + 1)`, consider padding the raster data."
+    )
 
     step = 2 * buffer_size + 1
 

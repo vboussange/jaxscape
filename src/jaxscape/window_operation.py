@@ -53,9 +53,9 @@ class WindowOperation(eqx.Module):
         assert isinstance(window_size, int)
         assert isinstance(buffer_size, int)
         for i in range(2):
-            assert (
-                (shape[i] - 2 * buffer_size) % window_size == 0
-            ), f"`(shape[{i}] - 2 * buffer_size)`  must be divisible by `window_size`, consider padding the raster data."
+            assert (shape[i] - 2 * buffer_size) % window_size == 0, (
+                f"`(shape[{i}] - 2 * buffer_size)`  must be divisible by `window_size`, consider padding the raster data."
+            )
 
         self.shape = shape
         # TODO: window size should be an arbitrary shape
@@ -64,12 +64,12 @@ class WindowOperation(eqx.Module):
         self.total_window_size = self.window_size + 2 * self.buffer_size
         self.x_steps = int((shape[0] - 2 * buffer_size) // window_size)
         self.y_steps = int((shape[1] - 2 * buffer_size) // window_size)
-        assert (
-            self.x_steps > 0
-        ), "`window_size` or `buffer_size` are too large for the raster data."
-        assert (
-            self.y_steps > 0
-        ), "`window_size` or `buffer_size` are too large for the raster data."
+        assert self.x_steps > 0, (
+            "`window_size` or `buffer_size` are too large for the raster data."
+        )
+        assert self.y_steps > 0, (
+            "`window_size` or `buffer_size` are too large for the raster data."
+        )
 
     def extract_total_window(self, xy: Array, raster: Array) -> Array:
         """Extract a window including buffer regions from the raster.
@@ -142,8 +142,11 @@ class WindowOperation(eqx.Module):
         xy: Array,
         raster: Array,
         raster_window: Array,
-        fun: Callable[[Array, Array], Array] = lambda current_raster_core_window,
-        raster_window_core_window: raster_window_core_window,
+        fun: Callable[
+            [Array, Array], Array
+        ] = lambda current_raster_core_window, raster_window_core_window: (
+            raster_window_core_window
+        ),
     ) -> Array:
         """Update raster by merging the core region of a processed window.
 
@@ -199,8 +202,9 @@ class WindowOperation(eqx.Module):
         xy: Array,
         raster: Array,
         raster_window: Array,
-        fun: Callable[[Array, Array], Array] = lambda current_raster_slice,
-        raster_window: raster_window,
+        fun: Callable[
+            [Array, Array], Array
+        ] = lambda current_raster_slice, raster_window: raster_window,
     ) -> Array:
         """Update raster with the entire window including buffers.
 

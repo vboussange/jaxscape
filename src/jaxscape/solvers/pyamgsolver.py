@@ -59,8 +59,7 @@ class PyAMGSolver(AbstractLinearSolver):
     def __check_init__(self):
         if not PYAMG_AVAILABLE:
             raise ImportError(
-                "pyamg is required for PyAMGSolver. "
-                "Install it with: pip install pyamg"
+                "pyamg is required for PyAMGSolver. Install it with: pip install pyamg"
             )
 
         if isinstance(self.rtol, (int, float)) and self.rtol < 0:
