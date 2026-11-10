@@ -16,11 +16,11 @@ Each synthetic case draws a Gaussian random field with a Gaussian covariance of 
 
 ## Comparison
 
-Each cell runs in its own process, pinned to the cores of the environment table, with thread settings matched to them; XLA sizes its thread pools to these cores. A warm-up call comes first and compiles the code of tools that compile. The warm runtime is the median of the five timed calls that follow it, or the time of a single call when the warm-up takes more than five minutes. Every call redoes all work that depends on the landscape's values: graph assembly, factorization, multigrid hierarchy and solver state. A call stops after one hour. Within a configuration, rasters run from the smallest up, and after a failure, a timeout or running out of memory (`oom`), the configuration skips its larger rasters. In the figures, JAXScape on the GPU is solid and on the CPU dashed, and cells without a runtime show their status along the top edge.
+Each cell runs in its own process, pinned to the cores of the environment table, with thread settings matched to them; XLA sizes its thread pools to these cores. A warm-up call comes first and compiles the code of tools that compile. The warm runtime is the median of the five timed calls that follow it, or the time of a single call when the warm-up takes more than five minutes. Every call redoes all work that depends on the landscape's values: graph assembly, factorization, multigrid hierarchy and solver state. A call stops after one hour. Within a configuration, rasters run from the smallest up, and after a failure, a timeout or running out of memory (`oom`), the configuration skips its larger rasters. A tool runs each setting of a small grid fixed in advance from its documentation: the tables list every setting, and the figures show, at each raster, the fastest setting that succeeds. In the figures, tools on the GPU are solid and on the CPU dashed, and rasters where no setting succeeds show a status along the top edge.
 
 ### E1. Isolation between populations
 
-Each tool computes the distances among 32 sites drawn at random from the habitat cells with a fixed seed, across the whole raster: 496 pairs. The agreement of a record is the largest relative error over the pairs against a float64 reference, computed once for each case and distance: a sparse direct solve with `CholmodSolver` for resistance and free energy, and Dijkstra's algorithm in SciPy for least-cost distances.
+Each tool computes the distances among 32 sites drawn at random from the habitat cells with a fixed seed, across the whole raster: 496 pairs. Every tool builds the same graph: rook contiguity, and the resistance of an edge is the mean resistance of its two pixels. The agreement of a record is the largest relative error over the pairs against a float64 reference, computed once for each case and distance: a sparse direct solve with `CholmodSolver` for resistance and free energy, and Dijkstra's algorithm in SciPy for least-cost distances.
 
 ![E1: warm runtime against raster cells](e1.png)
 
@@ -29,11 +29,14 @@ Agreement (largest relative error) of each configuration and raster, or the stat
 | Tool | Distance | Device | dtype | Solver | Tier | 32² |
 | --- | --- | --- | --- | --- | --- | --- |
 | JAXScape | resistance | GPU | float32 | GridMultigridSolver | 1 | 1.1e-05 |
-| JAXScape | resistance | CPU | float32 | GridMultigridSolver | 1 | 6.5e-06 |
-| JAXScape | lcp | GPU | float32 |  | 1 | 2.0e-07 |
-| JAXScape | lcp | CPU | float32 |  | 1 | 2.0e-07 |
-| JAXScape | free_energy | GPU | float64 | CuDSSSolver | 1 | 2.2e-15 |
+| JAXScape | resistance | CPU | float32 | GridMultigridSolver | 1 | 5.8e-06 |
+| JAXScape | lcp | GPU | float32 |  | 1 | 2.5e-07 |
+| JAXScape | lcp | CPU | float32 |  | 1 | 2.4e-07 |
+| JAXScape | free_energy | GPU | float64 | CuDSSSolver | 1 | 2.5e-15 |
 | JAXScape | free_energy | CPU | float64 | CholmodSolver | 1 | 0.0e+00 |
+| Circuitscape.jl | resistance | CPU | float64 | cg+amg | 1 | 8.9e-07 |
+| Circuitscape.jl | resistance | CPU | float64 | cholmod | 1 | 4.6e-12 |
+| ConScape.jl | free_energy | CPU | float64 |  | 1 | 1.4e-15 |
 
 ## Environment
 
@@ -45,8 +48,8 @@ Agreement (largest relative error) of each configuration and raster, or the stat
 | Cores | 48-63 |
 | Threads | `OMP_NUM_THREADS=16`, `OPENBLAS_NUM_THREADS=16`, `MKL_NUM_THREADS=16`, `JULIA_NUM_THREADS=16`, `RCPP_PARALLEL_NUM_THREADS=16` |
 | Python | 3.13.5 |
-| Packages | jaxscape 0.0.16, jax 0.12.0.1, jaxlib 0.12.0.1, numpy 2.5.4, scipy 1.18.1 |
-| Tools | JAXScape 0.0.16 |
+| Packages | jaxscape 0.0.16, jax 0.12.0.1, jaxlib 0.12.0.1, numpy 2.5.4, scipy 1.18.1, Julia 1.13.3, Circuitscape 6.1.0, ConScape 0.3.0, JSON 1.13.4, NPZ 0.4.3 |
+| Tools | JAXScape 0.0.16, Circuitscape.jl 6.1.0, ConScape.jl 0.3.0 |
 
 ## Parameter mappings
 
@@ -54,7 +57,9 @@ The header comment of each adapter states how it maps the shared parameters onto
 
 | Tool | Questions | Adapter | Mapping |
 | --- | --- | --- | --- |
-| JAXScape | E1 | `adapters/jaxscape.py` | JAXScape builds a `GridGraph` of the permeability raster with rook contiguity, the conductance of an edge being the mean permeability of its two pixels, as its windowed analyses do. Least-cost and free-energy distances take 1 / conductance as the edge cost, and the free energy takes the shared `theta`. E1 is a nodes-to-nodes query among the sites. The distance runs with the solver and dtype of its settings, and every call builds the graph and the solver state. |
+| JAXScape | E1 | `adapters/jaxscape.py` | JAXScape builds a `GridGraph` of the permeability raster with rook contiguity, the conductance of an edge being the harmonic mean of the permeabilities of its two pixels (`landscape.conductance`), so that its resistance is their mean resistance. Least-cost and free-energy distances take 1 / conductance as the edge cost, and the free energy takes the shared `theta`. E1 is a nodes-to-nodes query among the sites. The distance runs with the solver and dtype of its settings, and every call builds the graph and the solver state. |
+| Circuitscape.jl | E1 | `adapters/circuitscape.jl` | Circuitscape.jl computes the pairwise resistances among the E1 sites, in its `pairwise` scenario, with the permeability raster as the conductance of each cell. `connect_four_neighbors_only` gives rook contiguity, and `connect_using_avg_resistances` makes the resistance of an edge the mean resistance of its two cells, as `landscape.conductance` does. The solver is `cg+amg` or `cholmod`, in double precision, with `parallelize` on the Julia threads of the cell. Circuitscape.jl has no public in-memory API for this scenario: each call builds its `RasterData` in memory and runs the internals that `compute` runs after reading files (`build_problem`, `single_ground_all_pairs`), and writes only its table of resistances, to /dev/shm. Every call rebuilds the graph, the Laplacian and the AMG hierarchy or Cholesky factor. |
+| ConScape.jl | E1 | `adapters/conscape.jl` | ConScape.jl computes the free-energy distances among the E1 sites, with the shared `theta`. Its graph has rook contiguity (`N4`), the affinity of an edge being the harmonic mean of the permeabilities of its two pixels (`AverageWeight`), as `landscape.conductance` gives, and the cost of an edge 1 / affinity (`Inv`). The sites are the targets of a `GridRSP`. ConScape's free-energy distance is directed, and the adapter returns the mean of the two directions between two sites, as JAXScape's `FreeEnergyDistance` does. Every call rebuilds the affinities, the `Grid` and the `GridRSP`, with its sparse LU factorization, which runs on the BLAS threads of the cell. |
 
 ## Excluded tools
 

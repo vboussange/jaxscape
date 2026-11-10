@@ -11,6 +11,7 @@ command from this directory:
 
 ```bash
 uv sync
+./install.sh                                  # the pinned toolchains of the external tools
 uv run python run.py results/smoke --smoke   # every cell once, on a 32 x 32 raster
 nohup uv run python run.py results/v0.0.16 > run.log 2>&1 &   # the full run
 uv run python report.py results/v0.0.16      # the CSV, the figures and the page
@@ -28,15 +29,18 @@ change the pin, run, and report.
 - `config.toml`: how cells run (timeout, repeats, cores, GPU), the landscape,
   the raster sides and shared parameters of each distance, and one entry per
   tool and question.
-- `landscape.py`: the synthetic landscape and the sites of E1.
+- `landscape.py`: the synthetic landscape, and the sites of E1 and the
+  conductance of its edges, which every tool of E1 shares.
+- `install.sh`: installs the toolchains of the external tools, each pinned:
+  Julia and the packages of `julia/Manifest.toml`, through juliaup.
 - `run.py`: the runner. Each cell runs in its own process, pinned with
   `taskset` to the cores of the configuration, with the OpenMP, BLAS, Julia
   and R thread variables matched to them; XLA sizes its thread pools to the
   same cores. GPU cells run on the configured GPU.
 - `report.py`: the report, from a run directory.
 - `adapters/`: one script per tool. `protocol.py` states the protocol between
-  the runner and an adapter, and `reference.py` computes the float64
-  reference of E1.
+  the runner and an adapter, `protocol.jl` implements it for Julia adapters,
+  and `reference.py` computes the float64 reference of E1.
 - `results/<run>/`: `records.jsonl`, the environment snapshot
   `environment.json`, the references of E1, the logs of the cells (not
   committed), and what the report writes: `results.csv`, `e1.png` and the
@@ -64,8 +68,8 @@ A tool takes one adapter script and one configuration entry.
    protocol of `adapters/protocol.py`: it reads the cell file named by its
    argument, touches `progress` at the start of each call, saves the output
    of its last call to `output` (for E1, the distances among the sites), and
-   writes `result`. Julia adapters run with `julia --project=julia`, and R
-   adapters with `Rscript`.
+   writes `result`. Julia adapters include `adapters/protocol.jl` and run
+   with `julia --project=julia`, and R adapters run with `Rscript`.
 2. Add an entry to `config.toml`, with the tool's settings for each distance.
    A setting given per device is a table keyed by device, and a list of
    solvers runs each:
