@@ -46,6 +46,11 @@ class AbstractDistance(eqx.Module):
       from `j` to `i` on graphs whose adjacency matrix is symmetric, as those
       of windowed analyses are. Their quality sensitivity then needs no
       gradient. Defaults to `False`.
+    - `averages_sources`: Whether window queries take `source_weights` and
+      return the mean of the distances from the pixels around each source,
+      with these weights, at the cost of one query. Coarsened windowed
+      analyses then take the permeability sensitivity of a block centre from
+      its block source. Defaults to `False`.
 
     **Returns:**
 
@@ -85,6 +90,7 @@ class AbstractDistance(eqx.Module):
 
     sources_share_work: ClassVar[bool] = False
     symmetric: ClassVar[bool] = False
+    averages_sources: ClassVar[bool] = False
 
     def __call__(
         self,

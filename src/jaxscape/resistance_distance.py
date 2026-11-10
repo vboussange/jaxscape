@@ -13,6 +13,7 @@ from jax.numpy.linalg import pinv
 from jaxscape.distance import (
     _grid_multigrid_state,
     _inside_windows,
+    _windows,
     AbstractSolverDistance,
 )
 from jaxscape.graph import AbstractGraph, GridGraph
@@ -147,6 +148,7 @@ class ResistanceDistance(AbstractSolverDistance):
     )
     sources_share_work: ClassVar[bool] = True
     symmetric: ClassVar[bool] = True
+    averages_sources: ClassVar[bool] = True
 
     @eqx.filter_jit
     def system_matrix(self, graph: AbstractGraph) -> BCOO:
@@ -329,24 +331,43 @@ class ResistanceDistance(AbstractSolverDistance):
         )
 
     def sources_to_windows_distance(
-        self, graph: GridGraph, sources: Array, size: int, state: Any = None
+        self,
+        graph: GridGraph,
+        sources: Array,
+        size: int,
+        state: Any = None,
+        source_weights: Array | None = None,
     ) -> Array:
-        """Return the distances from each source to the pixels of its window.
+        r"""Return the distances from each source to the pixels of its window.
 
         As `AbstractDistance.sources_to_windows_distance`. With
-        `SpielmanApproximation`, the query solves the `k` projections
+        `source_weights` $u$ of a source, its distance to pixel $j$ is the
+        mean of the resistances $R_{ij}$ from the pixels $i$ around it, with
+        the weights $u_i$:
+
+        $$\sum_i u_i R_{ij} = (u - e_j)^T L^+ (u - e_j) + V(u), \qquad
+        V(u) = \sum_i u_i (e_i - u)^T L^+ (e_i - u),$$
+
+        where $L^+$ is the pseudo-inverse of the Laplacian. Exact queries
+        solve for the vector $u$ in place of the source, and for every pixel
+        of the graph.
+
+        With `SpielmanApproximation`, the query solves the `k` projections
         `projection_batch_size` at a time, and adds the squared differences of
         their potentials between each source and the pixels of its window. It
         holds the potentials of one batch of projections and the windows.
+        With `source_weights`, the potentials of a source are their mean with
+        its weights.
 
         Its gradient estimates the gradient of the exact resistances,
         contracted with the cotangent of the estimates, from `k` random
         probes of the pairs of a source and a pixel of its window, solved
         `projection_batch_size` at a time with two right-hand sides each. Each
         probe draws a sign per source and a sign per pixel, whose product
-        weighs a pair. The estimate of each stored edge is unbiased, and
-        varies much less between seeds than the gradient of the estimates
-        themselves. Its noise falls as `epsilon` decreases.
+        weighs a pair. With `source_weights`, a probe also draws a sign per
+        pixel for the term $V(u)$. The estimate of each stored edge is
+        unbiased, and varies much less between seeds than the gradient of the
+        estimates themselves. Its noise falls as `epsilon` decreases.
 
         **Arguments:**
 
@@ -354,19 +375,27 @@ class ResistanceDistance(AbstractSolverDistance):
         - `sources`: Source vertex indices with shape `(m,)`.
         - `size`: Odd number of pixels along a side of the windows.
         - `state`: Optional solver state. Defaults to automatic initialization.
+        - `source_weights`: Optional non-negative weights of the pixels around
+          each source, centred on it, which sum to 1, with shape
+          `(m, side, side)` for an odd `side` of at most `size`. Defaults to
+          the source alone.
 
         **Returns:**
 
         Distances with shape `(m, size, size)`.
         """
-        if not isinstance(self.method, SpielmanApproximation):
-            return super().sources_to_windows_distance(graph, sources, size, state)
         if size % 2 == 0:
             raise ValueError("`size` must be odd.")
         if state is None:
             state = self.init(jax.tree.map(lax.stop_gradient, graph))
-        return _spielman_window_query(
-            graph, sources, size, self.method, self.solver, state
+        if isinstance(self.method, SpielmanApproximation):
+            return _spielman_window_query(
+                graph, sources, size, self.method, self.solver, state, source_weights
+            )
+        if source_weights is None:
+            return super().sources_to_windows_distance(graph, sources, size, state)
+        return _exact_window_query(
+            graph, sources, size, self.solver, state, source_weights
         )
 
 
@@ -778,32 +807,39 @@ def _exact_sources_to_targets(
     targets: Array,
     solver: lx.AbstractLinearSolver | None,
     state: Any,
+    weights: Array | None = None,
 ) -> Array:
     return _exact_sources_to_targets_fwd(
-        None, data, indices, shape, sources, targets, solver, state
+        None, data, indices, shape, sources, targets, solver, state, weights
     )[0]
 
 
 def _exact_sources_to_targets_fwd(
-    perturbed, data, indices, shape, sources, targets, solver, state
+    perturbed, data, indices, shape, sources, targets, solver, state, weights=None
 ):
     del perturbed
     system = _grounded_system(data, indices, shape, solver, state)
     # With S the grounded inverse, R_ij = S_ii + S_jj - 2 S_ij for source i and
     # target j. The source columns of S give S_ii and S_ij, the target columns
-    # their diagonal S_jj.
+    # their diagonal S_jj. With `weights` u of shape `(m, targets)`, the source
+    # columns are those of u, and the weighted mean of R_ij over the sources i
+    # is u.diag(S) + S_jj - 2 (S u)_j.
     m = sources.shape[0]
     chunks = _target_chunks(targets, shape[0])
+    if weights is None:
+        columns = jax.nn.one_hot(sources, shape[0], dtype=data.dtype).T
+    else:
+        columns = jnp.zeros((shape[0], m), data.dtype).at[targets].add(weights.T)
     if chunks.shape[0] == 1:
         # One solve for all columns, whose potentials stay for the gradient.
-        nodes = jnp.concatenate([sources, chunks[0]])
-        potentials = _node_potentials(system, nodes, solver)
+        basis = jax.nn.one_hot(chunks[0], shape[0], dtype=data.dtype).T
+        potentials = _solve(system, jnp.concatenate([columns, basis], 1), solver)
         diagonal = _own_values(potentials[:, m:], chunks[0])
         residuals = (potentials, None)
     else:
         # The target columns, chunk by chunk, keeping their diagonal only: the
         # gradient solves them again.
-        potentials = _node_potentials(system, sources, solver)
+        potentials = _solve(system, columns, solver)
 
         def target_diagonal(chunk):
             chunk_potentials = _node_potentials(system, chunk, solver)
@@ -812,10 +848,13 @@ def _exact_sources_to_targets_fwd(
         diagonal = lax.map(target_diagonal, chunks)
         residuals = (potentials, system)
     source_potentials = potentials[:, :m]
+    diagonal = diagonal.reshape(-1)[: targets.shape[0]]
+    if weights is None:
+        own = _own_values(source_potentials, sources)
+    else:
+        own = weights @ diagonal
     distances = (
-        _own_values(source_potentials, sources)[:, None]
-        + diagonal.reshape(-1)[None, : targets.shape[0]]
-        - 2 * _values(source_potentials, targets).T
+        own[:, None] + diagonal[None, :] - 2 * _values(source_potentials, targets).T
     )
     return distances, residuals
 
@@ -835,6 +874,7 @@ def _exact_sources_to_targets_bwd(
     targets,
     solver,
     state,
+    weights=None,
 ):
     del state
     if cotangent is None or not perturbed:
@@ -844,19 +884,23 @@ def _exact_sources_to_targets_bwd(
     # cotangent of S. For the cotangent H of the (m, k) distances,
     #   G = [[diag(H 1), -H], [-H.T, diag(H.T 1)]],
     # so X G = [X_s diag(H 1) - X_t H.T, X_t diag(H.T 1) - X_s H]. This costs
-    # O(n m k) and never forms G.
+    # O(n m k) and never forms G. With `weights` u, diag(H 1) moves from the
+    # source columns to the target diagonal, as diag(u.T H 1).
     potentials, system = residuals
     m = sources.shape[0]
     source_potentials = potentials[:, :m]
+    own = jnp.sum(cotangent, axis=1)
+    diagonal = jnp.sum(cotangent, axis=0)
+    if weights is not None:
+        diagonal = diagonal + own @ weights
+        own = jnp.zeros_like(own)
     if system is None:
         # The forward pass kept the target columns after the source columns.
         target_potentials = potentials[:, m:]
         adjoint = jnp.concatenate(
             [
-                source_potentials * jnp.sum(cotangent, axis=1)
-                - _matmul(target_potentials, cotangent.T),
-                target_potentials * jnp.sum(cotangent, axis=0)
-                - _matmul(source_potentials, cotangent),
+                source_potentials * own - _matmul(target_potentials, cotangent.T),
+                target_potentials * diagonal - _matmul(source_potentials, cotangent),
             ],
             axis=1,
         )
@@ -868,12 +912,13 @@ def _exact_sources_to_targets_bwd(
     padding = chunks.size - targets.shape[0]
     chunk_cotangents = jnp.pad(cotangent, ((0, 0), (0, padding)))
     chunk_cotangents = chunk_cotangents.reshape(-1, *chunks.shape).swapaxes(0, 1)
+    diagonals = jnp.pad(diagonal, (0, padding)).reshape(chunks.shape)
 
     def add_chunk(carry, chunk_and_cotangent):
         gradient, weighted_targets = carry
-        chunk, chunk_cotangent = chunk_and_cotangent
+        chunk, chunk_cotangent, chunk_diagonal = chunk_and_cotangent
         target_potentials = _node_potentials(system, chunk, solver)
-        adjoint = target_potentials * jnp.sum(chunk_cotangent, axis=0) - _matmul(
+        adjoint = target_potentials * chunk_diagonal - _matmul(
             source_potentials, chunk_cotangent
         )
         gradient = gradient + _laplacian_data_pullback(
@@ -886,12 +931,38 @@ def _exact_sources_to_targets_bwd(
 
     carry = (jnp.zeros_like(data), jnp.zeros_like(source_potentials))
     (gradient, weighted_targets), _ = lax.scan(
-        add_chunk, carry, (chunks, chunk_cotangents)
+        add_chunk, carry, (chunks, chunk_cotangents, diagonals)
     )
-    adjoint = source_potentials * jnp.sum(cotangent, axis=1) - weighted_targets
+    adjoint = source_potentials * own - weighted_targets
     return gradient + _laplacian_data_pullback(
         adjoint, source_potentials, indices, shape
     )
+
+
+def _exact_window_query(
+    graph: GridGraph,
+    sources: Array,
+    size: int,
+    solver: lx.AbstractLinearSolver | None,
+    state: Any,
+    source_weights: Array,
+) -> Array:
+    """`ResistanceDistance.sources_to_windows_distance` with `source_weights`."""
+    sources = _inside_windows(graph, sources, size)
+    reach = source_weights.shape[1] // 2
+
+    def place(weights, source):
+        canvas = jnp.zeros((graph.height, graph.width), weights.dtype)
+        start = (source // graph.width - reach, source % graph.width - reach)
+        return lax.dynamic_update_slice(canvas, weights, start).ravel()
+
+    weights = jax.vmap(place)(source_weights, sources)
+    A = graph.get_adjacency_matrix()
+    targets = jnp.arange(graph.nv, dtype=A.indices.dtype)
+    distances = _exact_sources_to_targets(
+        A.data, A.indices, A.shape, sources, targets, solver, state, weights
+    )
+    return _windows(distances.reshape(-1, graph.height, graph.width), sources, size)
 
 
 def _projections(
@@ -1086,13 +1157,15 @@ def _spielman_window_query(
     method: SpielmanApproximation,
     solver: lx.AbstractLinearSolver | None,
     state: Any,
+    weights: Array | None,
 ) -> Array:
-    """`ResistanceDistance.sources_to_windows_distance` with `method`."""
+    """`ResistanceDistance.sources_to_windows_distance` with `method` and
+    source weights `weights`."""
     sources = _inside_windows(graph, sources, size)
     A = graph.get_adjacency_matrix()
     grid = (graph.height, graph.width)
     return _spielman_windows(
-        A.data, A.indices, A.shape, grid, sources, size, method, solver, state
+        A.data, A.indices, A.shape, grid, sources, weights, size, method, solver, state
     )
 
 
@@ -1109,35 +1182,47 @@ def _spielman_windows(
     shape: tuple[int, ...],
     grid: tuple[int, int],
     sources: Array,
+    weights: Array | None,
     size: int,
     method: SpielmanApproximation,
     solver: lx.AbstractLinearSolver | None,
     state: Any,
 ) -> Array:
-    """Spielman estimates of the distances from `sources` to their windows, on
-    the grid of shape `grid` whose adjacency matrix holds `data` at `indices`."""
+    """Spielman estimates of the distances from `sources`, or from their source
+    weights `weights`, to their windows, on the grid of shape `grid` whose
+    adjacency matrix holds `data` at `indices`."""
     return _spielman_windows_fwd(
-        None, data, indices, shape, grid, sources, size, method, solver, state
+        None, data, indices, shape, grid, sources, weights, size, method, solver, state
     )[0]
 
 
 def _spielman_windows_fwd(
-    perturbed, data, indices, shape, grid, sources, size, method, solver, state
+    perturbed, data, indices, shape, grid, sources, weights, size, method, solver, state
 ):
     del perturbed
     # The squared differences of the potentials of each batch of projections,
     # between a source and the pixels of its window, add up to the estimates.
+    # With source weights u, the potentials of the source are their mean with
+    # the weights u, and V(u) is the mean of the estimates with the weights u.
     system = _grounded_system(data, indices, shape, solver, state)
     k = _projection_size(shape[0], method.epsilon)
     key = jax.random.PRNGKey(method.seed)
     half = size // 2
     rows, columns = sources // grid[1], sources % grid[1]
+    inputs = (rows, columns) if weights is None else (rows, columns, weights)
 
-    def window(potentials, row, column):
-        own = potentials[row, column]
+    def window(potentials, row, column, u=None):
         start = (row - half, column - half, 0)
-        pixels = lax.dynamic_slice(potentials, start, (size, size, own.shape[0]))
-        return jnp.sum((pixels - own) ** 2, axis=-1)
+        pixels = lax.dynamic_slice(
+            potentials, start, (size, size, potentials.shape[-1])
+        )
+        if u is None:
+            return jnp.sum((pixels - pixels[half, half]) ** 2, axis=-1)
+        reach = u.shape[0] // 2
+        core = pixels[half - reach : half + reach + 1, half - reach : half + reach + 1]
+        own = jnp.einsum("xy,xyk->k", u, core)
+        spread = jnp.einsum("xy,xyk->", u, (core - own) ** 2)
+        return jnp.sum((pixels - own) ** 2, axis=-1) + spread
 
     def add(total, projections):
         signs = _signs(key, projections, k, data.shape[0]).astype(data.dtype)
@@ -1145,9 +1230,7 @@ def _spielman_windows_fwd(
         potentials = _solve(system, projection.T, solver).reshape(*grid, -1)
         per_step = max(1, _VALUES_PER_STEP // (size**2 * signs.shape[0]))
         squares = lax.map(
-            lambda source: window(potentials, *source),
-            (rows, columns),
-            batch_size=per_step,
+            lambda source: window(potentials, *source), inputs, batch_size=per_step
         )
         return total + squares, None
 
@@ -1169,6 +1252,7 @@ def _spielman_windows_bwd(
     shape,
     grid,
     sources,
+    weights,
     size,
     method,
     solver,
@@ -1187,15 +1271,19 @@ def _spielman_windows_bwd(
     # give E[r' r.T] = K, so that the pullback of L^-1 r' and L^-1 r estimates
     # it without bias. The sign of a pair is the product of a sign per source
     # and a sign per pixel, whose products are uncorrelated between pairs.
+    # With source weights u, b_p = u - e_w, and V(u) adds
+    # b_i = u_i^(1/2) (e_i - u) for each pixel i of u, with the sum of the
+    # cotangents of its source and a sign per pixel of its own.
     k = _projection_size(shape[0], method.epsilon)
     # The probes draw from another key than the projections.
     key = jax.random.fold_in(jax.random.PRNGKey(method.seed), 2**31 - 1)
     height, width = grid
     rows, columns = sources // width, sources % width
-    magnitude = jnp.sqrt(jnp.abs(cotangent))
-    nonzero = cotangent != 0
-    signed = jnp.where(nonzero, cotangent / jnp.where(nonzero, magnitude, 1), 0)
-    weights = jnp.stack([magnitude, signed], axis=-1)
+    roots = _square_roots(cotangent)
+    block = None
+    if weights is not None:
+        # The term V of a source has the sum of the cotangents of its window.
+        block = (weights, _square_roots(jnp.sum(cotangent, axis=(1, 2))))
 
     def add(gradient, probes):
         keys = jax.vmap(lambda probe: jax.random.fold_in(key, probe))(probes)
@@ -1203,12 +1291,22 @@ def _spielman_windows_bwd(
         per_source = jax.vmap(
             lambda key: _rademacher(jax.random.fold_in(key, 0), rows.shape)
         )(keys)
-        per_pixel = jax.vmap(lambda key: _rademacher(jax.random.fold_in(key, 1), grid))(
-            keys
-        )
         per_source = (per_source * valid[:, None]).astype(data.dtype).T
-        per_pixel = jnp.moveaxis(per_pixel.astype(data.dtype), 0, -1)
-        rhs = _probe_right_hand_sides(weights, rows, columns, per_source, per_pixel)
+
+        def per_pixel(draw):
+            signs = jax.vmap(
+                lambda key: _rademacher(jax.random.fold_in(key, draw), grid)
+            )
+            return jnp.moveaxis(signs(keys).astype(data.dtype), 0, -1)
+
+        rhs = _probe_right_hand_sides(
+            roots,
+            rows,
+            columns,
+            per_source,
+            per_pixel(1),
+            None if block is None else (*block, per_pixel(2)),
+        )
         potentials = _solve(system, rhs.reshape(height * width, -1), solver)
         potentials = potentials.reshape(-1, probes.size, 2)
         pullback = _laplacian_data_pullback(
@@ -1221,12 +1319,22 @@ def _spielman_windows_bwd(
     return gradient / k
 
 
+def _square_roots(cotangent: Array) -> Array:
+    """The square roots of the magnitudes of `cotangent`, and the same with its
+    signs, stacked along a last axis."""
+    magnitude = jnp.sqrt(jnp.abs(cotangent))
+    nonzero = cotangent != 0
+    signed = jnp.where(nonzero, cotangent / jnp.where(nonzero, magnitude, 1), 0)
+    return jnp.stack([magnitude, signed], axis=-1)
+
+
 def _probe_right_hand_sides(
     weights: Array,
     rows: Array,
     columns: Array,
     per_source: Array,
     per_pixel: Array,
+    block: tuple[Array, Array, Array] | None = None,
 ) -> Array:
     """The right-hand sides of the probes of the gradient of a window query.
 
@@ -1237,6 +1345,12 @@ def _probe_right_hand_sides(
     takes minus its sign times the weights that it gets from the windows that
     hold it, each times the sign of its source, and a source adds its sign
     times the weights of its window times the signs of their pixels.
+
+    With `block`, the source weights `u` of shape `(m, side, side)`, the
+    weights of their term V of shape `(m, 2)`, and a sign per pixel of shape
+    `(height, width, probes)`, a source adds its share over its weights `u`,
+    and its term V adds, for each pixel `i` of `u`, the sign of the source
+    times its weights times the sign of `i` times `u_i^(1/2) (e_i - u)`.
 
     The sources run in chunks of up to as many consecutive sources as probes,
     whose placed windows then hold at most as many values as the right-hand
@@ -1265,27 +1379,44 @@ def _probe_right_hand_sides(
         return x.reshape(chunks, count, *x.shape[1:])
 
     def chunk(spread, inputs):
-        rows, columns, weights, signs, remaining = inputs
+        rows, columns, weights, signs, *block_inputs, remaining = inputs
         start = jnp.min(jnp.where(remaining, rows, height)) - half
         start = jnp.minimum(start, height - strip)
         offset = rows - half - start
         added = remaining & (offset >= 0) & (offset <= slack)
 
         def shifted(weight, offset, column, added):
-            canvas = jnp.zeros((strip, width, 2), weight.dtype)
+            # A window, or the source weights around its centre.
+            canvas = jnp.zeros((strip, width, *weight.shape[2:]), weight.dtype)
             weight = jnp.where(added, weight, 0)
-            return lax.dynamic_update_slice(canvas, weight, (offset, column - half, 0))
+            reach = weight.shape[0] // 2
+            corner = (offset + half - reach, column - reach) + (0,) * (weight.ndim - 2)
+            return lax.dynamic_update_slice(canvas, weight, corner)
 
         offset = jnp.clip(offset, 0, slack)
         windows = jax.vmap(shifted)(weights, offset, columns, added)
         precision = lax.Precision.HIGHEST
         spreads = jnp.einsum("jxyc,jb->xybc", windows, signs, precision=precision)
         corner = (start, 0, 0, 0)
-        block = lax.dynamic_slice(spread, corner, spreads.shape)
-        spread = lax.dynamic_update_slice(spread, block + spreads, corner)
         pixels = lax.dynamic_slice(per_pixel, corner[:3], (strip, width, probes))
+        spreads = -pixels[..., None] * spreads
         own = jnp.einsum("xyb,jxyc->jbc", pixels, windows, precision=precision)
-        return spread, (signs[:, :, None] * own, remaining & ~added)
+        own = signs[:, :, None] * own
+        if block is not None:
+            u, cover = block_inputs
+            u = jax.vmap(shifted)(u, offset, columns, added)
+            members = lax.dynamic_slice(block[2], corner[:3], pixels.shape)
+            terms = signs[:, :, None] * cover[:, None, :]
+            mean = jnp.einsum("xyb,jxy->jb", members, u**0.5, precision=precision)
+            own = own - mean[..., None] * terms
+            spreads += jnp.einsum("jxy,jbc->xybc", u, own, precision=precision)
+            spreads += members[..., None] * jnp.einsum(
+                "jxy,jbc->xybc", u**0.5, terms, precision=precision
+            )
+            own = jnp.zeros_like(own)
+        old = lax.dynamic_slice(spread, corner, spreads.shape)
+        spread = lax.dynamic_update_slice(spread, old + spreads, corner)
+        return spread, (own, remaining & ~added)
 
     inputs = (
         chunked(rows, half),
@@ -1293,6 +1424,8 @@ def _probe_right_hand_sides(
         chunked(weights),
         chunked(per_source),
     )
+    if block is not None:
+        inputs += (chunked(block[0]), chunked(block[1]))
 
     def unfinished(carry):
         return jnp.any(carry[2])
@@ -1307,7 +1440,7 @@ def _probe_right_hand_sides(
     remaining = (jnp.arange(chunks * count) < m).reshape(chunks, count)
     spread, own, _ = lax.while_loop(unfinished, add, (spread, own, remaining))
     own = own.reshape(-1, probes, 2)[:m]
-    return (-per_pixel[..., None] * spread).at[rows, columns].add(own)
+    return spread.at[rows, columns].add(own)
 
 
 def _edge_potential_deltas(

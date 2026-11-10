@@ -17,6 +17,7 @@ from jaxscape import (
     SpielmanApproximation,
 )
 from jaxscape.resistance_distance import (
+    ExactResistance,
     p_inv_resistance_distance,
     ResistanceDistance,
 )
@@ -442,21 +443,28 @@ def test_spielman_window_queries_stream_the_projections_of_sources_queries(
     np.testing.assert_allclose(actual, np.stack(expected), rtol=1e-9, atol=1e-12)
 
 
-def test_spielman_window_query_gradients_estimate_those_of_exact_resistances():
+@pytest.mark.parametrize("averaged", [False, True])
+def test_spielman_window_query_gradients_estimate_those_of_exact_resistances(
+    averaged,
+):
     # The gradient of a weighted sum of the estimates, over 200 seeds of 20
     # projections, against that of the exact resistances, with negative and
-    # positive weights. Measured: at most 2.3 standard errors apart, and a
-    # median relative standard deviation of 0.24 per pixel, against 0.46 for
-    # the gradient of the estimates themselves.
+    # positive weights, from the sources or from source weights on 3 x 3
+    # pixels. Measured: at most 2.3 standard errors apart, and a median
+    # relative standard deviation of 0.24 per pixel, against 0.46 for the
+    # gradient of the estimates themselves, from the sources.
     rng = np.random.default_rng(0)
     permeability = jnp.asarray(10 ** rng.uniform(-1, 0, (11, 13)))
     rows, columns = np.array([3, 5, 7, 5]), np.array([3, 6, 9, 6])
     sources = jnp.asarray(rows * 13 + columns)
     weights = -jnp.asarray(rng.uniform(size=(4, 7, 7))).at[1, 2, 2].set(0.7)
+    source_weights = rng.uniform(size=(4, 3, 3))
+    source_weights /= source_weights.sum(axis=(1, 2), keepdims=True)
+    averages = {"source_weights": jnp.asarray(source_weights)} if averaged else {}
 
     def objective(permeability, distance):
         grid = GridGraph(permeability, fun=avg)
-        distances = distance.sources_to_windows_distance(grid, sources, 7)
+        distances = distance.sources_to_windows_distance(grid, sources, 7, **averages)
         return jnp.sum(weights * distances)
 
     method = SpielmanApproximation(epsilon=0.5, projection_batch_size=16)
@@ -472,6 +480,48 @@ def test_spielman_window_query_gradients_estimate_those_of_exact_resistances():
     error = jnp.abs(jnp.mean(gradients, axis=0) - expected) / (spread / np.sqrt(200))
     assert jnp.all(error < 4)
     assert jnp.median(spread / jnp.abs(expected)) < 0.3
+
+
+@pytest.mark.parametrize("method", [None, SpielmanApproximation(epsilon=0.3, seed=2)])
+def test_window_queries_from_source_weights_average_the_distances_of_their_pixels(
+    method,
+):
+    # Source weights on the 3 x 3 pixels around each source, on one pixel for
+    # the last: the mean of the distances from these pixels, of the all-pairs
+    # query, whose Spielman projections are those of the window query. Exact
+    # distances have its gradient too.
+    rng = np.random.default_rng(0)
+    permeability = jnp.asarray(10 ** rng.uniform(-1, 0, (9, 11)))
+    rows, columns = np.array([2, 4, 6]), np.array([2, 5, 8])
+    sources = jnp.asarray(rows * 11 + columns)
+    weights = rng.uniform(size=(3, 3, 3)) * (rng.uniform(size=(3, 3, 3)) < 0.7)
+    weights[2] = np.eye(3)[1][:, None] * np.eye(3)[1]
+    weights = jnp.asarray(weights / weights.sum(axis=(1, 2), keepdims=True))
+    distance = ResistanceDistance(solver=None, method=method or ExactResistance())
+
+    def query(permeability):
+        grid = GridGraph(permeability, fun=avg)
+        return distance.sources_to_windows_distance(
+            grid, sources, 5, source_weights=weights
+        )
+
+    def mean(permeability):
+        pairs = distance(GridGraph(permeability, fun=avg)).reshape(9, 11, 9, 11)
+        windows = [
+            pairs[r - 1 : r + 2, c - 1 : c + 2, r - 2 : r + 3, c - 2 : c + 3]
+            for r, c in zip(rows, columns)
+        ]
+        return jnp.einsum("sxy,sxyab->sab", weights, jnp.stack(windows))
+
+    expected = mean(permeability)
+    np.testing.assert_allclose(query(permeability), expected, rtol=1e-9, atol=1e-12)
+    if method is None:
+        cotangent = jnp.asarray(rng.normal(size=(3, 5, 5)))
+
+        def gradient(f):
+            return jax.grad(lambda p: jnp.sum(cotangent * f(p)))(permeability)
+
+        np.testing.assert_allclose(gradient(query), gradient(mean), rtol=1e-8)
 
 
 def test_spielman_probe_right_hand_sides_add_the_windows_of_their_sources():
