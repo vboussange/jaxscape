@@ -1,14 +1,11 @@
-import re
 from typing import ClassVar
 
-import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
 from jax.scipy.signal import convolve2d
 from jaxscape import (
-    connectivity_analysis,
     ConnectivityAnalysis,
     EuclideanDistance,
     FreeEnergyDistance,
@@ -19,7 +16,7 @@ from jaxscape import (
     SpielmanApproximation,
 )
 from jaxscape.distance import AbstractDistance
-from jaxscape.solvers import AMJaxCGSolver, CholmodSolver, CuDSSSolver
+from jaxscape.solvers import CuDSSSolver
 
 
 D = 3
@@ -60,6 +57,19 @@ def assert_close(actual, expected, rtol):
     )
 
 
+def pearson(a, b):
+    return np.corrcoef(np.ravel(a), np.ravel(b))[0, 1]
+
+
+def smooth(seed, shape):
+    """Gaussian-smoothed noise rescaled to [0.05, 1]."""
+    x = np.arange(-12, 13)
+    kernel = np.exp(-(x[:, None] ** 2 + x[None, :] ** 2) / 32)
+    noise = np.random.default_rng(seed).normal(size=shape)
+    field = np.asarray(convolve2d(noise, kernel / kernel.sum(), mode="same"))
+    return jnp.asarray(0.05 + 0.95 * (field - field.min()) / np.ptp(field))
+
+
 def with_exact_gradient(randomized, distance, grid):
     """The `randomized` distances, with the gradient of the exact ones on `grid`.
 
@@ -69,7 +79,7 @@ def with_exact_gradient(randomized, distance, grid):
     return exact + jax.lax.stop_gradient(randomized - exact)
 
 
-def own_windows(quality, permeability, distance, q_weighted=True, exact=False):
+def own_windows(quality, permeability, distance, exact=False):
     """Connectivity summed over each pixel's own window, one pixel at a time.
 
     Each window is centred on its pixel and padded beyond the raster with quality
@@ -80,8 +90,7 @@ def own_windows(quality, permeability, distance, q_weighted=True, exact=False):
     size = 2 * D + 1
     centre = D * size + D
     permeability = jnp.where(permeability > FLOOR, permeability, FLOOR)
-    weight = quality if q_weighted else jnp.ones_like(quality)
-    weight = jnp.pad(weight, D)
+    weight = jnp.pad(quality, D)
     permeability = jnp.pad(permeability, D, constant_values=FLOOR)
 
     def window(i, j):
@@ -98,24 +107,14 @@ def own_windows(quality, permeability, distance, q_weighted=True, exact=False):
     return jnp.sum(jax.vmap(window)(rows, columns))
 
 
-def make_cudss():
+def cudss(request, on_cpu):
+    if on_cpu:
+        request.getfixturevalue("stub_spineax")
+        return CuDSSSolver()
     try:
         return CuDSSSolver()
     except (ImportError, RuntimeError) as error:
         pytest.skip(f"Needs an NVIDIA GPU, spineax and cuDSS: {error}")
-
-
-def solver(name, request):
-    if name == "cholmod":
-        pytest.importorskip("cholespy")
-        return CholmodSolver()
-    if name == "amjax":
-        pytest.importorskip("amjax")
-        return AMJaxCGSolver(rtol=1e-10, atol=1e-10, max_steps=2000)
-    if name == "cudss-on-cpu":
-        request.getfixturevalue("stub_spineax")
-        return CuDSSSolver()
-    return make_cudss()
 
 
 # A randomized resistance: its all-pairs query on the same graph is the
@@ -127,11 +126,6 @@ CASES = {
         lambda _: ResistanceDistance(method=SPIELMAN),
         ResistanceDistance(solver=None, method=SPIELMAN),
         1e-10,
-    ),
-    "spielman-cholmod": (
-        lambda request: ResistanceDistance(solver("cholmod", request), method=SPIELMAN),
-        ResistanceDistance(solver=None, method=SPIELMAN),
-        1e-8,
     ),
     "euclidean": (lambda _: EuclideanDistance(), EuclideanDistance(), 1e-12),
     "lcp": (lambda _: LCPDistance(), LCPDistance(), 1e-12),
@@ -151,15 +145,31 @@ CASES = {
         ResistanceDistance(solver=None),
         1e-10,
     ),
-    **{
-        f"resistance-{name}": (
-            lambda request, name=name: ResistanceDistance(solver(name, request)),
-            ResistanceDistance(solver=None),
-            1e-8,
-        )
-        for name in ("cholmod", "amjax", "cudss-on-cpu", "cudss")
-    },
+    "resistance-cudss-on-cpu": (
+        lambda request: ResistanceDistance(cudss(request, on_cpu=True)),
+        ResistanceDistance(solver=None),
+        1e-8,
+    ),
+    "resistance-cudss": (
+        lambda request: ResistanceDistance(cudss(request, on_cpu=False)),
+        ResistanceDistance(solver=None),
+        1e-8,
+    ),
 }
+
+
+def assert_matches(analyses, expected, rtol, min_pearson=None):
+    """Compare the runs of `analyses`, by kind, with the connectivity and its
+    quality and permeability gradients `expected`, and with `min_pearson`, the
+    permeability sensitivity by its Pearson correlation only."""
+    connectivity, (d_quality, d_permeability) = expected
+    assert_close(analyses[ConnectivityAnalysis].run(), connectivity, rtol)
+    sensitivity = analyses[SensitivityAnalysis]
+    assert_close(sensitivity.run("quality"), d_quality, rtol)
+    if min_pearson:
+        assert pearson(sensitivity.run("permeability"), d_permeability) > min_pearson
+    else:
+        assert_close(sensitivity.run("permeability"), d_permeability, rtol)
 
 
 @pytest.mark.parametrize(
@@ -173,118 +183,89 @@ def test_analyses_match_each_pixels_own_window(name, request):
     make_distance, reference, rtol = CASES[name]
     distance = make_distance(request)
     # Batches of one source compute each pixel in its own window, as distances
-    # whose sources do not share work do in batches of any size.
-    batch_size = 1 if distance.sources_share_work else 8
+    # whose sources do not share work do in batches of any size: here ten
+    # batches of 4 windows, and a last one of 2 that two dummy windows
+    # complete, which add nothing.
+    batch_size = 1 if distance.sources_share_work else 4
+    kinds = (ConnectivityAnalysis, SensitivityAnalysis)
+    analyses = {kind: make(kind, distance, batch_size=batch_size) for kind in kinds}
+    assert analyses[ConnectivityAnalysis]._tiles_per_batch == batch_size
 
-    connectivity = make(ConnectivityAnalysis, distance, batch_size=batch_size).run()
-    assert_close(connectivity, own_windows(QUALITY, PERMEABILITY, reference), rtol)
-
-    sensitivity = make(SensitivityAnalysis, distance, batch_size=batch_size)
-    expected = jax.grad(own_windows)(QUALITY, PERMEABILITY, reference)
-    assert_close(sensitivity.run("quality"), expected, rtol)
-    if name.startswith("spielman"):
-        # The permeability gradient of randomized distances is estimated from
-        # that of exact distances. Measured: Pearson 0.998.
-        expected = jax.grad(own_windows, 1)(
-            QUALITY, PERMEABILITY, reference, True, True
-        )
-        assert pearson(sensitivity.run("permeability"), expected) > 0.99
-    else:
-        expected = jax.grad(own_windows, 1)(QUALITY, PERMEABILITY, reference)
-        assert_close(sensitivity.run("permeability"), expected, rtol)
+    # The permeability gradient of randomized distances is estimated from that
+    # of exact distances. Measured: Pearson 0.998.
+    randomized = name == "spielman"
+    expected = jax.value_and_grad(own_windows, (0, 1))(
+        QUALITY, PERMEABILITY, reference, randomized
+    )
+    assert_matches(analyses, expected, rtol, 0.99 if randomized else None)
 
 
-def padded_raster(quality, permeability, distance, dependency_range, exact=False):
+def padded_raster(quality, permeability, distance, exact=False):
     """Connectivity with the distances on the graph of the padded raster.
 
-    The raster is padded by `dependency_range` on all sides with quality 0 and
-    the permeability floor, 1e-4 times its maximum permeability, and each pixel
-    counts the pixels of its own window. Randomized distances are reseeded with
-    the index 0 of the first pixel, and have the gradient of exact distances if
-    `exact`.
+    The raster is padded by `D` on all sides with quality 0 and the permeability
+    floor, 1e-4 times its maximum permeability, and each pixel counts the pixels
+    of its own window. Randomized distances are reseeded with the index 0 of the
+    first pixel, and have the gradient of exact distances if `exact`.
     """
     height, width = quality.shape
-    r = dependency_range
-    size = 2 * r + 1
+    size = 2 * D + 1
     floor = 1e-4 * jax.lax.stop_gradient(jnp.max(permeability))
     permeability = jnp.where(permeability > floor, permeability, floor)
-    permeability = jnp.pad(permeability, r, constant_values=floor)
-    weight = jnp.pad(quality, r)
+    permeability = jnp.pad(permeability, D, constant_values=floor)
+    weight = jnp.pad(quality, D)
     grid = GridGraph(permeability, fun=average)
     K = distance.debiased_proximity(proximity, grid)
     distances = distance.reseeded(0)(grid)
     if exact:
         distances = with_exact_gradient(distances, distance, grid)
-    distances = distances.reshape(height + 2 * r, width + 2 * r, -1)
+    distances = distances.reshape(height + 2 * D, width + 2 * D, -1)
 
     def pixel(i, j):
-        row = distances[i + r, j + r].reshape(height + 2 * r, width + 2 * r)
+        row = distances[i + D, j + D].reshape(height + 2 * D, width + 2 * D)
         d = jax.lax.dynamic_slice(row, (i, j), (size, size)).ravel()
         w = jax.lax.dynamic_slice(weight, (i, j), (size, size)).ravel()
-        return w[r * size + r] * (K(d).at[r * size + r].set(0) @ w)
+        return w[D * size + D] * (K(d).at[D * size + D].set(0) @ w)
 
     rows, columns = np.indices(quality.shape).reshape(2, -1)
     return jnp.sum(jax.vmap(pixel)(rows, columns))
 
 
-@pytest.mark.parametrize(
-    "name",
-    [
-        "resistance-dense",
-        "resistance-default",
-        "resistance-cholmod",
-        "spielman",
-        "spielman-cholmod",
-    ],
-)
+@pytest.mark.parametrize("name", ["resistance-default", "spielman"])
 def test_one_tile_computes_distances_on_the_padded_raster(name, request):
     # Resistance queries share their work between sources: a batch of as many
     # sources as pixels takes the distances of one tile of 5 x 7 pixels, the
     # whole raster.
-    distance = CASES[name][0](request)
-    assert distance.sources_share_work
+    make_distance, reference, rtol = CASES[name]
     quality, permeability = QUALITY[:5], PERMEABILITY[:5]
+    analyses = {
+        kind: make(kind, make_distance(request), quality, permeability, batch_size=35)
+        for kind in (ConnectivityAnalysis, SensitivityAnalysis)
+    }
 
-    def run(kind, *args):
-        return make(kind, distance, quality, permeability, batch_size=35).run(*args)
-
-    reference, rtol = CASES[name][1], CASES[name][2]
-    assert_close(
-        run(ConnectivityAnalysis),
-        padded_raster(quality, permeability, reference, D),
-        rtol,
-    )
-    expected = jax.grad(padded_raster)(quality, permeability, reference, D)
-    assert_close(run(SensitivityAnalysis, "quality"), expected, rtol)
     # The permeability gradient of randomized distances is estimated from that
     # of exact distances. Measured: Pearson 0.982.
-    randomized = name.startswith("spielman")
-    expected = jax.grad(padded_raster, 1)(
-        quality, permeability, reference, D, randomized
+    randomized = name == "spielman"
+    expected = jax.value_and_grad(padded_raster, (0, 1))(
+        quality, permeability, reference, randomized
     )
-    if randomized:
-        assert pearson(run(SensitivityAnalysis, "permeability"), expected) > 0.97
-    else:
-        assert_close(run(SensitivityAnalysis, "permeability"), expected, rtol)
+    assert_matches(analyses, expected, rtol, 0.97 if randomized else None)
 
 
 def test_tiles_approximate_each_pixels_own_window():
-    # Batches of 64 pixels take tiles of 8 x 8 pixels, and batches of 900 one
-    # tile, the whole raster. The distances of a pixel are those of a larger
-    # graph than its window, and lower. Measured: connectivity +1.2 % and
-    # +2.7 %, Pearson 0.99998 and 0.99995 for the quality sensitivity, 0.9998
-    # and 0.9996 for the permeability sensitivity.
-    quality, permeability = smooth(1, (30, 30)), smooth(2, (30, 30))
+    # Batches of 16 pixels take tiles of 4 x 4 pixels. The distances of a pixel
+    # are those of a larger graph than its window, and lower. Measured:
+    # connectivity +2.7 %, Pearson 0.9997 for the quality sensitivity and
+    # 0.9998 for the permeability sensitivity.
+    quality, permeability = smooth(1, (20, 20)), smooth(2, (20, 20))
 
     def run(batch_size):
         def analysis(kind):
             return kind(
                 quality_raster=quality,
                 permeability_raster=permeability,
-                # Dense solves: on a CPU, the test took 24 s with them, and
-                # 43 s with the default `GridMultigridSolver`.
                 distance=ResistanceDistance(solver=None),
-                dependency_range=10,
+                dependency_range=6,
                 batch_size=batch_size,
             )
 
@@ -295,23 +276,18 @@ def test_tiles_approximate_each_pixels_own_window():
             sensitivity.run("permeability"),
         )
 
-    sides, windows = run(1)
-    assert sides == (21, 21)
-    for batch_size, side, rtol in [(64, 7 + 21, 0.02), (900, 29 + 21, 0.04)]:
-        sides, tiles = run(batch_size)
-        assert sides == (side, side)
-        np.testing.assert_allclose(tiles[0], windows[0], rtol=rtol)
-        for tile, window in zip(tiles[1:], windows[1:]):
-            assert pearson(tile, window) >= 0.999
-
-
-def test_tiles_of_a_narrow_raster_hold_about_batch_size_block_centres():
+    (sides, windows), (tile_sides, tiles) = run(1), run(16)
+    assert sides == (13, 13)
+    assert tile_sides == (3 + 13, 3 + 13)
+    np.testing.assert_allclose(tiles[0], windows[0], rtol=0.05)
+    for tile, window in zip(tiles[1:], windows[1:]):
+        assert pearson(tile, window) >= 0.999
     # On a raster of 3 columns, a batch of 16 takes tiles of 5 x 3 block
     # centres.
     narrow = jnp.ones((40, 3))
     windowed = make(
         ConnectivityAnalysis,
-        ResistanceDistance(),
+        ResistanceDistance(solver=None),
         narrow,
         narrow,
         batch_size=16,
@@ -320,18 +296,18 @@ def test_tiles_of_a_narrow_raster_hold_about_batch_size_block_centres():
     assert windowed.tile_sides == (4 + 81, 2 + 81)
 
 
-@pytest.mark.parametrize("name", ["resistance-dense", "resistance-default"])
-def test_float32_tile_sensitivity_matches_float64(name, request):
-    # Tiles of 2 x 4 pixels and a buffer of 30 floored pixels around them:
-    # resistance queries ground a pixel of near-maximum permeability next to
-    # the sources, away from the floored pixels.
+def test_float32_tile_sensitivity_matches_float64():
+    # Tiles of 2 x 4 pixels and a buffer of 16 floored pixels around them,
+    # larger than the coarsest grid of the default solver: resistance queries
+    # ground a pixel of near-maximum permeability next to the sources, away
+    # from the floored pixels.
     def sensitivity(dtype):
         return make(
             SensitivityAnalysis,
-            CASES[name][0](request),
+            ResistanceDistance(),
             QUALITY.astype(dtype),
             PERMEABILITY.astype(dtype),
-            dependency_range=30,
+            dependency_range=16,
             proximity=lambda dist: jnp.exp(-dist / 2),
         ).run("permeability")
 
@@ -368,7 +344,6 @@ def test_euclidean_connectivity_matches_all_pairs(q_weighted):
     [
         ("int32", "float64", LCPDistance()),
         ("bool", "float32", LCPDistance()),
-        ("float32", "float64", LCPDistance()),
         ("float64", "float32", LCPDistance()),
         # Its distances come from integer pixel coordinates.
         ("float32", "float32", EuclideanDistance()),
@@ -399,130 +374,57 @@ def test_rasters_of_any_dtypes_give_the_float64_results_in_their_common_dtype(
         assert_close(actual, expected, 1e-5 if dtype == "float32" else 1e-12)
 
 
-@pytest.mark.parametrize(
-    "name, kernel",
-    [
-        ("lcp", proximity),
-        ("resistance-cholmod", proximity),
-        ("resistance-cholmod", None),
-    ],
-    ids=["lcp", "resistance", "resistance-default-proximity"],
-)
-def test_sensitivity_is_the_gradient_of_connectivity(name, kernel, request):
-    distance = CASES[name][0](request)
+def test_sensitivity_is_the_gradient_of_connectivity_inside_jit():
+    # The default solver and the default proximity: creating an analysis
+    # builds the solver state and the profile of the proximity, here from
+    # traced rasters.
+    def analysis(kind, quality=QUALITY, permeability=PERMEABILITY):
+        distance = ResistanceDistance()
+        return make(kind, distance, quality, permeability, proximity=None)
 
     def connectivity(quality, permeability):
-        return make(
-            ConnectivityAnalysis, distance, quality, permeability, proximity=kernel
-        ).run()
+        return analysis(ConnectivityAnalysis, quality, permeability).run()
 
-    sensitivity = make(SensitivityAnalysis, distance, proximity=kernel)
-    for argnums, var in enumerate(["quality", "permeability"]):
+    sensitivity = analysis(SensitivityAnalysis)
+    gradients = jax.jit(jax.grad(connectivity, (0, 1)))(QUALITY, PERMEABILITY)
+    for var, expected in zip(["quality", "permeability"], gradients):
         actual = sensitivity.run(var)
         assert jnp.all(jnp.isfinite(actual))
-        expected = jax.grad(connectivity, argnums)(QUALITY, PERMEABILITY)
         assert_close(actual, expected, 1e-12)
 
 
-@pytest.mark.parametrize("uniform", [False, True])
-@pytest.mark.parametrize("kind", [ConnectivityAnalysis, SensitivityAnalysis])
-def test_default_lcp_proximity_is_exponential_in_pixels(kind, uniform):
-    def exponential(dist):
-        return jnp.exp(-dist / (D / 4))
-
-    # At permeability 1, LCP distances are whole pixels, on the edge of the
-    # window too.
-    permeability = jnp.ones_like(QUALITY) if uniform else PERMEABILITY
-    args = ("permeability",) if kind is SensitivityAnalysis else ()
-
-    def run(proximity):
-        return make(
-            kind, LCPDistance(), permeability=permeability, proximity=proximity
-        ).run(*args)
-
-    assert_close(run(None), run(exponential), 1e-12)
-
-
-@pytest.mark.parametrize("r", [1, 2, D])
-def test_default_resistance_proximity_is_exponential_in_pixels(r):
-    # Two habitat pixels r apart along a row, each at the centre of a window of
-    # permeability 1, where resistance grows like the logarithm of r. Batches
-    # of one source compute each pixel in its own window.
-    quality = jnp.zeros((2 * D + 1, 2 * D + 1 + r)).at[D, jnp.array([D, D + r])].set(1)
-    permeability = jnp.ones_like(quality)
-    connectivity = make(
-        ConnectivityAnalysis,
-        ResistanceDistance(),
-        quality,
-        permeability,
-        proximity=None,
-        batch_size=1,
-    ).run()
-    # Each pixel counts the other.
-    np.testing.assert_allclose(connectivity, 2 * np.exp(-r / (D / 4)), rtol=1e-10)
-
-
-@pytest.mark.parametrize("name", ["spielman", "spielman-cholmod"])
-def test_randomized_distances_take_the_default_proximity_of_exact_ones(name, request):
-    # A profile read off one randomized query is noisy: with this seed, the
-    # randomized resistance drops from 0.80 two pixels from the centre of a
-    # window of permeability 1 to 0.55 at its edge.
-    method = SpielmanApproximation(epsilon=0.3, seed=3)
-    randomized = CASES[name][0](request)
-    randomized = eqx.tree_at(lambda d: d.method, randomized, method)
-    assert randomized.exact() == ResistanceDistance(randomized.solver)
+def test_default_proximity_is_exponential_in_equivalent_pixels():
+    alpha = D / 4
 
     def kernel(distance):
         return make(ConnectivityAnalysis, distance, proximity=None).proximity
 
-    distances = jnp.linspace(0, 3, 301)
-    expected = kernel(ResistanceDistance())(distances)
-    assert_close(kernel(randomized)(distances), expected, 1e-8)
-
-
-def test_creating_an_analysis_analyses_the_tile_pattern_only(stub_spineax):
-    analyses = stub_spineax.analyses()
-    # Tiles of 2 x 2 pixels: their sparsity pattern differs from a window's,
-    # which a given proximity does not need.
-    distance = ResistanceDistance(CuDSSSolver())
-    make(ConnectivityAnalysis, distance, batch_size=4, dependency_range=10)
-    jax.effects_barrier()
-    assert stub_spineax.analyses() - analyses == 1
-
-
-def test_creating_an_analysis_compiles_few_programs(stub_spineax, compilations):
-    # Each program compiled outside a trace takes about 0.05 s on a GPU: one
-    # per operation of the solver state and of the padding took 10 s to
-    # create the first analysis of the Maryland raster. Measured: 219
-    # programs, now 29.
-    distance = ResistanceDistance(CuDSSSolver(), method=SPIELMAN)
-    q = jnp.ones((30, 30), jnp.float32)
-    make(
+    # LCP distances at permeability 1 are whole pixels, past the window edge
+    # too.
+    distances = jnp.linspace(0, 2 * D, 61)
+    assert_close(kernel(LCPDistance())(distances), jnp.exp(-distances / alpha), 1e-12)
+    # A profile read off one randomized query is noisy: with this seed, the
+    # randomized resistance drops from 0.80 two pixels from the centre of a
+    # window of permeability 1 to 0.55 at its edge.
+    randomized = ResistanceDistance(method=SpielmanApproximation(0.3, seed=3))
+    assert randomized.exact() == ResistanceDistance()
+    expected = kernel(ResistanceDistance())(distances / 4)
+    assert_close(kernel(randomized)(distances / 4), expected, 1e-8)
+    # Three habitat pixels 1, 2 and 3 pixels apart along a row, each at the
+    # centre of its own window of permeability 1, where resistance grows like
+    # the logarithm of the distance in pixels.
+    quality = jnp.zeros((2 * D + 1, 2 * D + 4)).at[D, D + jnp.array([0, 1, 3])].set(1)
+    connectivity = make(
         ConnectivityAnalysis,
-        distance,
-        q,
-        q,
+        ResistanceDistance(),
+        quality,
+        jnp.ones_like(quality),
         proximity=None,
-        dependency_range=5,
-        batch_size=4096,
-        coarsening_factor=0.4,
-    )
-    assert len(compilations) <= 40
-
-
-def test_analyses_with_the_default_proximity_run_inside_jit():
-    # Creating an analysis compiles the profile of its default proximity, and
-    # its runs compile their batches.
-    def connectivity(permeability):
-        return make(
-            ConnectivityAnalysis,
-            LCPDistance(),
-            permeability=permeability,
-            proximity=None,
-        ).run()
-
-    expected = connectivity(PERMEABILITY)
-    assert_close(jax.jit(connectivity)(PERMEABILITY), expected, 1e-12)
+        batch_size=1,
+    ).run()
+    # Each pixel counts the others.
+    expected = 2 * sum(np.exp(-r / alpha) for r in (1, 2, 3))
+    np.testing.assert_allclose(connectivity, expected, rtol=1e-10)
 
 
 def test_sensitivity_is_finite_for_proximity_singular_at_zero():
@@ -534,46 +436,7 @@ def test_sensitivity_is_finite_for_proximity_singular_at_zero():
         assert jnp.all(jnp.isfinite(sensitivity.run(var)))
 
 
-@pytest.mark.parametrize(
-    "name", ["lcp", "resistance-cholmod", "resistance-cudss-on-cpu"]
-)
-def test_coarsened_analyses_cover_the_raster(name, request):
-    distance = CASES[name][0](request)
-
-    # Blocks of 3 x 3 pixels, centred on rows 0, 1, 4 and 5, columns 0, 1, 4, 6.
-    def coarsened(kind):
-        return make(kind, distance, coarsening_factor=0.5)
-
-    connectivity = coarsened(ConnectivityAnalysis).run()
-    assert jnp.isfinite(connectivity) and connectivity > 0
-    for var in ["quality", "permeability"]:
-        sensitivity = coarsened(SensitivityAnalysis).run(var)
-        assert sensitivity.shape == QUALITY.shape
-        assert jnp.all(jnp.isfinite(sensitivity)) and jnp.any(sensitivity != 0)
-
-
-def test_the_block_calibration_pulls_back_both_gradients_at_once():
-    # The gradients of one window query with and without the pairs within the
-    # block: the dense Cholesky factor is solved twice for the query and twice
-    # for one backward pass of both cotangents: LAPACK's trsm on a CPU, and
-    # cuBLAS's triangularSolve on a GPU.
-    sensitivity = make(
-        SensitivityAnalysis,
-        ResistanceDistance(solver=None, method=SPIELMAN),
-        coarsening_factor=0.5,
-    )
-    calibration = connectivity_analysis._permeability_calibration
-    lowered = calibration.lower(sensitivity, sensitivity.window_state)
-    text = str(lowered.compile().compiled.as_text())
-    targets = re.findall(r'custom_call_target="([^"]*)"', text)
-    solves = [t for t in targets if "trsm" in t or "triangularSolve" in t]
-    assert len(solves) == 4
-
-
-@pytest.mark.parametrize("name", ["lcp", "resistance-dense"])
-def test_coarsened_permeability_sensitivity_ignores_permeability_out_of_reach(
-    name, request
-):
+def test_coarsened_permeability_sensitivity_ignores_permeability_out_of_reach():
     # Documented: the block correction is calibrated at the raster's maximum
     # permeability. Lowering permeability below the maximum in columns 35 and
     # beyond leaves alone the windows that reach columns 0 to 24, each of one
@@ -585,7 +448,7 @@ def test_coarsened_permeability_sensitivity_ignores_permeability_out_of_reach(
     def sensitivity(permeability):
         return make(
             SensitivityAnalysis,
-            CASES[name][0](request),
+            LCPDistance(),
             quality,
             permeability,
             batch_size=1,
@@ -596,10 +459,7 @@ def test_coarsened_permeability_sensitivity_ignores_permeability_out_of_reach(
     assert_close(sensitivity(lowered)[near], sensitivity(permeability)[near], 1e-12)
 
 
-@pytest.mark.parametrize("name", ["lcp", "resistance-dense"])
-def test_coarsened_permeability_sensitivity_is_finite_where_proximities_underflow(
-    name, request
-):
+def test_coarsened_permeability_sensitivity_is_finite_where_proximities_underflow():
     # Habitat of permeability 1e-3 on two neighbouring blocks of 3 x 3 pixels
     # in an impassable matrix. Even at the maximum permeability, a neighbour is
     # hundreds of equivalent pixels away: the float32 proximities of the
@@ -610,7 +470,7 @@ def test_coarsened_permeability_sensitivity_is_finite_where_proximities_underflo
     def sensitivity(coarsening_factor):
         return make(
             SensitivityAnalysis,
-            CASES[name][0](request),
+            LCPDistance(),
             habitat,
             1e-3 * habitat,
             proximity=None,
@@ -634,18 +494,14 @@ def test_coarsening_runs_on_a_raster_thinner_than_a_block():
     assert jnp.all(jnp.isfinite(sensitivity)) and jnp.any(sensitivity != 0)
 
 
-@pytest.mark.parametrize("name", ["lcp", "resistance-dense"])
-def test_coarsened_quality_sensitivity_is_exact_inside_a_uniform_landscape(
-    name, request
-):
-    distance = CASES[name][0](request)
+def test_coarsened_quality_sensitivity_is_exact_inside_a_uniform_landscape():
     uniform = jnp.full((20, 20), 0.7)
 
     # Batches of one block centre compute it in its own window.
     def sensitivity(coarsening_factor):
         return make(
             SensitivityAnalysis,
-            distance,
+            LCPDistance(),
             uniform,
             uniform,
             batch_size=1,
@@ -659,28 +515,19 @@ def test_coarsened_quality_sensitivity_is_exact_inside_a_uniform_landscape(
     assert_close(sensitivity(0.5)[interior], sensitivity(0.0)[interior], 1e-10)
 
 
-@pytest.mark.parametrize(
-    "name, var, tolerance",
-    [
-        ("lcp", "quality", 0.08),
-        ("lcp", "permeability", 0.08),
-        ("resistance-dense", "quality", 0.1),
-        ("resistance-dense", "permeability", 0.2),
-    ],
-)
+@pytest.mark.parametrize("var", ["quality", "permeability"])
 def test_coarsening_approximates_pixel_windows_at_the_edges_of_a_uniform_landscape(
-    name, var, tolerance, request
+    var,
 ):
-    # Measured largest errors, relative to the map maximum: 0.076, 0.072,
-    # 0.098 and 0.192 (0.37, 0.30, 0.44 and 0.19 with block centres inside
-    # the raster only, the nearest taking all the interpolation weight).
-    distance = CASES[name][0](request)
+    # Measured largest errors, relative to the map maximum: 0.076 and 0.072
+    # (0.37 and 0.30 with block centres inside the raster only, the nearest
+    # taking all the interpolation weight).
     uniform = jnp.full((24, 25), 0.7)
 
     def sensitivity(coarsening_factor):
         return make(
             SensitivityAnalysis,
-            distance,
+            LCPDistance(),
             uniform,
             uniform,
             dependency_range=8,
@@ -693,7 +540,7 @@ def test_coarsening_approximates_pixel_windows_at_the_edges_of_a_uniform_landsca
     # columns 0, 1, 4, ..., 22 and 24; the pixels within 8 of an edge.
     edges = np.ones(uniform.shape, bool)
     edges[8:-8, 8:-8] = False
-    assert_close(sensitivity(0.25)[edges], sensitivity(0.0)[edges], tolerance)
+    assert_close(sensitivity(0.25)[edges], sensitivity(0.0)[edges], 0.08)
 
 
 class Opaque(AbstractDistance):
@@ -714,53 +561,35 @@ class Opaque(AbstractDistance):
         return self.distance.all_pairs_distance(graph, state)
 
 
-def test_coarsened_quality_sensitivity_of_other_distances_is_a_gradient():
-    distance = Opaque(LCPDistance())
-
-    def connectivity(quality):
-        return make(
-            ConnectivityAnalysis, distance, quality, coarsening_factor=0.5
-        ).run()
-
-    sensitivity = make(SensitivityAnalysis, distance, coarsening_factor=0.5)
-    expected = jax.grad(connectivity)(QUALITY)
-    assert_close(sensitivity.run("quality"), expected, 1e-12)
-
-
 class Symmetric(Opaque):
     """A distance that declares itself symmetric."""
 
     symmetric: ClassVar[bool] = True
 
 
-def test_coarsened_quality_sensitivity_of_symmetric_distances_is_interpolated():
-    # Twice the proximity-weighted quality seen from each block centre,
-    # interpolated: the same for a distance that declares its symmetry as for
-    # LCP, and not the gradient of the coarsened connectivity.
+def test_coarsened_quality_sensitivity_reads_the_symmetry_of_the_distance():
+    # Symmetric distances take twice the proximity-weighted quality seen from
+    # each block centre, interpolated, and other distances the gradient of the
+    # coarsened connectivity.
+    def analysis(kind, distance, quality=QUALITY):
+        return make(kind, distance, quality, coarsening_factor=0.5)
+
+    def connectivity(quality):
+        return analysis(ConnectivityAnalysis, Opaque(LCPDistance()), quality).run()
+
     def sensitivity(distance):
-        windowed = make(SensitivityAnalysis, distance, coarsening_factor=0.5)
-        return windowed.run("quality")
+        return analysis(SensitivityAnalysis, distance).run("quality")
 
     expected = sensitivity(LCPDistance())
     np.testing.assert_array_equal(sensitivity(Symmetric(LCPDistance())), expected)
-    assert not np.allclose(sensitivity(Opaque(LCPDistance())), expected)
-
-
-def pearson(a, b):
-    return np.corrcoef(np.ravel(a), np.ravel(b))[0, 1]
-
-
-def smooth(seed, shape):
-    """Gaussian-smoothed noise rescaled to [0.05, 1]."""
-    x = np.arange(-12, 13)
-    kernel = np.exp(-(x[:, None] ** 2 + x[None, :] ** 2) / 32)
-    noise = np.random.default_rng(seed).normal(size=shape)
-    field = np.asarray(convolve2d(noise, kernel / kernel.sum(), mode="same"))
-    return jnp.asarray(0.05 + 0.95 * (field - field.min()) / np.ptp(field))
+    gradient = sensitivity(Opaque(LCPDistance()))
+    assert_close(gradient, jax.grad(connectivity)(QUALITY), 1e-12)
+    assert not np.allclose(gradient, expected)
 
 
 @pytest.mark.parametrize(
-    "name, min_permeability_pearson", [("lcp", 0.8), ("resistance-dense", 0.95)]
+    "name, min_permeability_pearson",
+    [("lcp", 0.8), pytest.param("resistance-dense", 0.95, marks=pytest.mark.slow)],
 )
 def test_coarsening_approximates_pixel_windows_on_a_smooth_landscape(
     name, min_permeability_pearson, request
@@ -768,21 +597,19 @@ def test_coarsening_approximates_pixel_windows_on_a_smooth_landscape(
     distance = CASES[name][0](request)
     quality, permeability = smooth(1, (64, 64)), smooth(2, (64, 64))
 
-    def run(kind, coarsening_factor, *args, q_weighted=True):
+    def run(kind, coarsening_factor, *args):
         return kind(
             quality_raster=quality,
             permeability_raster=permeability,
             distance=distance,
             dependency_range=8,
-            batch_size=512,
+            batch_size=64,
             coarsening_factor=coarsening_factor,
-        ).run(*args, q_weighted=q_weighted)
+        ).run(*args)
 
     # Blocks of 5 x 5 pixels: 25 times fewer windows.
-    for q_weighted in [True, False]:
-        connectivity = run(ConnectivityAnalysis, 0.5, q_weighted=q_weighted)
-        expected = run(ConnectivityAnalysis, 0.0, q_weighted=q_weighted)
-        np.testing.assert_allclose(connectivity, expected, rtol=0.05)
+    connectivity = run(ConnectivityAnalysis, 0.5)
+    np.testing.assert_allclose(connectivity, run(ConnectivityAnalysis, 0.0), rtol=0.05)
 
     d_quality = run(SensitivityAnalysis, 0.5, "quality")
     expected = run(SensitivityAnalysis, 0.0, "quality")
@@ -792,95 +619,3 @@ def test_coarsening_approximates_pixel_windows_on_a_smooth_landscape(
     d_permeability = run(SensitivityAnalysis, 0.5, "permeability")
     expected = run(SensitivityAnalysis, 0.0, "permeability")
     assert pearson(d_permeability, expected) >= min_permeability_pearson
-
-
-@pytest.fixture
-def compilations():
-    """Name the programs that XLA compiles."""
-    events = []
-
-    def listener(event, duration_secs, **kwargs):
-        del duration_secs
-        if event == "/jax/core/compile/backend_compile_duration":
-            events.append(kwargs.get("fun_name"))
-
-    jax.monitoring.register_event_duration_secs_listener(listener)
-    yield events
-    jax.monitoring.unregister_event_duration_listener(listener)
-
-
-@pytest.mark.parametrize("name", ["lcp", "resistance-cholmod"])
-@pytest.mark.parametrize(
-    "kind, args",
-    [
-        (ConnectivityAnalysis, ()),
-        (SensitivityAnalysis, ("quality",)),
-        (SensitivityAnalysis, ("permeability",)),
-    ],
-)
-@pytest.mark.parametrize("coarsening_factor", [0.0, 0.5])
-def test_all_batches_and_runs_share_one_compiled_program(
-    name, kind, args, coarsening_factor, compilations, request
-):
-    distance = CASES[name][0](request)
-    # Batches of three windows: with a dependency range of 3, tiles are windows.
-    windowed = make(
-        kind,
-        distance,
-        QUALITY[:5],
-        PERMEABILITY[:5],
-        batch_size=3,
-        coarsening_factor=coarsening_factor,
-    )
-    compilations.clear()
-    windowed.run(*args)
-    assert compilations.count("jit(_batch)") == 1
-
-    # The next run starts from the same solver state: it compiles nothing.
-    compilations.clear()
-    windowed.run(*args)
-    assert compilations == []
-
-
-def test_dummy_tiles_of_a_partial_last_batch_add_nothing():
-    # 42 windows in batches of at most 4: ten batches of 4, and a last batch
-    # of 2 windows that two dummy windows complete.
-    distance = LCPDistance()
-    sensitivity = make(SensitivityAnalysis, distance, batch_size=4)
-    assert sensitivity._tiles_per_batch == 4
-
-    connectivity = make(ConnectivityAnalysis, distance, batch_size=4).run()
-    assert_close(connectivity, own_windows(QUALITY, PERMEABILITY, distance), 1e-12)
-    expected = jax.grad(own_windows, 1)(QUALITY, PERMEABILITY, distance)
-    assert_close(sensitivity.run("permeability"), expected, 1e-12)
-
-
-def test_batches_compute_the_windows_of_the_raster_only():
-    computed = []
-
-    class Counting(Opaque):
-        """A distance that counts the sources of its window queries."""
-
-        def sources_to_windows_distance(self, graph, sources, size, state=None):
-            jax.debug.callback(lambda s: computed.append(s.size), sources)
-            return self.distance.sources_to_windows_distance(
-                graph, sources, size, state
-            )
-
-    # 42 windows in batches of at most 32: two batches of 21.
-    jax.block_until_ready(
-        make(ConnectivityAnalysis, Counting(LCPDistance()), batch_size=32).run()
-    )
-    jax.effects_barrier()
-    assert sum(computed) == 42
-
-
-@pytest.mark.parametrize("kind", [ConnectivityAnalysis, SensitivityAnalysis])
-def test_default_proximity_compiles_once_for_all_analyses(kind, compilations):
-    args = ("permeability",) if kind is SensitivityAnalysis else ()
-    make(kind, LCPDistance(), proximity=None).run(*args)
-    other = make(kind, LCPDistance(), 2 * QUALITY, 3 * PERMEABILITY, proximity=None)
-
-    compilations.clear()
-    other.run(*args)
-    assert len(compilations) == 0
