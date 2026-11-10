@@ -65,9 +65,10 @@ class _FactorCache:
         return factor
 
 
-# A state holds the handle of its cache as an array, so that states of one
-# sparsity pattern share their compiled programs. The process keeps the caches
-# of the most recently used states.
+# A solver state holds, as an array, the handle of its last factorization on the
+# host, so that states of one sparsity pattern share their compiled programs.
+# The process keeps the factorizations of the most recently used states, for
+# every `CholmodSolver`.
 _STATES_KEPT = 8
 _caches: OrderedDict[int, _FactorCache] = OrderedDict()
 _caches_lock = threading.Lock()
@@ -77,8 +78,8 @@ atexit.register(_caches.clear)
 
 
 def _cache_of(handle: int) -> _FactorCache:
-    """The cache of the state `handle`, now the most recently used, and empty if
-    it was evicted."""
+    """The holder of the last factorization of the state `handle`, now the most
+    recently used; it holds none if the state was left out of the table."""
     with _caches_lock:
         cache = _caches.pop(handle, None)
         if cache is None:
@@ -97,8 +98,9 @@ class CholmodSolver(AbstractReusableStateSolver):
     A linear solver that uses CHOLMOD (via cholespy) to solve a sparse linear system.
     Uses direct Cholesky factorization for symmetric positive definite matrices.
     A state keeps its last factorization, which solves reuse while the matrix values
-    stay the same. The solver keeps the factorizations of its 8 most recently used
-    states, and an older state factorizes again when it is next used.
+    stay the same. Every `CholmodSolver` of the process shares one table of the
+    factorizations of the most recently used states, and a state left out of it
+    factorizes again when it is next used.
 
     !!! example
 
