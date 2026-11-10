@@ -43,3 +43,29 @@ _Avoid_: Update, refresh
 
 **Used-up state**:
 A solver state whose factorization a refactorization has consumed. Solving with it repeats the analysis and stays correct.
+
+### Windowed analyses
+
+**Window**:
+The pixels within `dependency_range` of a pixel along both axes. A pixel counts the pixels of its window.
+_Avoid_: Neighbourhood
+
+**Block centre**:
+A pixel whose window an analysis computes. Without coarsening every pixel is one; with coarsening, values interpolate between them.
+
+**Block source**:
+The pixels that a block centre stands for, weighted by their interpolation weights times their quality, and summing to 1. A resistance window query from it gives the mean of the resistances from these pixels to each pixel of the window (`source_weights`).
+_Avoid_: Block average, spread source
+
+**Tile**:
+The union of the windows of a grid of up to `batch_size` block centres; with as many as the raster has, the padded raster. One window query from all of them, on the graph of the tile, gives each its distances.
+_Avoid_: Batch window, chunk
+
+**Window query**:
+The distances from each source to the pixels of its window (`AbstractDistance.sources_to_windows_distance`), the query of windowed analyses for their block centres. Their default proximity reads its profile off a sources-to-targets query.
+
+**Probe**:
+One of the random sign vectors from which the gradient of a Spielman window query estimates the gradient of exact resistances: it draws a sign per source and a sign per pixel, whose product weighs the pair of a source and a pixel of its window.
+
+**Sources that share work**:
+A distance whose query from several sources costs much less than one query per source, such as resistance, whose solves on a graph serve every source with one solver state, a factorization or a multigrid hierarchy. Windowed analyses run it on tiles, and other distances on windows.

@@ -1,5 +1,6 @@
 """Free-energy behavior at the public distance API, using an independent oracle."""
 
+import itertools
 from importlib.util import find_spec
 
 import jax
@@ -98,51 +99,51 @@ def test_numerically_unresolved_extremes_fail_explicitly():
 
 
 @pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
-@pytest.mark.parametrize("theta", [0.1, 0.7, 2.0])
-@pytest.mark.parametrize(
-    "edge_weights",
-    [WEIGHTS, np.array([1.0, 1.0, 0.0, 1.0, 1.0])],
-    ids=["unequal", "tied-four-cycle"],
-)
-def test_precision_metric_and_selections(dtype, theta, edge_weights):
-    weights = jnp.asarray(edge_weights, dtype=dtype)
-    distance = FreeEnergyDistance(theta)
-    expected = np.asarray(reference(adjacency(weights.astype(jnp.float64)), theta))
-    actual = distance(graph(weights))
-    assert actual.dtype == dtype
+def test_precision_metric_and_selections(dtype):
     tolerance = 2e-5 if dtype == jnp.float32 else 1e-11
-    np.testing.assert_allclose(actual, expected, rtol=tolerance, atol=tolerance)
-    np.testing.assert_array_equal(jnp.diag(actual), 0)
-    np.testing.assert_allclose(actual, actual.T, atol=tolerance)
-    assert jnp.all(actual + jnp.eye(4) > 0)
-    for k in range(4):
-        assert jnp.all(actual <= actual[:, k, None] + actual[None, k, :] + tolerance)
-    nodes = jnp.array([3, 1, 3])
-    np.testing.assert_allclose(
-        distance(graph(weights), nodes=nodes),
-        expected[nodes[:, None], nodes[None, :]],
-        rtol=tolerance,
-        atol=tolerance,
-    )
-    sources, targets = jnp.array([3, 0, 3]), jnp.array([2, 0])
-    np.testing.assert_allclose(
-        distance(graph(weights), sources=sources, targets=targets),
-        expected[sources[:, None], targets[None, :]],
-        rtol=tolerance,
-        atol=tolerance,
-    )
-    np.testing.assert_allclose(
-        distance(graph(weights), sources=sources),
-        expected[sources],
-        rtol=tolerance,
-        atol=tolerance,
-    )
-    np.testing.assert_allclose(
-        distance(graph(weights), targets=targets),
-        expected[:, targets],
-        rtol=tolerance,
-        atol=tolerance,
-    )
+    # Unequal weights and a four-cycle of tied weights, at three temperatures
+    # that share the compiled queries.
+    tied = np.array([1.0, 1.0, 0.0, 1.0, 1.0])
+    for edge_weights, theta in itertools.product([WEIGHTS, tied], [0.1, 0.7, 2.0]):
+        weights = jnp.asarray(edge_weights, dtype=dtype)
+        distance = FreeEnergyDistance(theta)
+        expected = np.asarray(reference(adjacency(weights.astype(jnp.float64)), theta))
+        actual = distance(graph(weights))
+        assert actual.dtype == dtype
+        np.testing.assert_allclose(actual, expected, rtol=tolerance, atol=tolerance)
+        np.testing.assert_array_equal(jnp.diag(actual), 0)
+        np.testing.assert_allclose(actual, actual.T, atol=tolerance)
+        assert jnp.all(actual + jnp.eye(4) > 0)
+        for k in range(4):
+            assert jnp.all(
+                actual <= actual[:, k, None] + actual[None, k, :] + tolerance
+            )
+        nodes = jnp.array([3, 1, 3])
+        np.testing.assert_allclose(
+            distance(graph(weights), nodes=nodes),
+            expected[nodes[:, None], nodes[None, :]],
+            rtol=tolerance,
+            atol=tolerance,
+        )
+        sources, targets = jnp.array([3, 0, 3]), jnp.array([2, 0])
+        np.testing.assert_allclose(
+            distance(graph(weights), sources=sources, targets=targets),
+            expected[sources[:, None], targets[None, :]],
+            rtol=tolerance,
+            atol=tolerance,
+        )
+        np.testing.assert_allclose(
+            distance(graph(weights), sources=sources),
+            expected[sources],
+            rtol=tolerance,
+            atol=tolerance,
+        )
+        np.testing.assert_allclose(
+            distance(graph(weights), targets=targets),
+            expected[:, targets],
+            rtol=tolerance,
+            atol=tolerance,
+        )
 
 
 def test_grid_coordinates_batching_and_self_gradients():
@@ -236,9 +237,7 @@ def test_sparse_solvers_state_and_joint_gradients(solver_name, dtype):
             atol=tolerance,
         )
     differentiable_state = (
-        distance.init(graph(weights))
-        if isinstance(solver, AMJaxCGSolver)
-        else None
+        distance.init(graph(weights)) if isinstance(solver, AMJaxCGSolver) else None
     )
 
     def objective(weights, theta):
@@ -470,3 +469,27 @@ def test_grid_rectangular_coordinates_and_batched_gradients():
 def test_removed_rsp_distance_import_names_replacement():
     with pytest.raises(ImportError, match="FreeEnergyDistance"):
         from jaxscape import RSPDistance  # noqa: F401
+
+
+@pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
+def test_grid_multigrid_solver_matches_dense_solves(dtype):
+    # The free-energy operator of a grid graph has the grid's stencil, which
+    # GridMultigridSolver solves. Its state once failed to build: the state of
+    # ResistanceDistance's default builds under `jax.ensure_compile_time_eval`,
+    # where every `eqx.error_if` raises, and the free-energy operator checks its
+    # conductances with them.
+    from jaxscape.solvers import GridMultigridSolver
+
+    rng = np.random.default_rng(0)
+    grid = GridGraph(
+        jnp.asarray(10 ** rng.uniform(-1, 0, (9, 11)), dtype),
+        fun=lambda x, y: (x + y) / 2,
+    )
+    sources = jnp.array([0, 50])
+
+    expected = FreeEnergyDistance(theta=0.3)(grid, sources=sources)
+    multigrid = FreeEnergyDistance(theta=0.3, solver=GridMultigridSolver())
+    actual = multigrid(grid, sources=sources)
+
+    rtol = 1e-5 if dtype == jnp.float32 else 1e-10
+    np.testing.assert_allclose(actual, expected, rtol=rtol)

@@ -1,21 +1,44 @@
 # Linear solvers
 
-`ResistanceDistance` and `FreeEnergyDistance` internally solve linear systems. The choice of solver directly affects runtime and memory usage.
+`ResistanceDistance` and `FreeEnergyDistance` solve linear systems. The solver sets their runtime, memory and accuracy.
 
-For substantial landscapes, choose an explicit sparse solver:
+## Choosing a solver
 
-- On CPU, start with `CholmodSolver` when a sparse factorization fits in memory;
-  try `PyAMGSolver` when factorization storage is too costly.
-- On an NVIDIA GPU, use `CuDSSSolver` when a sparse Cholesky factorization fits
-  in GPU memory.
-- For other JIT-compiled CPU or GPU execution, use Lineax CG, or
-  `AMJaxCGSolver` when a reusable multigrid preconditioner helps convergence.
-  AMJax setup runs on CPU.
-- The default, `solver=None`, uses a dense solve and is suited to small
-  graphs only.
+`ResistanceDistance()` solves with `GridMultigridSolver()`: conjugate gradients
+preconditioned by geometric multigrid, in JAX on CPU and GPU, for the matrices
+of grid graphs such as `GridGraph`. `FreeEnergyDistance()` takes dense solves,
+`solver=None`.
+
+| Distance and query | GPU | CPU |
+|---|---|---|
+| `ResistanceDistance`, few sources and targets: `nodes_to_nodes_distance`, inverse fitting, `SpielmanApproximation` | `GridMultigridSolver`, the default | `GridMultigridSolver`, the default |
+| `ResistanceDistance`, one or all sources to every vertex: `all_pairs_distance`, exact windowed analyses | `solver=None` for small graphs or tiles, `GridMultigridSolver` above | `solver=None` for small graphs or tiles, `CholmodSolver` above |
+| `FreeEnergyDistance` | `solver=None`, the default, for small graphs; `CuDSSSolver` above | `solver=None` for small graphs; `CholmodSolver` above |
+| Graphs other than grid graphs | `CuDSSSolver` | `CholmodSolver` |
+
+In float64, `CuDSSSolver` can be faster than the default on GPUs with low
+float64 throughput.
+
+Memory decides first. `solver=None` holds dense matrices of the size of the
+graph squared, and so fits small graphs only. `GridMultigridSolver` holds a few
+arrays of the size of the graph per right-hand side. Direct solvers hold a
+sparse factorization; when it does not fit, use `AMJaxCGSolver` on a GPU and
+`PyAMGSolver` on a CPU.
+
+Free-energy distances decay exponentially with path cost: iterative solvers
+need tolerances far below their defaults to resolve distant entries, and
+float32 resolves a limited range of `theta` on a given landscape.
+
+With a solver, the graph must be connected: the grounded Laplacian of a
+disconnected graph is singular, and queries raise. Edges of zero conductance
+disconnect a grid graph, as `fun` gives between pixels of zero permeability.
+Windowed analyses raise permeability to a floor, so that their graphs are
+connected.
 
 Solver tolerances depend on the workload and precision. Check accuracy for your
-queries; solver convergence alone does not establish accurate distances.
+queries; solver convergence alone does not establish accurate distances. The
+measurements behind this guide are on
+[issue #35](https://github.com/vboussange/jaxscape/issues/35#issuecomment-6760998974).
 
 ## `lineax` solvers
 
@@ -34,10 +57,12 @@ See the [Lineax documentation](https://docs.kidger.site/lineax/) for the full li
 
 ## `JAXScape` solvers
 
-`JAXScape` provides four optional high-performance solvers as extras:
+`JAXScape` provides a multigrid solver for grid graphs, the default of
+`ResistanceDistance`, and four optional solvers as extras:
 
 | Solver | Execution | Typical use and limits |
 |---|---|---|
+| `GridMultigridSolver` | JAX on CPU or GPU | Conjugate gradients with a geometric multigrid preconditioner for the matrices of `GridGraph`s. Each solve builds its hierarchy inside `jax.jit`. No host step and no extra dependency. |
 | `CholmodSolver` | CPU host callback | Direct factorization for fixed sparse systems; efficient reuse when factorization memory fits. GPU arrays cross the host-device boundary. |
 | `PyAMGSolver` | CPU host callback | AMG-preconditioned CG when factorization storage is too costly. Multiple right-hand sides are solved serially. |
 | `AMJaxCGSolver` | CPU setup; JAX solve on CPU or GPU | Reusable multigrid preconditioner for repeated solves, with fresh CG state when the operator changes. No per-solve host callback. |
@@ -53,27 +78,21 @@ uv add jaxscape --extra cudss      # cuDSS direct solver (NVIDIA GPU, CUDA 13)
 ```
 
 !!! info "CI/CD coverage"
-    The standard CI test suite exercises `CholmodSolver`, `PyAMGSolver` and
-    `AMJaxCGSolver`. CI has no NVIDIA GPU: it runs the sparse direct solver logic
+    The standard CI test suite exercises `GridMultigridSolver`, `CholmodSolver`,
+    `PyAMGSolver` and `AMJaxCGSolver`. CI has no NVIDIA GPU: it runs the sparse direct solver logic
     on a dense solver, and the `CuDSSSolver` tests marked `gpu` need an NVIDIA GPU
     with spineax and cuDSS.
 
 ## Algebraic multigrid solver
 
-`AMJaxCGSolver` separates hierarchy construction from the actual iterative solve. This matters when you want the solve itself to remain JIT-compatible and differentiable.
+`AMJaxCGSolver` builds a multigrid hierarchy once, on the host, and solves with
+Lineax CG preconditioned by AMJax's multigrid cycles, inside `jax.jit` and
+`jax.grad`. The hierarchy keeps the dtype of the matrix. For ill-conditioned
+graph Laplacians, enable `JAX_ENABLE_X64=true` and build the matrix and
+right-hand sides in `float64`: enabling x64 does not promote existing `float32`
+arrays. Tiny graphs, whose hierarchy has a single level, fall back to plain CG.
 
-The `amjax` extra installs AMJax 0.0.3 or newer and PyAMG. JAXScape delegates
-multigrid construction and cycles to AMJax's `MultilevelSolver`, and iteration
-and convergence checks to Lineax CG. Hierarchy arrays retain the input matrix's
-dtype. For ill-conditioned graph Laplacians, enable `JAX_ENABLE_X64=true` and
-explicitly construct the matrix and right-hand sides in `float64`; enabling
-x64 alone does not promote existing `float32` arrays. Single-level hierarchies
-(typically tiny graphs) fall back to ordinary CG because AMJax 0.0.3 requires
-at least two levels for a multigrid cycle.
-
-In algebraic multigrid, the preconditioner is built as a hierarchy of progressively coarser linear systems derived from the original sparse operator. This hierarchy consists of coarse operators together with prolongation and restriction maps between levels; one multigrid cycle smooths the error on the fine level, transfers the residual to coarser levels, approximately solves there, and interpolates the correction back to the fine level.
-
-For direct sparse solves against an unchanged matrix, initialize the full solver state once:
+Build the state once for a matrix:
 
 ```python
 import jax.numpy as jnp
@@ -99,12 +118,47 @@ x = lx.linear_solve(operator, b, solver, state=state).value
 
 Distances do this for you, as [Reusing solver state](#reusing-solver-state) describes.
 
+## Geometric multigrid solver
+
+`GridMultigridSolver` solves the grounded Laplacians of grid graphs with
+conjugate gradients, preconditioned by one V-cycle of a multigrid hierarchy per
+iteration. `init` reads the grid, a raster shape and contiguity, from the sparse
+indices; `distance.init(graph)` takes them from a `GridGraph`, also inside
+`jax.jit`. `reinit` scatters the current conductances into the stencil of the
+grid. Each solve builds the hierarchy of these conductances, so every tile of a
+windowed analysis is solved with its own hierarchy.
+
+```python
+from jaxscape import ResistanceDistance, SpielmanApproximation
+from jaxscape.solvers import GridMultigridSolver
+
+exact = ResistanceDistance()
+approximate = ResistanceDistance(
+    solver=GridMultigridSolver(rtol=3e-4),
+    method=SpielmanApproximation(epsilon=0.15),
+)
+```
+
+`rtol` bounds the residual that conjugate gradients update, relative to the
+right-hand side, and sets the cost. In float32, the residual of the solution
+stops decreasing below some level, so a tighter `rtol` adds iterations without
+improving the solution. Resistances to pixels behind barriers converge last: a
+loose `rtol` degrades the permeability sensitivity there first.
+
+For float32 resistances and their sensitivity on grid graphs, the multigrid
+keeps the accuracy of float64. Float32 direct solves are inaccurate around the
+ground vertex of large tiles (see the note on grounding of
+[`ResistanceDistance`][jaxscape.resistance_distance.ResistanceDistance]); use
+`CuDSSSolver` for graphs other than grids, or in float64.
+
 ## Reusing solver state
 
 Solver setup can cost far more than a solve, as a sparse analysis or a multigrid hierarchy does. `ResistanceDistance` and `FreeEnergyDistance` share one state lifecycle:
 
 - `distance.init(graph)` builds the state of `graph`. Some solvers read concrete
   sparse indices or run host code, so call it outside `jax.jit`.
+  `GridMultigridSolver` builds the state of a `GridGraph` inside `jax.jit` too,
+  from its shape and contiguity.
 - `distance.reinit(graph, state)` returns the state of another graph with the same
   sparsity pattern, reusing what the solver can. It runs inside `jax.jit`.
 - Queries take that state, and all queries on a graph can share it. A query always
@@ -118,7 +172,6 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 from jaxscape import GridGraph, ResistanceDistance
-from jaxscape.solvers import AMJaxCGSolver
 
 
 def landscape(log_conductance):
@@ -129,9 +182,8 @@ sites = jnp.array([0, 45, 99])
 true_log_conductance = jax.random.normal(jax.random.key(0), (10, 10))
 target = ResistanceDistance()(landscape(true_log_conductance), nodes=sites)
 
-distance = ResistanceDistance(
-    solver=AMJaxCGSolver(rtol=1e-6, atol=1e-6, max_steps=1_000)
-)
+# GridMultigridSolver: the table below lists what the state of each solver keeps.
+distance = ResistanceDistance()
 log_conductance = jnp.zeros((10, 10))
 state = distance.init(landscape(log_conductance))
 
@@ -159,10 +211,14 @@ What a state keeps from one graph to the next:
 
 | Solver | Kept by the state |
 |---|---|
+| `GridMultigridSolver` | The grid; each solve builds the hierarchy of the new values |
 | `AMJaxCGSolver` | The multigrid hierarchy |
 | `CuDSSSolver` | The sparse analysis, and the factorization while the values stay the same |
 | `CholmodSolver` | Its last factorization, while the values stay the same |
 | `PyAMGSolver`, Lineax solvers | Nothing: each query runs `init`, which only records the matrix |
+
+Windowed analyses build their own states and carry them from tile to tile. See
+[`WindowedAnalysis`][jaxscape.windowed_analysis.WindowedAnalysis].
 
 ## Writing a sparse direct solver
 
@@ -192,6 +248,10 @@ The phases run inside `jax.jit`. Set `residual_tolerance` from the residuals the
 A solver of another kind whose state outlives the matrix values subclasses `AbstractReusableStateSolver` and implements `reinit`.
 
 ## Solver reference
+
+::: jaxscape.solvers.gridmultigridsolver.GridMultigridSolver
+    options:
+      members: false
 
 ::: jaxscape.solvers.cholmodsolver.CholmodSolver
     options:
@@ -225,7 +285,7 @@ A solver of another kind whose state outlives the matrix values subclasses `Abst
 
 ## Advanced: `BCOOLinearOperator`
 
-`JAXScape` exposes a `lineax`-compatible linear operator that wraps JAX's native `BCOO` sparse matrix format. It lets compatible Lineax solvers operate on sparse matrices without converting to a dense representation, and is used internally by the four optional solvers above.
+`JAXScape` exposes a `lineax`-compatible linear operator that wraps JAX's native `BCOO` sparse matrix format. It lets compatible Lineax solvers operate on sparse matrices without converting to a dense representation, and is used internally by the solvers above.
 
 ::: jaxscape.solvers.operator.BCOOLinearOperator
     options:

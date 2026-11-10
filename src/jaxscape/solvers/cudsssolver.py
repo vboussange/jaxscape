@@ -52,6 +52,12 @@ class CuDSSSolver(AbstractSparseDirectSolver[Any]):
         new state to the next `reinit`. In float32, vertices cut off from the ground
         vertex can pass the solve check on grids of 300 x 300 cells or more; use
         float64 when conductances can be zero.
+
+    !!! note
+
+        In float32, solutions on large grids are inaccurate around the ground
+        vertex of `ResistanceDistance`. For permeability sensitivity on large
+        tiles, use float64, or `GridMultigridSolver` in float32.
     """
 
     def __check_init__(self):

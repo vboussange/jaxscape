@@ -23,18 +23,23 @@ uvx pre-commit install
 
 ### Code changes
 
-Make your changes and update tests where needed. Run the existing test suite:
+Make your changes and update tests where needed. Run the existing test suite,
+with one pytest-xdist worker per core:
 
 ```bash
-uv run pytest tests
+uv run pytest -n auto tests
 ```
 
-The default run leaves out the tests marked `gpu`, which need an NVIDIA GPU
-with the `cudss` extra. On such a machine, run them alone, or run every test:
+On Linux, each worker runs on a core of its own, and `pytest tests` runs the
+tests one after another. The default run leaves out the slow tests, marked
+`slow`, and those marked `gpu`, which need an NVIDIA GPU with the `cudss`
+extra. The continuous integration runs every test but the GPU ones:
 
 ```bash
-uv run pytest -m gpu tests   # GPU tests only
-uv run pytest -m "" tests    # every test
+uv run pytest -n 2 -m slow tests          # slow tests only
+uv run pytest -n auto -m "not gpu" tests  # every test but the GPU ones, as in CI
+uv run pytest -m gpu tests                # GPU tests only
+uv run pytest -n auto -m "" tests         # every test
 ```
 
 Commit your changes, push them to your fork, and open a pull request:

@@ -68,9 +68,17 @@ def test_differentiability():
 
 def test_distances_without_a_solver_have_no_state():
     grid = GridGraph(jnp.ones((3, 3)), fun=lambda x, y: (x + y) / 2)
-    for distance in DISTANCES:
+    without_solver = [
+        EuclideanDistance(),
+        LCPDistance(),
+        ResistanceDistance(solver=None),
+        FreeEnergyDistance(theta=0.1),
+    ]
+    for distance in without_solver:
         assert distance.init(grid) is None
         assert distance.reinit(grid, None) is None
+    # Resistances have a solver by default.
+    assert ResistanceDistance().init(grid) is not None
 
 
 def grid_of(values):
@@ -222,5 +230,58 @@ def test_a_state_carries_through_scan(solver):
     values = jnp.stack([VALUES, NEW_VALUES, VALUES])
     _, distances = jax.lax.scan(step, distance.init(grid_of(VALUES)), values)
 
-    assert_close(distances[1], ResistanceDistance()(grid_of(NEW_VALUES), nodes=NODES))
+    expected = ResistanceDistance(solver=None)(grid_of(NEW_VALUES), nodes=NODES)
+    assert_close(distances[1], expected)
     assert_close(distances[2], distances[0])
+
+
+# Three sources of a raster of 7 x 9 pixels, whose windows of 5 x 5 pixels lie
+# inside it.
+WINDOW_ROWS, WINDOW_COLUMNS = np.array([2, 3, 4]), np.array([2, 4, 6])
+
+
+def windows_of(distances, rows=WINDOW_ROWS, columns=WINDOW_COLUMNS, half=2):
+    """The windows of `half` pixels around each source, from rows of distances."""
+    grids = np.asarray(distances).reshape(len(rows), 7, 9)
+    return np.stack(
+        [
+            grid[r - half : r + half + 1, c - half : c + half + 1]
+            for grid, r, c in zip(grids, rows, columns)
+        ]
+    )
+
+
+@pytest.mark.parametrize("distance", DISTANCES, ids=lambda d: type(d).__name__)
+def test_window_query_gives_the_distances_from_each_source_to_its_window(distance):
+    grid = grid_of(jr.uniform(jr.key(1), (7, 9), minval=0.2, maxval=1.0))
+    sources = jnp.asarray(WINDOW_ROWS * 9 + WINDOW_COLUMNS)
+
+    windows = distance.sources_to_windows_distance(grid, sources, 5)
+
+    expected = windows_of(distance(grid)[sources])
+    np.testing.assert_allclose(windows, expected, rtol=1e-10, atol=1e-12)
+
+
+@pytest.mark.parametrize(
+    "distance",
+    [*DISTANCES, ResistanceDistance(method=SPIELMAN)],
+    ids=lambda d: f"{type(d).__name__}-{type(getattr(d, 'method', d)).__name__}",
+)
+@pytest.mark.parametrize("compiled", [False, True])
+def test_window_query_raises_for_a_window_out_of_the_grid(distance, compiled):
+    # Slices of windows that leave the grid would wrap or clamp: a corner
+    # source would get a non-zero distance to itself. The last sources lie a
+    # pixel too close to the right and bottom edges.
+    grid = grid_of(jr.uniform(jr.key(1), (7, 9), minval=0.2, maxval=1.0))
+    inside = 3 * 9 + 4
+
+    def total(values, source):
+        sources = jnp.array([inside, source])
+        windows = distance.sources_to_windows_distance(grid_of(values), sources, 5)
+        return jnp.sum(windows)
+
+    query = jax.jit(jax.value_and_grad(total)) if compiled else total
+    jax.block_until_ready(query(grid.grid, inside))
+    for source in (0, 3 * 9 + 7, 5 * 9 + 4):
+        with pytest.raises(Exception, match="window of a source leaves the grid"):
+            jax.block_until_ready(query(grid.grid, source))

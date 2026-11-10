@@ -4,6 +4,9 @@
     options:
       members:
         - reinit
+        - sources_to_windows_distance
+        - exact
+        - debiased_proximity
 
 ::: jaxscape.distance.AbstractSolverDistance
     options:
@@ -17,11 +20,15 @@
 
 ::: jaxscape.lcp_distance.LCPDistance
     options:
-      members: false
+      members:
+        - sources_to_windows_distance
 
 ::: jaxscape.resistance_distance.ResistanceDistance
     options:
-      members: false
+      members:
+        - sources_to_windows_distance
+        - exact
+        - debiased_proximity
 
 ::: jaxscape.resistance_distance.ExactResistance
     options:

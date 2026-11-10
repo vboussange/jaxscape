@@ -1,4 +1,19 @@
-"""Precision configuration and a reference sparse direct solver for the test suite."""
+"""Core pinning of pytest-xdist workers, precision configuration and a reference
+sparse direct solver for the test suite."""
+
+import os
+
+
+# A JAX process sizes its CPU thread pools to the cores it may run on: on
+# Linux, each pytest-xdist worker runs on one core, set before JAX starts, so
+# that `pytest -n auto` does not oversubscribe the machine. The threads that
+# NumPy's BLAS started on import, before this file, take that core too.
+_worker = os.environ.get("PYTEST_XDIST_WORKER")
+if _worker and hasattr(os, "sched_setaffinity"):
+    _cores = sorted(os.sched_getaffinity(0))
+    _core = {_cores[int(_worker.removeprefix("gw")) % len(_cores)]}
+    for _thread in os.listdir("/proc/self/task"):
+        os.sched_setaffinity(int(_thread), _core)
 
 from types import SimpleNamespace
 from typing import Any, final
@@ -14,6 +29,31 @@ from jaxscape.solvers import AbstractSparseDirectSolver, CSRPattern, cudsssolver
 # Native callbacks execute on worker threads, where a thread-local enable_x64
 # context is insufficient. Float32 coverage creates explicit float32 inputs.
 jax.config.update("jax_enable_x64", True)
+
+
+def _memory_mappings() -> int:
+    """The number of memory mappings of this process, or 0 where Linux's
+    `/proc` file system is missing."""
+    try:
+        with open("/proc/self/maps") as maps:
+            return sum(1 for _ in maps)
+    except OSError:
+        return 0
+
+
+@pytest.fixture(autouse=True)
+def _release_compiled_programs():
+    """Release the compiled programs after a test once the process holds many.
+
+    Every XLA:CPU executable keeps memory mappings for its code. A process that
+    held the programs of the whole suite reached Linux's default limit of 65530
+    mappings (`vm.max_map_count`), and XLA then crashed while compiling.
+    Releasing them after every test slows the suite down: later tests
+    recompile the programs they share.
+    """
+    yield
+    if _memory_mappings() > 30_000:
+        jax.clear_caches()
 
 
 class DenseFactorization(eqx.Module):

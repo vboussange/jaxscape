@@ -56,7 +56,7 @@ def test_factorizations_follow_the_matrix_values(factorizations, compiled):
     actual = query(2 * VALUES, state)
     query(2 * VALUES, state).block_until_ready()
     assert len(factorizations) == 2
-    expected = ResistanceDistance()(grid_of(VALUES), nodes=NODES) / 2
+    expected = ResistanceDistance(solver=None)(grid_of(VALUES), nodes=NODES) / 2
     np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
 
 
