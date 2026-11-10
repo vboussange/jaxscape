@@ -3,7 +3,8 @@
     uv run python run.py RUN_DIR            # run, or resume, the benchmark
     uv run python run.py RUN_DIR --smoke    # every cell once, on a small raster
 
-A cell is one question, tool, distance, device and case. The runner appends the
+A cell is one question, tool, distance, device and case, in the comparison or in
+the solver view, which runs JAXScape with each solver. The runner appends the
 record of each cell to `RUN_DIR/records.jsonl` as it finishes, and skips the
 cells recorded there when it restarts. Smoke mode runs every cell on a raster of
 `smoke_side` pixels a side, with windows of `smoke_dependency_range` and one
@@ -33,8 +34,13 @@ from landscape import maryland, sites, synthetic
 
 
 HERE = Path(__file__).resolve().parent
-KEY = ("question", "tool", "distance", "device", "dtype", "solver", "case")
+KEY = ("view", "question", "tool", "distance", "device", "dtype", "solver", "case")
 MEASURES = {"E1": "largest relative error"}
+SOLVER_MEASURES = {
+    "E1": "largest relative error",
+    "E2": "relative L2 error",
+    "E3": "relative L2 error",
+}
 REFERENCE = "adapters/reference.py"
 INTERPRETERS = {".jl": ["julia", f"--project={HERE / 'julia'}"], ".R": ["Rscript"]}
 OOM = re.compile(
@@ -43,6 +49,7 @@ OOM = re.compile(
     re.IGNORECASE,
 )
 ERROR = re.compile(r"^([\w.]*(Error|Exception)\b|ERROR:)")
+CHECK = re.compile(r"^(equinox\.)?EquinoxRuntimeError\b")  # a check of JAXScape
 R_PACKAGES = ["gdistance"]  # the R tools, whose versions each run records
 
 
@@ -66,8 +73,7 @@ def main():
         incomplete = [
             record
             for record in map(json.loads, records.read_text().splitlines())
-            if record["status"] != "ok"
-            or (record["tier"] is not None and record["agreement"] is None)
+            if not passes(record)
         ]
         for record in incomplete:
             print(
@@ -75,6 +81,19 @@ def main():
                 f"agreement {record['agreement']}: {record['reason']}"
             )
         sys.exit(1 if incomplete else 0)
+
+
+def passes(record):
+    """Return whether a record passes smoke mode: `ok` with its agreement, or,
+    in the solver view, failed by a check of JAXScape, such as a solver's
+    non-finite output, which is how the solver fares."""
+    if record["status"] == "ok":
+        return record["measure"] is None or record["agreement"] is not None
+    return (
+        record["view"] == "solver"
+        and record["status"] == "failed"
+        and bool(CHECK.match(record["reason"]))
+    )
 
 
 def run(config, run_dir, smoke):
@@ -99,6 +118,7 @@ def run(config, run_dir, smoke):
                 if not (
                     configuration["distance"] in case["distances"]
                     and configuration["question"] in case["questions"]
+                    and runs_on(configuration, case, smoke)
                 ):
                     continue
                 cell = {**configuration, "case": case["case"], "cells": case["cells"]}
@@ -140,7 +160,8 @@ def cases(config, smoke):
             "case": f"synthetic-{side}",
             "cells": side * side,
             "distances": {d for d, values in sides.items() if side in values},
-            "questions": {entry["question"] for entry in config["tools"]},
+            "questions": {entry["question"] for entry in config["tools"]}
+            | set(config.get("solver_view", {}).get("questions", {})),
         }
         for side in {side for values in sides.values() for side in values}
     ]
@@ -192,6 +213,7 @@ def configurations(config):
                 solvers = resolved.get("solver", "")
                 for solver in solvers if isinstance(solvers, list) else [solvers]:
                     yield {
+                        "view": "comparison",
                         "question": entry["question"],
                         "tool": entry["tool"],
                         "distance": distance,
@@ -199,11 +221,70 @@ def configurations(config):
                         "dtype": resolved.get("dtype", "float64"),
                         "solver": solver,
                         "tier": entry.get("tier"),
+                        "measure": MEASURES.get(entry["question"])
+                        if entry.get("tier")
+                        else None,
                         "adapter": entry["adapter"],
                         "settings": {**resolved, "solver": solver}
                         if solver
                         else resolved,
                     }
+    yield from solver_configurations(config)
+
+
+def solver_configurations(config):
+    """Yield the configurations of the solver view: each solver in each dtype,
+    for each distance of each question.
+
+    A solver's entry gives the label of its records and the settings it adds
+    to those of the distance; its `questions` and `dtypes` restrict where it
+    runs.
+    """
+    view = config.get("solver_view")
+    if view is None:
+        return
+    for question, distances in view["questions"].items():
+        for distance, settings in distances.items():
+            settings = dict(settings)
+            sides = settings.pop("sides", None)
+            for dtype in view["dtypes"]:
+                for solver, added in view["solvers"].items():
+                    added = dict(added)
+                    if question not in added.pop("questions", [question]):
+                        continue
+                    if dtype not in added.pop("dtypes", [dtype]):
+                        continue
+                    yield {
+                        "view": "solver",
+                        "question": question,
+                        "tool": view["tool"],
+                        "distance": distance,
+                        "device": view["device"],
+                        "dtype": dtype,
+                        "solver": solver,
+                        "tier": None,
+                        "measure": SOLVER_MEASURES[question],
+                        "adapter": view["adapter"],
+                        "settings": {**settings, "dtype": dtype, "solver": solver}
+                        | added,
+                        "sides": sides,
+                        "timeout": view.get("timeout"),
+                    }
+
+
+def runs_on(configuration, case, smoke):
+    """Return whether a configuration runs on a case.
+
+    A configuration with `sides` runs on the synthetic rasters of these sides,
+    or on the raster of smoke mode, instead of every raster of its distance
+    and Maryland.
+    """
+    sides = configuration.get("sides")
+    if sides is None:
+        return True
+    if case["case"] == "maryland":
+        return False
+    return smoke or int(case["case"].removeprefix("synthetic-")) in sides
 
 
 def cell_name(cell):
@@ -233,7 +314,7 @@ def blank(cell, status, reason):
         "warmup_s": None,
         "times_s": None,
         "median_s": None,
-        "measure": MEASURES.get(cell["question"]) if cell["tier"] else None,
+        "measure": cell["measure"],
         "agreement": None,
         "tier": cell["tier"],
         "version": None,
@@ -247,8 +328,9 @@ def run_cell(config, cell, case_dir, run_dir, smoke):
     work = case_dir.parent / "cells" / name
     log = run_dir / "logs" / f"{name}.log"
     cell_file = specification(config, cell, case_dir, work, smoke)
+    timeout = cell.get("timeout")
     status, reason = execute(
-        config, cell["adapter"], cell["device"], cell_file, work, log
+        config, cell["adapter"], cell["device"], cell_file, work, log, timeout
     )
     record = blank(cell, status, reason)
     if status != "ok":
@@ -261,12 +343,11 @@ def run_cell(config, cell, case_dir, run_dir, smoke):
         version=result["version"],
         files=result["files"],
     )
-    if cell["tier"]:
-        reference = reference_of(config, cell, case_dir, run_dir)
+    if cell["measure"]:
+        reference = reference_of(config, cell, case_dir, run_dir, smoke)
         if reference is not None:
-            record["agreement"] = largest_relative_error(
-                np.load(work / "output.npy"), reference
-            )
+            output = np.load(work / "output.npy")
+            record["agreement"] = AGREEMENTS[cell["measure"]](output, reference)
     return record
 
 
@@ -293,24 +374,38 @@ def specification(config, cell, case_dir, work, smoke):
     }
 
 
-def reference_of(config, cell, case_dir, run_dir):
-    """Return the float64 reference of a case and distance, computed once.
+def reference_of(config, cell, case_dir, run_dir, smoke):
+    """Return the float64 reference of a cell, computed once per case and
+    distance, and for E2 and E3 per question.
 
-    A reference that failed is recorded next to where it would be and never
-    retried; the function then returns `None`.
+    E1 takes `REFERENCE` on the CPU. E2 and E3 take the adapter of the solver
+    view on its device, in float64 with its `reference_solver` and the
+    settings of the distance in the question. A reference that failed is
+    recorded next to where it would be and never retried; the function then
+    returns `None`.
     """
-    path = run_dir / "references" / f"{cell['case']}-{cell['distance']}.npy"
+    if cell["question"] == "E1":
+        name = f"{cell['case']}-{cell['distance']}"
+        adapter, device, settings = REFERENCE, "cpu", {"dtype": "float64"}
+    else:
+        name = f"{cell['case']}-{cell['question']}-{cell['distance']}"
+        view = config["solver_view"]
+        adapter, device = view["adapter"], view["device"]
+        settings = dict(view["questions"][cell["question"]][cell["distance"]])
+        settings.pop("sides", None)
+        settings.update(dtype="float64", solver=view["reference_solver"])
+    path = run_dir / "references" / f"{name}.npy"
     failure = path.with_suffix(".txt")
     if path.exists():
         return np.load(path)
     if failure.exists():
         return None
-    work = case_dir.parent / "references" / path.stem
-    reference = {**cell, "settings": {"dtype": "float64"}, "device": "cpu"}
-    specification_ = specification(config, reference, case_dir, work, smoke=False)
+    work = case_dir.parent / "references" / name
+    reference = {**cell, "settings": settings, "device": device}
+    specification_ = specification(config, reference, case_dir, work, smoke)
     specification_["repeats"] = 0
-    log = run_dir / "logs" / f"reference-{path.stem}.log"
-    status, reason = execute(config, REFERENCE, "cpu", specification_, work, log)
+    log = run_dir / "logs" / f"reference-{name}.log"
+    status, reason = execute(config, adapter, device, specification_, work, log)
     if status != "ok":
         failure.write_text(f"{status}: {reason}\n")
         return None
@@ -324,11 +419,22 @@ def largest_relative_error(output, reference):
     return float(np.max(error))
 
 
-def execute(config, adapter, device, specification, work, log):
+def relative_l2_error(output, reference):
+    return float(np.linalg.norm(output - reference) / np.linalg.norm(reference))
+
+
+AGREEMENTS = {
+    "largest relative error": largest_relative_error,
+    "relative L2 error": relative_l2_error,
+}
+
+
+def execute(config, adapter, device, specification, work, log, timeout=None):
     """Run an adapter on a cell file, and return the status and its reason.
 
     The adapter runs pinned to the cores of the configuration, and a call that
-    runs longer than `timeout` seconds stops it.
+    runs longer than `timeout` seconds, by default that of the configuration,
+    stops it.
     """
     work.mkdir(parents=True)
     (work / "cell.json").write_text(json.dumps(specification))
@@ -344,7 +450,7 @@ def execute(config, adapter, device, specification, work, log):
         *interpreter,
         str(work / "cell.json"),
     ]
-    timeout = config["run"]["timeout"]
+    timeout = timeout or config["run"]["timeout"]
     progress = work / "progress"
     with open(log, "w") as output:
         process = subprocess.Popen(

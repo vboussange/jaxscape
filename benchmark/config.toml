@@ -151,3 +151,51 @@ devices = ["cpu"]
 tier = 1
 
 [tools.distances.lcp]
+
+# The solver view (#83): JAXScape with each solver, in float32 and float64 on
+# the GPU, on the cases of E1, E2 and E3. A record's error is measured against
+# the reference of E1 for E1, and for E2 and E3 against the map of exact
+# resistance in float64 with `reference_solver`, on the same tiles. Free
+# energy does not run on windows (see E2), so E2 and E3 take resistance alone.
+[solver_view]
+tool = "JAXScape"
+adapter = "adapters/jaxscape.py"
+device = "gpu"
+dtypes = ["float32", "float64"]
+reference_solver = "CuDSSSolver"
+# A call of the solver view stops after 15 minutes. At 256^2, one call of E2
+# or E3 took 2 to 5 minutes with GridMultigridSolver and CuDSSSolver in
+# float32, and more than 10 with CholmodSolver and PyAMGSolver, which solve on
+# the CPU: at an hour, their timeouts alone would take 8 hours.
+timeout = 900
+
+# The distances of each question, with the settings that every solver shares,
+# and `sides`, the synthetic rasters on which they run, Maryland left out, so
+# that the solver view takes about 5.5 hours on one RTX 3090. Exact windowed
+# resistance takes about 23 minutes a call of E2 or E3 at 1024^2 with
+# GridMultigridSolver in float32 (#78), against 2 at 256^2. E1 takes up to
+# about 7 minutes a call at 1024^2, with PyAMGSolver in float64, and its CPU
+# solvers would take about an hour a cell at 4096^2.
+[solver_view.questions.E1]
+resistance = { sides = [256, 1024] }
+free_energy = { sides = [256, 1024] }
+
+[solver_view.questions.E2]
+resistance = { batch_size = 256, sides = [256] }
+
+[solver_view.questions.E3]
+resistance = { batch_size = 256, sides = [256] }
+
+# One entry per solver: the label of its records, and the settings that it
+# adds; `questions` and `dtypes` restrict where it runs. `dense` is the dense
+# solve, `solver=None`.
+[solver_view.solvers]
+GridMultigridSolver = {}
+CholmodSolver = {}
+CuDSSSolver = {}
+AMJaxCGSolver = {}
+PyAMGSolver = {}
+dense = {}
+# The setting of the comparison for resistance in E2 and E3, whose error
+# against exact resistance the solver view measures.
+"SpielmanApproximation(epsilon=0.15), GridMultigridSolver(rtol=3e-4)" = { solver = "GridMultigridSolver(rtol=3e-4)", method = "SpielmanApproximation(epsilon=0.15)", questions = ["E2", "E3"], dtypes = ["float32"] }
