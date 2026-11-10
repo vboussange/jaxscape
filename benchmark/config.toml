@@ -72,10 +72,13 @@ dtype = "float64"
 solver = { gpu = "CuDSSSolver", cpu = "CholmodSolver" }
 
 # E2 and E3 take the reference settings of E1, with the `batch_size` of the
-# tuning run (#78): for resistance, the largest whose tiles fit E3 at 8192^2
-# in the memory that JAX takes of an RTX 3090, 75 % of its 24 GB (512 runs
-# out); for least-cost, which computes each window on its own, the fastest at
-# 8192^2. They leave free energy out:
+# tuning run (#78), except for resistance, which takes the setting of the
+# connectivity example of the docs: exact resistance took 24 min a call of E3
+# at 1024^2, and would take 32 h at 8192^2. Its `batch_size`, 51^2, gives E3
+# at 8192^2 the fewest tiles at which it runs fastest, 64, with a peak of
+# 6.3 GiB on an RTX 3090, and keeps 1024^2 in one tile. Least-cost computes
+# each window on its own, and its `batch_size` is the fastest at 8192^2. They
+# leave free energy out:
 # its window query holds the dense inverse of the 40401 pixels of a window,
 # and in float64, the only precision that resolves its windows, one window
 # ran out of the 24 GB of the GPU, and out of memory on the CPU after taking
@@ -89,7 +92,10 @@ devices = ["gpu", "cpu"]
 [tools.distances.resistance]
 dtype = "float32"
 solver = "GridMultigridSolver"
-batch_size = 256
+rtol = 3e-4
+method = "SpielmanApproximation"
+epsilon = 0.15
+batch_size = 2601
 
 [tools.distances.lcp]
 dtype = "float32"
@@ -104,7 +110,10 @@ devices = ["gpu", "cpu"]
 [tools.distances.resistance]
 dtype = "float32"
 solver = "GridMultigridSolver"
-batch_size = 256
+rtol = 3e-4
+method = "SpielmanApproximation"
+epsilon = 0.15
+batch_size = 2601
 
 [tools.distances.lcp]
 dtype = "float32"

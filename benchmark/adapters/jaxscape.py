@@ -9,8 +9,9 @@
 # shared `dependency_range` and `coarsening_factor`, the default proximity and
 # the `batch_size` of the settings; these windowed analyses build their graphs
 # with JAXScape's own edge rule, the mean permeability of the two pixels. The
-# distance runs with the solver and dtype of its settings, and every call
-# builds the graphs and the solver states.
+# distance runs with the solver, its `rtol`, the resistance `method`, its
+# `epsilon`, and the dtype of its settings, and every call builds the graphs
+# and the solver states.
 import jax
 from adapters.protocol import read_cell, time_calls, write_result
 
@@ -34,11 +35,22 @@ from jaxscape import (
 from landscape import conductance
 
 
+def options(*names):
+    return {name: settings[name] for name in names if name in settings}
+
+
 solver = (
-    {"solver": getattr(solvers, settings["solver"])()} if "solver" in settings else {}
+    {"solver": getattr(solvers, settings["solver"])(**options("rtol"))}
+    if "solver" in settings
+    else {}
+)
+method = (
+    {"method": getattr(jaxscape, settings["method"])(**options("epsilon"))}
+    if "method" in settings
+    else {}
 )
 distance = {
-    "resistance": lambda: ResistanceDistance(**solver),
+    "resistance": lambda: ResistanceDistance(**solver, **method),
     "lcp": lambda: LCPDistance(),
     "free_energy": lambda: FreeEnergyDistance(
         theta=cell["parameters"]["theta"], **solver
