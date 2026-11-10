@@ -1,4 +1,4 @@
-"""The synthetic landscape of the benchmark, and the sites of E1."""
+"""The synthetic landscape of the benchmark, and the sites and graph of E1."""
 
 import numpy as np
 
@@ -49,3 +49,16 @@ def sites(quality, number, seed):
     habitat = np.flatnonzero(quality > 0)
     drawn = np.sort(np.random.default_rng(seed).choice(habitat, number, replace=False))
     return np.column_stack(np.unravel_index(drawn, quality.shape))
+
+
+def conductance(x, y):
+    """Return the conductance of the edge between pixels of permeability `x` and `y`.
+
+    The resistance of an edge is the mean resistance of its two pixels, so that
+    its conductance is the harmonic mean of their permeabilities. Every tool of
+    E1 builds its graph with this conductance and rook contiguity, which
+    Circuitscape.jl, ConScape.jl, `gdistance` and `skimage.graph.MCP_Geometric`
+    all offer. JAXScape's windowed analyses take the arithmetic mean of the
+    permeabilities, which ConScape.jl and `MCP_Geometric` do not offer.
+    """
+    return 2 / (1 / x + 1 / y)
