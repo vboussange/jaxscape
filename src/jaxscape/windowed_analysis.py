@@ -1,9 +1,6 @@
-import atexit
 import math
 from abc import abstractmethod
-from collections import OrderedDict
-from collections.abc import Callable, Hashable
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable
 from typing import Any
 
 import equinox as eqx
@@ -11,10 +8,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from jax import Array, lax
-from jax.core import Tracer
 from tqdm import tqdm
 
-from jaxscape.distance import _traced, AbstractDistance
+from jaxscape.distance import AbstractDistance
 from jaxscape.graph import GridGraph
 
 
@@ -27,87 +23,8 @@ from jaxscape.graph import GridGraph
 PERMEABILITY_FLOOR = 1e-4
 
 
-# The latest solver state of each distance, graph shape and dtype, which
-# windowed analyses share (see `WindowedAnalysis`), the most recently used last.
-# spineax keeps as many cuDSS factorizations by default.
-_STATES: OrderedDict[Hashable, Any] = OrderedDict()
-_MOST_STATES = 8
-# Native objects of states, such as CHOLMOD factorizations, are released
-# before the interpreter shuts their modules down.
-atexit.register(_STATES.clear)
-
-
 def _average(x: Array, y: Array) -> Array:
     return (x + y) / 2
-
-
-def _tracing() -> bool:
-    """Whether JAX is tracing the running code, as `jax.jit` does: a transfer
-    to the device then gives a tracer. Outside a trace, the transfer compiles
-    no program; `jnp.array(1) + 1` would compile two, in 36 ms on a CPU."""
-    return isinstance(jax.device_put(0), Tracer)
-
-
-# XLA:GPU options of the programs that windowed analyses compile. Their matrix
-# products and convolutions are small next to their distance queries, and ran
-# as fast with the heuristics of cuBLAS and cuDNN as autotuned: autotuning,
-# with candidate Triton kernels for each matrix product, took 7 s of the
-# compilation of the connectivity analysis example on an RTX 3090. Other
-# backends ignore these options.
-_COMPILER_OPTIONS = {"xla_gpu_autotune_level": 0, "xla_gpu_enable_triton_gemm": False}
-
-
-class _Program(eqx.Module):
-    """A function jitted with `_COMPILER_OPTIONS`, and without them for the
-    calls that JAX transforms: JAX takes compiler options for top-level
-    programs only. JAX transforms the calls inside a trace, as inside
-    `jax.jit`, and the calls whose arguments hold tracers, as under `jax.vmap`
-    or `jax.vjp` outside `jax.jit`. The pullback of `jax.vjp` holds the
-    program, and `jax.jit` of the pullback nests it.
-
-    **Attributes:**
-
-    - `top_level`: The function jitted with the options.
-    - `traced`: The function jitted without them.
-    """
-
-    top_level: Callable
-    traced: Callable
-
-    def __call__(self, *args: Any) -> Any:
-        traced = _tracing() or _traced(args)
-        return (self.traced if traced else self.top_level)(*args)
-
-
-def _program(**kwargs: Any) -> Callable[[Callable], _Program]:
-    """Decorator that makes a `_Program` with the `eqx.filter_jit` arguments
-    `kwargs`."""
-
-    def program(fun: Callable) -> _Program:
-        # `eqx.filter_jit` passes `compiler_options` to `jax.jit`, which its
-        # type overloads leave out.
-        options = {"compiler_options": _COMPILER_OPTIONS}
-        top_level = eqx.filter_jit(fun, **kwargs, **options)  # pyright: ignore
-        return _Program(top_level, eqx.filter_jit(fun, **kwargs))
-
-    return program
-
-
-def _state_key(
-    distance: AbstractDistance, shape: tuple[int, int], dtype: Any
-) -> Hashable | None:
-    """The key of the solver states of `distance` on grid graphs of `shape` and
-    `dtype`, or `None` if it is unhashable.
-
-    Distances share their states with the exact distances that they estimate
-    (see `AbstractDistance.exact`).
-    """
-    key = (distance.exact(), shape, jnp.dtype(dtype))
-    try:
-        hash(key)
-    except TypeError:
-        return None
-    return key
 
 
 class _PixelExponential(eqx.Module):
@@ -222,93 +139,35 @@ class WindowedAnalysis(eqx.Module):
     """Base class for windowed connectivity analyses on large rasters.
 
     Every pixel is the centre of a window of `2 * dependency_range + 1` pixels
-    a side, and counts the pixels of its window. Distances are computed on the
-    graph of the window, or of a tile that holds it (see below). The rasters
-    are padded on all sides so that windows of edge pixels fit: padding has
-    quality 0 and the permeability floor. Permeability below the floor, `1e-4`
-    times the maximum permeability, is raised to it: every window and tile
-    graph is connected, and regions of zero permeability stay nearly
-    impassable.
+    a side, and counts the pixels of its window. The rasters are padded so
+    that windows of edge pixels fit: padding has quality 0 and the
+    permeability floor. Permeability below the floor, `1e-4` times the
+    maximum permeability, is raised to it: every window graph is connected,
+    and regions of zero permeability stay nearly impassable.
 
-    With coarsening, the raster is divided into blocks of `b` pixels a side,
-    where `b` is `dependency_range * coarsening_factor` rounded up to an odd
-    integer, and only the windows centred on block centres are computed: about
-    `b**2` times fewer windows, each the same as without coarsening. Along each
-    axis, block centres lie every `b` pixels from `(b - 1) / 2`, and on the
-    first and last pixels, so that every pixel lies between two centres.
+    With coarsening, only the windows of block centres are computed, every
+    `b` pixels along each axis and on the first and last pixels, where `b` is
+    `dependency_range * coarsening_factor` rounded up to an odd integer.
     Values between block centres are interpolated bilinearly: the weight of a
     centre falls linearly from 1 at the centre to 0 at the neighbouring
     centres, along each axis, and the weights of all centres sum to 1 at every
     pixel.
 
-    Block centres run in batches of at most `batch_size`, as few as possible
-    and of equal sizes, which one compiled program computes, in one of two
-    ways:
+    Block centres run in batches of at most `batch_size`. Distances whose
+    queries from several sources share work, such as `ResistanceDistance`
+    (see `AbstractDistance.sources_share_work`), compute a batch on tiles: a
+    tile is the union of the windows of a grid of block centres, and one
+    query on it gives each centre its distances to the pixels of its window.
+    The tile graph extends beyond each window, so its distances are lower
+    than in windows, and sensitivity maps have seams along the edges between
+    tiles. Larger tiles cost less per block centre and leave fewer seams.
+    Other distances, such as `LCPDistance`, compute each block centre on its
+    own window. Randomized distances, such as `SpielmanApproximation`, apply
+    the proximity returned by `AbstractDistance.debiased_proximity`.
 
-    - **Tiles**, for distances whose queries from several sources share work,
-      such as `ResistanceDistance` (see `AbstractDistance.sources_share_work`).
-      A tile is a grid of up to `batch_size` block centres, consecutive along
-      each axis and as square as `batch_size` and the raster allow, and the
-      tiles along an axis hold as many block centres as they can share
-      evenly. With `batch_size` at least the number of block centres, one
-      tile covers the padded raster, and with `batch_size=1` each tile is a
-      window. The graph of a tile is the union of the windows of its
-      centres. One window query from all of them, on the graph of the tile,
-      gives each centre its distances to the pixels of its window (see
-      `AbstractDistance.sources_to_windows_distance`). The tile graph extends
-      beyond each window, so its distances are lower than in windows, and
-      differ with the place of a centre in the tile. On a smooth raster of
-      30 x 30 pixels with `dependency_range` 10 and exact
-      `ResistanceDistance`, one tile raised connectivity by 2.7 % over
-      windows, and its permeability sensitivity had a Pearson correlation of
-      0.9996 with that of windows. On the Maryland land cover of the
-      connectivity analysis example, with `dependency_range` 100 and
-      `SpielmanApproximation`, one tile raised connectivity by 2.1 to 3.1 %
-      over windows, with two seeds at `epsilon` 0.1 and one at 0.15. Each
-      query costs about the same whatever its number of sources, so the cost
-      per centre falls as tiles grow: with `SpielmanApproximation(epsilon=0.1)`
-      and `CuDSSSolver` on an RTX 3090 in float32, the connectivity took
-      137 s with a window per block centre, and 2.9 s on one tile, about 47
-      times less. A raster that needs several tiles has seams along their
-      edges in sensitivity maps: on the same land cover, with `epsilon` 0.1,
-      `batch_size=400` gives 2 x 2 tiles, across whose edges along columns
-      the mean absolute step of the logarithm of the permeability
-      sensitivity was 1.79 times that between other neighbouring pixels,
-      against 0.94 at the same places on one tile. The maps of four tiles
-      and of one tile had a Pearson correlation of 0.9946, and the total
-      sensitivity of four tiles was 0.74 % higher.
-    - **Windows**, for other distances, such as `LCPDistance` and
-      `EuclideanDistance`, whose queries cost about as much per source: each
-      block centre has its own window, and a batch is `batch_size` windows.
-
-    Randomized distances, such as `SpielmanApproximation`, apply the proximity
-    returned by `AbstractDistance.debiased_proximity` to their distances.
-
-    Distances without solver state, such as `LCPDistance`, `EuclideanDistance`
-    and `ResistanceDistance(solver=None)`, process the tiles of a batch in
-    parallel. Distances with a solver, such as `ResistanceDistance()` with its
-    default `GridMultigridSolver`, process them one after another, each tile
-    reinitializing the solver state that the previous one left (see
+    An analysis builds its solver states once, and every run starts from them
+    and reuses the compiled programs (see
     [Reusing solver state](linear_solvers.md#reusing-solver-state)).
-    Windowed analyses share solver states within a process: for each
-    distance, graph shape and dtype, they keep the latest state, which the
-    next run, calibration of the block correction on a window, or profile of
-    the default proximity starts from and replaces. Randomized distances
-    share the states of the exact distances that they estimate. A windowed
-    analysis builds a state, on a graph of uniform permeability, only for a
-    shape without one, so that a sparse direct solver analyses each sparsity
-    pattern once, however many windowed analyses and runs use it. Queries
-    reinitialize the state they receive: up to rounding, the results do not
-    depend on the state that a run starts from. The states of the 8 most
-    recently used combinations of distance, shape and dtype are kept, until
-    the interpreter exits: on the 894 x 925 tile of the Maryland land cover
-    in float32, a state of `GridMultigridSolver` holds 32 MiB of JAX arrays,
-    and one of `CuDSSSolver` 132 MiB besides its cuDSS factorization.
-    Distances that cannot be hashed, such as those with an `AMJaxCGSolver`,
-    keep the state that each analysis builds, which its runs start from.
-    Analyses created or run while JAX traces them, as inside `jax.jit`,
-    neither read nor replace the shared states: their runs start from the
-    state that the analysis holds. Every run reuses the compiled programs.
 
     **Arguments:**
 
@@ -324,20 +183,12 @@ class WindowedAnalysis(eqx.Module):
     - `dependency_range`: Window half-width `D` in pixels. Pairs farther apart
       than `D` along either axis do not contribute, and the default
       `proximity` decays over `D / 4` equivalent pixels.
-    - `batch_size`: Largest number of block centres per batch: the sources of
-      its tile queries, or windows. It sets the memory, which holds all the
-      windows of a batch, or the distances of its tile queries to the windows
-      of their sources. Distances that keep the default window query, such
-      as exact `ResistanceDistance` and `FreeEnergyDistance`, first compute
-      the distances from each source to every vertex of its tile, and hold
+    - `batch_size`: Largest number of block centres per batch, which sets the
+      memory: a batch holds its windows, or the distances of its tile
+      queries. Exact `ResistanceDistance` and `FreeEnergyDistance` hold
       `m * n` distances for `m` sources and `n` tile vertices, besides the
-      memory of the solver: on the Maryland land cover of the connectivity
-      analysis example, with `dependency_range` 100 and `coarsening_factor`
-      0.2, `batch_size=1024` gives 2 x 2 tiles of 547 x 558 pixels and 99
-      million distances per tile, and `batch_size=4096` one tile of
-      894 x 925 pixels and 1.04 billion distances, 3.9 GiB in float32.
-      `batch_size` trades memory for seams: fewer, larger tiles leave fewer
-      seams.
+      memory of the solver. With `batch_size` at least the number of block
+      centres, one tile covers the raster.
     - `proximity`: Function mapping distances, in the units of `distance`, to
       proximities. Defaults to `exp(-r / (D / 4))`, where `r` is the distance
       in equivalent pixels: the number of pixels through habitat of
@@ -451,20 +302,17 @@ class WindowedAnalysis(eqx.Module):
         self.tile_sides = (sides[0], sides[1])
         size = 2 * dependency_range + 1
         window = (size, size)
-        # The solver states of tiles and of windows: the latest of their
-        # shapes, or built outside any trace. Tiles reinitialize the first;
-        # with coarsening, the block correction of the permeability
-        # sensitivity is calibrated on a window with the second.
-        self.state = self._initial_state(self.tile_sides)
+        # The solver states of tiles and of windows. Tiles reinitialize the
+        # first; the profile of the default proximity and, with coarsening,
+        # the calibration of the block correction run on a window with the
+        # second.
+        self.state = distance.init(self._uniform_graph(1, self.tile_sides))
         self.window_state = None
-        if block_size > 1:
-            self.window_state = self._initial_state(window)
+        if block_size > 1 or proximity is None:
+            self.window_state = distance.init(self._uniform_graph(1, window))
         if proximity is None:
-            state = self.state if self.tile_sides == window else self.window_state
-            if state is None:
-                state = self._initial_state(window)
-            profile, state = _profile(distance, self._uniform_graph(1, window), state)
-            self._leave_state(window, state)
+            graph = self._uniform_graph(1, window)
+            profile, self.window_state = _profile(distance, graph, self.window_state)
             proximity = _PixelExponential(profile, dependency_range / 4)
         self.proximity = proximity
 
@@ -514,71 +362,11 @@ class WindowedAnalysis(eqx.Module):
         grid = jnp.full(shape, permeability, self.permeability_raster.dtype)
         return GridGraph(grid, fun=_average)
 
-    def _initial_state(self, shape: tuple[int, int]) -> Any:
-        """The latest solver state of graphs of `shape`, or else a new state of
-        a graph of `shape` and uniform permeability, which becomes the latest."""
-        state = self._latest_state(shape, None)
-        if state is None:
-            state = self.distance.init(self._uniform_graph(1, shape))
-            self._leave_state(shape, state)
-        return state
-
-    def _latest_state(self, shape: tuple[int, int], state: Any) -> Any:
-        """The latest solver state that windowed analyses left for graphs of
-        `shape`, or `state` if there is none or if JAX is tracing."""
-        key = _state_key(self.distance, shape, self.permeability_raster.dtype)
-        if key not in _STATES or _tracing():
-            return state
-        _STATES.move_to_end(key)
-        return _STATES[key]
-
-    def _leave_state(self, shape: tuple[int, int], state: Any) -> None:
-        """Make `state` the latest solver state of graphs of `shape`, unless it
-        holds tracers: those of a traced computation are invalid outside it."""
-        key = _state_key(self.distance, shape, self.permeability_raster.dtype)
-        if key is None or state is None or _traced(state):
-            return
-        _STATES[key] = state
-        _STATES.move_to_end(key)
-        if len(_STATES) > _MOST_STATES:
-            _STATES.popitem(last=False)
-
     def _reinit(self, permeability: Array, state: Any) -> Any:
         """The solver state of the graph of `permeability`, reinitialized from
         `state`."""
         graph = GridGraph(lax.stop_gradient(permeability), fun=_average)
         return self.distance.reinit(graph, state)
-
-    def _while_compiling(
-        self, work: Callable[[], Any], tile_fn: Callable, initial: Array, *args: Any
-    ) -> Any:
-        """Return `work()`, run while another thread compiles the batch program
-        of `_accumulate(tile_fn, initial, *args)`, which `_accumulate` then
-        runs. Arrays of the shapes and dtypes of those of `args` can stand in
-        for them. Nothing compiles alone in a trace, as inside `jax.jit`, nor
-        when the analysis or the arguments hold tracers, as under `jax.vmap`.
-
-        The program lowers in this thread, with the JAX settings that JAX keeps
-        for each thread, such as those of `jax.enable_x64` and
-        `jax.default_device`. After a failed compilation, `_accumulate`
-        compiles the program again and reports the error. If `work()` raises,
-        the error propagates without waiting for the compilation.
-        """
-        if _tracing() or _traced((self, initial, args)):
-            return work()
-        state = self._latest_state(self.tile_sides, self.state)
-        batch = _Batch(self, jnp.asarray(0), state, tile_fn, args)
-        lowered = _batch.top_level.lower(batch, initial)
-        pool = ThreadPoolExecutor(max_workers=1)
-        pool.submit(lowered.compile)
-        try:
-            result = work()
-        except BaseException:
-            pool.shutdown(wait=False, cancel_futures=True)
-            raise
-        # Waiting keeps `_accumulate` from compiling the program a second time.
-        pool.shutdown()
-        return result
 
     def _accumulate(self, tile_fn: Callable, initial: Array, *args: Any) -> Array:
         """Accumulate `tile_fn` over the tiles of all block centres.
@@ -587,12 +375,9 @@ class WindowedAnalysis(eqx.Module):
         solver state to one value per block centre of the tile, in row-major
         order, or to a map of the tile. Values add to `initial`, of one entry
         per block centre, except those of repeated centres; maps add to the
-        padded raster `initial`. The first tile reinitializes the latest solver
-        state of the tile shape, and the state of the last tile becomes the
-        latest.
+        padded raster `initial`. The first tile reinitializes `self.state`.
         """
-        state = self._latest_state(self.tile_sides, self.state)
-        accumulated = initial
+        state, accumulated = self.state, initial
         rows, columns = self.axes
         n_tiles = rows.members.shape[0] * columns.members.shape[0]
         per_batch = self._tiles_per_batch
@@ -603,7 +388,6 @@ class WindowedAnalysis(eqx.Module):
         ):
             batch = _Batch(self, jnp.asarray(start), state, tile_fn, args)
             accumulated, state = _batch(batch, accumulated)
-        self._leave_state(self.tile_sides, state)
         return accumulated
 
 
@@ -688,7 +472,7 @@ class _Batch(eqx.Module):
     args: tuple
 
 
-@_program(donate="all-except-first")
+@eqx.filter_jit(donate="all-except-first")
 def _batch(batch: _Batch, accumulated: Array) -> tuple[Array, Any]:
     """Add the tiles of `batch` to `accumulated`, whose buffer it reuses.
 
@@ -749,7 +533,7 @@ def _batch(batch: _Batch, accumulated: Array) -> tuple[Array, Any]:
     return lax.scan(add, accumulated, (origins, outputs))[0], state
 
 
-@_program()
+@eqx.filter_jit
 def _profile(
     distance: AbstractDistance, graph: GridGraph, state: Any
 ) -> tuple[Array, Any]:

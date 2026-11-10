@@ -302,12 +302,10 @@ What a state keeps from one graph to the next:
 | `CholmodSolver` | Its last factorization, while the values stay the same |
 | `PyAMGSolver`, Lineax solvers | Nothing: each query runs `init`, which only records the matrix |
 
-Windowed analyses carry states for you. Within a process, they keep the
-latest state of each distance, graph shape and dtype: a windowed analysis
-builds a state only for a shape without one, and each run starts from the
-latest state and leaves its own. With `CuDSSSolver`, a run then costs one
-refactorization per tile, and the cuDSS analysis of a sparsity pattern runs
-once for all the windowed analyses and runs that share it. See
+Windowed analyses carry states for you: each analysis builds its states once
+and every run starts from them. With `CuDSSSolver`, every run after the first
+repeats the sparse analysis of those states, since a refactorization uses up the
+cuDSS handle of the state it starts from. See
 [`WindowedAnalysis`][jaxscape.windowed_analysis.WindowedAnalysis].
 
 ## Writing a sparse direct solver

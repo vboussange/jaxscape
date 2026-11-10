@@ -1,6 +1,4 @@
 import re
-import threading
-from collections import OrderedDict
 from typing import ClassVar
 
 import equinox as eqx
@@ -8,7 +6,6 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from jax.core import Tracer
 from jax.scipy.signal import convolve2d
 from jaxscape import (
     connectivity_analysis,
@@ -20,10 +17,9 @@ from jaxscape import (
     ResistanceDistance,
     SensitivityAnalysis,
     SpielmanApproximation,
-    windowed_analysis,
 )
 from jaxscape.distance import AbstractDistance
-from jaxscape.solvers import AMJaxCGSolver, CholmodSolver, CuDSSSolver, cudsssolver
+from jaxscape.solvers import AMJaxCGSolver, CholmodSolver, CuDSSSolver
 
 
 D = 3
@@ -514,119 +510,9 @@ def test_creating_an_analysis_compiles_few_programs(stub_spineax, compilations):
     assert len(compilations) <= 40
 
 
-@pytest.fixture(params=["stub", pytest.param("spineax", marks=pytest.mark.gpu)])
-def spineax(request):
-    """spineax on a GPU, or `stub_spineax`, which keeps factorizations as it does."""
-    if request.param == "stub":
-        return request.getfixturevalue("stub_spineax")
-    make_cudss()
-    return cudsssolver._load_cudss()
-
-
-def test_cudss_runs_and_analyses_carry_one_analysis(spineax):
-    distance = ResistanceDistance(solver=CuDSSSolver())
-    connectivity = make(ConnectivityAnalysis, distance)
-    sensitivity = make(SensitivityAnalysis, distance)
-    # With coarsening, the block correction is calibrated on a window.
-    coarsened = make(SensitivityAnalysis, distance, coarsening_factor=0.5)
-
-    rebuilds = spineax.rebuild_count()
-    for _ in range(2):
-        jax.block_until_ready(connectivity.run())
-        jax.block_until_ready(sensitivity.run("permeability"))
-        jax.block_until_ready(coarsened.run("permeability"))
-    # Each tile refactorizes the state that the previous one left, across runs
-    # and analyses: no state is used up twice, so no analysis repeats.
-    assert spineax.rebuild_count() == rebuilds
-
-
-# Connectivity, permeability sensitivity, and that of a flat landscape, as in
-# the connectivity analysis example.
-NOTEBOOK = [
-    (ConnectivityAnalysis, PERMEABILITY, ()),
-    (SensitivityAnalysis, PERMEABILITY, ("permeability",)),
-    (SensitivityAnalysis, jnp.ones_like(PERMEABILITY), ("permeability",)),
-]
-
-
-def notebook_runs(distance, monkeypatch, **kwargs):
-    """Two runs of each analysis of `NOTEBOOK`, one after another, and a run of
-    each on its own, without the solver states of earlier analyses."""
-    shared = []
-    for kind, permeability, args in NOTEBOOK:
-        windowed = make(kind, distance, permeability=permeability, **kwargs)
-        shared.append([windowed.run(*args), windowed.run(*args)])
-    alone = []
-    for kind, permeability, args in NOTEBOOK:
-        monkeypatch.setattr(windowed_analysis, "_STATES", OrderedDict())
-        alone.append(
-            make(kind, distance, permeability=permeability, **kwargs).run(*args)
-        )
-    return shared, alone
-
-
-@pytest.mark.parametrize("batch_size", [1, 8])
-def test_analyses_of_one_distance_analyse_each_pattern_once(
-    batch_size, stub_spineax, monkeypatch
-):
-    distance = ResistanceDistance(CuDSSSolver(), method=SPIELMAN)
-
-    def analyses():
-        return stub_spineax.analyses() + stub_spineax.rebuild_count()
-
-    before = analyses()
-    kwargs = dict(batch_size=batch_size, proximity=None, coarsening_factor=0.5)
-    shared, alone = notebook_runs(distance, monkeypatch, **kwargs)
-    # Tiles of one block centre are windows: one pattern, else a tile and a
-    # window. Each analysis on its own analyses them again.
-    patterns = 1 if batch_size == 1 else 2
-    assert analyses() - before == patterns + len(NOTEBOOK) * patterns
-    for runs, expected in zip(shared, alone):
-        for actual in runs:
-            assert_close(actual, expected, 1e-10)
-
-
-# Sparse direct solvers are checked on `stub_spineax` above.
-@pytest.mark.parametrize("name", ["cholmod", "amjax"])
-def test_analyses_that_share_solver_state_keep_their_results(
-    name, request, monkeypatch
-):
-    distance = ResistanceDistance(solver(name, request))
-    kwargs = dict(coarsening_factor=0.5)
-    shared, alone = notebook_runs(distance, monkeypatch, **kwargs)
-    for runs, expected in zip(shared, alone):
-        for actual in runs:
-            assert_close(actual, expected, 1e-8)
-
-
-@pytest.mark.parametrize("traced", ["run", "creation-and-run"])
-def test_traced_analyses_leave_no_solver_state_to_later_ones(traced, request):
-    distance = ResistanceDistance(solver("cholmod", request))
-
-    # With coarsening, the block correction is calibrated on a window.
-    def analysis(permeability=PERMEABILITY):
-        return make(
-            SensitivityAnalysis,
-            distance,
-            permeability=permeability,
-            coarsening_factor=0.5,
-        )
-
-    expected = analysis().run("permeability")
-    if traced == "run":
-        actual = eqx.filter_jit(lambda a: a.run("permeability"))(analysis())
-    else:
-        actual = jax.jit(lambda p: analysis(p).run("permeability"))(PERMEABILITY)
-    assert_close(actual, expected, 1e-8)
-    states = jax.tree.leaves(list(windowed_analysis._STATES.values()))
-    assert not any(isinstance(leaf, Tracer) for leaf in states)
-    # A later analysis starts from the latest state of the earlier ones.
-    assert_close(analysis().run("permeability"), expected, 1e-8)
-
-
 def test_analyses_with_the_default_proximity_run_inside_jit():
     # Creating an analysis compiles the profile of its default proximity, and
-    # its runs compile their batches, without compiler options in a trace.
+    # its runs compile their batches.
     def connectivity(permeability):
         return make(
             ConnectivityAnalysis,
@@ -677,174 +563,11 @@ def test_the_block_calibration_pulls_back_both_gradients_at_once():
         coarsening_factor=0.5,
     )
     calibration = connectivity_analysis._permeability_calibration
-    lowered = calibration.top_level.lower(sensitivity, sensitivity.window_state)
+    lowered = calibration.lower(sensitivity, sensitivity.window_state)
     text = str(lowered.compile().compiled.as_text())
     targets = re.findall(r'custom_call_target="([^"]*)"', text)
     solves = [t for t in targets if "trsm" in t or "triangularSolve" in t]
     assert len(solves) == 4
-
-
-def test_the_batches_compile_while_the_block_calibration_compiles():
-    # The batch program takes the shapes of the calibration: XLA compiles it
-    # in another thread, while the calibration compiles and runs.
-    jax.clear_caches()
-    threads = {}
-
-    def listener(event, duration_secs, **kwargs):
-        del duration_secs
-        if event == "/jax/core/compile/backend_compile_duration":
-            name = kwargs.get("fun_name")
-            threads.setdefault(name, set()).add(threading.get_ident())
-
-    jax.monitoring.register_event_duration_secs_listener(listener)
-    try:
-        sensitivity = make(SensitivityAnalysis, LCPDistance(), coarsening_factor=0.5)
-        sensitivity.run("permeability")
-    finally:
-        jax.monitoring.unregister_event_duration_listener(listener)
-    caller = threading.get_ident()
-    assert threads["jit(_permeability_calibration)"] == {caller}
-    assert len(threads["jit(_batch)"]) == 1
-    assert caller not in threads["jit(_batch)"]
-
-
-def test_the_batches_compile_in_the_settings_of_the_calling_thread(compilations):
-    # JAX keeps the settings of `jax.enable_x64` and of other contexts for each
-    # thread: the batch program compiles once, with those of the thread that
-    # runs the analysis.
-    jax.clear_caches()
-    jax.config.update("jax_enable_x64", False)
-    try:
-        with jax.enable_x64():
-            sensitivity = make(
-                SensitivityAnalysis, LCPDistance(), coarsening_factor=0.5
-            )
-            actual = sensitivity.run("permeability")
-    finally:
-        jax.config.update("jax_enable_x64", True)
-    assert compilations.count("jit(_batch)") == 1
-    assert actual.dtype == jnp.float64
-
-    compilations.clear()
-    sensitivity = make(SensitivityAnalysis, LCPDistance(), coarsening_factor=0.5)
-    with jax.default_matmul_precision("float32"):
-        expected = sensitivity.run("permeability")
-    assert compilations.count("jit(_batch)") == 1
-    assert_close(actual, expected, 1e-12)
-
-
-def test_a_failed_compilation_of_the_batches_leaves_the_analysis_to_run(monkeypatch):
-    # The analysis compiles the batch program again when it runs it, and
-    # reports the errors of that compilation.
-    compile = jax.stages.Lowered.compile
-
-    def failing(self, *args, **kwargs):
-        if threading.current_thread() is not threading.main_thread():
-            raise RuntimeError("compilation failed")
-        return compile(self, *args, **kwargs)
-
-    def sensitivity():
-        return make(SensitivityAnalysis, LCPDistance(), coarsening_factor=0.5).run(
-            "permeability"
-        )
-
-    jax.clear_caches()
-    with monkeypatch.context() as patch:
-        patch.setattr(jax.stages.Lowered, "compile", failing)
-        actual = sensitivity()
-    assert_close(actual, sensitivity(), 1e-12)
-
-
-def test_an_interrupted_block_calibration_leaves_the_batches_compiling(monkeypatch):
-    # The interruption propagates at once, while the other thread still
-    # compiles the batch program.
-    compile = jax.stages.Lowered.compile
-    release, compiled = threading.Event(), threading.Event()
-
-    def held(self, *args, **kwargs):
-        release.wait(30)
-        try:
-            return compile(self, *args, **kwargs)
-        finally:
-            compiled.set()
-
-    def interrupted(*args):
-        raise KeyboardInterrupt
-
-    monkeypatch.setattr(jax.stages.Lowered, "compile", held)
-    monkeypatch.setattr(connectivity_analysis, "_permeability_calibration", interrupted)
-    sensitivity = make(SensitivityAnalysis, LCPDistance(), coarsening_factor=0.5)
-    try:
-        with pytest.raises(KeyboardInterrupt):
-            sensitivity.run("permeability")
-        assert not compiled.is_set()
-    finally:
-        release.set()
-
-
-class _Recorded:
-    """A jitted function that records the arguments that hold tracers of its
-    calls and lowerings."""
-
-    def __init__(self, fun, traced):
-        self.fun, self.traced = fun, traced
-
-    def __call__(self, *args):
-        self._record(args)
-        return self.fun(*args)
-
-    def lower(self, *args):
-        self._record(args)
-        return self.fun.lower(*args)
-
-    def _record(self, args):
-        if any(isinstance(leaf, Tracer) for leaf in jax.tree.leaves(args)):
-            self.traced.append(args)
-
-
-@pytest.fixture
-def traced_top_level_calls(monkeypatch):
-    """The arguments that hold tracers of the calls and lowerings of the
-    programs of windowed analyses jitted with compiler options."""
-    traced = []
-    for module, name in [
-        (windowed_analysis, "_batch"),
-        (windowed_analysis, "_profile"),
-        (connectivity_analysis, "_permeability_calibration"),
-    ]:
-        program = getattr(module, name)
-        top_level = _Recorded(program.top_level, traced)
-        program = windowed_analysis._Program(top_level=top_level, traced=program.traced)
-        monkeypatch.setattr(module, name, program)
-    return traced
-
-
-def test_transformed_runs_take_the_programs_without_compiler_options(
-    traced_top_level_calls,
-):
-    # Under `jax.vjp` and `jax.vmap`, outside `jax.jit`, the programs of an
-    # analysis take tracers: JAX takes compiler options for the programs that
-    # it compiles alone only, and `jax.jit` of the pullback traces them.
-    def connectivity(permeability):
-        return make(ConnectivityAnalysis, LCPDistance(), QUALITY, permeability).run()
-
-    def sensitivity(permeability):
-        return make(
-            SensitivityAnalysis,
-            LCPDistance(),
-            QUALITY,
-            permeability,
-            coarsening_factor=0.5,
-        ).run("permeability")
-
-    pullback = jax.vjp(connectivity, PERMEABILITY)[1]
-    gradient = jax.jit(pullback)(jnp.ones(()))[0]
-    permeabilities = jnp.stack([PERMEABILITY, 2 * PERMEABILITY])
-    batched = jax.vmap(sensitivity)(permeabilities)
-    assert traced_top_level_calls == []
-    assert_close(gradient, jax.grad(connectivity)(PERMEABILITY), 1e-12)
-    for one, permeability in zip(batched, permeabilities):
-        assert_close(one, sensitivity(permeability), 1e-12)
 
 
 @pytest.mark.parametrize("name", ["lcp", "resistance-dense"])
@@ -1113,8 +836,7 @@ def test_all_batches_and_runs_share_one_compiled_program(
     windowed.run(*args)
     assert compilations.count("jit(_batch)") == 1
 
-    # The next run starts from the solver state that this one left, of the
-    # same structure: it compiles nothing.
+    # The next run starts from the same solver state: it compiles nothing.
     compilations.clear()
     windowed.run(*args)
     assert compilations == []
