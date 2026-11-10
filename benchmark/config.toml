@@ -130,3 +130,23 @@ devices = ["cpu"]
 tier = 1
 
 [tools.distances.free_energy]
+
+[[tools]]
+tool = "gdistance"
+question = "E1"
+adapter = "adapters/gdistance.R"
+devices = ["cpu"]
+tier = 1
+
+[tools.distances.resistance]
+
+[tools.distances.lcp]
+
+[[tools]]
+tool = "skimage.graph.MCP"
+question = "E1"
+adapter = "adapters/skimage.py"
+devices = ["cpu"]
+tier = 1
+
+[tools.distances.lcp]

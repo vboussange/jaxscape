@@ -42,6 +42,7 @@ OOM = re.compile(
     re.IGNORECASE,
 )
 ERROR = re.compile(r"^([\w.]*(Error|Exception)\b|ERROR:)")
+R_PACKAGES = ["gdistance"]  # the R tools, whose versions each run records
 
 
 def main():
@@ -436,9 +437,17 @@ def environment(config):
         "packages": {
             **{
                 name: version(name)
-                for name in ("jaxscape", "jax", "jaxlib", "numpy", "scipy")
+                for name in (
+                    "jaxscape",
+                    "jax",
+                    "jaxlib",
+                    "numpy",
+                    "scipy",
+                    "scikit-image",
+                )
             },
             **julia_packages(),
+            **r_packages(),
         },
     }
 
@@ -451,6 +460,15 @@ def julia_packages():
     return {
         "Julia": manifest["julia_version"],
         **{name: manifest["deps"][name][0]["version"] for name in project["deps"]},
+    }
+
+
+def r_packages():
+    """Return the versions of R and of `R_PACKAGES`, as pinned by `renv.lock`."""
+    lock = json.loads((HERE / "renv.lock").read_text())
+    return {
+        "R": lock["R"]["Version"],
+        **{name: lock["Packages"][name]["Version"] for name in R_PACKAGES},
     }
 
 

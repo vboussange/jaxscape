@@ -34,15 +34,18 @@ change the pin, run, and report.
   shares. Smoke mode takes the top-left 32 x 32 pixels of Maryland.
 - `install.sh`: installs the toolchains of the external tools and the data,
   each pinned: Julia and the packages of `julia/Manifest.toml`, through
-  juliaup, and the land cover of Maryland in `data/`.
+  juliaup, the R packages of `renv.lock` in the renv library of this
+  directory, which `Rscript` loads here through `.Rprofile`, and the land
+  cover of Maryland in `data/`.
 - `run.py`: the runner. Each cell runs in its own process, pinned with
   `taskset` to the cores of the configuration, with the OpenMP, BLAS, Julia
   and R thread variables matched to them; XLA sizes its thread pools to the
   same cores. GPU cells run on the configured GPU.
 - `report.py`: the report, from a run directory.
 - `adapters/`: one script per tool. `protocol.py` states the protocol between
-  the runner and an adapter, `protocol.jl` implements it for Julia adapters,
-  and `reference.py` computes the float64 reference of E1.
+  the runner and an adapter, `protocol.jl` and `protocol.R` implement it for
+  Julia and R adapters, and `reference.py` computes the float64 reference of
+  E1.
 - `results/<run>/`: `records.jsonl`, the environment snapshot
   `environment.json`, the references of E1, the logs of the cells (not
   committed), and what the report writes: `results.csv`, one figure per
@@ -71,7 +74,11 @@ A tool takes one adapter script and one configuration entry.
    argument, touches `progress` at the start of each call, saves the output
    of its last call to `output` (for E1, the distances among the sites), and
    writes `result`. Julia adapters include `adapters/protocol.jl` and run
-   with `julia --project=julia`, and R adapters run with `Rscript`.
+   with `julia --project=julia`. R adapters source `adapters/protocol.R` and
+   run with `Rscript` in this directory. To add an R package, load it in the
+   adapter, run `Rscript -e 'renv::install("samc"); renv::snapshot()'` here,
+   and add it to `R_PACKAGES` in `run.py`, which records its version with each
+   run.
 2. Add an entry to `config.toml`, with the tool's settings for each distance.
    A setting given per device is a table keyed by device, and a list of
    solvers runs each:
