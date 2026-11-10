@@ -533,6 +533,28 @@ def test_coarsened_resistance_sensitivity_is_exact_for_a_linear_proximity():
     assert_close(sensitivity(0.5), sensitivity(0.0), 1e-10)
 
 
+def test_coarsened_resistance_sensitivity_approximates_pixel_windows_on_forest():
+    # Forest patches of permeability 1 and quality 1 in a matrix of
+    # permeability 0.01, with the default proximity and blocks of 5 x 5 pixels.
+    # Measured: a correlation of 0.995 with the uncoarsened sensitivity, and
+    # 0.975 from block centres with the block correction.
+    forest = smooth(1, (24, 24)) > 0.5
+
+    def sensitivity(coarsening_factor):
+        return make(
+            SensitivityAnalysis,
+            ResistanceDistance(solver=None),
+            forest.astype(float),
+            jnp.where(forest, 1.0, 1e-2),
+            dependency_range=8,
+            proximity=None,
+            batch_size=64,
+            coarsening_factor=coarsening_factor,
+        ).run("permeability")
+
+    assert pearson(sensitivity(0.5), sensitivity(0.0)) > 0.99
+
+
 @pytest.mark.parametrize("var", ["quality", "permeability"])
 def test_coarsening_approximates_pixel_windows_at_the_edges_of_a_uniform_landscape(
     var,

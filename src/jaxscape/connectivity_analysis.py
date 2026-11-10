@@ -6,7 +6,6 @@ import jax
 import jax.numpy as jnp
 from jax import Array, lax
 
-from jaxscape.distance import AbstractDistance
 from jaxscape.graph import GridGraph
 from jaxscape.utils import _VALUES_PER_STEP
 from jaxscape.windowed_analysis import (
@@ -17,11 +16,11 @@ from jaxscape.windowed_analysis import (
 
 
 def _excluded(windowed: WindowedAnalysis, block: bool) -> Array:
-    """Mask of the window centre, or of the block around it if `block`."""
-    centre = windowed.dependency_range
-    half = windowed.block_size // 2 if block else 0
+    """Mask of the block around the window centre, or of no pixel without
+    `block`."""
+    centre, half = windowed.dependency_range, windowed.block_size // 2
     core = slice(centre - half, centre + half + 1)
-    return jnp.zeros((2 * centre + 1,) * 2, bool).at[core, core].set(True)
+    return jnp.zeros((2 * centre + 1,) * 2, bool).at[core, core].set(block)
 
 
 def _block_sums(tile: _TileData, values: Array) -> Array:
@@ -33,8 +32,14 @@ def _block_sums(tile: _TileData, values: Array) -> Array:
     )
 
 
-def _block_sources(windowed: WindowedAnalysis, tile: _TileData, weight: Array) -> Array:
-    """The block source of each block centre of `tile`, in row-major order.
+def _block_sources(
+    windowed: WindowedAnalysis,
+    tile: _TileData,
+    weight: Array,
+    centres: tuple[Array, Array],
+) -> Array:
+    """The block source of each block centre of `tile`, at the tile rows and
+    columns `centres`.
 
     The pixels within `block_size - 1` of the centre, which hold its
     interpolation weights, weighted by them times `weight` and divided by
@@ -49,71 +54,76 @@ def _block_sources(windowed: WindowedAnalysis, tile: _TileData, weight: Array) -
         return lax.dynamic_slice(values, start, (side,) * len(centre))
 
     rows, columns = (jax.vmap(around)(*a) for a in zip(tile.weights, tile.sources))
-    centres = (x.ravel() for x in jnp.meshgrid(*tile.sources, indexing="ij"))
     u = jax.vmap(around, (None, 0, 0))(weight, *centres)
     u = u * (rows[:, None, :, None] * columns[None, :, None, :]).reshape(u.shape)
     total = jnp.sum(u, axis=(1, 2), keepdims=True)
     centre = jnp.zeros((side, side), u.dtype).at[reach, reach].set(1)
-    # A block source of one pixel is that pixel, without rounding.
+    # XLA multiplies by the reciprocal of the total, which leaves a block
+    # source of one pixel a rounding error away from 1.
     u = jnp.where(u == total, 1, u / jnp.where(total > 0, total, 1))
-    u = jnp.where(total > 0, u, centre)
-    # The sensitivities do not differentiate the block sources.
-    return lax.stop_gradient(u)
+    return jnp.where(total > 0, u, centre)
 
 
 def _reachable(
     windowed: WindowedAnalysis,
-    distance: AbstractDistance,
-    weight: Array,
-    permeability: Array,
-    sources: tuple[Array, ...],
+    tile: _TileData,
     state: Any,
-    excluded: Array,
-    source_weights: Array | None = None,
+    weight: Array,
+    block: str | None = None,
 ) -> Array:
-    """Proximity-weighted `weight` reachable from each source, outside `excluded`.
+    """Proximity-weighted `weight` reachable from each block centre of `tile`.
 
-    One window query of `distance` on the graph of the tile `permeability`
-    gives the distances from a grid of sources, at the tile rows and columns
-    `sources`, or from their `source_weights`, to the pixels of their windows.
-    Each source counts the pixels of its window, outside `excluded`, without
-    the pairs of a pixel with itself. Returns one value per source, in
-    row-major order.
+    One window query on the graph of the tile gives the distances from each
+    block centre, or with `block="sources"` from its block source, to the
+    pixels of its window, which count without the pairs of a pixel with
+    itself, and with `block="excluded"`, outside the block. Returns one value
+    per block centre, in row-major order.
     """
-    size = excluded.shape[0]
-    rows, columns = (x.ravel() for x in jnp.meshgrid(*sources, indexing="ij"))
-    graph = GridGraph(permeability, fun=_average)
-    averaged = {} if source_weights is None else {"source_weights": source_weights}
+    size = 2 * windowed.dependency_range + 1
+    rows, columns = (x.ravel() for x in jnp.meshgrid(*tile.sources, indexing="ij"))
+    if block == "sources":
+        source_weights = _block_sources(windowed, tile, weight, (rows, columns))
+    else:
+        source_weights = jnp.ones((rows.size, 1, 1), weight.dtype)
+    graph = GridGraph(tile.permeability, fun=_average)
+    distance = windowed.distance.reseeded(tile.index)
     distances = distance.sources_to_windows_distance(
-        graph, rows * graph.width + columns, size, state, **averaged
+        graph,
+        rows * graph.width + columns,
+        size,
+        state,
+        # Other distances take the block centres alone.
+        source_weights if distance.averages_sources else None,
     )
     proximity = distance.debiased_proximity(windowed.proximity, graph)
+    excluded = _excluded(windowed, block == "excluded")
+    margin = (size - source_weights.shape[1]) // 2
 
     def reachable(inputs):
-        distances, row, column, *source = inputs
+        distances, row, column, source = inputs
         start = (row - size // 2, column - size // 2)
         weights = lax.dynamic_slice(weight, start, (size, size))
-        # The source weights, over the window.
-        source = [jnp.pad(u, (size - u.shape[0]) // 2) for u in source]
-        return _window_sum(proximity, distances, weights, excluded, *source)
+        source = jnp.pad(source, margin)
+        return _window_sum(proximity, distances, weights, source, excluded)
 
-    inputs = (distances, rows, columns)
-    if source_weights is not None:
-        inputs += (source_weights,)
     # The gradient recomputes the sums of each step.
     per_step = max(1, _VALUES_PER_STEP // size**2)
-    return lax.map(jax.checkpoint(reachable), inputs, batch_size=per_step)
+    return lax.map(
+        jax.checkpoint(reachable),
+        (distances, rows, columns, source_weights),
+        batch_size=per_step,
+    )
 
 
 def _window_sum(
     proximity: Callable[[Array], Array],
     distances: Array,
     weights: Array,
+    source: Array,
     excluded: Array,
-    source: Array | float = 0,
 ) -> Array:
-    """Sum of the proximities of a window's `distances` times `weights`,
-    outside `excluded`, from a source with weight `source` at each pixel.
+    """Sum of the proximities of a window's `distances` from a block source of
+    weight `source` at each pixel, times `weights`, outside `excluded`.
 
     A pixel leaves out its pair with itself, of distance 0: its other pairs
     weigh `1 - source` and have the mean distance `distances / (1 - source)`.
@@ -121,8 +131,9 @@ def _window_sum(
     others = 1 - source
     excluded = excluded | (others <= 0)
     others = jnp.where(excluded, 1, others)
-    # Excluded pixels, the centre among them, get a unit distance: it keeps
-    # the gradient finite for proximities that are singular at zero.
+    # Excluded pixels, the centre of a one-pixel source among them, get a unit
+    # distance: it keeps the gradient finite for proximities that are singular
+    # at zero.
     distances = jnp.where(excluded, 1, distances / others)
     return jnp.sum(jnp.where(excluded, 0, others * proximity(distances) * weights))
 
@@ -132,33 +143,16 @@ def _tile_connectivity(
     tile: _TileData,
     state: Any,
     q_weighted: bool,
-    block: bool = False,
+    block: str | None = None,
 ) -> Array:
     """Connectivity of the pixels that each block centre of `tile` stands for.
 
     Their weight, summed with the interpolation weights of the centre, times the
-    proximity-weighted weight seen from the centre, outside the centre. With
-    `block`, for distances that average sources, seen from the block source of
-    the centre without the pairs of a pixel with itself, and for others,
-    outside its block.
+    proximity-weighted weight reachable from the centre, with `block` as in
+    `_reachable`.
     """
     weight = tile.quality if q_weighted else tile.inside.astype(tile.quality.dtype)
-    distance = windowed.distance.reseeded(tile.index)
-    excluded = _excluded(windowed, block)
-    source_weights = None
-    if block and distance.averages_sources:
-        source_weights = _block_sources(windowed, tile, weight)
-        excluded = jnp.zeros_like(excluded)
-    reachable = _reachable(
-        windowed,
-        distance,
-        weight,
-        tile.permeability,
-        tile.sources,
-        state,
-        excluded,
-        source_weights,
-    )
+    reachable = _reachable(windowed, tile, state, weight, block)
     mass = jnp.where(tile.valid, _block_sums(tile, weight), 0)
     return mass.ravel() * reachable
 
@@ -167,17 +161,7 @@ def _tile_reachable_quality(
     windowed: WindowedAnalysis, tile: _TileData, state: Any
 ) -> Array:
     """Proximity-weighted quality reachable from each block centre of `tile`."""
-    excluded = _excluded(windowed, block=False)
-    distance = windowed.distance.reseeded(tile.index)
-    return _reachable(
-        windowed,
-        distance,
-        tile.quality,
-        tile.permeability,
-        tile.sources,
-        state,
-        excluded,
-    )
+    return _reachable(windowed, tile, state, tile.quality)
 
 
 def _tile_sensitivity(
@@ -186,15 +170,14 @@ def _tile_sensitivity(
     state: Any,
     var: str,
     q_weighted: bool,
+    block: str | None,
     calibration: tuple[Array, Array] | None,
 ) -> Array:
     """Gradient of the connectivity of `tile` with respect to its `var`.
 
-    With coarsening, the permeability gradient is that of the block model of
-    `_tile_connectivity`, times the block correction of a `calibration`, if
-    any.
+    The gradient of `_tile_connectivity` with `block`, times the block
+    correction of a `calibration`, if any.
     """
-    block = var == "permeability" and windowed.block_size > 1
 
     def connectivity(quality, permeability):
         varied = eqx.tree_at(
@@ -301,10 +284,11 @@ def _permeability_calibration(
     distances, pullback = jax.vjp(window, graph.grid)
     proximity = distance.debiased_proximity(windowed.proximity, graph)
     ones = jnp.ones_like(graph.grid)
+    source = jnp.zeros_like(ones).at[size // 2, size // 2].set(1)
 
     def cotangent(block):
         excluded = _excluded(windowed, block)
-        return jax.grad(_window_sum, 1)(proximity, distances, ones, excluded)
+        return jax.grad(_window_sum, 1)(proximity, distances, ones, source, excluded)
 
     cotangents = jnp.stack([cotangent(False), cotangent(True)])
     pixels, far = jax.vmap(pullback)(cotangents)[0]
@@ -453,7 +437,7 @@ class SensitivityAnalysis(WindowedAnalysis):
     is the block source of $c$: the pixels that $c$ stands for, weighted as
     in its sum. $\bar d_{cj}$, the mean of their distances to $j$, comes from
     one window query, and $\bar d_{cj} / (1 - u_c(j))$ is the mean without
-    $j$ itself, as $d_{jj} = 0$. For a proximity linear in the distance, the
+    $j$ itself, as $d_{jj} = 0$. For a proximity affine in the distance, the
     sum over $j$ is $\sum_i u_c(i) \sum_{j \neq i} K(d_{ij})\, q_j$: each
     pixel counts its pairs in the windows of its block centres.
 
@@ -479,17 +463,18 @@ class SensitivityAnalysis(WindowedAnalysis):
         - Coarsened sensitivities are approximate. The quality term falls
           steeply within `dependency_range` of the raster edges, where the
           interpolation underestimates it.
-        - With block sources, a proximity convex in the distance, such as the
-          default, is at most the mean of the proximities of the pixels of
-          the block source: the gap grows for pixels $j$ near the block, and
+        - With block sources and a proximity convex in the distance, such as
+          the default, the proximity of the mean distance is at most the mean
+          of the proximities: the gap grows for pixels $j$ near the block, and
           with the block size relative to the range of the proximity.
-        - In a uniform landscape, away from its edges, the corrected
-          permeability gradient of a block window is the weighted sum of the
-          gradients of its pixel windows, except in the band of up to $b - 1$
-          pixels that they reach beyond it, whose gradients are lost. The
-          block correction is biased near the raster edges, on tiles larger
-          than windows, whose graphs extend beyond the windows, and around
-          barriers, where it leaves marks along the lattice of block centres.
+        - With distances that do not average sources, in a uniform landscape
+          away from its edges, the corrected permeability gradient of a block
+          window is the weighted sum of the gradients of its pixel windows,
+          except in the band of up to $b - 1$ pixels that they reach beyond
+          it, whose gradients are lost. The block correction is biased near
+          the raster edges, on tiles larger than windows, whose graphs extend
+          beyond the windows, and around barriers, where it leaves marks
+          along the lattice of block centres.
         - Randomized distances give noisy permeability sensitivity where
           permeability varies over orders of magnitude: lower `epsilon`, or
           compare seeds.
@@ -532,7 +517,7 @@ class SensitivityAnalysis(WindowedAnalysis):
         floor have zero permeability sensitivity.
         """
         coarse = self.block_size > 1
-        calibration = None
+        block, calibration = None, None
         if var == "quality":
             if coarse and q_weighted and self.distance.symmetric:
                 initial = jnp.zeros(self._blocks, self.quality_raster.dtype)
@@ -541,7 +526,10 @@ class SensitivityAnalysis(WindowedAnalysis):
             raster = self.quality_raster
         elif var == "permeability":
             raster = self.permeability_raster
-            if coarse and not self.distance.averages_sources:
+            if coarse and self.distance.averages_sources:
+                block = "sources"
+            elif coarse:
+                block = "excluded"
                 calibration = _permeability_calibration(self, self.window_state)
         else:
             raise ValueError("`var` must be either 'quality' or 'permeability'")
@@ -551,6 +539,7 @@ class SensitivityAnalysis(WindowedAnalysis):
             jnp.zeros_like(raster),
             var,
             q_weighted,
+            block,
             calibration,
         )
         gradient = self._crop(gradient)

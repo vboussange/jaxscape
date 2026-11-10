@@ -460,11 +460,13 @@ def test_spielman_window_query_gradients_estimate_those_of_exact_resistances(
     weights = -jnp.asarray(rng.uniform(size=(4, 7, 7))).at[1, 2, 2].set(0.7)
     source_weights = rng.uniform(size=(4, 3, 3))
     source_weights /= source_weights.sum(axis=(1, 2), keepdims=True)
-    averages = {"source_weights": jnp.asarray(source_weights)} if averaged else {}
+    source_weights = jnp.asarray(source_weights) if averaged else None
 
     def objective(permeability, distance):
         grid = GridGraph(permeability, fun=avg)
-        distances = distance.sources_to_windows_distance(grid, sources, 7, **averages)
+        distances = distance.sources_to_windows_distance(
+            grid, sources, 7, source_weights=source_weights
+        )
         return jnp.sum(weights * distances)
 
     method = SpielmanApproximation(epsilon=0.5, projection_batch_size=16)
@@ -482,7 +484,9 @@ def test_spielman_window_query_gradients_estimate_those_of_exact_resistances(
     assert jnp.median(spread / jnp.abs(expected)) < 0.3
 
 
-@pytest.mark.parametrize("method", [None, SpielmanApproximation(epsilon=0.3, seed=2)])
+@pytest.mark.parametrize(
+    "method", [ExactResistance(), SpielmanApproximation(epsilon=0.3, seed=2)]
+)
 def test_window_queries_from_source_weights_average_the_distances_of_their_pixels(
     method,
 ):
@@ -497,7 +501,7 @@ def test_window_queries_from_source_weights_average_the_distances_of_their_pixel
     weights = rng.uniform(size=(3, 3, 3)) * (rng.uniform(size=(3, 3, 3)) < 0.7)
     weights[2] = np.eye(3)[1][:, None] * np.eye(3)[1]
     weights = jnp.asarray(weights / weights.sum(axis=(1, 2), keepdims=True))
-    distance = ResistanceDistance(solver=None, method=method or ExactResistance())
+    distance = ResistanceDistance(solver=None, method=method)
 
     def query(permeability):
         grid = GridGraph(permeability, fun=avg)
@@ -515,7 +519,7 @@ def test_window_queries_from_source_weights_average_the_distances_of_their_pixel
 
     expected = mean(permeability)
     np.testing.assert_allclose(query(permeability), expected, rtol=1e-9, atol=1e-12)
-    if method is None:
+    if isinstance(method, ExactResistance):
         cotangent = jnp.asarray(rng.normal(size=(3, 5, 5)))
 
         def gradient(f):
@@ -527,35 +531,38 @@ def test_window_queries_from_source_weights_average_the_distances_of_their_pixel
 def test_spielman_probe_right_hand_sides_add_the_windows_of_their_sources():
     # Windows of 7 x 7 pixels of a grid of sources, row after row, and two
     # sources out of that order, rows apart from their neighbours, in chunks of
-    # as many sources as probes.
+    # as many sources as probes, with source weights on 3 x 3 pixels.
     rng = np.random.default_rng(0)
     rows, columns = np.meshgrid([3, 6, 9, 12, 16], [3, 8, 13, 19], indexing="ij")
     rows = np.r_[rows.ravel(), 16, 3]
     columns = np.r_[columns.ravel(), 3, 19]
     m, size, probes = rows.size, 7, 4
-    weights = rng.normal(size=(m, size, size, 2))
+    roots = rng.normal(size=(m, size, size, 2))
+    source_weights = rng.uniform(size=(m, 3, 3))
     per_source = rng.choice([-1.0, 1.0], (m, probes))
     per_pixel = rng.choice([-1.0, 1.0], (20, 23, probes))
 
     actual = resistance_distance._probe_right_hand_sides(
-        jnp.asarray(weights),
+        jnp.asarray(roots),
+        jnp.asarray(source_weights),
         jnp.asarray(rows),
         jnp.asarray(columns),
         jnp.asarray(per_source),
         jnp.asarray(per_pixel),
     )
 
-    # Each source adds its weights, times its sign, to its window, and the
-    # weights times the signs of the pixels of its window to itself.
-    spread = np.zeros(per_pixel.shape + (2,))
-    own = np.zeros((m, probes, 2))
-    for s, (row, column) in enumerate(zip(rows - 3, columns - 3)):
-        window = (slice(row, row + size), slice(column, column + size))
-        spread[window] += weights[s][:, :, None, :] * per_source[s][:, None]
+    # Each source adds minus its roots, times its sign and the signs of the
+    # pixels, to its window, and the roots times the signs of the pixels of its
+    # window, times its sign, to its pixels with its source weights.
+    expected = np.zeros(per_pixel.shape + (2,))
+    for s, (row, column) in enumerate(zip(rows, columns)):
+        window = (slice(row - 3, row + 4), slice(column - 3, column + 4))
         signs = per_pixel[window]
-        own[s] = per_source[s][:, None] * np.einsum("xyb,xyc->bc", signs, weights[s])
-    expected = -per_pixel[..., None] * spread
-    np.add.at(expected, (rows, columns), own)
+        added = roots[s][:, :, None, :] * per_source[s][:, None]
+        expected[window] -= signs[..., None] * added
+        own = per_source[s][:, None] * np.einsum("xyb,xyc->bc", signs, roots[s])
+        block = (slice(row - 1, row + 2), slice(column - 1, column + 2))
+        expected[block] += source_weights[s][:, :, None, None] * own
     np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12)
 
 

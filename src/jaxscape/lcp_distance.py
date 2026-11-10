@@ -107,7 +107,12 @@ class LCPDistance(AbstractDistance):
             return distances[:, targets]
 
     def sources_to_windows_distance(
-        self, graph: GridGraph, sources: Array, size: int, state: Any = None
+        self,
+        graph: GridGraph,
+        sources: Array,
+        size: int,
+        state: Any = None,
+        source_weights: Array | None = None,
     ) -> Array:
         """Return the distances from each source to the pixels of its window.
 
@@ -136,6 +141,8 @@ class LCPDistance(AbstractDistance):
         - `sources`: Source vertex indices with shape `(m,)`.
         - `size`: Odd number of pixels along a side of the windows.
         - `state`: Ignored.
+        - `source_weights`: Raises if given: least-cost distances do not
+          average sources.
 
         **Returns:**
 
@@ -144,8 +151,11 @@ class LCPDistance(AbstractDistance):
         offsets = None
         if self.algorithm == "bellman-ford" and isinstance(graph, GridGraph):
             offsets = _grid_offsets(graph)
-        if offsets is None:
-            return super().sources_to_windows_distance(graph, sources, size, state)
+        if offsets is None or source_weights is not None:
+            # The default query, which raises for `source_weights`.
+            return super().sources_to_windows_distance(
+                graph, sources, size, state, source_weights
+            )
         if size % 2 == 0:
             raise ValueError("`size` must be odd.")
         return _grid_windows(graph, sources, size, offsets)
