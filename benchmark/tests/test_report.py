@@ -38,7 +38,7 @@ def test_report_writes_the_csv_with_one_row_per_record(tmp_path):
     with open(run_dir / "results.csv", newline="") as file:
         rows = list(csv.DictReader(file))
 
-    assert len(rows) == 28
+    assert len(rows) == 29
     assert {row["status"] for row in rows} == {
         "ok",
         "failed",
@@ -98,6 +98,8 @@ def test_e2_and_e3_tables_list_each_configuration_with_its_status(tmp_path):
     assert table_row(e2, "JAXScape", "lcp", "CPU")[-4:] == ["ok", "ok", "", ""]
     cpu = table_row(e2, "JAXScape", "resistance", "CPU")
     assert cpu[-4:] == ["oom", "skipped", "skipped", ""]
+    conscape = table_row(e2, "ConScape.jl", "free_energy", "CPU", "float64", "")
+    assert conscape[-5:] == ["3", "0.91", "", "", ""]
     assert table_row(e3, "Tool")[-2:] == ["256²", "Maryland"]
     assert table_row(e3, "JAXScape", "resistance", "GPU")[-2:] == ["ok", "ok"]
     assert table_row(e3, "JAXScape", "lcp", "GPU")[-2:] == ["failed", "skipped"]
@@ -135,7 +137,8 @@ def test_page_has_its_sections_and_references_the_figure(tmp_path):
     circuitscape = table_row(page, "Circuitscape.jl", "E1")
     assert circuitscape[2] == "`adapters/circuitscape.jl`"
     assert "connect_using_avg_resistances" in circuitscape[3]
-    conscape = table_row(page, "ConScape.jl", "E1")
+    conscape = table_row(page, "ConScape.jl", "E1, E2")
     assert conscape[2] == "`adapters/conscape.jl`"
     assert "AverageWeight" in conscape[3]
+    assert "connected_habitat" in conscape[3]
     assert table_row(page, "Linkage Mapper")[1] == "Needs ArcGIS."

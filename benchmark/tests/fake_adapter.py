@@ -1,7 +1,8 @@
 # A fake tool for the runner's tests: it returns the Euclidean distances among
 # the sites for E1 and the quality for other questions, raises on rasters of
 # side `fail_from` and larger, and outlasts the timeout on rasters of side
-# `sleep_from` and larger.
+# `sleep_from` and larger. With `off_graph`, its map is the exponential of the
+# quality, NaN on the first pixel, as on a pixel off a tool's graph.
 import time
 
 import numpy as np
@@ -18,6 +19,10 @@ if side >= settings.get("fail_from", np.inf):
 def call():
     if side >= settings.get("sleep_from", np.inf):
         time.sleep(600)
+    if cell["question"] != "E1" and settings.get("off_graph"):
+        habitat = np.exp(arrays["quality"])
+        habitat[0, 0] = np.nan
+        return habitat
     if cell["question"] != "E1":
         return arrays["quality"]
     sites = arrays["sites"]
