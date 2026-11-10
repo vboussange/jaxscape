@@ -12,6 +12,7 @@ from .free_energy_distance import FreeEnergyDistance as FreeEnergyDistance
 from .graph import (
     Graph as Graph,
     GridGraph as GridGraph,
+    GridTopology as GridTopology,
     QUEEN_CONTIGUITY as QUEEN_CONTIGUITY,
     ROOK_CONTIGUITY as ROOK_CONTIGUITY,
 )
