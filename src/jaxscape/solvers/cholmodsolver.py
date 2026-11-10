@@ -297,9 +297,7 @@ def _solve_with_factor_host(factor: _CholespyFactor, b_jax: JaxArray) -> np.ndar
     # output buffers must exactly match CholeskySolverF/D precision.
     rhs = _writable_c_array(b_jax, dtype=factor.solve_dtype)
     if rhs.shape[-1] != factor.size:
-        raise ValueError(
-            "The last dimension of b must match the operator dimension."
-        )
+        raise ValueError("The last dimension of b must match the operator dimension.")
 
     rhs_shape = rhs.shape
     # Lineax gives vector-shaped RHS values; cholespy's fast path expects

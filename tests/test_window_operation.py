@@ -43,6 +43,12 @@ def test_initialization(sample_raster_data):
     assert op.y_steps == 1
 
 
+@pytest.mark.parametrize("shape", [(4,), (4, 4, 4)])
+def test_initialization_rejects_shapes_of_other_than_two_dimensions(shape):
+    with pytest.raises(AssertionError, match=r"`shape` must be \(height, width\)"):
+        WindowOperation(shape=shape, window_size=2, buffer_size=1)
+
+
 def test_extract_total_window(window_op, sample_raster_data):
     """Test window extraction with buffering and NaN replacement."""
     xy = np.array([0, 0])
@@ -81,9 +87,9 @@ def test_iterate_windows(window_op, sample_raster_data):
     """Test iterate_windows method yields correct windows."""
     windows = list(window_op.lazy_iterator(sample_raster_data))
 
-    assert (
-        len(windows) == 1
-    ), "iterate_windows did not yield the expected number of windows"
+    assert len(windows) == 1, (
+        "iterate_windows did not yield the expected number of windows"
+    )
 
     xy, _ = windows[0]
     assert xy[0] == 0
@@ -97,7 +103,9 @@ def test_iterate_windows(window_op, sample_raster_data):
 #     window_op = WindowOperation(shape=raster.shape,
 #                          window_size=window_size,
 #                          buffer_size=buffer_size)
-#     it = lambda: jax.block_until_ready(list(window_op.iterate_windows(sample_raster_data)))
+#     it = lambda: jax.block_until_ready(
+#         list(window_op.iterate_windows(sample_raster_data))
+#     )
 #     it()
 #     time = timeit.repeat(it, number=1, repeat=10)
 
@@ -105,7 +113,9 @@ def test_iterate_windows(window_op, sample_raster_data):
 #     """Test iterate_windows method yields correct windows."""
 #     windows = list(window_op.iterate_windows(sample_raster_data))
 
-#     assert len(windows) == 1, "iterate_windows did not yield the expected number of windows"
+#     assert len(windows) == 1, (
+#         "iterate_windows did not yield the expected number of windows"
+#     )
 
 #     x_start, y_start, _ = windows[0]
 #     assert x_start == 0
@@ -113,7 +123,10 @@ def test_iterate_windows(window_op, sample_raster_data):
 
 
 def test_update_raster_with_core_window():
-    """Test update_raster method updates raster correctly. This also tests the lazy_iterator method."""
+    """Test update_raster method updates raster correctly.
+
+    This also tests the lazy_iterator method.
+    """
 
     def run_calculation(window):
         return window
@@ -167,9 +180,12 @@ def test_update_raster_with_core_window():
 #     x_steps = window_op.x_steps
 #     y_steps = window_op.y_steps
 #     total_windows = x_steps * y_steps
-#     expected_batches = (total_windows + batch_size - 1) // batch_size  # Ceiling division
+#     # Ceiling division
+#     expected_batches = (total_windows + batch_size - 1) // batch_size
 
-#     assert len(batches) == expected_batches, f"Expected {expected_batches} batches, got {len(batches)}"
+#     assert len(batches) == expected_batches, (
+#         f"Expected {expected_batches} batches, got {len(batches)}"
+#     )
 
 #     raster = jnp.full_like(sample_raster_data, jnp.nan)
 
@@ -182,7 +198,9 @@ def test_update_raster_with_core_window():
 #             y_start = batch_y_starts[i]
 #             window = window_batch[i]
 
-#             raster = window_op.update_raster_with_window(x_start, y_start, raster, window)
+#             raster = window_op.update_raster_with_window(
+#                 x_start, y_start, raster, window
+#             )
 
 #     assert jnp.allclose(raster[1:-1,1:-1], sample_raster_data[1:-1,1:-1])
 
@@ -229,7 +247,7 @@ def test_update_raster_with_window():
         shape=raster.shape, window_size=window_size, buffer_size=buffer_size
     )
 
-    xy = np.array([0, 0])
+    xy = jnp.array([0, 0])
     window = jnp.ones(
         (window_op.total_window_size, window_op.total_window_size), dtype="float32"
     )
@@ -243,6 +261,6 @@ def test_update_raster_with_window():
         xy[1] : xy[1] + window_op.total_window_size,
     ].add(window)
 
-    assert jnp.allclose(
-        updated_raster, expected_raster
-    ), "add_window_to_raster did not add the window values correctly"
+    assert jnp.allclose(updated_raster, expected_raster), (
+        "add_window_to_raster did not add the window values correctly"
+    )

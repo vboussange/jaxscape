@@ -9,15 +9,19 @@ with setup commands adapted to JAXScape.
 ### Getting started
 
 Install [uv](https://docs.astral.sh/uv/) and fork JAXScape on GitHub. Clone your
-fork, install the project with its test and documentation dependencies, and
-enable the repository's pre-commit hooks:
+fork, install the project with its lint, test and documentation dependencies,
+and enable the repository's pre-commit hooks:
 
 ```bash
 git clone https://github.com/your-username-here/jaxscape.git
 cd jaxscape
-uv sync --extra tests --extra docs --extra pyamg --extra amjax --extra cholespy
-uvx pre-commit install
+uv sync --extra lint --extra tests --extra docs --extra pyamg --extra amjax --extra cholespy
+uv run pre-commit install
 ```
+
+The hooks format and lint the code with ruff and type-check it with pyright, at
+the versions of the `lint` extra, in the project environment. They check the
+files of each commit; pyright checks the library and the tests as a whole.
 
 ---
 
@@ -40,6 +44,13 @@ uv run pytest -n 2 -m slow tests          # slow tests only
 uv run pytest -n auto -m "not gpu" tests  # every test but the GPU ones, as in CI
 uv run pytest -m gpu tests                # GPU tests only
 uv run pytest -n auto -m "" tests         # every test
+```
+
+Before opening a pull request, run every hook on every file, as the
+continuous integration does:
+
+```bash
+uv run pre-commit run --all-files
 ```
 
 Commit your changes, push them to your fork, and open a pull request:

@@ -1,7 +1,7 @@
 """Sparse direct solvers assembled from factorization and solve phases."""
 
 import abc
-from typing import Any, final, Generic, TypeVar
+from typing import Any, final
 
 import equinox as eqx
 import jax
@@ -13,9 +13,6 @@ from jaxtyping import Array
 from lineax import AbstractLinearOperator, RESULTS
 
 from .operator import AbstractReusableStateSolver
-
-
-_Factorization = TypeVar("_Factorization")
 
 
 @final
@@ -56,7 +53,7 @@ class CSRPattern(eqx.Module):
 
 
 @final
-class SparseDirectState(eqx.Module, Generic[_Factorization]):
+class SparseDirectState[Factorization](eqx.Module):
     """State of an `AbstractSparseDirectSolver` for one sparsity pattern.
 
     **Attributes:**
@@ -68,13 +65,13 @@ class SparseDirectState(eqx.Module, Generic[_Factorization]):
       state fail, and the next `reinit` analyses its values afresh.
     """
 
-    factorization: _Factorization
+    factorization: Factorization
     pattern: CSRPattern
     values: Array
     failed: Array
 
 
-class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factorization]):
+class AbstractSparseDirectSolver[Factorization](AbstractReusableStateSolver):
     """Direct solver for sparse symmetric positive definite matrices.
 
     Subclass it with the phases of a sparse factorization library: `factorize`,
@@ -107,7 +104,7 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
     """
 
     @abc.abstractmethod
-    def factorize(self, pattern: CSRPattern, values: Array) -> _Factorization:
+    def factorize(self, pattern: CSRPattern, values: Array) -> Factorization:
         """Analyse `pattern` and factorize `values` on a new handle.
 
         **Arguments:**
@@ -122,8 +119,8 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
         """
 
     def refactorize(
-        self, factorization: _Factorization, pattern: CSRPattern, values: Array
-    ) -> _Factorization:
+        self, factorization: Factorization, pattern: CSRPattern, values: Array
+    ) -> Factorization:
         """Factorize new `values`. Defaults to a new analysis with `factorize`.
 
         **Arguments:**
@@ -141,7 +138,7 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
         return self.factorize(pattern, values)
 
     @abc.abstractmethod
-    def solve(self, factorization: _Factorization, vector: Array) -> Array:
+    def solve(self, factorization: Factorization, vector: Array) -> Array:
         """Solve for one right-hand side, also under `jax.vmap` over `vector`.
 
         **Arguments:**
@@ -170,7 +167,7 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
 
     def init(
         self, operator: AbstractLinearOperator, options: dict[str, Any]
-    ) -> SparseDirectState[_Factorization]:
+    ) -> SparseDirectState[Factorization]:
         del options
         matrix = self._matrix(operator)
         return _initial_state(self, self._pattern(matrix), matrix.data)
@@ -179,8 +176,8 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
         self,
         operator: AbstractLinearOperator,
         options: dict[str, Any],
-        state: SparseDirectState[_Factorization],
-    ) -> SparseDirectState[_Factorization]:
+        state: SparseDirectState[Factorization],
+    ) -> SparseDirectState[Factorization]:
         """Return the state of the values of `operator`, keeping the analysis.
 
         **Arguments:**
@@ -239,7 +236,7 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
 
     def compute(
         self,
-        state: SparseDirectState[_Factorization],
+        state: SparseDirectState[Factorization],
         vector: Array,
         options: dict[str, Any],
     ) -> tuple[Array, RESULTS, dict[str, Any]]:
@@ -265,10 +262,10 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
         solution = jnp.where(solved, jnp.ldexp(solution, exponent), jnp.nan)
         return solution, RESULTS.where(solved, RESULTS.successful, RESULTS.singular), {}
 
-    def transpose(self, state: SparseDirectState[_Factorization], options: dict):
+    def transpose(self, state: SparseDirectState[Factorization], options: dict):
         return state, options
 
-    def conj(self, state: SparseDirectState[_Factorization], options: dict):
+    def conj(self, state: SparseDirectState[Factorization], options: dict):
         return state, options
 
     def assume_full_rank(self):
@@ -279,7 +276,7 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
         return factorization, self._check_fails(factorization, pattern, values)
 
     def _check_fails(
-        self, factorization: _Factorization, pattern: CSRPattern, values: Array
+        self, factorization: Factorization, pattern: CSRPattern, values: Array
     ) -> Array:
         """Whether `factorization` of `values` fails its check, a solve of `A x = A 1`.
 
