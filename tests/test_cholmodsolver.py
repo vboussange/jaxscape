@@ -60,6 +60,45 @@ def test_factorizations_follow_the_matrix_values(factorizations, compiled):
     np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
 
 
+def test_states_of_one_pattern_used_alternately_give_their_own_exact_results():
+    distance = ResistanceDistance(solver=CholmodSolver())
+    reference = ResistanceDistance(solver=None)
+    values = {"first": VALUES, "second": 2 * VALUES[::-1]}
+    states = {name: distance.init(grid_of(v)) for name, v in values.items()}
+
+    for name in ["first", "second", "first", "second"]:
+        actual = distance(grid_of(values[name]), nodes=NODES, state=states[name])
+
+        expected = reference(grid_of(values[name]), nodes=NODES)
+        np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
+
+
+def test_a_used_up_state_stays_exact():
+    distance = ResistanceDistance(solver=CholmodSolver())
+    used_up = distance.init(grid_of(VALUES))
+    other = 2 * VALUES[::-1]
+    reinitialized = distance.reinit(grid_of(other), used_up)
+
+    # The query with `reinitialized` uses up `used_up`.
+    for values, state in [(other, reinitialized), (VALUES, used_up)]:
+        actual = distance(grid_of(values), nodes=NODES, state=state)
+
+        expected = ResistanceDistance(solver=None)(grid_of(values), nodes=NODES)
+        np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
+
+
+def test_a_state_evicted_by_newer_ones_stays_exact():
+    distance = ResistanceDistance(solver=CholmodSolver())
+    evicted = distance.init(grid_of(VALUES))
+    for scale in range(2, 2 + cholmodsolver._STATES_KEPT):
+        distance.init(grid_of(scale * VALUES[::-1]))
+
+    actual = distance(grid_of(VALUES), nodes=NODES, state=evicted)
+
+    expected = ResistanceDistance(solver=None)(grid_of(VALUES), nodes=NODES)
+    np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
+
+
 def test_adjoint_solves_reuse_the_forward_factorization(factorizations):
     method = SpielmanApproximation(epsilon=0.5, seed=3)
     distance = ResistanceDistance(solver=CholmodSolver(), method=method)
