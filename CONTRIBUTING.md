@@ -37,7 +37,7 @@ an NVIDIA GPU with the `cudss` extra. The continuous integration runs every
 test but the GPU ones:
 
 ```bash
-uv run pytest -n auto -m slow tests       # slow tests only
+uv run pytest -n 2 -m slow tests          # slow tests only
 uv run pytest -n auto -m "not gpu" tests  # every test but the GPU ones, as in CI
 uv run pytest -m gpu tests                # GPU tests only
 uv run pytest -n auto -m "" tests         # every test
