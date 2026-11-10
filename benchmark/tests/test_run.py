@@ -4,7 +4,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
+from PIL import Image
 
 
 BENCHMARK = Path(__file__).resolve().parents[1]
@@ -17,6 +19,7 @@ single_call_after = 300
 cores = "{CORES}"
 gpu = ""
 smoke_side = 16
+smoke_dependency_range = 1
 
 [landscape]
 correlation_length = 4
@@ -36,6 +39,15 @@ sides = [8, 16, 32]
 [distances.free_energy]
 sides = [8, 16]
 theta = 0.01
+
+[windows]
+dependency_range = 2
+coarsening_factor = 0.5
+
+[maryland]
+raster = "LAND_COVER"
+questions = ["E2"]
+resistance = {{ 1 = 1, 2 = 10 }}
 
 [[tools]]
 tool = "Fake"
@@ -63,12 +75,26 @@ devices = ["gpu", "cpu"]
 
 [tools.distances.resistance]
 solver = {{ gpu = ["Iterative", "Direct"], cpu = "Direct" }}
+
+[[tools]]
+tool = "Fake E2"
+question = "E2"
+adapter = "tests/fake_adapter.py"
+devices = ["cpu"]
+
+[tools.distances.resistance]
+dtype = "float32"
 """
+# A land cover of 20 x 24 pixels, of classes 1 (resistance 1), 2 (resistance 10)
+# and 3 (a barrier).
+LAND_COVER = np.resize(np.array([1, 1, 2, 3], np.uint8), (20, 24))
 
 
 def run(tmp_path, *arguments):
+    land_cover = tmp_path / "land_cover.tif"
+    Image.fromarray(LAND_COVER).save(land_cover)
     config = tmp_path / "config.toml"
-    config.write_text(CONFIG)
+    config.write_text(CONFIG.replace("LAND_COVER", str(land_cover)))
     return subprocess.run(
         [sys.executable, "run.py", *map(str, arguments), "--config", str(config)],
         cwd=BENCHMARK,
@@ -134,6 +160,24 @@ def test_runner_resolves_settings_per_device_and_runs_each_solver_of_a_list(run_
     assert solvers == {("gpu", "Iterative"), ("gpu", "Direct"), ("cpu", "Direct")}
 
 
+def test_runner_runs_the_maryland_case_for_its_questions(run_dir):
+    cells = {
+        case: record["cells"]
+        for (_, case), record in records(run_dir, "Fake E2").items()
+    }
+
+    assert cells == {"synthetic-8": 64, "maryland": 480}
+
+
+def test_runner_records_no_agreement_for_a_tool_without_tier(run_dir):
+    record = records(run_dir, "Fake E2")[("resistance", "maryland")]
+
+    assert record["status"] == "ok"
+    assert record["tier"] is None
+    assert record["measure"] is None
+    assert record["agreement"] is None
+
+
 def test_runner_records_why_a_cell_failed_or_was_skipped(run_dir):
     cells = records(run_dir)
 
@@ -169,3 +213,8 @@ def test_smoke_mode_exits_with_an_error_when_a_cell_fails(tmp_path):
 
     assert result.returncode != 0
     assert {case for _, case in records(tmp_path / "smoke")} == {"synthetic-16"}
+    cells = {
+        case: record["cells"]
+        for (_, case), record in records(tmp_path / "smoke", "Fake E2").items()
+    }
+    assert cells == {"synthetic-16": 256, "maryland": 256}

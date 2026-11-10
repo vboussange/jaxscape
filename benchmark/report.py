@@ -69,6 +69,26 @@ SETUPS = {
         "and free energy, and Dijkstra's algorithm in SciPy for least-cost "
         "distances."
     ),
+    "E2": (
+        "JAXScape computes, in each call, the map of $\\partial C / \\partial q_i$ "
+        "with `SensitivityAnalysis`, which equals $2 S_i$ for symmetric "
+        "distances, and the total $C = \\sum_i q_i S_i$ with "
+        "`ConnectivityAnalysis`. Its windows have `dependency_range` 100 and "
+        "`coarsening_factor` 0.2, which gives blocks of 21 pixels: Omniscape's "
+        "`radius` and `block_size` in its Maryland example. Its proximity is "
+        "the default, $e^{-r/25}$ with $r$ in equivalent pixels. The windowed "
+        "analyses build their graphs with JAXScape's own edge rule: rook "
+        "contiguity, and the conductance of an edge is the mean permeability "
+        "of its two pixels. Free energy is left out of E2 and E3: its window "
+        "query holds the dense inverse of the 40,401 pixels of a window, and in "
+        "float64, the only precision that resolves its windows, one window ran "
+        "out of the 24 GB of the GPU, and out of memory on the CPU after taking "
+        "300 GB."
+    ),
+    "E3": (
+        "JAXScape computes the map of $\\partial C / \\partial p_k$ with "
+        "`SensitivityAnalysis`, with the windows and proximity of E2."
+    ),
 }
 
 EXCLUDED = [
@@ -91,6 +111,10 @@ EXCLUDED = [
 ]
 
 STATUS_MARKERS = {"failed": "X", "timeout": "v", "oom": "s", "skipped": "o"}
+
+
+def is_synthetic(record):
+    return record["case"].startswith("synthetic-")
 
 
 def rank(record):
@@ -151,9 +175,9 @@ def plot(question, records, path):
     raster cells.
 
     At each raster, a line takes the fastest of the tool's settings that
-    succeeds. GPU lines are solid and CPU lines dashed. A raster where no
-    setting succeeds shows a status as a marker along the top edge, one row per
-    line.
+    succeeds. GPU lines are solid and CPU lines dashed, and join the synthetic
+    rasters; Maryland is a star. A raster where no setting succeeds shows a
+    status as a marker along the top edge, one row per line.
     """
     figure, axes = plt.subplots(figsize=(8, 4.5))
     colors = {}
@@ -166,15 +190,20 @@ def plot(question, records, path):
             for _, of_raster in groupby(group, key=lambda record: record["cells"])
         ]
         ok = [record for record in group if record["status"] == "ok"]
+        synthetic = [record for record in ok if is_synthetic(record)]
+        tier = f" · Tier {group[0]['tier']}" if group[0]["tier"] else ""
         axes.plot(
-            [record["cells"] for record in ok],
-            [record["median_s"] for record in ok],
+            [record["cells"] for record in synthetic],
+            [record["median_s"] for record in synthetic],
             "-" if configuration["device"] == "gpu" else "--",
             marker="o",
             color=color,
             label=f"{configuration['tool']} · {configuration['distance']} · "
-            f"{configuration['device'].upper()} · Tier {group[0]['tier']}",
+            f"{configuration['device'].upper()}{tier}",
         )
+        for record in ok:
+            if not is_synthetic(record):
+                axes.plot(record["cells"], record["median_s"], "*", color=color)
         for record in group:
             if record["status"] != "ok":
                 axes.plot(
@@ -212,6 +241,9 @@ def plot(question, records, path):
         )
         for status, marker in STATUS_MARKERS.items()
     ]
+    if not all(map(is_synthetic, records)):
+        maryland = dict(linestyle="", marker="*", color="gray", label="Maryland")
+        statuses.insert(0, Line2D([], [], **maryland))
     handles = axes.get_legend_handles_labels()[0] + statuses
     axes.legend(handles=handles, loc="upper left", bbox_to_anchor=(1.02, 1), fontsize=8)
     figure.savefig(path, dpi=150, bbox_inches="tight")
@@ -229,11 +261,12 @@ def table(header, rows):
 
 def case_label(case):
     side = case.removeprefix("synthetic-")
-    return f"{side}²" if side != case else case
+    return f"{side}²" if side != case else case.capitalize()
 
 
 def value(record):
-    if record["status"] != "ok":
+    """Return the agreement of a record, or its status when it has none."""
+    if record["status"] != "ok" or not record["tier"]:
         return record["status"]
     if record["agreement"] is None:
         return "missing"
@@ -247,7 +280,7 @@ def agreement_table(records):
         by_case = {record["case"]: value(record) for record in group}
         rows.append(
             [configuration[field] for field in CONFIGURATION]
-            + [group[0]["tier"]]
+            + [group[0]["tier"] or ""]
             + [by_case.get(case, "") for _, case in cases]
         )
     rows = [[cells[0], cells[1], cells[2].upper(), *cells[3:]] for cells in rows]
@@ -282,7 +315,9 @@ def page(run_name, records, environment):
         f"{name} {', '.join(sorted(tool['versions']))}" for name, tool in tools.items()
     )
     measures = {
-        question: sorted({record["measure"] for record in of(question, records)})
+        question: sorted(
+            {record["measure"] for record in of(question, records) if record["tier"]}
+        )
         for question in questions
     }
 
@@ -314,6 +349,12 @@ def page(run_name, records, environment):
         "the cells are habitat. Permeability is $10^{-2(1 - f)}$ for the field "
         "$f$, from 0.01 to 1, and resistance is its inverse. A larger raster "
         "covers a larger area at the same grain.",
+        "E2 and E3 also run on the Maryland case of Omniscape's example: the "
+        "2016 land cover of Frederick, Maryland, from the National Land Cover "
+        "Database, 694 × 725 pixels of 30 m. Each class takes the resistance "
+        "of Omniscape's reclassification table, medium- and high-intensity "
+        "development are barriers, and forest, the classes of resistance 1, is "
+        "habitat of quality 1.",
         "## Comparison",
         "Each cell runs in its own process, pinned to the cores of the "
         "environment table, with thread settings matched to them; XLA sizes "
@@ -329,8 +370,9 @@ def page(run_name, records, environment):
         "rasters. A tool runs each setting of a small grid fixed in advance "
         "from its documentation: the tables list every setting, and the "
         "figures show, at each raster, the fastest setting that succeeds. In "
-        "the figures, tools on the GPU are solid and on the CPU dashed, and "
-        "rasters where no setting succeeds show a status along the top edge.",
+        "the figures, tools on the GPU are solid and on the CPU dashed, "
+        "Maryland is a star, and rasters where no setting succeeds show a "
+        "status along the top edge.",
     ]
     for question in questions:
         records_of_question = of(question, records)
@@ -340,7 +382,9 @@ def page(run_name, records, environment):
             f"![{question}: warm runtime against raster cells]({question.lower()}.png)",
             f"Agreement ({', '.join(measures[question])}) of each configuration "
             "and raster, or the status of the cell; `missing` marks a cell "
-            "whose reference is unavailable.",
+            "whose reference is unavailable."
+            if measures[question]
+            else "Status of each configuration and raster.",
             agreement_table(records_of_question),
         ]
     threads = ", ".join(f"`{k}={v}`" for k, v in environment["threads"].items())

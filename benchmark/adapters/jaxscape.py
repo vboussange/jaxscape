@@ -3,9 +3,14 @@
 # permeabilities of its two pixels (`landscape.conductance`), so that its
 # resistance is their mean resistance. Least-cost and free-energy distances
 # take 1 / conductance as the edge cost, and the free energy takes the shared
-# `theta`. E1 is a nodes-to-nodes query among the sites. The distance runs with
-# the solver and dtype of its settings, and every call builds the graph and the
-# solver state.
+# `theta`. E1 is a nodes-to-nodes query among the sites. E2 runs
+# `SensitivityAnalysis(var="quality")` for the map and `ConnectivityAnalysis`
+# for the total, and E3 `SensitivityAnalysis(var="permeability")`, with the
+# shared `dependency_range` and `coarsening_factor`, the default proximity and
+# the `batch_size` of the settings; these windowed analyses build their graphs
+# with JAXScape's own edge rule, the mean permeability of the two pixels. The
+# distance runs with the solver and dtype of its settings, and every call
+# builds the graphs and the solver states.
 import jax
 from adapters.protocol import read_cell, time_calls, write_result
 
@@ -18,10 +23,12 @@ if settings["dtype"] == "float64":
 import jax.numpy as jnp
 import jaxscape
 from jaxscape import (
+    ConnectivityAnalysis,
     FreeEnergyDistance,
     GridGraph,
     LCPDistance,
     ResistanceDistance,
+    SensitivityAnalysis,
     solvers,
 )
 from landscape import conductance
@@ -37,16 +44,30 @@ distance = {
         theta=cell["parameters"]["theta"], **solver
     ),
 }[cell["distance"]]()
-
-if cell["question"] != "E1":
-    raise ValueError(f"the JAXScape adapter has no question {cell['question']}")
 permeability = jnp.asarray(arrays["permeability"], dtype=settings["dtype"])
-sites = jnp.asarray(arrays["sites"])
+windows = dict(
+    quality_raster=jnp.asarray(arrays["quality"], dtype=settings["dtype"]),
+    permeability_raster=permeability,
+    distance=distance,
+    batch_size=settings.get("batch_size"),
+    **cell["windows"],
+)
 
 
-def call():
+def isolation():
     graph = GridGraph(permeability, fun=conductance)
-    return distance(graph, nodes=sites).block_until_ready()
+    return distance(graph, nodes=jnp.asarray(arrays["sites"])).block_until_ready()
 
 
+def connectivity():
+    total = ConnectivityAnalysis(**windows).run()
+    habitat = SensitivityAnalysis(**windows).run("quality")
+    return jax.block_until_ready((habitat, total))[0]
+
+
+def corridors():
+    return SensitivityAnalysis(**windows).run("permeability").block_until_ready()
+
+
+call = {"E1": isolation, "E2": connectivity, "E3": corridors}[cell["question"]]
 write_result(cell, *time_calls(cell, call), version=jaxscape.__version__)

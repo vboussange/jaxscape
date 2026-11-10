@@ -5,6 +5,7 @@ The runner calls an adapter with the path of a cell file, a JSON object with:
 - `question`, `distance`, `device`: what the cell computes, and where;
 - `settings`: the tool's settings for the distance, with `dtype` and `solver`;
 - `parameters`: the shared parameters of the distance, such as `theta`;
+- `windows`: the `dependency_range` and `coarsening_factor` of E2 and E3;
 - `case`: a directory with `quality.npy`, `permeability.npy` and, for E1,
   `sites.npy`, the row and column of each site;
 - `repeats`, `single_call_after`: the timing protocol;

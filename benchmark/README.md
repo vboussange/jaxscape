@@ -11,8 +11,8 @@ command from this directory:
 
 ```bash
 uv sync
-./install.sh                                  # the pinned toolchains of the external tools
-uv run python run.py results/smoke --smoke   # every cell once, on a 32 x 32 raster
+./install.sh                                  # the pinned toolchains and the Maryland raster
+uv run python run.py results/smoke --smoke   # every cell once, on 32 x 32 rasters, small windows
 nohup uv run python run.py results/v0.0.16 > run.log 2>&1 &   # the full run
 uv run python report.py results/v0.0.16      # the CSV, the figures and the page
 uv run pytest                                 # tests of the runner and the report
@@ -27,14 +27,16 @@ change the pin, run, and report.
 ## Layout
 
 - `config.toml`: how cells run (timeout, repeats, cores, GPU), the landscape,
-  the raster sides and shared parameters of each distance, and one entry per
-  tool and question.
-- `landscape.py`: the synthetic landscape, and the sites of E1 and the
-  conductance of its edges, which every tool of E1 shares.
-- `install.sh`: installs the toolchains of the external tools, each pinned:
-  Julia and the packages of `julia/Manifest.toml`, through juliaup, and the R
-  packages of `renv.lock` in the renv library of this directory, which
-  `Rscript` loads here through `.Rprofile`.
+  the raster sides and shared parameters of each distance, the windows of E2
+  and E3, the Maryland case, and one entry per tool and question.
+- `landscape.py`: the synthetic landscape, the Maryland case of E2 and E3,
+  and the sites of E1 and the conductance of its edges, which every tool of E1
+  shares. Smoke mode takes the top-left 32 x 32 pixels of Maryland.
+- `install.sh`: installs the toolchains of the external tools and the data,
+  each pinned: Julia and the packages of `julia/Manifest.toml`, through
+  juliaup, the R packages of `renv.lock` in the renv library of this
+  directory, which `Rscript` loads here through `.Rprofile`, and the land
+  cover of Maryland in `data/`.
 - `run.py`: the runner. Each cell runs in its own process, pinned with
   `taskset` to the cores of the configuration, with the OpenMP, BLAS, Julia
   and R thread variables matched to them; XLA sizes its thread pools to the
@@ -46,8 +48,8 @@ change the pin, run, and report.
   E1.
 - `results/<run>/`: `records.jsonl`, the environment snapshot
   `environment.json`, the references of E1, the logs of the cells (not
-  committed), and what the report writes: `results.csv`, `e1.png` and the
-  page `index.md`.
+  committed), and what the report writes: `results.csv`, one figure per
+  question, `e1.png` to `e3.png`, and the page `index.md`.
 
 ## The cell record
 
