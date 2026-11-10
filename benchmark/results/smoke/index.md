@@ -32,8 +32,11 @@ Agreement (largest relative error) of each configuration and raster, or the stat
 | JAXScape | resistance | CPU | float32 | GridMultigridSolver | 1 | 6.5e-06 |
 | JAXScape | lcp | GPU | float32 |  | 1 | 2.0e-07 |
 | JAXScape | lcp | CPU | float32 |  | 1 | 2.0e-07 |
-| JAXScape | free_energy | GPU | float64 | CuDSSSolver | 1 | 2.2e-15 |
+| JAXScape | free_energy | GPU | float64 | CuDSSSolver | 1 | 2.0e-15 |
 | JAXScape | free_energy | CPU | float64 | CholmodSolver | 1 | 0.0e+00 |
+| gdistance | resistance | CPU | float64 |  | 1 | 1.4e-13 |
+| gdistance | lcp | CPU | float64 |  | 1 | 5.1e-16 |
+| skimage.graph.MCP | lcp | CPU | float64 |  | 1 | 3.0e-16 |
 
 ## Environment
 
@@ -45,8 +48,8 @@ Agreement (largest relative error) of each configuration and raster, or the stat
 | Cores | 48-63 |
 | Threads | `OMP_NUM_THREADS=16`, `OPENBLAS_NUM_THREADS=16`, `MKL_NUM_THREADS=16`, `JULIA_NUM_THREADS=16`, `RCPP_PARALLEL_NUM_THREADS=16` |
 | Python | 3.13.5 |
-| Packages | jaxscape 0.0.16, jax 0.12.0.1, jaxlib 0.12.0.1, numpy 2.5.4, scipy 1.18.1 |
-| Tools | JAXScape 0.0.16 |
+| Packages | jaxscape 0.0.16, jax 0.12.0.1, jaxlib 0.12.0.1, numpy 2.5.4, scipy 1.18.1, scikit-image 0.26.0, R 4.1.2, gdistance 1.6.5 |
+| Tools | JAXScape 0.0.16, gdistance 1.6.5, skimage.graph.MCP 0.26.0 |
 
 ## Parameter mappings
 
@@ -54,7 +57,9 @@ The header comment of each adapter states how it maps the shared parameters onto
 
 | Tool | Questions | Adapter | Mapping |
 | --- | --- | --- | --- |
-| JAXScape | E1 | `adapters/jaxscape.py` | JAXScape builds a `GridGraph` of the permeability raster with rook contiguity, the conductance of an edge being the mean permeability of its two pixels, as its windowed analyses do. Least-cost and free-energy distances take 1 / conductance as the edge cost, and the free energy takes the shared `theta`. E1 is a nodes-to-nodes query among the sites. The distance runs with the solver and dtype of its settings, and every call builds the graph and the solver state. |
+| JAXScape | E1 | `adapters/jaxscape.py` | JAXScape builds a `GridGraph` of the permeability raster with rook contiguity, the conductance of an edge being the mean or the harmonic mean of the permeabilities of its two pixels, as `graph` in the configuration sets it; its windowed analyses take the mean. Least-cost and free-energy distances take 1 / conductance as the edge cost, and the free energy takes the shared `theta`. E1 is a nodes-to-nodes query among the sites. The distance runs with the solver and dtype of its settings, and every call builds the graph and the solver state. |
+| gdistance | E1 | `adapters/gdistance.R` | gdistance builds a transition layer of the permeability raster with 4 neighbours (rook contiguity), the conductance between two pixels being the mean or the harmonic mean of their permeabilities, as `graph` in the configuration sets it. Resistance distances are `commuteDistance` divided by the volume of the graph, the sum of its conductances in both directions, and least-cost distances are `costDistance`, whose edge cost is 1 / conductance. Pixels have side 1, so `geoCorrection` leaves the layer unchanged and is left out. Every call builds the transition layer, whose conductances depend on the permeability. |
+| skimage.graph.MCP | E1 | `adapters/skimage.py` | skimage.graph.MCP_Flexible finds least-cost paths on the permeability raster with rook contiguity (`fully_connected=False`). Its `travel_cost`, which the class lets subclasses override, charges 1 / conductance for a step between two pixels, with the conductance that `graph` in the configuration sets; the cost that MCP counts for the start pixel is subtracted. Each call builds the MCP object on the permeability, and searches from each site until it reaches all the others. |
 
 ## Excluded tools
 
