@@ -399,8 +399,20 @@ def environment(config):
                     "scikit-image",
                 )
             },
+            **julia_packages(),
             **r_packages(),
         },
+    }
+
+
+def julia_packages():
+    """Return the versions of Julia and of the packages of its project, as
+    pinned by `julia/Manifest.toml`."""
+    project = tomllib.loads((HERE / "julia" / "Project.toml").read_text())
+    manifest = tomllib.loads((HERE / "julia" / "Manifest.toml").read_text())
+    return {
+        "Julia": manifest["julia_version"],
+        **{name: manifest["deps"][name][0]["version"] for name in project["deps"]},
     }
 
 

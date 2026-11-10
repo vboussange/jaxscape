@@ -32,7 +32,7 @@ def test_report_writes_the_csv_with_one_row_per_record(tmp_path):
     with open(run_dir / "results.csv", newline="") as file:
         rows = list(csv.DictReader(file))
 
-    assert len(rows) == 10
+    assert len(rows) == 15
     assert {row["status"] for row in rows} == {
         "ok",
         "failed",
@@ -65,6 +65,14 @@ def test_e1_table_lists_each_configuration_with_its_value_or_status(tmp_path):
         page, "JAXScape", "free_energy", "GPU", "float64", "CuDSSSolver"
     )
     assert free_energy[-4:] == ["1.0e-09", "", "", ""]
+    amg = table_row(page, "Circuitscape.jl", "resistance", "CPU", "float64", "cg+amg")
+    assert amg[-4:] == ["4.2e-07", "5.1e-07", "", ""]
+    cholmod = table_row(
+        page, "Circuitscape.jl", "resistance", "CPU", "float64", "cholmod"
+    )
+    assert cholmod[-4:] == ["3.0e-13", "oom", "", ""]
+    conscape = table_row(page, "ConScape.jl", "free_energy", "CPU", "float64", "")
+    assert conscape[-4:] == ["2.0e-14", "", "", ""]
 
 
 def test_page_has_its_sections_and_references_the_figure(tmp_path):
@@ -86,8 +94,17 @@ def test_page_has_its_sections_and_references_the_figure(tmp_path):
         == "NVIDIA GeForce RTX 3090, driver 580.178.04, 24576 MiB"
     )
     assert table_row(page, "Cores")[1] == "48-63"
-    assert table_row(page, "Tools")[1] == "JAXScape 0.0.16"
+    assert (
+        table_row(page, "Tools")[1]
+        == "JAXScape 0.0.16, Circuitscape.jl 6.1.0, ConScape.jl 0.3.0"
+    )
     mapping = table_row(page, "JAXScape", "E1")
     assert mapping[2] == "`adapters/jaxscape.py`"
     assert "rook contiguity" in mapping[3]
+    circuitscape = table_row(page, "Circuitscape.jl", "E1")
+    assert circuitscape[2] == "`adapters/circuitscape.jl`"
+    assert "connect_using_avg_resistances" in circuitscape[3]
+    conscape = table_row(page, "ConScape.jl", "E1")
+    assert conscape[2] == "`adapters/conscape.jl`"
+    assert "AverageWeight" in conscape[3]
     assert table_row(page, "Linkage Mapper")[1] == "Needs ArcGIS."

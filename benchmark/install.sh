@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
-# Install the pinned toolchains of the benchmark into this directory. Run it
-# from any directory.
+# Install the toolchains of the external tools, each pinned. It runs again
+# without harm.
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# Python: JAXScape and the Python tools, pinned by uv.lock.
-uv sync
+# Julia, from juliaup: the version that resolved julia/Manifest.toml, for every
+# `julia` started in this directory, and the packages of the Manifest
+# (Circuitscape.jl, ConScape.jl).
+julia_version=$(sed -n 's/^julia_version = "\(.*\)"$/\1/p' julia/Manifest.toml)
+juliaup add "$julia_version"
+juliaup override set "$julia_version"
+julia --project=julia -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
 
-# R 4.1.2: the packages of renv.lock, such as gdistance, in the renv library of
-# this directory. renv installs itself, and builds the packages from source;
-# terra needs the GDAL, GEOS and PROJ development libraries.
+# R 4.1.2: the packages of renv.lock (gdistance), in the renv library of this
+# directory, for every `Rscript` started in it. renv installs itself, and builds
+# the packages from source; terra needs the GDAL, GEOS and PROJ development
+# libraries.
 MAKEFLAGS="-j$(nproc)" Rscript -e 'renv::restore(prompt = FALSE)'

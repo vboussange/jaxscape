@@ -14,6 +14,7 @@ import numpy as np
 from adapters.protocol import read_cell, time_calls, write_result
 from jaxscape import FreeEnergyDistance, GridGraph, ResistanceDistance
 from jaxscape.solvers import CholmodSolver
+from landscape import conductance
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import dijkstra
 
@@ -23,17 +24,13 @@ permeability = jnp.asarray(arrays["permeability"])
 sites = arrays["sites"]
 
 
-def average(x, y):
-    return (x + y) / 2
-
-
 def least_cost():
-    adjacency = GridGraph(permeability, fun=average).get_adjacency_matrix()
+    adjacency = GridGraph(permeability, fun=conductance).get_adjacency_matrix()
     rows, columns = np.asarray(adjacency.indices).T
-    conductance = np.asarray(adjacency.data)
-    edges = conductance > 0
+    weights = np.asarray(adjacency.data)
+    edges = weights > 0
     cost = coo_matrix(
-        (1 / conductance[edges], (rows[edges], columns[edges])), adjacency.shape
+        (1 / weights[edges], (rows[edges], columns[edges])), adjacency.shape
     )
     vertices = np.ravel_multi_index(tuple(sites.T), permeability.shape)
     return dijkstra(cost.tocsr(), indices=vertices)[:, vertices]
@@ -41,7 +38,7 @@ def least_cost():
 
 def solve(distance):
     return lambda: np.asarray(
-        distance()(GridGraph(permeability, fun=average), nodes=sites)
+        distance()(GridGraph(permeability, fun=conductance), nodes=sites)
     )
 
 

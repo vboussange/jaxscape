@@ -56,6 +56,25 @@ dtype = "float64"
 solver = { gpu = "CuDSSSolver", cpu = "CholmodSolver" }
 
 [[tools]]
+tool = "Circuitscape.jl"
+question = "E1"
+adapter = "adapters/circuitscape.jl"
+devices = ["cpu"]
+tier = 1
+
+[tools.distances.resistance]
+solver = ["cg+amg", "cholmod"]
+
+[[tools]]
+tool = "ConScape.jl"
+question = "E1"
+adapter = "adapters/conscape.jl"
+devices = ["cpu"]
+tier = 1
+
+[tools.distances.free_energy]
+
+[[tools]]
 tool = "gdistance"
 question = "E1"
 adapter = "adapters/gdistance.R"

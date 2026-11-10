@@ -29,6 +29,7 @@ FIELDS = (
     "median_s times_s measure agreement tier version files adapter"
 ).split()
 CONFIGURATION = ("tool", "distance", "device", "dtype", "solver")
+LINE = ("tool", "distance", "device")  # a line of a figure
 
 QUESTIONS = {
     "E1": (
@@ -60,7 +61,9 @@ SETUPS = {
     "E1": (
         "Each tool computes the distances among 32 sites drawn at random from "
         "the habitat cells with a fixed seed, across the whole raster: 496 "
-        "pairs. The agreement of a record is the largest relative error over "
+        "pairs. Every tool builds the same graph: rook contiguity, and the "
+        "resistance of an edge is the mean resistance of its two pixels. The "
+        "agreement of a record is the largest relative error over "
         "the pairs against a float64 reference, computed once for each case and "
         "distance: a sparse direct solve with `CholmodSolver` for resistance "
         "and free energy, and Dijkstra's algorithm in SciPy for least-cost "
@@ -88,6 +91,14 @@ EXCLUDED = [
 ]
 
 STATUS_MARKERS = {"failed": "X", "timeout": "v", "oom": "s", "skipped": "o"}
+
+
+def rank(record):
+    """Order the records of a raster: the fastest that succeeds first, then the
+    others by their status, in the order of `STATUS_MARKERS`."""
+    if record["status"] == "ok":
+        return (0, record["median_s"])
+    return (1, list(STATUS_MARKERS).index(record["status"]))
 
 
 def main():
@@ -121,32 +132,39 @@ def write_csv(records, path):
             writer.writerow({**record, "times_s": " ".join(map(str, times))})
 
 
-def configurations(records):
-    """Group records by configuration, in the order of their first record."""
+def configurations(records, fields=CONFIGURATION):
+    """Group records by the values of `fields`, in the order of their first record."""
     order = {}
     for record in records:
-        order.setdefault(tuple(record[field] for field in CONFIGURATION), len(order))
+        order.setdefault(tuple(record[field] for field in fields), len(order))
 
     def key(record):
-        return order[tuple(record[field] for field in CONFIGURATION)]
+        return order[tuple(record[field] for field in fields)]
 
     for _, group in groupby(sorted(records, key=key), key=key):
         group = sorted(group, key=lambda record: record["cells"])
-        yield dict(zip(CONFIGURATION, (group[0][f] for f in CONFIGURATION))), group
+        yield dict(zip(fields, (group[0][f] for f in fields))), group
 
 
 def plot(question, records, path):
-    """Plot the warm runtime of each configuration against the raster cells.
+    """Plot the warm runtime of each tool, distance and device against the
+    raster cells.
 
-    GPU lines are solid and CPU lines dashed. A cell without a runtime shows
-    its status as a marker along the top edge, one row per configuration.
+    At each raster, a line takes the fastest of the tool's settings that
+    succeeds. GPU lines are solid and CPU lines dashed. A raster where no
+    setting succeeds shows a status as a marker along the top edge, one row per
+    line.
     """
     figure, axes = plt.subplots(figsize=(8, 4.5))
     colors = {}
-    for index, (configuration, group) in enumerate(configurations(records)):
+    for index, (configuration, group) in enumerate(configurations(records, LINE)):
         color = colors.setdefault(
             (configuration["tool"], configuration["distance"]), f"C{len(colors) % 10}"
         )
+        group = [
+            min(of_raster, key=rank)
+            for _, of_raster in groupby(group, key=lambda record: record["cells"])
+        ]
         ok = [record for record in group if record["status"] == "ok"]
         axes.plot(
             [record["cells"] for record in ok],
@@ -308,9 +326,11 @@ def page(run_name, records, environment):
         "and solver state. A call stops after one hour. Within a configuration, "
         "rasters run from the smallest up, and after a failure, a timeout or "
         "running out of memory (`oom`), the configuration skips its larger "
-        "rasters. In the figures, JAXScape on the GPU is solid and on the CPU "
-        "dashed, and cells without a runtime show their status along the top "
-        "edge.",
+        "rasters. A tool runs each setting of a small grid fixed in advance "
+        "from its documentation: the tables list every setting, and the "
+        "figures show, at each raster, the fastest setting that succeeds. In "
+        "the figures, tools on the GPU are solid and on the CPU dashed, and "
+        "rasters where no setting succeeds show a status along the top edge.",
     ]
     for question in questions:
         records_of_question = of(question, records)
