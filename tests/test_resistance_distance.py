@@ -476,12 +476,12 @@ def test_spielman_window_queries_stream_the_projections_of_sources_queries(
     # Every query draws the signs of each projection from the seed and its
     # index: both queries estimate the distances with the same projections.
     # Here ceil(log(99) / 0.3**2) = 52 projections, in batches of 8 and a last
-    # one of 4. Small windows are gathered several at a time, large ones taken
-    # one at a time.
+    # one of 4. The windows are gathered several at a time, and one at a time
+    # without a budget of values per step.
     if solver == "cholmod":
         pytest.importorskip("cholespy")
     if not gathered:
-        monkeypatch.setattr(resistance_distance, "_LARGEST_GATHERED_WINDOW", 0)
+        monkeypatch.setattr(resistance_distance, "_VALUES_PER_STEP", 0)
         jax.clear_caches()
     method = SpielmanApproximation(epsilon=0.3, seed=2, projection_batch_size=8)
     distance = ResistanceDistance(SOURCES_TO_TARGETS_SOLVERS[solver](), method=method)
@@ -533,18 +533,16 @@ def test_spielman_window_query_gradients_estimate_those_of_exact_resistances():
     assert jnp.median(spread / jnp.abs(expected)) < 0.3
 
 
-@pytest.mark.parametrize("sources_per_strip", [64, 4])
-def test_spielman_probe_right_hand_sides_add_the_windows_of_their_sources(
-    sources_per_strip, monkeypatch
-):
+@pytest.mark.parametrize("probes", [64, 4])
+def test_spielman_probe_right_hand_sides_add_the_windows_of_their_sources(probes):
     # Windows of 7 x 7 pixels of a grid of sources, row after row, and two
-    # sources out of that order, rows apart from their neighbours.
-    monkeypatch.setattr(resistance_distance, "_SOURCES_PER_STRIP", sources_per_strip)
+    # sources out of that order, rows apart from their neighbours: in one chunk
+    # with 64 probes, and in chunks of 4 sources with 4 probes.
     rng = np.random.default_rng(0)
     rows, columns = np.meshgrid([3, 6, 9, 12, 16], [3, 8, 13, 19], indexing="ij")
     rows = np.r_[rows.ravel(), 16, 3]
     columns = np.r_[columns.ravel(), 3, 19]
-    m, size, probes = rows.size, 7, 5
+    m, size = rows.size, 7
     weights = rng.normal(size=(m, size, size, 2))
     per_source = rng.choice([-1.0, 1.0], (m, probes))
     per_pixel = rng.choice([-1.0, 1.0], (20, 23, probes))

@@ -18,7 +18,7 @@ from jaxscape.distance import (
 from jaxscape.graph import AbstractGraph, GridGraph
 from jaxscape.solvers.gridmultigridsolver import GridMultigridSolver
 from jaxscape.solvers.operator import _batched_linear_solve_impl, _solver_state
-from jaxscape.utils import _matmul, bcoo_diag, graph_laplacian
+from jaxscape.utils import _matmul, _VALUES_PER_STEP, bcoo_diag, graph_laplacian
 
 
 # Building the full Rademacher projection matrix is faster for moderate sizes,
@@ -26,25 +26,11 @@ from jaxscape.utils import _matmul, bcoo_diag, graph_laplacian
 # enough that the streamed scan path is the safer default.
 SPIELMAN_DENSE_PROJECTION_MAX_SIGN_ENTRIES = 200_000_000
 
-# Exact sources-to-targets queries solve all target columns at once, and keep
-# them for the gradient, when their potentials hold at most this many values.
-_UNCHUNKED_POTENTIALS = 2**22
-# Otherwise they solve the target columns this many at a time, and again for the
-# gradient. Sparse direct solvers reach their full throughput from a few hundred
-# columns on.
+# Exact sources-to-targets queries whose potentials of all targets hold more
+# than `_VALUES_PER_STEP` values solve the target columns this many at a time,
+# and again for the gradient. Sparse direct solvers reach their full throughput
+# from a few hundred columns on.
 _TARGET_CHUNK_SIZE = 1024
-# Spielman window queries take the squared differences of about this many
-# potentials at once, from windows of up to `_LARGEST_GATHERED_WINDOW`
-# differences, and from larger windows one at a time: XLA gathers several large
-# windows more slowly than it slices one. With 64 projections on an RTX 3090,
-# 1225 windows of 201 pixels a side took 27 ms one at a time and 53 ms two or
-# more at a time, and 4096 windows of 41 pixels a side 62 ms one at a time and
-# 8 ms 64 at a time.
-_WINDOW_DIFFERENCES_PER_STEP = 2**24
-_LARGEST_GATHERED_WINDOW = 2**18
-# The gradient of Spielman window queries places the windows of this many
-# consecutive sources at once (see `_probe_right_hand_sides`).
-_SOURCES_PER_STRIP = 64
 
 
 class ResistanceDistance(AbstractSolverDistance):
@@ -800,12 +786,12 @@ def _target_chunks(targets: Array, n: int) -> Array:
     """Split `targets` of a graph of `n` vertices into chunks solved together.
 
     One chunk when the potentials of all targets hold at most
-    `_UNCHUNKED_POTENTIALS` values, otherwise equal chunks of at most
+    `_VALUES_PER_STEP` values, otherwise equal chunks of at most
     `_TARGET_CHUNK_SIZE`. The last chunk is padded with vertex 0, whose
     values the query drops.
     """
     k = targets.shape[0]
-    n_chunks = 1 if n * k <= _UNCHUNKED_POTENTIALS else -(-k // _TARGET_CHUNK_SIZE)
+    n_chunks = 1 if n * k <= _VALUES_PER_STEP else -(-k // _TARGET_CHUNK_SIZE)
     padding = n_chunks * -(-k // n_chunks) - k
     return jnp.pad(targets, (0, padding)).reshape(n_chunks, -1)
 
@@ -1190,10 +1176,7 @@ def _spielman_windows_fwd(
         signs = _signs(key, projections, k, data.shape[0]).astype(data.dtype)
         projection = _project_incidence(signs, data, indices, shape, k)
         potentials = _solve(system, projection.T, solver).reshape(*grid, -1)
-        differences = size**2 * signs.shape[0]
-        per_step = max(1, _WINDOW_DIFFERENCES_PER_STEP // differences)
-        if differences > _LARGEST_GATHERED_WINDOW:
-            per_step = 1
+        per_step = max(1, _VALUES_PER_STEP // (size**2 * signs.shape[0]))
         squares = lax.map(
             lambda source: window(potentials, *source),
             (rows, columns),
@@ -1288,8 +1271,9 @@ def _probe_right_hand_sides(
     hold it, each times the sign of its source, and a source adds its sign
     times the weights of its window times the signs of their pixels.
 
-    The sources run in chunks of up to `_SOURCES_PER_STRIP` consecutive
-    sources. A pass adds, for each chunk, the windows of its sources within
+    The sources run in chunks of up to as many consecutive sources as probes,
+    whose placed windows then hold at most as many values as the right-hand
+    sides. A pass adds, for each chunk, the windows of its sources within
     `size // 2` rows of its first remaining source to a strip of rows, with
     one matrix product, and passes repeat until every window is added: one
     pass for a grid of sources, row after row. On an RTX 3090, the 1260
@@ -1305,7 +1289,7 @@ def _probe_right_hand_sides(
     height, width, probes = per_pixel.shape
     slack = max(0, min(half, height - size))
     strip = size + slack
-    count = min(_SOURCES_PER_STRIP, m)
+    count = min(probes, m)
     chunks = -(-m // count)
     padding = chunks * count - m
 
