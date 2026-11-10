@@ -515,6 +515,24 @@ def test_coarsened_quality_sensitivity_is_exact_inside_a_uniform_landscape():
     assert_close(sensitivity(0.5)[interior], sensitivity(0.0)[interior], 1e-10)
 
 
+def test_coarsened_resistance_sensitivity_is_exact_for_a_linear_proximity():
+    # Documented: with block sources and a proximity linear in the distance,
+    # each pixel counts its pairs in the windows of its block centres. Here
+    # every window holds the raster, and one tile computes them all on the
+    # graph of the padded raster, with blocks of 3 x 3 pixels.
+    def sensitivity(coarsening_factor):
+        return make(
+            SensitivityAnalysis,
+            ResistanceDistance(solver=None),
+            dependency_range=6,
+            proximity=lambda dist: 1 - dist,
+            batch_size=64,
+            coarsening_factor=coarsening_factor,
+        ).run("permeability")
+
+    assert_close(sensitivity(0.5), sensitivity(0.0), 1e-10)
+
+
 @pytest.mark.parametrize("var", ["quality", "permeability"])
 def test_coarsening_approximates_pixel_windows_at_the_edges_of_a_uniform_landscape(
     var,

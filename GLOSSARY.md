@@ -53,6 +53,10 @@ _Avoid_: Neighbourhood
 **Block centre**:
 A pixel whose window an analysis computes. Without coarsening every pixel is one; with coarsening, values interpolate between them.
 
+**Block source**:
+The pixels that a block centre stands for, weighted by their interpolation weights times their quality, and summing to 1. A resistance window query from it gives the mean of the resistances from these pixels to each pixel of the window (`source_weights`).
+_Avoid_: Block average, spread source
+
 **Tile**:
 The union of the windows of a grid of up to `batch_size` block centres; with as many as the raster has, the padded raster. One window query from all of them, on the graph of the tile, gives each its distances.
 _Avoid_: Batch window, chunk
