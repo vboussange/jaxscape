@@ -84,7 +84,8 @@ A tool takes one adapter script and one configuration entry.
    A setting given per device is a table keyed by device, and a list of
    solvers runs each. A tool of E2 or E3 is compared with the JAXScape map of
    the distance `compared_with`, by default its own, which the adapter
-   justifies:
+   justifies; the entries of JAXScape come first, so that its maps exist when
+   the other tools run:
 
    ```toml
    [[tools]]

@@ -92,7 +92,11 @@ SETUPS = {
     ),
     "E3": (
         "JAXScape computes the map of $\\partial C / \\partial p_k$ with "
-        "`SensitivityAnalysis`, with the windows and proximity of E2."
+        "`SensitivityAnalysis`, with the windows and proximity of E2. The "
+        "other tools map a flow, and the agreement of each is Spearman's ρ "
+        "over pixels between its map and the map of JAXScape under the "
+        "distance of its row, or under least-cost distance for ConScape.jl "
+        "(see E2)."
     ),
 }
 

@@ -176,3 +176,29 @@ devices = ["cpu"]
 tier = 1
 
 [tools.distances.lcp]
+
+# EcoScape and samc map flows under no distance of their own: the distance of
+# each is the JAXScape distance its map is compared with, which its adapter
+# justifies.
+[[tools]]
+tool = "EcoScape"
+question = "E3"
+adapter = "adapters/ecoscape.py"
+devices = ["gpu"]
+tier = 3
+
+# The largest batch of simulations whose tiles fit in the 24 GB of an RTX 3090
+# (8 runs out).
+[tools.distances.lcp]
+dtype = "float32"
+batch_size = 4
+
+[[tools]]
+tool = "samc"
+question = "E3"
+adapter = "adapters/samc.R"
+devices = ["cpu"]
+tier = 3
+
+[tools.distances.resistance]
+solver = "direct"

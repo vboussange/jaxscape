@@ -38,7 +38,7 @@ def test_report_writes_the_csv_with_one_row_per_record(tmp_path):
     with open(run_dir / "results.csv", newline="") as file:
         rows = list(csv.DictReader(file))
 
-    assert len(rows) == 29
+    assert len(rows) == 33
     assert {row["status"] for row in rows} == {
         "ok",
         "failed",
@@ -129,7 +129,8 @@ def test_page_has_its_sections_and_references_the_figure(tmp_path):
     assert table_row(page, "Cores")[1] == "48-63"
     assert (
         table_row(page, "Tools")[1]
-        == "JAXScape 0.0.16, Circuitscape.jl 6.1.0, ConScape.jl 0.3.0"
+        == "JAXScape 0.0.16, Circuitscape.jl 6.1.0, ConScape.jl 0.3.0, "
+        "EcoScape 0.2.5, samc 4.2.1"
     )
     mapping = table_row(page, "JAXScape", "E1, E2, E3")
     assert mapping[2] == "`adapters/jaxscape.py`"
@@ -141,4 +142,10 @@ def test_page_has_its_sections_and_references_the_figure(tmp_path):
     assert conscape[2] == "`adapters/conscape.jl`"
     assert "AverageWeight" in conscape[3]
     assert "connected_habitat" in conscape[3]
+    ecoscape = table_row(page, "EcoScape", "E3")
+    assert ecoscape[2] == "`adapters/ecoscape.py`"
+    assert "dispersal" in ecoscape[3]
+    samc = table_row(page, "samc", "E3")
+    assert samc[2] == "`adapters/samc.R`"
+    assert "absorption" in samc[3]
     assert table_row(page, "Linkage Mapper")[1] == "Needs ArcGIS."

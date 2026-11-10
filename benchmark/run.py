@@ -49,7 +49,7 @@ OOM = re.compile(
     re.IGNORECASE,
 )
 ERROR = re.compile(r"^([\w.]*(Error|Exception)\b|ERROR:)")
-R_PACKAGES = ["gdistance"]  # the R tools, whose versions each run records
+R_PACKAGES = ["gdistance", "samc"]  # the R tools, whose versions each run records
 
 
 def main():
@@ -479,6 +479,8 @@ def environment(config):
                     "numpy",
                     "scipy",
                     "scikit-image",
+                    "ecoscape-connectivity",
+                    "torch",
                 )
             },
             **julia_packages(),
