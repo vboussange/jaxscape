@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import Any, Optional, TypeAlias
+from typing import Any
 
 import equinox as eqx
 import jax
@@ -27,7 +27,7 @@ except ImportError:
     _pyamg = None
     PYAMG_AVAILABLE = False
 
-_PyAMGSolverState: TypeAlias = tuple[BCOO, PackedStructures]
+type _PyAMGSolverState = tuple[BCOO, PackedStructures]
 
 
 class PyAMGSolver(AbstractLinearSolver):
@@ -54,7 +54,7 @@ class PyAMGSolver(AbstractLinearSolver):
     rtol: float = 1e-6
     atol: float = 0.0
     maxiter: int | None = 100_000
-    pyamg_method: Optional[Callable] = None
+    pyamg_method: Callable | None = None
 
     def __check_init__(self):
         if not PYAMG_AVAILABLE:

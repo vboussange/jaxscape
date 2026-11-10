@@ -8,8 +8,8 @@ from jaxscape.graph import GridGraph
 @eqx.filter_jit
 def sum_neighborhood(grid: GridGraph, xy: Array, npix: int) -> Array:
     """
-    Computes the sum of pixels within an npix x npix neighborhood around each target in xy.
-    Pixels outside the grid boundaries are treated as NaN and ignored.
+    Computes the sum of pixels within an npix x npix neighborhood around each target
+    in xy. Pixels outside the grid boundaries are treated as NaN and ignored.
     """
 
     # Generate the relative offsets for the neighborhood
@@ -51,14 +51,17 @@ def coarse_graining(grid: GridGraph, buffer_size: int) -> BCOO:
     """
     Creates a coarse-grained matrix of target qualities by aggregating npix pixels
     into a single central pixel.
-    See https://docs.circuitscape.org/Omniscape.jl/latest/usage/#General-Options for documentation.
+    See https://docs.circuitscape.org/Omniscape.jl/latest/usage/#General-Options
+    for documentation.
     """
     assert isinstance(buffer_size, int)
     assert grid.height % (2 * buffer_size + 1) == 0, (
-        f"`grid height`  must be divisible by `(2*buffer_size + 1)`, consider padding the raster data."
+        "`grid height`  must be divisible by `(2*buffer_size + 1)`, "
+        "consider padding the raster data."
     )
     assert grid.width % (2 * buffer_size + 1) == 0, (
-        f"`grid width`  must be divisible by `(2*buffer_size + 1)`, consider padding the raster data."
+        "`grid width`  must be divisible by `(2*buffer_size + 1)`, "
+        "consider padding the raster data."
     )
 
     step = 2 * buffer_size + 1

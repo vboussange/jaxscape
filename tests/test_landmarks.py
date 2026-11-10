@@ -33,7 +33,6 @@ def test_sum_neighborhood():
 def test_coarse_graining():
     N = 20
     grid = jnp.ones((N, N), dtype=jnp.float32)
-    activities = jnp.ones_like(grid, dtype=bool)
     grid = GridGraph(grid)
     buffer_size = 2
 

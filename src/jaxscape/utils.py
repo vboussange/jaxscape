@@ -187,7 +187,8 @@ def bcoo_at_set(mat: BCOO, row_idx: Array, col_idx: Array, vals: Array) -> BCOO:
 
 
 def padding(raster: Array, buffer_size: int, window_size: int) -> Array:
-    """Pad raster to ensure dimensions are compatible with [`WindowOperation`][jaxscape.window_operation.WindowOperation].
+    """Pad raster to ensure dimensions are compatible with
+    [`WindowOperation`][jaxscape.window_operation.WindowOperation].
 
     Ensures `(raster.shape[i] - 2 * buffer_size) % window_size == 0`.
 
@@ -271,7 +272,9 @@ def connected_component_labels(A: BCOO):
 #         def for_each_neighbor_fn(carry, u):
 #             v, index, lowlink, onstack, stack, count = carry
 #             if index[u] == -1:
-#                 index, lowlink, onstack, stack, components, count = dfs_fn((index, lowlink, onstack, stack, components, count), u)
+#                 index, lowlink, onstack, stack, components, count = dfs_fn(
+#                     (index, lowlink, onstack, stack, components, count), u
+#                 )
 #                 lowlink = lowlink.at[v].set(jnp.minimum(lowlink[v], lowlink[u]))
 #             elif onstack[u]:
 #                 lowlink = lowlink.at[v].set(jnp.minimum(lowlink[v], index[u]))
@@ -279,7 +282,11 @@ def connected_component_labels(A: BCOO):
 
 #         v_neihb_idx = jnp.where(adj_matrix.indices[:, 0] == s)
 #         v_neighbors = adj_matrix.indices[v_neihb_idx, 1]
-#         _, _ = jax.lax.scan(for_each_neighbor_fn, (s, index, lowlink, onstack, stack, count), v_neighbors)
+#         _, _ = jax.lax.scan(
+#             for_each_neighbor_fn,
+#             (s, index, lowlink, onstack, stack, count),
+#             v_neighbors,
+#         )
 
 #         def pop_scc(carry, _):
 #             stack, onstack, component = carry
@@ -291,7 +298,9 @@ def connected_component_labels(A: BCOO):
 
 #         if lowlink[s] == index[s]:
 #             component = jnp.array([], dtype=jnp.int32)
-#             (stack, onstack, component), _ = jax.lax.scan(pop_scc, (stack, onstack, component), jnp.arange(len(stack)))
+#             (stack, onstack, component), _ = jax.lax.scan(
+#                 pop_scc, (stack, onstack, component), jnp.arange(len(stack))
+#             )
 #             components.append(component)
 
 #         return (index, lowlink, onstack, stack, components, count)

@@ -21,7 +21,6 @@ def _harmonic(x, y):
 def sample_gridgraph():
     grid = jnp.ones((2, 3))  # Uniform weights for simplicity
     grid = GridGraph(grid)
-    sample_gridgraph = grid  # to comment
     return grid
 
 

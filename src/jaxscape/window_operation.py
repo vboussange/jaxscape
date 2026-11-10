@@ -18,7 +18,8 @@ class WindowOperation(eqx.Module):
     - `shape`: Raster dimensions `(height, width)`.
     - `window_size`: Core window size in pixels.
     - `buffer_size`: Buffer region size around each core window.
-    - `total_window_size`: Total window size including buffers `(window_size + 2 * buffer_size)`.
+    - `total_window_size`: Total window size including buffers
+      `(window_size + 2 * buffer_size)`.
     - `x_steps`, `y_steps`: Number of windows in each dimension.
 
     !!! example
@@ -37,8 +38,9 @@ class WindowOperation(eqx.Module):
 
     !!! warning
         You must ensure that `(shape[i] - 2 * buffer_size)` is divisible by
-        `window_size` for both dimensions `i = 0, 1`. Consider using [`jaxscape.utils.padding`][jaxscape.utils.padding]
-        to pad your raster data automatically.
+        `window_size` for both dimensions `i = 0, 1`. Consider using
+        [`jaxscape.utils.padding`][jaxscape.utils.padding] to pad your raster data
+        automatically.
     """
 
     shape: tuple[int, int] = eqx.field(static=True)
@@ -54,7 +56,8 @@ class WindowOperation(eqx.Module):
         assert isinstance(buffer_size, int)
         for i in range(2):
             assert (shape[i] - 2 * buffer_size) % window_size == 0, (
-                f"`(shape[{i}] - 2 * buffer_size)`  must be divisible by `window_size`, consider padding the raster data."
+                f"`(shape[{i}] - 2 * buffer_size)`  must be divisible by "
+                "`window_size`, consider padding the raster data."
             )
 
         self.shape = shape
@@ -86,7 +89,9 @@ class WindowOperation(eqx.Module):
         !!! example
 
             ```python
-            window_op = WindowOperation(shape=(100, 100), window_size=20, buffer_size=10)
+            window_op = WindowOperation(
+                shape=(100, 100), window_size=20, buffer_size=10
+            )
             raster = jnp.ones((100, 100))
             window = window_op.extract_total_window(jnp.array([0, 0]), raster)
             # window.shape = (40, 40)
@@ -117,7 +122,9 @@ class WindowOperation(eqx.Module):
         !!! example
 
             ```python
-            window_op = WindowOperation(shape=(100, 100), window_size=20, buffer_size=10)
+            window_op = WindowOperation(
+                shape=(100, 100), window_size=20, buffer_size=10
+            )
             raster = jnp.ones((100, 100))
             core = window_op.extract_core_window(jnp.array([0, 0]), raster)
             # core.shape = (20, 20)
@@ -167,7 +174,9 @@ class WindowOperation(eqx.Module):
         !!! example
 
             ```python
-            window_op = WindowOperation(shape=(100, 100), window_size=20, buffer_size=10)
+            window_op = WindowOperation(
+                shape=(100, 100), window_size=20, buffer_size=10
+            )
             raster = jnp.zeros((100, 100))
 
             for xy, window in window_op.lazy_iterator(raster):
@@ -222,7 +231,9 @@ class WindowOperation(eqx.Module):
         !!! example
 
             ```python
-            window_op = WindowOperation(shape=(100, 100), window_size=20, buffer_size=10)
+            window_op = WindowOperation(
+                shape=(100, 100), window_size=20, buffer_size=10
+            )
             raster = jnp.zeros((100, 100))
             window_data = jnp.ones((40, 40))
 
@@ -258,7 +269,9 @@ class WindowOperation(eqx.Module):
         !!! example
 
             ```python
-            window_op = WindowOperation(shape=(100, 100), window_size=20, buffer_size=10)
+            window_op = WindowOperation(
+                shape=(100, 100), window_size=20, buffer_size=10
+            )
             print(window_op.nb_steps)  # 25 (5x5 grid of windows)
             ```
         """
@@ -284,7 +297,9 @@ class WindowOperation(eqx.Module):
         !!! example
 
             ```python
-            window_op = WindowOperation(shape=(100, 100), window_size=20, buffer_size=10)
+            window_op = WindowOperation(
+                shape=(100, 100), window_size=20, buffer_size=10
+            )
             raster = jnp.ones((100, 100))
 
             for xy, window in window_op.lazy_iterator(raster):
@@ -315,12 +330,15 @@ class WindowOperation(eqx.Module):
         **Returns:**
 
         Tuple `(xy, windows)` where `xy` has shape `(num_windows, 2)` containing
-        start coordinates, and `windows` has shape `(num_windows, window_height, window_width)`.
+        start coordinates, and `windows` has shape
+        `(num_windows, window_height, window_width)`.
 
         !!! example
 
             ```python
-            window_op = WindowOperation(shape=(100, 100), window_size=20, buffer_size=10)
+            window_op = WindowOperation(
+                shape=(100, 100), window_size=20, buffer_size=10
+            )
             raster = jnp.ones((100, 100))
 
             xy, windows = window_op.eager_iterator(raster)
