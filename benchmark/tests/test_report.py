@@ -26,13 +26,19 @@ def table_row(page, *cells):
     return [cell.strip() for cell in rows[0].strip("|").split("|")]
 
 
+def section(page, heading):
+    """Return the section of `page` under `heading`, up to the next heading."""
+    after = page.split(heading + "\n", 1)[1]
+    return after.split("\n#", 1)[0]
+
+
 def test_report_writes_the_csv_with_one_row_per_record(tmp_path):
     run_dir = report(tmp_path)
 
     with open(run_dir / "results.csv", newline="") as file:
         rows = list(csv.DictReader(file))
 
-    assert len(rows) == 15
+    assert len(rows) == 28
     assert {row["status"] for row in rows} == {
         "ok",
         "failed",
@@ -42,14 +48,18 @@ def test_report_writes_the_csv_with_one_row_per_record(tmp_path):
     }
 
 
-def test_report_writes_the_e1_figure(tmp_path):
+def test_report_writes_one_figure_per_question(tmp_path):
     run_dir = report(tmp_path)
 
-    assert (run_dir / "e1.png").read_bytes().startswith(b"\x89PNG")
+    for figure in ("e1.png", "e2.png", "e3.png"):
+        assert (run_dir / figure).read_bytes().startswith(b"\x89PNG")
 
 
 def test_e1_table_lists_each_configuration_with_its_value_or_status(tmp_path):
-    page = (report(tmp_path) / "index.md").read_text()
+    page = section(
+        (report(tmp_path) / "index.md").read_text(),
+        "### E1. Isolation between populations",
+    )
 
     gpu = table_row(
         page, "JAXScape", "resistance", "GPU", "float32", "GridMultigridSolver"
@@ -75,6 +85,24 @@ def test_e1_table_lists_each_configuration_with_its_value_or_status(tmp_path):
     assert conscape[-4:] == ["2.0e-14", "", "", ""]
 
 
+def test_e2_and_e3_tables_list_each_configuration_with_its_status(tmp_path):
+    page = (report(tmp_path) / "index.md").read_text()
+    e2 = section(page, "### E2. Habitat connectivity")
+    e3 = section(page, "### E3. Corridors and pinch points")
+
+    assert table_row(e2, "Tool")[-5:] == ["Tier", "256²", "Maryland", "1024²", "4096²"]
+    resistance = table_row(
+        e2, "JAXScape", "resistance", "GPU", "float32", "GridMultigridSolver"
+    )
+    assert resistance[-5:] == ["", "ok", "ok", "timeout", "skipped"]
+    assert table_row(e2, "JAXScape", "lcp", "CPU")[-4:] == ["ok", "ok", "", ""]
+    cpu = table_row(e2, "JAXScape", "resistance", "CPU")
+    assert cpu[-4:] == ["oom", "skipped", "skipped", ""]
+    assert table_row(e3, "Tool")[-2:] == ["256²", "Maryland"]
+    assert table_row(e3, "JAXScape", "resistance", "GPU")[-2:] == ["ok", "ok"]
+    assert table_row(e3, "JAXScape", "lcp", "GPU")[-2:] == ["failed", "skipped"]
+
+
 def test_page_has_its_sections_and_references_the_figure(tmp_path):
     page = (report(tmp_path) / "index.md").read_text()
 
@@ -82,12 +110,15 @@ def test_page_has_its_sections_and_references_the_figure(tmp_path):
         "## Questions",
         "## Comparison",
         "### E1. Isolation between populations",
+        "### E2. Habitat connectivity",
+        "### E3. Corridors and pinch points",
         "## Environment",
         "## Parameter mappings",
         "## Excluded tools",
     ):
         assert heading + "\n" in page
-    assert "](e1.png)" in page
+    for figure in ("e1.png", "e2.png", "e3.png"):
+        assert f"]({figure})" in page
     assert "](results.csv)" in page
     assert (
         table_row(page, "GPU")[1]
@@ -98,7 +129,7 @@ def test_page_has_its_sections_and_references_the_figure(tmp_path):
         table_row(page, "Tools")[1]
         == "JAXScape 0.0.16, Circuitscape.jl 6.1.0, ConScape.jl 0.3.0"
     )
-    mapping = table_row(page, "JAXScape", "E1")
+    mapping = table_row(page, "JAXScape", "E1, E2, E3")
     assert mapping[2] == "`adapters/jaxscape.py`"
     assert "rook contiguity" in mapping[3]
     circuitscape = table_row(page, "Circuitscape.jl", "E1")

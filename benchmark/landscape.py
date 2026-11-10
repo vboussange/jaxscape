@@ -1,6 +1,7 @@
-"""The synthetic landscape of the benchmark, and the sites and graph of E1."""
+"""The landscapes of the benchmark, and the sites and graph of E1."""
 
 import numpy as np
+from PIL import Image
 
 
 def synthetic(side, correlation_length, habitat_threshold, seed):
@@ -36,6 +37,31 @@ def synthetic(side, correlation_length, habitat_threshold, seed):
     quality = np.where(field >= habitat_threshold, field, 0.0)
     permeability = 10.0 ** (-2.0 * (1.0 - field))
     return quality, permeability
+
+
+def maryland(path, resistance, side=None):
+    """Return the quality and permeability rasters of the Maryland case.
+
+    **Arguments:**
+
+    - `path`: The land cover raster, a GeoTIFF of NLCD classes.
+    - `resistance`: The resistance of each class, keyed by the class as a
+      string, as Omniscape's reclassification table gives it. Classes left out
+      are barriers, of permeability 0.
+    - `side`: Number of pixels along each side of the top-left square to keep,
+      or `None` for the whole raster.
+
+    **Returns:**
+
+    Quality, 1 on the pixels of resistance 1 and 0 elsewhere, and permeability,
+    the inverse of resistance: float64 arrays of the raster's shape.
+    """
+    land_cover = np.asarray(Image.open(path))[:side, :side]
+    table = np.full(256, np.inf)
+    for land_class, value in resistance.items():
+        table[int(land_class)] = value
+    resistance = table[land_cover]
+    return (resistance == 1).astype(float), 1 / resistance
 
 
 def sites(quality, number, seed):

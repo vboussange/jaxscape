@@ -28,7 +28,7 @@ from importlib.metadata import version
 from pathlib import Path
 
 import numpy as np
-from landscape import sites, synthetic
+from landscape import maryland, sites, synthetic
 
 
 HERE = Path(__file__).resolve().parent
@@ -88,20 +88,18 @@ def run(config, run_dir, smoke):
         for record in map(json.loads, records_path.read_text().splitlines()):
             recorded[tuple(record[field] for field in KEY)] = record
 
-    sides = {
-        distance: [config["run"]["smoke_side"]] if smoke else parameters["sides"]
-        for distance, parameters in config["distances"].items()
-    }
     stopped = {}  # configuration -> case of its failure, timeout or oom
     shm = "/dev/shm" if Path("/dev/shm").is_dir() else None
     with tempfile.TemporaryDirectory(dir=shm, prefix="jaxscape-benchmark-") as tmp:
-        for side in sorted({side for values in sides.values() for side in values}):
-            case = {"case": f"synthetic-{side}", "cells": side * side}
+        for case in cases(config, smoke):
             case_dir = Path(tmp) / case["case"]
             for configuration in configurations(config):
-                if side not in sides[configuration["distance"]]:
+                if not (
+                    configuration["distance"] in case["distances"]
+                    and configuration["question"] in case["questions"]
+                ):
                     continue
-                cell = {**configuration, **case}
+                cell = {**configuration, "case": case["case"], "cells": case["cells"]}
                 key = tuple(cell[field] for field in KEY)
                 stop = key[:-1]
                 if key in recorded:
@@ -111,7 +109,7 @@ def run(config, run_dir, smoke):
                         record = blank(cell, "skipped", f"after {stopped[stop]}")
                     else:
                         if not case_dir.exists():
-                            write_case(config, side, case_dir)
+                            write_case(config, case["case"], case_dir, smoke)
                         record = run_cell(config, cell, case_dir, run_dir, smoke)
                     with open(records_path, "a") as file:
                         file.write(json.dumps(record) + "\n")
@@ -122,6 +120,58 @@ def run(config, run_dir, smoke):
                 if record["status"] in ("failed", "timeout", "oom"):
                     stopped[stop] = f"{record['status']} at {record['case']}"
             shutil.rmtree(case_dir, ignore_errors=True)
+
+
+def cases(config, smoke):
+    """Return the cases of the run, from the fewest cells up.
+
+    A case holds the distances and the questions that run on it: a synthetic
+    raster runs every question with the distances whose sides include it, and
+    the Maryland case every distance with its questions.
+    """
+    sides = {
+        distance: [config["run"]["smoke_side"]] if smoke else parameters["sides"]
+        for distance, parameters in config["distances"].items()
+    }
+    found = [
+        {
+            "case": f"synthetic-{side}",
+            "cells": side * side,
+            "distances": {d for d, values in sides.items() if side in values},
+            "questions": {entry["question"] for entry in config["tools"]},
+        }
+        for side in {side for values in sides.values() for side in values}
+    ]
+    if "maryland" in config:
+        quality, _ = rasters(config, "maryland", smoke)
+        found.append(
+            {
+                "case": "maryland",
+                "cells": quality.size,
+                "distances": set(sides),
+                "questions": set(config["maryland"]["questions"]),
+            }
+        )
+    return sorted(found, key=lambda case: (case["cells"], case["case"]))
+
+
+def rasters(config, case, smoke):
+    """Return the quality and permeability rasters of a case.
+
+    Smoke mode takes the top-left square of Maryland of `smoke_side` pixels a
+    side.
+    """
+    if case == "maryland":
+        maryland_ = config["maryland"]
+        side = config["run"]["smoke_side"] if smoke else None
+        return maryland(HERE / maryland_["raster"], maryland_["resistance"], side)
+    landscape = config["landscape"]
+    return synthetic(
+        int(case.removeprefix("synthetic-")),
+        landscape["correlation_length"],
+        landscape["habitat_threshold"],
+        landscape["seed"],
+    )
 
 
 def configurations(config):
@@ -158,15 +208,10 @@ def cell_name(cell):
     return " ".join(str(cell[field]) for field in KEY if cell[field])
 
 
-def write_case(config, side, case_dir):
-    """Write the rasters of a synthetic case, and the sites of E1."""
-    landscape = config["landscape"]
-    quality, permeability = synthetic(
-        side,
-        landscape["correlation_length"],
-        landscape["habitat_threshold"],
-        landscape["seed"],
-    )
+def write_case(config, case, case_dir, smoke):
+    """Write the quality and permeability rasters of a case, and the sites of
+    E1."""
+    quality, permeability = rasters(config, case, smoke)
     case_dir.mkdir(parents=True)
     np.save(case_dir / "quality.npy", quality)
     np.save(case_dir / "permeability.npy", permeability)
@@ -233,6 +278,7 @@ def specification(config, cell, case_dir, work, smoke):
         "device": cell["device"],
         "settings": cell["settings"],
         "parameters": parameters,
+        "windows": config.get("windows", {}),
         "case": str(case_dir),
         "repeats": 1 if smoke else config["run"]["repeats"],
         "single_call_after": config["run"]["single_call_after"],
@@ -343,13 +389,14 @@ def variables(config, device):
     """Return the environment variables of a cell's process.
 
     GPU cells allocate memory as they need it, so that JAX never fails to
-    preallocate on a GPU that another process uses.
+    preallocate on a GPU that another process uses, and keep the CPU platform,
+    on which Equinox raises the errors of their checks.
     """
     env = {**os.environ, **threads(config["run"]["cores"])}
     if device == "gpu":
         env.update(
             CUDA_VISIBLE_DEVICES=str(config["run"]["gpu"]),
-            JAX_PLATFORMS="cuda",
+            JAX_PLATFORMS="cuda,cpu",
             XLA_PYTHON_CLIENT_PREALLOCATE="false",
         )
     else:

@@ -28,7 +28,25 @@ sides = [256, 1024, 4096, 8192]
 
 [distances.free_energy]
 sides = [256, 1024]
-theta = 0.01  # provisional, until the tuning run of #78 fixes it
+# The largest theta at which the free-energy windows of E2 and E3 resolve in
+# float64 (#78): the windows of block centres on the raster's edge reach 100
+# pixels into padding at the permeability floor, where least-cost distances
+# reach 2e6, and at 2e-4 their window queries no longer resolve.
+theta = 1.5e-4
+
+# The windows of E2 and E3: Omniscape's `radius` and `block_size` in its
+# Maryland example, blocks of 21 pixels.
+[windows]
+dependency_range = 100
+coarsening_factor = 0.2
+
+# The Maryland case of E2 and E3 (see landscape.py), which install.sh
+# downloads: the resistance of each NLCD class from Omniscape's example, whose
+# classes 23 and 24, medium- and high-intensity development, are barriers.
+[maryland]
+raster = "data/nlcd_2016_frederick_md.tif"
+questions = ["E2", "E3"]
+resistance = { 11 = 100, 21 = 500, 22 = 1000, 31 = 100, 41 = 1, 42 = 1, 43 = 1, 52 = 20, 71 = 30, 81 = 200, 82 = 300, 90 = 20, 95 = 30 }
 
 # One entry per tool and question. `adapter` runs a cell, and the table of a
 # distance holds the tool's settings for it, `dtype` and `solver` included. A
@@ -54,6 +72,44 @@ dtype = "float32"
 [tools.distances.free_energy]
 dtype = "float64"
 solver = { gpu = "CuDSSSolver", cpu = "CholmodSolver" }
+
+# E2 and E3 take the reference settings of E1, with the `batch_size` of the
+# tuning run (#78): for resistance, the largest whose tiles fit E3 at 8192^2
+# in the 24 GB of an RTX 3090 (768 runs out); for least-cost, which computes
+# each window on its own, the fastest at 8192^2. They leave free energy out:
+# its window query holds the dense inverse of the 40401 pixels of a window,
+# and in float64, the only precision that resolves its windows, one window
+# ran out of the 24 GB of the GPU, and out of memory on the CPU after taking
+# 300 GB.
+[[tools]]
+tool = "JAXScape"
+question = "E2"
+adapter = "adapters/jaxscape.py"
+devices = ["gpu", "cpu"]
+
+[tools.distances.resistance]
+dtype = "float32"
+solver = "GridMultigridSolver"
+batch_size = 512
+
+[tools.distances.lcp]
+dtype = "float32"
+batch_size = 512
+
+[[tools]]
+tool = "JAXScape"
+question = "E3"
+adapter = "adapters/jaxscape.py"
+devices = ["gpu", "cpu"]
+
+[tools.distances.resistance]
+dtype = "float32"
+solver = "GridMultigridSolver"
+batch_size = 512
+
+[tools.distances.lcp]
+dtype = "float32"
+batch_size = 512
 
 [[tools]]
 tool = "Circuitscape.jl"
