@@ -8,6 +8,7 @@ from jax import Array, lax
 
 from jaxscape.distance import AbstractDistance
 from jaxscape.graph import GridGraph
+from jaxscape.utils import _VALUES_PER_STEP
 from jaxscape.windowed_analysis import (
     _average,
     _program,
@@ -31,11 +32,6 @@ def _block_sums(tile: _TileData, values: Array) -> Array:
     return jnp.einsum(
         "iy,yx,jx->ij", rows, values, columns, precision=lax.Precision.HIGHEST
     )
-
-
-# Window sums hold about this many proximities at once, and recompute
-# them for the gradient.
-_PROXIMITIES_PER_STEP = 2**22
 
 
 def _reachable(
@@ -69,9 +65,8 @@ def _reachable(
         weights = lax.dynamic_slice(weight, start, (size, size))
         return _window_sum(proximity, distances, weights, excluded)
 
-    per_step = max(1, _PROXIMITIES_PER_STEP // size**2)
-    if rows.size <= per_step:
-        return jax.vmap(reachable)((distances, rows, columns))
+    # The gradient recomputes the sums of each step.
+    per_step = max(1, _VALUES_PER_STEP // size**2)
     return lax.map(
         jax.checkpoint(reachable), (distances, rows, columns), batch_size=per_step
     )
