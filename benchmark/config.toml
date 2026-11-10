@@ -8,6 +8,7 @@ single_call_after = 300  # seconds of warm-up after which one timed call follows
 cores = "48-63"          # 16 physical cores of gpunode05, on the NUMA node of GPU 0
 gpu = "0"                # CUDA_VISIBLE_DEVICES of GPU cells
 smoke_side = 32
+smoke_dependency_range = 10  # windows of E2 and E3 in smoke mode
 
 # The synthetic landscape (see landscape.py).
 [landscape]

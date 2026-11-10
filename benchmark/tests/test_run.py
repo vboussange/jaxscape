@@ -19,6 +19,7 @@ single_call_after = 300
 cores = "{CORES}"
 gpu = ""
 smoke_side = 16
+smoke_dependency_range = 1
 
 [landscape]
 correlation_length = 4

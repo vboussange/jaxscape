@@ -6,8 +6,9 @@
 A cell is one question, tool, distance, device and case. The runner appends the
 record of each cell to `RUN_DIR/records.jsonl` as it finishes, and skips the
 cells recorded there when it restarts. Smoke mode runs every cell on a raster of
-`smoke_side` pixels a side, with one timed call, into a new run directory, and
-exits with an error when a cell fails or lacks its agreement.
+`smoke_side` pixels a side, with windows of `smoke_dependency_range` and one
+timed call, into a new run directory, and exits with an error when a cell fails
+or lacks its agreement.
 """
 
 import argparse
@@ -273,13 +274,16 @@ def specification(config, cell, case_dir, work, smoke):
     """Return the cell file that an adapter reads (see `adapters/protocol.py`)."""
     parameters = dict(config["distances"][cell["distance"]])
     parameters.pop("sides")
+    windows = dict(config.get("windows", {}))
+    if smoke and windows:
+        windows["dependency_range"] = config["run"]["smoke_dependency_range"]
     return {
         "question": cell["question"],
         "distance": cell["distance"],
         "device": cell["device"],
         "settings": cell["settings"],
         "parameters": parameters,
-        "windows": config.get("windows", {}),
+        "windows": windows,
         "case": str(case_dir),
         "repeats": 1 if smoke else config["run"]["repeats"],
         "single_call_after": config["run"]["single_call_after"],

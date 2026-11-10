@@ -12,7 +12,7 @@ command from this directory:
 ```bash
 uv sync
 ./install.sh                                  # the pinned toolchains and the Maryland raster
-uv run python run.py results/smoke --smoke   # every cell once, on 32 x 32 rasters
+uv run python run.py results/smoke --smoke   # every cell once, on 32 x 32 rasters, small windows
 nohup uv run python run.py results/v0.0.16 > run.log 2>&1 &   # the full run
 uv run python report.py results/v0.0.16      # the CSV, the figures and the page
 uv run pytest                                 # tests of the runner and the report
