@@ -106,17 +106,16 @@ covers solver choices for other graphs and larger landscapes.
 
 But what's really cool about jaxscape is that you can autodiff through thoses distances! Check out the Examples section to learn about applications and more!
 
-## Features and roadmap 🚀
-See issues; most notably:
-
-- [x] Support for direct and iterative linear sparse solvers on GPU (cf [spineax](https://github.com/johnviljoen/spineax))
-- [ ] Benchmark against `CircuitScape`, `ConScape.jl` and [`radish`](https://github.com/nspope/radish).
-
 ## License
 
 `jaxscape` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.
 
 ## Related packages
+
+Inverse landscape genetics built on JAXScape, which fits landscape permeability
+to genetic data by differentiating through resistance distances, lives in
+[ilg-toolkit](https://github.com/vboussange/ilg-toolkit).
+
 - gdistance
 - ConScape
 - Circuitscape
