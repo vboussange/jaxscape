@@ -1,5 +1,6 @@
 """Free-energy behavior at the public distance API, using an independent oracle."""
 
+import itertools
 from importlib.util import find_spec
 
 import jax
@@ -98,51 +99,51 @@ def test_numerically_unresolved_extremes_fail_explicitly():
 
 
 @pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
-@pytest.mark.parametrize("theta", [0.1, 0.7, 2.0])
-@pytest.mark.parametrize(
-    "edge_weights",
-    [WEIGHTS, np.array([1.0, 1.0, 0.0, 1.0, 1.0])],
-    ids=["unequal", "tied-four-cycle"],
-)
-def test_precision_metric_and_selections(dtype, theta, edge_weights):
-    weights = jnp.asarray(edge_weights, dtype=dtype)
-    distance = FreeEnergyDistance(theta)
-    expected = np.asarray(reference(adjacency(weights.astype(jnp.float64)), theta))
-    actual = distance(graph(weights))
-    assert actual.dtype == dtype
+def test_precision_metric_and_selections(dtype):
     tolerance = 2e-5 if dtype == jnp.float32 else 1e-11
-    np.testing.assert_allclose(actual, expected, rtol=tolerance, atol=tolerance)
-    np.testing.assert_array_equal(jnp.diag(actual), 0)
-    np.testing.assert_allclose(actual, actual.T, atol=tolerance)
-    assert jnp.all(actual + jnp.eye(4) > 0)
-    for k in range(4):
-        assert jnp.all(actual <= actual[:, k, None] + actual[None, k, :] + tolerance)
-    nodes = jnp.array([3, 1, 3])
-    np.testing.assert_allclose(
-        distance(graph(weights), nodes=nodes),
-        expected[nodes[:, None], nodes[None, :]],
-        rtol=tolerance,
-        atol=tolerance,
-    )
-    sources, targets = jnp.array([3, 0, 3]), jnp.array([2, 0])
-    np.testing.assert_allclose(
-        distance(graph(weights), sources=sources, targets=targets),
-        expected[sources[:, None], targets[None, :]],
-        rtol=tolerance,
-        atol=tolerance,
-    )
-    np.testing.assert_allclose(
-        distance(graph(weights), sources=sources),
-        expected[sources],
-        rtol=tolerance,
-        atol=tolerance,
-    )
-    np.testing.assert_allclose(
-        distance(graph(weights), targets=targets),
-        expected[:, targets],
-        rtol=tolerance,
-        atol=tolerance,
-    )
+    # Unequal weights and a four-cycle of tied weights, at three temperatures
+    # that share the compiled queries.
+    tied = np.array([1.0, 1.0, 0.0, 1.0, 1.0])
+    for edge_weights, theta in itertools.product([WEIGHTS, tied], [0.1, 0.7, 2.0]):
+        weights = jnp.asarray(edge_weights, dtype=dtype)
+        distance = FreeEnergyDistance(theta)
+        expected = np.asarray(reference(adjacency(weights.astype(jnp.float64)), theta))
+        actual = distance(graph(weights))
+        assert actual.dtype == dtype
+        np.testing.assert_allclose(actual, expected, rtol=tolerance, atol=tolerance)
+        np.testing.assert_array_equal(jnp.diag(actual), 0)
+        np.testing.assert_allclose(actual, actual.T, atol=tolerance)
+        assert jnp.all(actual + jnp.eye(4) > 0)
+        for k in range(4):
+            assert jnp.all(
+                actual <= actual[:, k, None] + actual[None, k, :] + tolerance
+            )
+        nodes = jnp.array([3, 1, 3])
+        np.testing.assert_allclose(
+            distance(graph(weights), nodes=nodes),
+            expected[nodes[:, None], nodes[None, :]],
+            rtol=tolerance,
+            atol=tolerance,
+        )
+        sources, targets = jnp.array([3, 0, 3]), jnp.array([2, 0])
+        np.testing.assert_allclose(
+            distance(graph(weights), sources=sources, targets=targets),
+            expected[sources[:, None], targets[None, :]],
+            rtol=tolerance,
+            atol=tolerance,
+        )
+        np.testing.assert_allclose(
+            distance(graph(weights), sources=sources),
+            expected[sources],
+            rtol=tolerance,
+            atol=tolerance,
+        )
+        np.testing.assert_allclose(
+            distance(graph(weights), targets=targets),
+            expected[:, targets],
+            rtol=tolerance,
+            atol=tolerance,
+        )
 
 
 def test_grid_coordinates_batching_and_self_gradients():
