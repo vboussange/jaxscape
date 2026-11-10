@@ -12,7 +12,7 @@ other tools' maps, and the other tools' maps of Maryland, for the report's
 Maryland figure. Smoke mode runs every cell on a raster of `smoke_side` pixels a
 side, with windows of `smoke_dependency_range` and one timed call, into a new
 run directory, and exits with an error when a cell fails or lacks its
-agreement.
+agreement; a cell of the solver view may fail a check of JAXScape.
 """
 
 import argparse

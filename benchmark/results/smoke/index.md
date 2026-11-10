@@ -34,7 +34,7 @@ Agreement (largest relative error) of each configuration and raster, or the stat
 | JAXScape | resistance | CPU | float32 | GridMultigridSolver | 1 | 5.8e-06 |
 | JAXScape | lcp | GPU | float32 |  | 1 | 2.5e-07 |
 | JAXScape | lcp | CPU | float32 |  | 1 | 2.4e-07 |
-| JAXScape | free_energy | GPU | float64 | CuDSSSolver | 1 | 2.9e-14 |
+| JAXScape | free_energy | GPU | float64 | CuDSSSolver | 1 | 2.5e-14 |
 | JAXScape | free_energy | CPU | float64 | CholmodSolver | 1 | 0.0e+00 |
 | Circuitscape.jl | resistance | CPU | float64 | cg+amg | 1 | 8.9e-07 |
 | Circuitscape.jl | resistance | CPU | float64 | cholmod | 1 | 4.6e-12 |
@@ -83,7 +83,68 @@ Agreement (Spearman's ρ) of each configuration and raster, or the status of the
 
 ![Maryland: JAXScape's sensitivity next to Omniscape.jl's normalized current](maryland.png)
 
-On Maryland, JAXScape's map of $\partial C / \partial p_k$ under resistance (GPU, 0.281 s) next to Omniscape.jl's normalized current (CPU, `cholmod`, 0.21 s), each coloured by the rank of its pixels, with barriers in gray: Spearman's ρ = -0.10.
+On Maryland, JAXScape's map of $\partial C / \partial p_k$ under resistance (GPU, 0.28 s) next to Omniscape.jl's normalized current (CPU, `cg+amg`, 0.203 s), each coloured by the rank of its pixels, with barriers in gray: Spearman's ρ = -0.10.
+
+## Solvers
+
+The solver view runs JAXScape with each of its linear solvers, in float32 and float64 on the GPU, on the cases of E1, E2 and E3, so that a user can trade speed for accuracy. `dense` is the dense solve (`solver=None`). Resistance runs on every question, and free energy on E1 alone, since it does not run on windows. Each cell runs like a cell of the comparison, except that a call stops after 15 minutes, and on fewer rasters: E1 on 256² and 1024², and E2 and E3 on 256², since exact windowed resistance takes about 23 minutes a call at 1024² with `GridMultigridSolver` in float32. The error of a cell, for E1, is the largest relative error over the pairs against the reference of E1, and for E2 and E3 the relative L2 error of the map $m$, $\lVert m - m_{\mathrm{ref}} \rVert_2 / \lVert m_{\mathrm{ref}} \rVert_2$, against the map of exact resistance in float64 with `CuDSSSolver` on the GPU, on the same tiles. In E2 and E3, `SpielmanApproximation(epsilon=0.15), GridMultigridSolver(rtol=3e-4)` is the setting of the comparison for resistance: Spielman's estimate of resistance, in float32.
+
+![Solvers: warm runtime against raster cells](solvers.png)
+
+Warm runtime and error of each solver, dtype and raster, or the status of the cell; `missing` marks a cell whose reference is unavailable.
+
+| Question | Distance | dtype | Solver | 32² |
+| --- | --- | --- | --- | --- |
+| E1 | resistance | float32 | GridMultigridSolver | 0.0202 s · 1.1e-05 |
+| E1 | resistance | float32 | CholmodSolver | 0.337 s · 1.0e-05 |
+| E1 | resistance | float32 | CuDSSSolver | 0.11 s · 2.8e-05 |
+| E1 | resistance | float32 | AMJaxCGSolver | 1.52 s · 2.9e-04 |
+| E1 | resistance | float32 | PyAMGSolver | 0.127 s · 6.8e-06 |
+| E1 | resistance | float32 | dense | 0.161 s · 8.6e-01 |
+| E1 | resistance | float64 | GridMultigridSolver | 0.0312 s · 7.6e-14 |
+| E1 | resistance | float64 | CholmodSolver | 0.446 s · 0.0e+00 |
+| E1 | resistance | float64 | CuDSSSolver | 0.114 s · 1.8e-14 |
+| E1 | resistance | float64 | AMJaxCGSolver | 1.57 s · 3.0e-04 |
+| E1 | resistance | float64 | PyAMGSolver | 0.102 s · 5.9e-07 |
+| E1 | resistance | float64 | dense | 2.09 s · 8.7e-14 |
+| E1 | free_energy | float32 | GridMultigridSolver | failed |
+| E1 | free_energy | float32 | CholmodSolver | failed |
+| E1 | free_energy | float32 | CuDSSSolver | failed |
+| E1 | free_energy | float32 | AMJaxCGSolver | failed |
+| E1 | free_energy | float32 | PyAMGSolver | failed |
+| E1 | free_energy | float32 | dense | failed |
+| E1 | free_energy | float64 | GridMultigridSolver | 0.0594 s · 2.9e-14 |
+| E1 | free_energy | float64 | CholmodSolver | 2.55 s · 3.3e-15 |
+| E1 | free_energy | float64 | CuDSSSolver | 0.138 s · 3.8e-14 |
+| E1 | free_energy | float64 | AMJaxCGSolver | failed |
+| E1 | free_energy | float64 | PyAMGSolver | failed |
+| E1 | free_energy | float64 | dense | 0.0384 s · 3.8e-14 |
+| E2 | resistance | float32 | GridMultigridSolver | 0.322 s · 2.2e-05 |
+| E2 | resistance | float32 | CholmodSolver | 2.85 s · 3.1e-07 |
+| E2 | resistance | float32 | CuDSSSolver | 0.655 s · 1.1e-05 |
+| E2 | resistance | float32 | AMJaxCGSolver | failed |
+| E2 | resistance | float32 | PyAMGSolver | 28.7 s · 2.6e-05 |
+| E2 | resistance | float32 | dense | 0.0978 s · 3.0e-06 |
+| E2 | resistance | float32 | SpielmanApproximation(epsilon=0.15), GridMultigridSolver(rtol=3e-4) | 0.312 s · 1.0e-01 |
+| E2 | resistance | float64 | GridMultigridSolver | 0.861 s · 4.4e-07 |
+| E2 | resistance | float64 | CholmodSolver | 2.97 s · 2.4e-15 |
+| E2 | resistance | float64 | CuDSSSolver | 0.675 s · 1.3e-15 |
+| E2 | resistance | float64 | AMJaxCGSolver | 51.5 s · 1.2e-03 |
+| E2 | resistance | float64 | PyAMGSolver | 29.4 s · 6.3e-07 |
+| E2 | resistance | float64 | dense | 0.668 s · 5.1e-15 |
+| E3 | resistance | float32 | GridMultigridSolver | 0.256 s · 2.4e-05 |
+| E3 | resistance | float32 | CholmodSolver | 2.11 s · 1.2e-06 |
+| E3 | resistance | float32 | CuDSSSolver | 0.124 s · 1.1e-05 |
+| E3 | resistance | float32 | AMJaxCGSolver | failed |
+| E3 | resistance | float32 | PyAMGSolver | 28.1 s · 1.5e-05 |
+| E3 | resistance | float32 | dense | 0.0678 s · 5.8e-06 |
+| E3 | resistance | float32 | SpielmanApproximation(epsilon=0.15), GridMultigridSolver(rtol=3e-4) | 0.302 s · 8.1e-02 |
+| E3 | resistance | float64 | GridMultigridSolver | 0.739 s · 4.3e-07 |
+| E3 | resistance | float64 | CholmodSolver | 2.09 s · 4.3e-15 |
+| E3 | resistance | float64 | CuDSSSolver | 0.389 s · 2.4e-15 |
+| E3 | resistance | float64 | AMJaxCGSolver | 45.9 s · 2.0e-03 |
+| E3 | resistance | float64 | PyAMGSolver | 29 s · 1.8e-07 |
+| E3 | resistance | float64 | dense | 0.586 s · 8.1e-15 |
 
 ## Environment
 
@@ -104,7 +165,7 @@ The header comment of each adapter states how it maps the shared parameters onto
 
 | Tool | Questions | Adapter | Mapping |
 | --- | --- | --- | --- |
-| JAXScape | E1, E2, E3 | `adapters/jaxscape.py` | JAXScape builds a `GridGraph` of the permeability raster with rook contiguity, the conductance of an edge being the harmonic mean of the permeabilities of its two pixels (`landscape.conductance`), so that its resistance is their mean resistance. Least-cost and free-energy distances take 1 / conductance as the edge cost, and the free energy takes the shared `theta`. E1 is a nodes-to-nodes query among the sites. E2 runs `SensitivityAnalysis(var="quality")` for the map and `ConnectivityAnalysis` for the total, and E3 `SensitivityAnalysis(var="permeability")`, with the shared `dependency_range` and `coarsening_factor`, the default proximity and the `batch_size` of the settings; these windowed analyses build their graphs with JAXScape's own edge rule, the mean permeability of the two pixels. The distance runs with the solver and dtype of its settings, and every call builds the graphs and the solver states. |
+| JAXScape | E1, E2, E3 | `adapters/jaxscape.py` | JAXScape builds a `GridGraph` of the permeability raster with rook contiguity, the conductance of an edge being the harmonic mean of the permeabilities of its two pixels (`landscape.conductance`), so that its resistance is their mean resistance. Least-cost and free-energy distances take 1 / conductance as the edge cost, and the free energy takes the shared `theta`. E1 is a nodes-to-nodes query among the sites. E2 runs `SensitivityAnalysis(var="quality")` for the map and `ConnectivityAnalysis` for the total, and E3 `SensitivityAnalysis(var="permeability")`, with the shared `dependency_range` and `coarsening_factor`, the default proximity and the `batch_size` of the settings; these windowed analyses build their graphs with JAXScape's own edge rule, the mean permeability of the two pixels. The distance runs with the solver, the resistance `method` and the dtype of its settings, such as `GridMultigridSolver(rtol=3e-4)` (`dense` is the dense solve, `solver=None`), and every call builds the graphs and the solver states. |
 | ConScape.jl | E1, E2, E3 | `adapters/conscape.jl` | ConScape.jl builds its graph with rook contiguity (`N4`), the affinity of an edge being the harmonic mean of the permeabilities of its two pixels (`AverageWeight`), as `landscape.conductance` gives, and the cost of an edge 1 / affinity (`Inv`). Its free energy takes the shared `theta`. E1 computes the free-energy distances among the sites, the targets of a `GridRSP`. ConScape's free-energy distance is directed, and the adapter returns the mean of the two directions between two sites, as JAXScape's `FreeEnergyDistance` does. E2 and E3 run on the whole raster, without windows, with targets at landmarks every b pixels (`coarse_graining`), each holding the quality of its block, where b is JAXScape's block size for the shared `dependency_range` and `coarsening_factor`: 21. E2 returns Hanski's S_i, the connected habitat of each pixel at source quality 1 (`connected_habitat`): the sum over landmarks of their quality times exp(-d / (dependency_range / 4)), exp(-d / 25), for the free-energy distance d to the landmark. E3 returns the quality-weighted betweenness (`betweenness_qweighted`). JAXScape has no free-energy map, and the configuration compares these maps with JAXScape's under least-cost distance. Free energy runs from a multiple of resistance distance, as theta falls to 0, to least-cost distance, as theta grows. On the synthetic raster of 256 pixels a side, for every theta from 1e-5 to 1.5e-2, it ranks the pairs of E1 sites as least-cost distance does (Spearman's rho 0.98 to 0.99, against 0.92 to 0.95 with resistance distance), and at theta 1.5e-4 ConScape's maps of E2 and E3 correlate more with JAXScape's under least-cost distance (rho 0.91 and 0.84) than under resistance distance (0.89 and 0.77). Every call rebuilds the affinities, the `Grid`, the landmarks and the `GridRSP`, with its sparse LU factorization, which runs on the BLAS threads of the cell. |
 | EcoScape | E3 | `adapters/ecoscape.py` | EcoScape (`ecoscape-connectivity`) simulates the repopulation of the habitat, the pixels of quality > 0, from seeds drawn at random in it, and maps its flow: the gradient of the repopulation with respect to the permeability of each pixel, times that permeability. Its edge rule is its own: at each step, individuals spread to the 8 neighbours of a pixel, survive a coin toss, and are multiplied by the permeability of their destination. The dispersal distance is the shared `dependency_range`, in pixels, which is also the border of its tiles and their padding, so that its map covers the raster. Quality enters only as habitat. The other settings are EcoScape's defaults: 400 simulations, 4 seeds per square of side 2 `dependency_range` + 1, tiles of 1000 pixels and no gap crossing, with the `batch_size` of the settings and a fixed random seed. EcoScape tiles a raster through GeoTIFFs only: every call writes the habitat and permeability to /dev/shm, runs on the GPU, and reads back the flow, which EcoScape writes with its connectivity. Its map is compared with JAXScape's under least-cost distances: repopulation follows the most permeable neighbour, the maximum over neighbours, as a least-cost path does. |
 | samc | E3 | `adapters/samc.R` | samc builds a spatial absorbing Markov chain on the resistance raster, 1 / permeability, with 4 neighbours (rook contiguity) and the transition function 1 / mean(x): an individual moves to a neighbour in proportion to the harmonic mean of the permeabilities of the two pixels, `landscape.conductance`, and barriers, of permeability 0, are left out of the chain. The absorption of every pixel is (4 / `dependency_range`)^2 per step, so that an individual moves about `dependency_range` / 4 pixels before it is absorbed, the length over which JAXScape's default proximity decays. Individuals are released in proportion to quality, and the map is `visitation`: the expected number of visits to each pixel before absorption. The solver is samc's `method`, whose `direct` method factorizes the chain with a single thread. Every call builds the chain, on which samc caches its factorization. Its map is compared with JAXScape's under resistance distances: an absorbing random walk is the random walk behind resistance distance. |
