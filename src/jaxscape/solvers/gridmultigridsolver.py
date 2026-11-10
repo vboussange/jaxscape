@@ -55,10 +55,12 @@ class _Level(eqx.Module):
       an array of the grid's shape.
     - `P`: The weights of the interpolation from the next coarser level to this
       one, or `None` on the coarsest level.
+    - `offsets`: The offsets (row, column) of the stencil of `A`.
     """
 
     A: tuple[Array, ...]
     P: tuple[Array, ...] | None
+    offsets: tuple[tuple[int, int], ...] = eqx.field(static=True)
 
 
 class _MultilevelSolver(eqx.Module):
@@ -70,12 +72,10 @@ class _MultilevelSolver(eqx.Module):
 
     - `levels`: The levels, from the finest.
     - `factor`: The lower Cholesky factor of the matrix of the coarsest level.
-    - `offsets`: The offsets (row, column) of the stencil of the finest level.
     """
 
     levels: tuple[_Level, ...]
     factor: Array
-    offsets: tuple[tuple[int, int], ...] = eqx.field(static=True)
 
 
 @final
@@ -311,44 +311,43 @@ def _stencil(
 # Each solve traces it, and Lineax traces a solve up to three times: a jitted
 # function is traced once for its shapes.
 @eqx.filter_jit
-def _hierarchy(state: GridMultigridState) -> _MultilevelSolver:
+def _multilevel_solver(state: GridMultigridState) -> _MultilevelSolver:
     """The multigrid hierarchy of the matrix of `state`."""
-    offsets = state.offsets
-    height, width = state.stencil[0].shape
+    A = state.stencil
+    height, width = A[0].shape
     shapes = [(height, width)]
     while shapes[-1][0] * shapes[-1][1] > _MAX_COARSE:
         height, width = shapes[-1]
         shapes.append(((height + 1) // 2, (width + 1) // 2))
-    stencils, interpolations = [state.stencil], []
+    offsets = [state.offsets] + [_QUEEN] * (len(shapes) - 1)
+    As, Ps = [A], []
     if len(shapes) > 1:
-        weights = _interpolation(offsets, state.stencil)
-        stencils.append(_galerkin(offsets, state.stencil, weights, shapes[1]))
-        interpolations.append(weights)
+        P = _interpolation(offsets[0], A)
+        As.append(_galerkin(offsets[0], A, P, shapes[1]))
+        Ps.append(P)
     if len(shapes) > 2:
-        coarser, weights = _coarser_grids(stencils[-1], shapes[1:])
-        stencils += coarser
-        interpolations += weights
+        coarser_As, coarser_Ps = _coarser_grids(As[-1], shapes[1:])
+        As += coarser_As
+        Ps += coarser_Ps
     height, width = shapes[-1]
     n = height * width
-    level_offsets = offsets if len(shapes) == 1 else _QUEEN
-    eye = jnp.eye(n, dtype=state.stencil[0].dtype)
-    matrix = _matvec(level_offsets, stencils[-1], eye.reshape(height, width, n))
+    eye = jnp.eye(n, dtype=A[0].dtype)
+    matrix = _matvec(offsets[-1], As[-1], eye.reshape(height, width, n))
     matrix = matrix.reshape(n, n)
     factor = jnp.linalg.cholesky((matrix + matrix.T) / 2)
-    levels = map(_Level, stencils, [*interpolations, None])
-    return _MultilevelSolver(tuple(levels), factor, offsets)
+    levels = map(_Level, As, [*Ps, None], offsets)
+    return _MultilevelSolver(tuple(levels), factor)
 
 
 def _coarser_grids(
-    stencil: tuple[Array, ...], shapes: list[tuple[int, int]]
+    A: tuple[Array, ...], shapes: list[tuple[int, int]]
 ) -> tuple[list[tuple[Array, ...]], list[tuple[Array, ...]]]:
-    """The stencils of the grids of `shapes[1:]`, and the interpolation weights
-    from each to the grid before it, from the queen `stencil` of a grid of
-    `shapes[0]`.
+    """The matrices of the grids of `shapes[1:]`, and the interpolations to
+    each grid before it, from the queen matrix `A` of a grid of `shapes[0]`.
 
     One loop builds each grid from the one before it, in arrays of the shape
     of `shapes[0]`. Their points beyond a grid have zero coefficients: they
-    couple to no point of the grid, and leave its stencil and weights
+    couple to no point of the grid, and leave its matrix and interpolation
     unchanged. XLA compiles the loop once, faster than one copy of the code
     per grid.
     """
@@ -356,24 +355,24 @@ def _coarser_grids(
     coarse = ((height + 1) // 2, (width + 1) // 2)
     padding = ((0, height - coarse[0]), (0, width - coarse[1]))
 
-    def coarser(stencil, _):
-        weights = _interpolation(_QUEEN, stencil)
-        coarser = _galerkin(_QUEEN, stencil, weights, coarse)
-        return tuple(jnp.pad(c, padding) for c in coarser), (coarser, weights)
+    def coarser(A, _):
+        P = _interpolation(_QUEEN, A)
+        coarse_A = _galerkin(_QUEEN, A, P, coarse)
+        return tuple(jnp.pad(a, padding) for a in coarse_A), (coarse_A, P)
 
-    _, (stencils, weights) = lax.scan(coarser, stencil, length=len(shapes) - 1)
-    grids, interpolations = [], []
+    _, (padded_As, padded_Ps) = lax.scan(coarser, A, length=len(shapes) - 1)
+    As, Ps = [], []
     for i, ((rows, columns), (coarse_rows, coarse_columns)) in enumerate(
         zip(shapes, shapes[1:])
     ):
-        grids.append(tuple(c[i, :coarse_rows, :coarse_columns] for c in stencils))
+        As.append(tuple(a[i, :coarse_rows, :coarse_columns] for a in padded_As))
         # The shapes of the weights, as `_interpolation` returns them.
         sizes = [(coarse_rows, columns // 2)] * 2 + [(rows // 2, coarse_columns)] * 2
         sizes += [(rows // 2, columns // 2)] * 4
-        interpolations.append(
-            tuple(w[i, :a, :b] for w, (a, b) in zip(weights, sizes, strict=True))
+        Ps.append(
+            tuple(w[i, :a, :b] for w, (a, b) in zip(padded_Ps, sizes, strict=True))
         )
-    return grids, interpolations
+    return As, Ps
 
 
 def _shift(x: Array, i: int, j: int) -> Array:
@@ -383,9 +382,9 @@ def _shift(x: Array, i: int, j: int) -> Array:
     return jnp.pad(x, padding)[1 + i : 1 + i + height, 1 + j : 1 + j + width]
 
 
-def _matvec(offsets: tuple, stencil: tuple[Array, ...], x: Array) -> Array:
-    """The product of the stencil matrix and `x`, of shape `(height, width, m)`."""
-    terms = [a[:, :, None] * _shift(x, *o) for a, o in zip(stencil, offsets)]
+def _matvec(offsets: tuple, A: tuple[Array, ...], x: Array) -> Array:
+    """The product of the stencil matrix `A` and `x`, of shape `(height, width, m)`."""
+    terms = [a[:, :, None] * _shift(x, *o) for a, o in zip(A, offsets)]
     return sum(terms[1:], terms[0])
 
 
@@ -394,13 +393,13 @@ def _ratio(numerator: Array, denominator: Array) -> Array:
     return jnp.where(nonzero, numerator / jnp.where(nonzero, denominator, 1), 0)
 
 
-def _interpolation(offsets: tuple, stencil: tuple[Array, ...]) -> tuple[Array, ...]:
+def _interpolation(offsets: tuple, A: tuple[Array, ...]) -> tuple[Array, ...]:
     """The interpolation weights of the points of odd rows or columns.
 
     A point between two coarse points along a row takes their weights from the
-    stencil summed along columns, so that it is in equilibrium with them along
-    the row; likewise along columns. A point between four coarse points is in
-    equilibrium with its eight neighbours.
+    stencil of `A` summed along columns, so that it is in equilibrium with them
+    along the row; likewise along columns. A point between four coarse points
+    is in equilibrium with its eight neighbours.
 
     **Returns:**
 
@@ -411,8 +410,8 @@ def _interpolation(offsets: tuple, stencil: tuple[Array, ...]) -> tuple[Array, .
     points up left, up right, down left and down right,
     `(rows // 2, columns // 2)`.
     """
-    zero = jnp.zeros_like(stencil[0])
-    a = {o: stencil[offsets.index(o)] if o in offsets else zero for o in _QUEEN}
+    zero = jnp.zeros_like(A[0])
+    a = {o: A[offsets.index(o)] if o in offsets else zero for o in _QUEEN}
     sides = (-1, 1)
     # The stencil summed over its rows (columns), whose own column (row) holds
     # the coefficient of the point.
@@ -447,11 +446,11 @@ def _spread(x: Array, start: tuple[int, int], shape: tuple[int, ...]) -> Array:
     return lax.pad(x, jnp.zeros((), x.dtype), padding)
 
 
-def _prolong(weights: tuple[Array, ...], x: Array, shape: tuple[int, ...]) -> Array:
+def _prolong(P: tuple[Array, ...], x: Array, shape: tuple[int, ...]) -> Array:
     """Interpolate `x`, of shape `(coarse rows, coarse columns, m)`, to `shape`."""
     rows, columns = shape[0] // 2, shape[1] // 2
     coarse_rows, coarse_columns = x.shape[:2]
-    left, right, up, down, *diagonal = (w[..., None] for w in weights)
+    left, right, up, down, *diagonal = (w[..., None] for w in P)
     x_ = jnp.pad(x, ((0, 1), (0, 1), (0, 0)))
     above, below = x_[:rows], x_[1 : rows + 1]
     fine = _spread(x, (0, 0), shape)
@@ -475,17 +474,17 @@ def _prolong(weights: tuple[Array, ...], x: Array, shape: tuple[int, ...]) -> Ar
     return fine
 
 
-def _restrict(weights: tuple[Array, ...], x: Array, coarse: tuple[int, ...]) -> Array:
+def _restrict(P: tuple[Array, ...], x: Array, coarse: tuple[int, ...]) -> Array:
     """The transpose of `_prolong`."""
     zeros = jnp.zeros(coarse + x.shape[2:], x.dtype)
-    prolong = jax.linear_transpose(lambda y: _prolong(weights, y, x.shape[:2]), zeros)
+    prolong = jax.linear_transpose(lambda y: _prolong(P, y, x.shape[:2]), zeros)
     return prolong(x)[0]
 
 
 def _galerkin(
     offsets: tuple,
-    stencil: tuple[Array, ...],
-    weights: tuple[Array, ...],
+    A: tuple[Array, ...],
+    P: tuple[Array, ...],
     coarse: tuple[int, int],
 ) -> tuple[Array, ...]:
     """The stencil of the coarse matrix `P.T A P`, from its products with 9
@@ -496,8 +495,8 @@ def _galerkin(
     j = np.arange(coarse[1])[None, :, None] % 3
     colour = np.arange(9)
     probes = jnp.asarray(i == colour // 3) & jnp.asarray(j == colour % 3)
-    fine = _prolong(weights, probes.astype(stencil[0].dtype), stencil[0].shape)
-    products = _restrict(weights, _matvec(offsets, stencil, fine), coarse)
+    fine = _prolong(P, probes.astype(A[0].dtype), A[0].shape)
+    products = _restrict(P, _matvec(offsets, A, fine), coarse)
     # The product of the vector that holds the neighbour (i + di, j + dj) gives
     # the coefficient of the offset (di, dj) at (i, j).
     di, dj = (np.array([o[axis] for o in _QUEEN]) for axis in (0, 1))
@@ -540,11 +539,11 @@ def _v_cycle(ml: _MultilevelSolver, b: Array, lvl: int = 0) -> Array:
         )
         rows = lax.linalg.triangular_solve(ml.factor, rows, left_side=False, lower=True)
         return rows.T.reshape(b.shape)
-    offsets = ml.offsets if lvl == 0 else _QUEEN
-    A, P = ml.levels[lvl].A, ml.levels[lvl].P
+    level, coarse = ml.levels[lvl], ml.levels[lvl + 1]
+    offsets, A, P = level.offsets, level.A, level.P
     assert P is not None
     x = _jacobi(offsets, A, None, b)
-    coarse_b = _restrict(P, b - _matvec(offsets, A, x), ml.levels[lvl + 1].A[0].shape)
+    coarse_b = _restrict(P, b - _matvec(offsets, A, x), coarse.A[0].shape)
     coarse_x = _v_cycle(ml, coarse_b, lvl + 1)
     x = x + _prolong(P, coarse_x, b.shape[:2])
     return _jacobi(offsets, A, x, b)
@@ -554,7 +553,7 @@ def _dot(x: Array, y: Array) -> Array:
     return jnp.sum(x * y, axis=(0, 1))
 
 
-# Traced once for its shapes, as `_hierarchy`.
+# Traced once for its shapes, as `_multilevel_solver`.
 @eqx.filter_jit
 def _cg(
     ml: _MultilevelSolver, b: Array, rtol: float, max_steps: int
@@ -573,7 +572,7 @@ def _cg(
     largest = jnp.max(jnp.abs(b), axis=(0, 1))
     exponent = jnp.frexp(largest)[1]
     b = jnp.where(largest >= jnp.finfo(b.dtype).tiny, jnp.ldexp(b, -exponent), 0)
-    offsets, A = ml.offsets, ml.levels[0].A
+    offsets, A = ml.levels[0].offsets, ml.levels[0].A
     tolerance = (rtol**2) * _dot(b, b)
 
     def step(carry):
@@ -609,7 +608,7 @@ def _solve(
     def solve(state, vectors):
         # Right-hand sides as columns.
         b = vectors.reshape(height, width, -1)
-        x, solved = _cg(_hierarchy(state), b, rtol, max_steps)
+        x, solved = _cg(_multilevel_solver(state), b, rtol, max_steps)
         return x.reshape(height * width, -1), solved
 
     @jax.custom_batching.custom_vmap

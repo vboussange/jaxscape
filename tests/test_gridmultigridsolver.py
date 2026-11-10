@@ -78,19 +78,19 @@ def test_solves_match_direct_solves(shape, neighbors):
 
 @eqx.filter_jit
 def grids_one_after_another(state):
-    """The stencils of the grids of the multigrid hierarchy of `state`, and the
-    interpolation weights from each coarse grid, each built from the grid
+    """The matrices `As` of the grids of the multigrid hierarchy of `state`, and
+    the interpolations `Ps` from each coarse grid, each built from the grid
     before it in arrays of its own shape."""
-    offsets, stencil = state.offsets, state.stencil
-    stencils, interpolations = [stencil], []
-    while stencil[0].size > 1024:
-        coarse = ((stencil[0].shape[0] + 1) // 2, (stencil[0].shape[1] + 1) // 2)
-        weights = gridmultigridsolver._interpolation(offsets, stencil)
-        stencil = gridmultigridsolver._galerkin(offsets, stencil, weights, coarse)
+    offsets, A = state.offsets, state.stencil
+    As, Ps = [A], []
+    while A[0].size > 1024:
+        coarse = ((A[0].shape[0] + 1) // 2, (A[0].shape[1] + 1) // 2)
+        P = gridmultigridsolver._interpolation(offsets, A)
+        A = gridmultigridsolver._galerkin(offsets, A, P, coarse)
         offsets = gridmultigridsolver._QUEEN
-        stencils.append(stencil)
-        interpolations.append(weights)
-    return stencils, interpolations
+        As.append(A)
+        Ps.append(P)
+    return As, Ps
 
 
 def test_hierarchies_of_four_grids_match_grids_built_one_after_another():
@@ -101,12 +101,12 @@ def test_hierarchies_of_four_grids_match_grids_built_one_after_another():
     # Measured: 41 iterations.
     solver = GridMultigridSolver(rtol=1e-12, max_steps=60)
     state = solver.init(BCOOLinearOperator(matrix), {})
-    hierarchy = gridmultigridsolver._hierarchy(state)
+    ml = gridmultigridsolver._multilevel_solver(state)
 
-    shapes = [level.A[0].shape for level in hierarchy.levels]
+    shapes = [level.A[0].shape for level in ml.levels]
     assert shapes == [(129, 131), (65, 66), (33, 33), (17, 17)]
-    A = [level.A for level in hierarchy.levels]
-    P = [level.P for level in hierarchy.levels]
+    A = [level.A for level in ml.levels]
+    P = [level.P for level in ml.levels]
     actual = jax.tree.leaves((A, P))
     expected = jax.tree.leaves(grids_one_after_another(state))
     for a, e in zip(actual, expected, strict=True):
