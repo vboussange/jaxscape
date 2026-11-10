@@ -30,11 +30,13 @@ from pathlib import Path
 
 import numpy as np
 from landscape import maryland, sites, synthetic
+from scipy.stats import spearmanr
 
 
 HERE = Path(__file__).resolve().parent
 KEY = ("question", "tool", "distance", "device", "dtype", "solver", "case")
-MEASURES = {"E1": "largest relative error"}
+MEASURES = {1: "largest relative error", 2: "Spearman's ρ", 3: "Spearman's ρ"}
+MAPS = "JAXScape"  # the tool whose maps of E2 and E3 Tiers 2 and 3 compare with
 REFERENCE = "adapters/reference.py"
 INTERPRETERS = {".jl": ["julia", f"--project={HERE / 'julia'}"], ".R": ["Rscript"]}
 OOM = re.compile(
@@ -43,7 +45,7 @@ OOM = re.compile(
     re.IGNORECASE,
 )
 ERROR = re.compile(r"^([\w.]*(Error|Exception)\b|ERROR:)")
-R_PACKAGES = ["gdistance"]  # the R tools, whose versions each run records
+R_PACKAGES = ["gdistance", "samc"]  # the R tools, whose versions each run records
 
 
 def main():
@@ -81,6 +83,7 @@ def run(config, run_dir, smoke):
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "logs").mkdir(exist_ok=True)
     (run_dir / "references").mkdir(exist_ok=True)
+    (run_dir / "maps").mkdir(exist_ok=True)
     if not (run_dir / "environment.json").exists():
         snapshot = json.dumps(environment(config), indent=2)
         (run_dir / "environment.json").write_text(snapshot + "\n")
@@ -233,7 +236,7 @@ def blank(cell, status, reason):
         "warmup_s": None,
         "times_s": None,
         "median_s": None,
-        "measure": MEASURES.get(cell["question"]) if cell["tier"] else None,
+        "measure": MEASURES.get(cell["tier"]),
         "agreement": None,
         "tier": cell["tier"],
         "version": None,
@@ -261,11 +264,22 @@ def run_cell(config, cell, case_dir, run_dir, smoke):
         version=result["version"],
         files=result["files"],
     )
-    if cell["tier"]:
+    if cell["tier"] == 1:
         reference = reference_of(config, cell, case_dir, run_dir)
         if reference is not None:
             record["agreement"] = largest_relative_error(
                 np.load(work / "output.npy"), reference
+            )
+    elif cell["question"] != "E1":
+        # The other tools compare with the first map of JAXScape for the
+        # question, case and distance; its entries come first.
+        name = f"{cell['question']}-{cell['case']}-{cell['distance']}.npy"
+        path = run_dir / "maps" / name
+        if cell["tool"] == MAPS and not path.exists():
+            shutil.copy(work / "output.npy", path)
+        elif cell["tier"] and path.exists():
+            record["agreement"] = rank_correlation(
+                np.load(work / "output.npy"), np.load(path)
             )
     return record
 
@@ -322,6 +336,12 @@ def largest_relative_error(output, reference):
     pairs = np.triu_indices(len(reference), 1)
     error = np.abs(output[pairs] - reference[pairs]) / np.abs(reference[pairs])
     return float(np.max(error))
+
+
+def rank_correlation(output, reference):
+    """Return Spearman's ρ between two maps, over the pixels where both are finite."""
+    finite = np.isfinite(output) & np.isfinite(reference)
+    return float(spearmanr(output[finite], reference[finite]).statistic)
 
 
 def execute(config, adapter, device, specification, work, log):
@@ -448,6 +468,8 @@ def environment(config):
                     "numpy",
                     "scipy",
                     "scikit-image",
+                    "ecoscape-connectivity",
+                    "torch",
                 )
             },
             **julia_packages(),

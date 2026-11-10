@@ -47,8 +47,9 @@ change the pin, run, and report.
   Julia and R adapters, and `reference.py` computes the float64 reference of
   E1.
 - `results/<run>/`: `records.jsonl`, the environment snapshot
-  `environment.json`, the references of E1, the logs of the cells (not
-  committed), and what the report writes: `results.csv`, one figure per
+  `environment.json`, the references of E1, the maps of JAXScape that the
+  other tools of E2 and E3 are compared with and the logs of the cells (both
+  not committed), and what the report writes: `results.csv`, one figure per
   question, `e1.png` to `e3.png`, and the page `index.md`.
 
 ## The cell record
@@ -60,7 +61,7 @@ A record is the one contract between the runner and the report:
 | `question`, `tool`, `distance`, `device`, `dtype`, `solver`, `case` | The cell; `cells` is its number of raster cells. |
 | `status`, `reason` | `ok`, `failed`, `timeout`, `oom` or `skipped`, and why. |
 | `warmup_s`, `times_s`, `median_s` | The warm-up call, the timed calls and their median, in seconds. |
-| `measure`, `agreement`, `tier` | The agreement measure of the tier, and its value, or `null` when the reference is unavailable. |
+| `measure`, `agreement`, `tier` | The agreement measure of the tier, and its value, or `null` when the reference is unavailable. Tier 1 measures the largest relative error against the float64 reference, and Tiers 2 and 3 Spearman's ρ against the map of JAXScape for the same question, case and distance. |
 | `version`, `files`, `adapter` | The tool's version, whether its calls read or write files, and its adapter. |
 
 ## Add a tool
@@ -72,8 +73,8 @@ A tool takes one adapter script and one configuration entry.
    this comment into the table of parameter mappings. The adapter follows the
    protocol of `adapters/protocol.py`: it reads the cell file named by its
    argument, touches `progress` at the start of each call, saves the output
-   of its last call to `output` (for E1, the distances among the sites), and
-   writes `result`. Julia adapters include `adapters/protocol.jl` and run
+   of its last call to `output` (for E1, the distances among the sites, and
+   for E2 and E3, its map), and writes `result`. Julia adapters include `adapters/protocol.jl` and run
    with `julia --project=julia`. R adapters source `adapters/protocol.R` and
    run with `Rscript` in this directory. To add an R package, load it in the
    adapter, run `Rscript -e 'renv::install("samc"); renv::snapshot()'` here,
@@ -94,6 +95,11 @@ A tool takes one adapter script and one configuration entry.
    [tools.distances.resistance]
    solver = ["cg+amg", "cholmod"]
    ```
+
+   For E2 and E3, the distance of an entry is the JAXScape distance whose
+   map the tool's map is compared with, and the adapter justifies the choice.
+   The entries of JAXScape come first, so that its maps exist when the other
+   tools run.
 
 ## Publish a run
 

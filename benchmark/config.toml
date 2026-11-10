@@ -151,3 +151,28 @@ devices = ["cpu"]
 tier = 1
 
 [tools.distances.lcp]
+
+# The distance of a tool of E2 or E3 is the JAXScape distance whose map its own
+# map is compared with; its adapter justifies the choice.
+[[tools]]
+tool = "EcoScape"
+question = "E3"
+adapter = "adapters/ecoscape.py"
+devices = ["gpu"]
+tier = 3
+
+# The largest batch of simulations whose tiles fit in the 24 GB of an RTX 3090
+# (8 runs out).
+[tools.distances.lcp]
+dtype = "float32"
+batch_size = 4
+
+[[tools]]
+tool = "samc"
+question = "E3"
+adapter = "adapters/samc.R"
+devices = ["cpu"]
+tier = 3
+
+[tools.distances.resistance]
+solver = "direct"

@@ -84,6 +84,27 @@ devices = ["cpu"]
 
 [tools.distances.resistance]
 dtype = "float32"
+
+[[tools]]
+tool = "JAXScape"
+question = "E3"
+adapter = "tests/fake_adapter.py"
+devices = ["cpu"]
+
+[tools.distances.resistance]
+dtype = "float32"
+
+[[tools]]
+tool = "Fake E3"
+question = "E3"
+adapter = "tests/fake_adapter.py"
+devices = ["cpu"]
+tier = 3
+
+[tools.distances.resistance]
+negate = true
+
+[tools.distances.lcp]
 """
 # A land cover of 20 x 24 pixels, of classes 1 (resistance 1), 2 (resistance 10)
 # and 3 (a barrier).
@@ -178,6 +199,23 @@ def test_runner_records_no_agreement_for_a_tool_without_tier(run_dir):
     assert record["agreement"] is None
 
 
+def test_runner_records_the_rank_correlation_with_the_map_of_jaxscape(run_dir):
+    cells = records(run_dir, "Fake E3")
+
+    # The fake tool maps minus the quality, and the fake JAXScape the quality.
+    resistance = cells[("resistance", "synthetic-8")]
+    assert resistance["tier"] == 3
+    assert resistance["measure"] == "Spearman's ρ"
+    assert resistance["agreement"] == pytest.approx(-1)
+    # JAXScape has no map of E3 under least-cost distances.
+    lcp = cells[("lcp", "synthetic-8")]
+    assert (lcp["status"], lcp["measure"], lcp["agreement"]) == (
+        "ok",
+        "Spearman's ρ",
+        None,
+    )
+
+
 def test_runner_records_why_a_cell_failed_or_was_skipped(run_dir):
     cells = records(run_dir)
 
@@ -198,6 +236,8 @@ def test_runner_snapshots_the_environment(run_dir):
     assert environment["packages"]["ConScape"] == "0.3.0"
     assert environment["packages"]["R"] == "4.1.2"
     assert environment["packages"]["gdistance"] == "1.6.5"
+    assert environment["packages"]["samc"] == "4.2.1"
+    assert environment["packages"]["ecoscape-connectivity"] == "0.2.5"
 
 
 def test_restart_skips_the_recorded_cells(run_dir, tmp_path):

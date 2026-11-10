@@ -87,7 +87,10 @@ SETUPS = {
     ),
     "E3": (
         "JAXScape computes the map of $\\partial C / \\partial p_k$ with "
-        "`SensitivityAnalysis`, with the windows and proximity of E2."
+        "`SensitivityAnalysis`, with the windows and proximity of E2. The "
+        "other tools map a flow, and the agreement of each is Spearman's ρ "
+        "over pixels between its map and the map of JAXScape under the "
+        "distance of its row."
     ),
 }
 
@@ -270,7 +273,9 @@ def value(record):
         return record["status"]
     if record["agreement"] is None:
         return "missing"
-    return f"{record['agreement']:.1e}"
+    if record["tier"] == 1:
+        return f"{record['agreement']:.1e}"  # a relative error
+    return f"{record['agreement']:.2f}"  # Spearman's ρ
 
 
 def agreement_table(records):
