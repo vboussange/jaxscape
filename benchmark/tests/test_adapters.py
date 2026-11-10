@@ -73,6 +73,40 @@ def test_tier_1_adapters_agree_with_the_float64_reference(tmp_path):
     assert max(errors.values()) < 1e-12, errors
 
 
+def test_jaxscape_adapter_runs_the_solver_options_and_method_of_its_settings(
+    tmp_path,
+):
+    # Spielman's approximation with 23 random projections (epsilon 0.5) errs by
+    # percents, where the exact resistance agrees to the solver's tolerance.
+    config = tmp_path / "config.toml"
+    config.write_text(
+        CONFIG.split("[[tools]]")[0]
+        + """
+[[tools]]
+tool = "JAXScape"
+question = "E1"
+adapter = "adapters/jaxscape.py"
+devices = ["cpu"]
+tier = 1
+
+[tools.distances.resistance]
+dtype = "float64"
+solver = "GridMultigridSolver(rtol=1e-10)"
+method = "SpielmanApproximation(epsilon=0.5)"
+"""
+    )
+    subprocess.run(
+        [sys.executable, "run.py", tmp_path / "run", "--config", config],
+        cwd=BENCHMARK,
+        check=True,
+    )
+    lines = (tmp_path / "run" / "records.jsonl").read_text().splitlines()
+    [record] = [r for r in map(json.loads, lines) if r["distance"] == "resistance"]
+
+    assert (record["status"], record["reason"]) == ("ok", None)
+    assert record["agreement"] > 1e-2
+
+
 E2_CONFIG = f"""
 [run]
 timeout = 600

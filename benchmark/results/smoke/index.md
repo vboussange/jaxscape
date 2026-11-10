@@ -34,18 +34,18 @@ Agreement (largest relative error) of each configuration and raster, or the stat
 | JAXScape | resistance | CPU | float32 | GridMultigridSolver | 1 | 5.8e-06 |
 | JAXScape | lcp | GPU | float32 |  | 1 | 2.5e-07 |
 | JAXScape | lcp | CPU | float32 |  | 1 | 2.4e-07 |
-| JAXScape | free_energy | GPU | float64 | CuDSSSolver | 1 | 2.5e-14 |
+| JAXScape | free_energy | GPU | float64 | CuDSSSolver | 1 | 2.0e-15 |
 | JAXScape | free_energy | CPU | float64 | CholmodSolver | 1 | 0.0e+00 |
 | Circuitscape.jl | resistance | CPU | float64 | cg+amg | 1 | 8.9e-07 |
 | Circuitscape.jl | resistance | CPU | float64 | cholmod | 1 | 4.6e-12 |
-| ConScape.jl | free_energy | CPU | float64 |  | 1 | 1.3e-14 |
+| ConScape.jl | free_energy | CPU | float64 |  | 1 | 1.4e-15 |
 | gdistance | resistance | CPU | float64 |  | 1 | 7.3e-14 |
 | gdistance | lcp | CPU | float64 |  | 1 | 8.1e-16 |
 | skimage.graph.MCP | lcp | CPU | float64 |  | 1 | 3.3e-16 |
 
 ### E2. Habitat connectivity
 
-JAXScape computes, in each call, the map of $\partial C / \partial q_i$ with `SensitivityAnalysis`, which equals $2 S_i$ for symmetric distances, and the total $C = \sum_i q_i S_i$ with `ConnectivityAnalysis`. Its windows have `dependency_range` 100 and `coarsening_factor` 0.2, which gives blocks of 21 pixels: Omniscape's `radius` and `block_size` in its Maryland example. Its proximity is the default, $e^{-r/25}$ with $r$ in equivalent pixels. The windowed analyses build their graphs with JAXScape's own edge rule: rook contiguity, and the conductance of an edge is the mean permeability of its two pixels. Free energy is left out of E2 and E3: its window query holds the dense inverse of the 40,401 pixels of a window, and in float64, the only precision that resolves its windows, one window ran out of the 24 GB of the GPU, and out of memory on the CPU after taking 300 GB. The agreement of another tool is Spearman's ρ between its map and JAXScape's map under the distance of its row, over the pixels where both maps are defined. ConScape.jl computes its maps under free energy on the whole raster, with targets at landmarks every 21 pixels and the kernel $e^{-d/25}$ on its free-energy distance $d$; JAXScape has no free-energy map to compare them with, and they are compared with its maps under least-cost distance, which ranks pairs of sites most like free energy at the $\theta$ of the run.
+JAXScape computes, in each call, the map of $\partial C / \partial q_i$ with `SensitivityAnalysis`, which equals $2 S_i$ for symmetric distances, and the total $C = \sum_i q_i S_i$ with `ConnectivityAnalysis`. Its windows have `dependency_range` 100 and `coarsening_factor` 0.2, which gives blocks of 21 pixels: Omniscape's `radius` and `block_size` in its Maryland example. Its proximity is the default, $e^{-r/25}$ with $r$ in equivalent pixels. The windowed analyses build their graphs with JAXScape's own edge rule: rook contiguity, and the conductance of an edge is the mean permeability of its two pixels. Resistance takes the setting of the [connectivity example](../examples/connectivity_analysis/connectivity_analysis.ipynb): `GridMultigridSolver(rtol=3e-4)` and `SpielmanApproximation(epsilon=0.15)`, which estimates resistances from random projections, on tiles of up to 2,601 block centres: at 8192², 64 tiles, the fewest at which E3 runs fastest on the GPU. Exact resistance took 24 minutes a call of E3 at 1024², and would take 32 hours at 8192². Free energy is left out of E2 and E3: its window query holds the dense inverse of the 40,401 pixels of a window, and in float64, the only precision that resolves its windows, one window ran out of the 24 GB of the GPU, and out of memory on the CPU after taking 300 GB. The agreement of another tool is Spearman's ρ between its map and JAXScape's map under the distance of its row, over the pixels where both maps are defined. ConScape.jl computes its maps under free energy on the whole raster, with targets at landmarks every 21 pixels and the kernel $e^{-d/25}$ on its free-energy distance $d$; JAXScape has no free-energy map to compare them with, and they are compared with its maps under least-cost distance, which ranks pairs of sites most like free energy at the $\theta$ of the run.
 
 ![E2: warm runtime against raster cells](e2.png)
 
@@ -53,11 +53,11 @@ Agreement (Spearman's ρ) of each configuration and raster, or the status of the
 
 | Tool | Distance | Device | dtype | Solver | Tier | Maryland | 32² |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| JAXScape | resistance | GPU | float32 | GridMultigridSolver |  | ok | ok |
-| JAXScape | resistance | CPU | float32 | GridMultigridSolver |  | ok | ok |
+| JAXScape | resistance | GPU | float32 | GridMultigridSolver(rtol=3e-4) |  | ok | ok |
+| JAXScape | resistance | CPU | float32 | GridMultigridSolver(rtol=3e-4) |  | ok | ok |
 | JAXScape | lcp | GPU | float32 |  |  | ok | ok |
 | JAXScape | lcp | CPU | float32 |  |  | ok | ok |
-| ConScape.jl | free_energy | CPU | float64 |  | 3 | 0.42 | 0.85 |
+| ConScape.jl | free_energy | CPU | float64 |  | 3 | 0.47 | 0.91 |
 | eco-connectivity | lcp | CPU | float32 |  | 2 | 0.80 | 0.95 |
 | Graphab | lcp | CPU | float64 |  | 3 | 0.70 | 0.39 |
 
@@ -71,19 +71,19 @@ Agreement (Spearman's ρ) of each configuration and raster, or the status of the
 
 | Tool | Distance | Device | dtype | Solver | Tier | Maryland | 32² |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| JAXScape | resistance | GPU | float32 | GridMultigridSolver |  | ok | ok |
-| JAXScape | resistance | CPU | float32 | GridMultigridSolver |  | ok | ok |
+| JAXScape | resistance | GPU | float32 | GridMultigridSolver(rtol=3e-4) |  | ok | ok |
+| JAXScape | resistance | CPU | float32 | GridMultigridSolver(rtol=3e-4) |  | ok | ok |
 | JAXScape | lcp | GPU | float32 |  |  | ok | ok |
 | JAXScape | lcp | CPU | float32 |  |  | ok | ok |
-| ConScape.jl | free_energy | CPU | float64 |  | 3 | 0.68 | 0.85 |
+| ConScape.jl | free_energy | CPU | float64 |  | 3 | 0.83 | 0.82 |
 | EcoScape | lcp | GPU | float32 |  | 3 | 0.91 | 0.94 |
-| samc | resistance | CPU | float64 | direct | 3 | 0.13 | 0.58 |
-| Omniscape.jl | resistance | CPU | float64 | cg+amg | 3 | -0.10 | 0.58 |
-| Omniscape.jl | resistance | CPU | float64 | cholmod | 3 | -0.10 | 0.58 |
+| samc | resistance | CPU | float64 | direct | 3 | 0.12 | 0.59 |
+| Omniscape.jl | resistance | CPU | float64 | cg+amg | 3 | -0.12 | 0.59 |
+| Omniscape.jl | resistance | CPU | float64 | cholmod | 3 | -0.12 | 0.59 |
 
 ![Maryland: JAXScape's sensitivity next to Omniscape.jl's normalized current](maryland.png)
 
-On Maryland, JAXScape's map of $\partial C / \partial p_k$ under resistance (GPU, 0.28 s) next to Omniscape.jl's normalized current (CPU, `cg+amg`, 0.203 s), each coloured by the rank of its pixels, with barriers in gray: Spearman's ρ = -0.10.
+On Maryland, JAXScape's map of $\partial C / \partial p_k$ under resistance (GPU, 0.0628 s) next to Omniscape.jl's normalized current (CPU, `cholmod`, 0.193 s), each coloured by the rank of its pixels, with barriers in gray: Spearman's ρ = -0.12.
 
 ## Solvers
 
@@ -95,56 +95,56 @@ Warm runtime and error of each solver, dtype and raster, or the status of the ce
 
 | Question | Distance | dtype | Solver | 32² |
 | --- | --- | --- | --- | --- |
-| E1 | resistance | float32 | GridMultigridSolver | 0.0202 s · 1.1e-05 |
-| E1 | resistance | float32 | CholmodSolver | 0.337 s · 1.0e-05 |
-| E1 | resistance | float32 | CuDSSSolver | 0.11 s · 2.8e-05 |
-| E1 | resistance | float32 | AMJaxCGSolver | 1.52 s · 2.9e-04 |
-| E1 | resistance | float32 | PyAMGSolver | 0.127 s · 6.8e-06 |
-| E1 | resistance | float32 | dense | 0.161 s · 8.6e-01 |
-| E1 | resistance | float64 | GridMultigridSolver | 0.0312 s · 7.6e-14 |
-| E1 | resistance | float64 | CholmodSolver | 0.446 s · 0.0e+00 |
-| E1 | resistance | float64 | CuDSSSolver | 0.114 s · 1.8e-14 |
-| E1 | resistance | float64 | AMJaxCGSolver | 1.57 s · 3.0e-04 |
-| E1 | resistance | float64 | PyAMGSolver | 0.102 s · 5.9e-07 |
-| E1 | resistance | float64 | dense | 2.09 s · 8.7e-14 |
-| E1 | free_energy | float32 | GridMultigridSolver | failed |
-| E1 | free_energy | float32 | CholmodSolver | failed |
-| E1 | free_energy | float32 | CuDSSSolver | failed |
+| E1 | resistance | float32 | GridMultigridSolver | 0.00693 s · 1.1e-05 |
+| E1 | resistance | float32 | CholmodSolver | 0.348 s · 1.0e-05 |
+| E1 | resistance | float32 | CuDSSSolver | 0.0304 s · 2.3e-05 |
+| E1 | resistance | float32 | AMJaxCGSolver | 1.38 s · 2.9e-04 |
+| E1 | resistance | float32 | PyAMGSolver | 0.111 s · 1.4e-05 |
+| E1 | resistance | float32 | dense | 0.073 s · 8.6e-01 |
+| E1 | resistance | float64 | GridMultigridSolver | 0.0155 s · 7.6e-14 |
+| E1 | resistance | float64 | CholmodSolver | 0.363 s · 0.0e+00 |
+| E1 | resistance | float64 | CuDSSSolver | 0.0306 s · 1.4e-14 |
+| E1 | resistance | float64 | AMJaxCGSolver | 1.36 s · 2.9e-04 |
+| E1 | resistance | float64 | PyAMGSolver | 0.0949 s · 5.9e-07 |
+| E1 | resistance | float64 | dense | 0.96 s · 8.7e-14 |
+| E1 | free_energy | float32 | GridMultigridSolver | 0.00796 s · 1.1e-06 |
+| E1 | free_energy | float32 | CholmodSolver | 1.81 s · 3.0e-07 |
+| E1 | free_energy | float32 | CuDSSSolver | 0.0317 s · 4.0e-07 |
 | E1 | free_energy | float32 | AMJaxCGSolver | failed |
 | E1 | free_energy | float32 | PyAMGSolver | failed |
-| E1 | free_energy | float32 | dense | failed |
-| E1 | free_energy | float64 | GridMultigridSolver | 0.0594 s · 2.9e-14 |
-| E1 | free_energy | float64 | CholmodSolver | 2.55 s · 3.3e-15 |
-| E1 | free_energy | float64 | CuDSSSolver | 0.138 s · 3.8e-14 |
+| E1 | free_energy | float32 | dense | 0.00657 s · 1.8e-06 |
+| E1 | free_energy | float64 | GridMultigridSolver | 0.0164 s · 1.4e-15 |
+| E1 | free_energy | float64 | CholmodSolver | 2.37 s · 7.3e-16 |
+| E1 | free_energy | float64 | CuDSSSolver | 0.0312 s · 2.0e-15 |
 | E1 | free_energy | float64 | AMJaxCGSolver | failed |
 | E1 | free_energy | float64 | PyAMGSolver | failed |
-| E1 | free_energy | float64 | dense | 0.0384 s · 3.8e-14 |
-| E2 | resistance | float32 | GridMultigridSolver | 0.322 s · 2.2e-05 |
-| E2 | resistance | float32 | CholmodSolver | 2.85 s · 3.1e-07 |
-| E2 | resistance | float32 | CuDSSSolver | 0.655 s · 1.1e-05 |
+| E1 | free_energy | float64 | dense | 0.0139 s · 1.8e-15 |
+| E2 | resistance | float32 | GridMultigridSolver | 0.104 s · 2.2e-05 |
+| E2 | resistance | float32 | CholmodSolver | 2.59 s · 3.1e-07 |
+| E2 | resistance | float32 | CuDSSSolver | 0.195 s · 1.0e-05 |
 | E2 | resistance | float32 | AMJaxCGSolver | failed |
-| E2 | resistance | float32 | PyAMGSolver | 28.7 s · 2.6e-05 |
-| E2 | resistance | float32 | dense | 0.0978 s · 3.0e-06 |
-| E2 | resistance | float32 | SpielmanApproximation(epsilon=0.15), GridMultigridSolver(rtol=3e-4) | 0.312 s · 1.0e-01 |
-| E2 | resistance | float64 | GridMultigridSolver | 0.861 s · 4.4e-07 |
-| E2 | resistance | float64 | CholmodSolver | 2.97 s · 2.4e-15 |
-| E2 | resistance | float64 | CuDSSSolver | 0.675 s · 1.3e-15 |
-| E2 | resistance | float64 | AMJaxCGSolver | 51.5 s · 1.2e-03 |
+| E2 | resistance | float32 | PyAMGSolver | 28.7 s · 2.4e-05 |
+| E2 | resistance | float32 | dense | 0.0558 s · 3.0e-06 |
+| E2 | resistance | float32 | SpielmanApproximation(epsilon=0.15), GridMultigridSolver(rtol=3e-4) | 0.0848 s · 1.0e-01 |
+| E2 | resistance | float64 | GridMultigridSolver | 0.355 s · 4.4e-07 |
+| E2 | resistance | float64 | CholmodSolver | 2.61 s · 2.9e-15 |
+| E2 | resistance | float64 | CuDSSSolver | 0.215 s · 9.9e-16 |
+| E2 | resistance | float64 | AMJaxCGSolver | 26.5 s · 1.2e-03 |
 | E2 | resistance | float64 | PyAMGSolver | 29.4 s · 6.3e-07 |
-| E2 | resistance | float64 | dense | 0.668 s · 5.1e-15 |
-| E3 | resistance | float32 | GridMultigridSolver | 0.256 s · 2.4e-05 |
-| E3 | resistance | float32 | CholmodSolver | 2.11 s · 1.2e-06 |
-| E3 | resistance | float32 | CuDSSSolver | 0.124 s · 1.1e-05 |
+| E2 | resistance | float64 | dense | 0.316 s · 4.9e-15 |
+| E3 | resistance | float32 | GridMultigridSolver | 0.0782 s · 2.4e-05 |
+| E3 | resistance | float32 | CholmodSolver | 2.08 s · 1.2e-06 |
+| E3 | resistance | float32 | CuDSSSolver | 0.125 s · 1.1e-05 |
 | E3 | resistance | float32 | AMJaxCGSolver | failed |
-| E3 | resistance | float32 | PyAMGSolver | 28.1 s · 1.5e-05 |
-| E3 | resistance | float32 | dense | 0.0678 s · 5.8e-06 |
-| E3 | resistance | float32 | SpielmanApproximation(epsilon=0.15), GridMultigridSolver(rtol=3e-4) | 0.302 s · 8.1e-02 |
-| E3 | resistance | float64 | GridMultigridSolver | 0.739 s · 4.3e-07 |
-| E3 | resistance | float64 | CholmodSolver | 2.09 s · 4.3e-15 |
-| E3 | resistance | float64 | CuDSSSolver | 0.389 s · 2.4e-15 |
-| E3 | resistance | float64 | AMJaxCGSolver | 45.9 s · 2.0e-03 |
-| E3 | resistance | float64 | PyAMGSolver | 29 s · 1.8e-07 |
-| E3 | resistance | float64 | dense | 0.586 s · 8.1e-15 |
+| E3 | resistance | float32 | PyAMGSolver | 27.8 s · 1.3e-05 |
+| E3 | resistance | float32 | dense | 0.0369 s · 5.8e-06 |
+| E3 | resistance | float32 | SpielmanApproximation(epsilon=0.15), GridMultigridSolver(rtol=3e-4) | 0.0618 s · 8.1e-02 |
+| E3 | resistance | float64 | GridMultigridSolver | 0.326 s · 4.3e-07 |
+| E3 | resistance | float64 | CholmodSolver | 1.83 s · 3.4e-15 |
+| E3 | resistance | float64 | CuDSSSolver | 0.141 s · 2.6e-15 |
+| E3 | resistance | float64 | AMJaxCGSolver | 23.3 s · 2.0e-03 |
+| E3 | resistance | float64 | PyAMGSolver | 28.8 s · 1.8e-07 |
+| E3 | resistance | float64 | dense | 0.278 s · 7.3e-15 |
 
 ## Environment
 
