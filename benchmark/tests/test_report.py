@@ -38,7 +38,7 @@ def test_report_writes_the_csv_with_one_row_per_record(tmp_path):
     with open(run_dir / "results.csv", newline="") as file:
         rows = list(csv.DictReader(file))
 
-    assert len(rows) == 28
+    assert len(rows) == 56
     assert {row["status"] for row in rows} == {
         "ok",
         "failed",
@@ -98,9 +98,109 @@ def test_e2_and_e3_tables_list_each_configuration_with_its_status(tmp_path):
     assert table_row(e2, "JAXScape", "lcp", "CPU")[-4:] == ["ok", "ok", "", ""]
     cpu = table_row(e2, "JAXScape", "resistance", "CPU")
     assert cpu[-4:] == ["oom", "skipped", "skipped", ""]
+    conscape = table_row(e2, "ConScape.jl", "free_energy", "CPU", "float64", "")
+    assert conscape[-5:] == ["3", "0.91", "", "", ""]
+    eco = table_row(e2, "eco-connectivity", "lcp", "CPU", "float32", "")
+    assert eco[-5:] == ["2", "0.98", "0.81", "timeout", ""]
+    graphab = table_row(e2, "Graphab", "lcp", "CPU", "float64", "")
+    assert graphab[-5:] == ["3", "-0.06", "missing", "", ""]
+    assert "Spearman's ρ" in e2
     assert table_row(e3, "Tool")[-2:] == ["256²", "Maryland"]
     assert table_row(e3, "JAXScape", "resistance", "GPU")[-2:] == ["ok", "ok"]
     assert table_row(e3, "JAXScape", "lcp", "GPU")[-2:] == ["failed", "skipped"]
+
+
+def test_e3_table_lists_the_rank_correlation_of_each_omniscape_setting(tmp_path):
+    e3 = section(
+        (report(tmp_path) / "index.md").read_text(),
+        "### E3. Corridors and pinch points",
+    )
+
+    amg = table_row(e3, "Omniscape.jl", "resistance", "CPU", "float64", "cg+amg")
+    assert amg[-3:] == ["3", "0.41", "0.62"]
+    cholmod = table_row(e3, "Omniscape.jl", "resistance", "CPU", "float64", "cholmod")
+    assert cholmod[-3:] == ["3", "0.43", "timeout"]
+
+
+def test_report_writes_the_maryland_figure_with_its_correlation_and_runtimes(
+    tmp_path,
+):
+    run_dir = report(tmp_path)
+    e3 = section(
+        (run_dir / "index.md").read_text(), "### E3. Corridors and pinch points"
+    )
+
+    assert (run_dir / "maryland.png").read_bytes().startswith(b"\x89PNG")
+    assert "](maryland.png)" in e3
+    # The fastest Omniscape setting that succeeds on Maryland is cg+amg.
+    assert "ρ = 0.62" in e3
+    assert "240 s" in e3
+    assert "37 s" in e3
+
+
+def test_report_without_the_maps_keeps_the_maryland_figure(tmp_path):
+    run_dir = report(tmp_path)
+    figure = (run_dir / "maryland.png").read_bytes()
+    shutil.rmtree(run_dir / "maps")  # the maps of a run are not committed
+
+    subprocess.run(
+        [sys.executable, "report.py", str(run_dir)], cwd=BENCHMARK, check=True
+    )
+
+    assert (run_dir / "maryland.png").read_bytes() == figure
+    assert "](maryland.png)" in (run_dir / "index.md").read_text()
+
+
+def test_solver_table_lists_each_solver_with_its_runtime_and_error_or_status(
+    tmp_path,
+):
+    page = section((report(tmp_path) / "index.md").read_text(), "## Solvers")
+
+    assert table_row(page, "Question") == [
+        "Question",
+        "Distance",
+        "dtype",
+        "Solver",
+        "256²",
+        "Maryland",
+        "1024²",
+    ]
+    rows = {
+        ("E1", "resistance", "float32", "GridMultigridSolver"): [
+            "0.03 s · 2.0e-06",
+            "",
+            "0.35 s · 3.0e-06",
+        ],
+        ("E1", "resistance", "float64", "CuDSSSolver"): [
+            "0.3 s · 1.0e-12",
+            "",
+            "timeout",
+        ],
+        ("E1", "resistance", "float32", "AMJaxCGSolver"): ["failed", "", "skipped"],
+        ("E1", "resistance", "float32", "dense"): ["oom", "", "skipped"],
+        ("E1", "free_energy", "float64", "CuDSSSolver"): ["0.35 s · 4.7e-14", "", ""],
+        ("E2", "resistance", "float32", "GridMultigridSolver"): [
+            "91 s · 3.1e-04",
+            "812 s · missing",
+            "",
+        ],
+        (
+            "E2",
+            "resistance",
+            "float32",
+            "SpielmanApproximation(epsilon=0.15), GridMultigridSolver(rtol=3e-4)",
+        ): ["2 s · 4.2e-02", "", ""],
+        ("E3", "resistance", "float64", "PyAMGSolver"): ["timeout", "skipped", ""],
+    }
+    for configuration, cells in rows.items():
+        assert table_row(page, *configuration)[4:] == cells
+
+
+def test_report_writes_the_solver_figure(tmp_path):
+    run_dir = report(tmp_path)
+
+    assert (run_dir / "solvers.png").read_bytes().startswith(b"\x89PNG")
+    assert "](solvers.png)" in (run_dir / "index.md").read_text()
 
 
 def test_page_has_its_sections_and_references_the_figure(tmp_path):
@@ -112,6 +212,7 @@ def test_page_has_its_sections_and_references_the_figure(tmp_path):
         "### E1. Isolation between populations",
         "### E2. Habitat connectivity",
         "### E3. Corridors and pinch points",
+        "## Solvers",
         "## Environment",
         "## Parameter mappings",
         "## Excluded tools",
@@ -127,7 +228,9 @@ def test_page_has_its_sections_and_references_the_figure(tmp_path):
     assert table_row(page, "Cores")[1] == "48-63"
     assert (
         table_row(page, "Tools")[1]
-        == "JAXScape 0.0.16, Circuitscape.jl 6.1.0, ConScape.jl 0.3.0"
+        == "JAXScape 0.0.16, Circuitscape.jl 6.1.0, ConScape.jl 0.3.0, "
+        "EcoScape 0.2.5, samc 4.2.1, eco-connectivity 2.5.0, Graphab 3.0.8, "
+        "Omniscape.jl 0.6.4"
     )
     mapping = table_row(page, "JAXScape", "E1, E2, E3")
     assert mapping[2] == "`adapters/jaxscape.py`"
@@ -135,7 +238,23 @@ def test_page_has_its_sections_and_references_the_figure(tmp_path):
     circuitscape = table_row(page, "Circuitscape.jl", "E1")
     assert circuitscape[2] == "`adapters/circuitscape.jl`"
     assert "connect_using_avg_resistances" in circuitscape[3]
-    conscape = table_row(page, "ConScape.jl", "E1")
+    conscape = table_row(page, "ConScape.jl", "E1, E2")
     assert conscape[2] == "`adapters/conscape.jl`"
     assert "AverageWeight" in conscape[3]
+    assert "connected_habitat" in conscape[3]
+    ecoscape = table_row(page, "EcoScape", "E3")
+    assert ecoscape[2] == "`adapters/ecoscape.py`"
+    assert "dispersal" in ecoscape[3]
+    samc = table_row(page, "samc", "E3")
+    assert samc[2] == "`adapters/samc.R`"
+    assert "absorption" in samc[3]
+    eco = table_row(page, "eco-connectivity", "E2")
+    assert eco[2] == "`adapters/eco_connectivity.py`"
+    assert "exp(-d/25)" in eco[3]
+    graphab = table_row(page, "Graphab", "E2")
+    assert graphab[2] == "`adapters/graphab.py`"
+    assert "F_I + a_I" in graphab[3]
+    omniscape = table_row(page, "Omniscape.jl", "E3")
+    assert omniscape[2] == "`adapters/omniscape.jl`"
+    assert "`radius` is the shared `dependency_range`" in omniscape[3]
     assert table_row(page, "Linkage Mapper")[1] == "Needs ArcGIS."

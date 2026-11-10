@@ -91,10 +91,8 @@ tier = 1
 
 [tools.distances.resistance]
 dtype = "float64"
-solver = "GridMultigridSolver"
-rtol = 1e-10
-method = "SpielmanApproximation"
-epsilon = 0.5
+solver = "GridMultigridSolver(rtol=1e-10)"
+method = "SpielmanApproximation(epsilon=0.5)"
 """
     )
     subprocess.run(
@@ -107,3 +105,80 @@ epsilon = 0.5
 
     assert (record["status"], record["reason"]) == ("ok", None)
     assert record["agreement"] > 1e-2
+
+
+E2_CONFIG = f"""
+[run]
+timeout = 600
+repeats = 1
+single_call_after = 300
+cores = "{CORES}"
+gpu = ""
+smoke_side = 16
+
+[landscape]
+correlation_length = 3
+habitat_threshold = 0.7
+seed = 1
+
+[E1]
+sites = 6
+seed = 2
+
+[distances.lcp]
+sides = [64]
+
+[windows]
+dependency_range = 20
+coarsening_factor = 0.2
+
+[[tools]]
+tool = "JAXScape"
+question = "E2"
+adapter = "adapters/jaxscape.py"
+devices = ["cpu"]
+
+[tools.distances.lcp]
+dtype = "float32"
+batch_size = 64
+
+[[tools]]
+tool = "eco-connectivity"
+question = "E2"
+adapter = "adapters/eco_connectivity.py"
+devices = ["cpu"]
+tier = 2
+
+[tools.distances.lcp]
+
+[[tools]]
+tool = "Graphab"
+question = "E2"
+adapter = "adapters/graphab.py"
+devices = ["cpu"]
+tier = 3
+
+[tools.distances.lcp]
+"""
+
+
+def test_e2_adapters_rank_pixels_as_jaxscape_does(tmp_path):
+    config = tmp_path / "config.toml"
+    config.write_text(E2_CONFIG)
+    subprocess.run(
+        [sys.executable, "run.py", tmp_path / "run", "--config", config],
+        cwd=BENCHMARK,
+        check=True,
+    )
+    lines = (tmp_path / "run" / "records.jsonl").read_text().splitlines()
+    records = {r["tool"]: r for r in map(json.loads, lines)}
+
+    assert {tool: (r["status"], r["reason"]) for tool, r in records.items()} == {
+        "JAXScape": ("ok", None),
+        "eco-connectivity": ("ok", None),
+        "Graphab": ("ok", None),
+    }
+    assert records["eco-connectivity"]["files"] is True
+    assert records["Graphab"]["files"] is True
+    assert records["eco-connectivity"]["agreement"] > 0.85
+    assert records["Graphab"]["agreement"] > 0.4
