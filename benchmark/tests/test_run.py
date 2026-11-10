@@ -257,6 +257,9 @@ def test_runner_snapshots_the_environment(run_dir):
     assert environment["packages"]["gdistance"] == "1.6.5"
     assert environment["packages"]["samc"] == "4.2.1"
     assert environment["packages"]["ecoscape-connectivity"] == "0.2.5"
+    assert environment["packages"]["eco-connectivity"] == "2.5.0"
+    assert environment["packages"]["Graphab"] == "3.0.8"
+    assert environment["packages"]["Java"] == "21.0.13"
 
 
 def test_restart_skips_the_recorded_cells(run_dir, tmp_path):

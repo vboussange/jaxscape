@@ -35,8 +35,9 @@ change the pin, run, and report.
 - `install.sh`: installs the toolchains of the external tools and the data,
   each pinned: Julia and the packages of `julia/Manifest.toml`, through
   juliaup, the R packages of `renv.lock` in the renv library of this
-  directory, which `Rscript` loads here through `.Rprofile`, and the land
-  cover of Maryland in `data/`.
+  directory, which `Rscript` loads here through `.Rprofile`, the Graphab jar
+  and the Java runtime that it needs in `java/`, and the land cover of
+  Maryland in `data/`. The Python tools are dependencies of this project.
 - `run.py`: the runner. Each cell runs in its own process, pinned with
   `taskset` to the cores of the configuration, with the OpenMP, BLAS, Julia
   and R thread variables matched to them; XLA sizes its thread pools to the
