@@ -29,24 +29,10 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra tests --extra docs --extra pyamg --extra amjax --extra cholespy
 
-      # JAX's persistent compilation cache: a run restores the latest one,
-      # compiles only the programs that changed, and saves the cache anew,
-      # its least recently used programs dropped beyond 256 MB.
-      - name: Restore JAX's compilation cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.temp }}/jax-cache
-          key: jax-${{ runner.os }}-py${{ matrix.python-version }}-${{ github.sha }}
-          restore-keys: jax-${{ runner.os }}-py${{ matrix.python-version }}-
-
       # Every test but those marked `gpu`, the slow ones included, with one
       # pytest-xdist worker per core.
       - name: Run tests
         run: uv run pytest -n auto -m "not gpu" tests
-        env:
-          JAX_COMPILATION_CACHE_DIR: ${{ runner.temp }}/jax-cache
-          JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS: 0
-          JAX_COMPILATION_CACHE_MAX_SIZE: 268435456
 
       - name: Build documentation
         run: uv run mkdocs build --strict

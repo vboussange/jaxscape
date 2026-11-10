@@ -42,11 +42,6 @@ uv run pytest -m gpu tests                # GPU tests only
 uv run pytest -n auto -m "" tests         # every test
 ```
 
-To keep the compiled programs between runs, as the continuous integration
-does, set `JAX_COMPILATION_CACHE_DIR` to a directory and
-`JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS=0`: later runs compile only the
-programs that changed.
-
 Commit your changes, push them to your fork, and open a pull request:
 
 ```bash

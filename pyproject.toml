@@ -80,9 +80,7 @@ examples = [
 pyamg = [
   "pyamg>=5.1.0"
 ]
-# JAX needs filelock to bound the size of its compilation cache, as CI does.
 tests = [
-  "filelock>=3.12",
   "networkx>=3.4",
   "pytest>=8.3.5",
   "pytest-xdist>=3.6"
