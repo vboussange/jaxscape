@@ -5,14 +5,14 @@
 # take 1 / conductance as the edge cost, and the free energy takes the shared
 # `theta`. E1 is a nodes-to-nodes query among the sites. E2 runs
 # `SensitivityAnalysis(var="quality")` for the map and `ConnectivityAnalysis`
-# for the total, and E3 `SensitivityAnalysis(var="permeability")`, with the
-# shared `dependency_range` and `coarsening_factor`, the default proximity and
-# the `batch_size` of the settings; these windowed analyses build their graphs
-# with JAXScape's own edge rule, the mean permeability of the two pixels. The
-# distance runs with the solver, the resistance `method` and the dtype of its
-# settings, such as `GridMultigridSolver(rtol=3e-4)` (`dense` is the dense
-# solve, `solver=None`), and every call builds the graphs and the solver
-# states.
+# for the landscape total, sum_i q_i S_i, and E3
+# `SensitivityAnalysis(var="permeability")`, with the shared `dependency_range`
+# and `coarsening_factor`, the default proximity and the `batch_size` of the
+# settings; these windowed analyses build their graphs with JAXScape's own edge
+# rule, the mean permeability of the two pixels. The distance runs with the
+# solver, the resistance `method` and the dtype of its settings, such as
+# `GridMultigridSolver(rtol=3e-4)` (`dense` is the dense solve,
+# `solver=None`), and every call builds the graphs and the solver states.
 import ast
 
 import jax
@@ -39,8 +39,11 @@ from landscape import conductance
 
 
 def construct(setting, module):
-    """Return the object of `module` that a setting such as
-    `GridMultigridSolver(rtol=3e-4)` names, or `None` for `dense`."""
+    """Return the object of `module` that a setting names.
+
+    A setting such as `GridMultigridSolver(rtol=3e-4)` calls the class with its
+    keywords, and `dense` gives `None`.
+    """
     if setting == "dense":
         return None
     call = ast.parse(setting if "(" in setting else f"{setting}()", mode="eval").body
@@ -69,7 +72,8 @@ windows = dict(
     permeability_raster=permeability,
     distance=distance,
     batch_size=settings.get("batch_size"),
-    **cell["windows"],
+    dependency_range=cell["windows"].get("dependency_range"),
+    coarsening_factor=cell["windows"].get("coarsening_factor"),
 )
 
 
@@ -81,7 +85,7 @@ def isolation():
 def connectivity():
     total = ConnectivityAnalysis(**windows).run()
     habitat = SensitivityAnalysis(**windows).run("quality")
-    return jax.block_until_ready((habitat, total))[0]
+    return jax.block_until_ready((habitat, total))
 
 
 def corridors():
@@ -89,4 +93,6 @@ def corridors():
 
 
 call = {"E1": isolation, "E2": connectivity, "E3": corridors}[cell["question"]]
-write_result(cell, *time_calls(cell, call), version=jaxscape.__version__)
+output, warmup, times = time_calls(cell, call)
+output, total = output if cell["question"] == "E2" else (output, None)
+write_result(cell, output, warmup, times, total=total)

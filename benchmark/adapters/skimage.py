@@ -4,14 +4,11 @@
 # the edge cost of JAXScape. Each call builds the MCP object, and searches from
 # each site until it reaches all the others.
 import numpy as np
-import skimage
 from adapters.protocol import read_cell, time_calls, write_result
 from skimage.graph import MCP_Geometric
 
 
 cell, arrays = read_cell()
-if (cell["question"], cell["distance"]) != ("E1", "lcp"):
-    raise ValueError("skimage.graph.MCP computes the least-cost distances of E1")
 resistance = 1 / arrays["permeability"]
 sites = [tuple(map(int, site)) for site in arrays["sites"]]
 
@@ -25,4 +22,4 @@ def call():
     return distances
 
 
-write_result(cell, *time_calls(cell, call), version=skimage.__version__)
+write_result(cell, *time_calls(cell, call))

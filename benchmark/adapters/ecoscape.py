@@ -15,7 +15,6 @@
 # compared with JAXScape's under least-cost distances: repopulation follows the
 # most permeable neighbour, the maximum over neighbours, as a least-cost path
 # does.
-from importlib.metadata import version
 from pathlib import Path
 
 import numpy as np
@@ -25,8 +24,6 @@ from ecoscape_connectivity import compute_connectivity
 
 
 cell, arrays = read_cell()
-if cell["question"] != "E3":
-    raise ValueError("EcoScape maps the corridors of E3")
 dispersal = cell["windows"]["dependency_range"]
 work = Path(cell["output"]).parent
 habitat, permeability, connectivity, flow = (
@@ -62,6 +59,4 @@ def call():
     return 10 ** (decibels / 20) - 1  # EcoScape writes 20 log10(1 + flow)
 
 
-write_result(
-    cell, *time_calls(cell, call), version=version("ecoscape-connectivity"), files=True
-)
+write_result(cell, *time_calls(cell, call), files=True)

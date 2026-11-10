@@ -64,6 +64,15 @@ def maryland(path, resistance, side=None):
     return (resistance == 1).astype(float), 1 / resistance
 
 
+def resistance(permeability):
+    """Return the resistance raster: 1 / permeability, and NaN on barriers.
+
+    Barriers are the pixels of permeability 0.
+    """
+    barrier = permeability == 0
+    return np.where(barrier, np.nan, 1 / np.where(barrier, 1, permeability))
+
+
 def sites(quality, number, seed):
     """Return `number` habitat pixels drawn at random, without replacement.
 

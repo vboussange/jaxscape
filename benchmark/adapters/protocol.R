@@ -64,8 +64,10 @@ time_calls <- function(cell, call) {
   list(output = last$output, warmup = warmup$time, times = times)
 }
 
-write_result <- function(cell, timing, version, files = FALSE) {
+# Save the output of the last call, and write the result of the cell; `files`
+# states whether the calls read or write files.
+write_result <- function(cell, timing, files = FALSE) {
   write_npy(timing$output, cell$output)
-  result <- list(version = version, files = files, warmup_s = timing$warmup, times_s = I(timing$times))
+  result <- list(files = files, warmup_s = timing$warmup, times_s = I(timing$times))
   jsonlite::write_json(result, cell$result, auto_unbox = TRUE, digits = NA)
 }

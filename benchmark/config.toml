@@ -5,10 +5,15 @@
 timeout = 3600           # seconds that a call may take
 repeats = 5              # timed calls after the warm-up call
 single_call_after = 300  # seconds of warm-up after which one timed call follows
-cores = "48-63"          # 16 physical cores of gpunode05, on the NUMA node of GPU 0
-gpu = "0"                # CUDA_VISIBLE_DEVICES of GPU cells
+cores = "80-95"          # 16 physical cores of gpunode05, on NUMA node 5, that of GPU 5
+gpu = "5"                # the GPU of GPU cells, numbered as nvidia-smi numbers it
 smoke_side = 32
 smoke_dependency_range = 10  # windows of E2 and E3 in smoke mode
+# The largest Tier 1 error that smoke mode passes. The smoke run's errors reach
+# 1.1e-5, with JAXScape's float32 resistance, and a tool that takes the
+# arithmetic mean of the permeabilities as the conductance of an edge errs by
+# 2e-2 to 3e-2.
+smoke_tolerance = 1e-4
 
 # The synthetic landscape (see landscape.py).
 [landscape]
@@ -19,6 +24,7 @@ seed = 74
 [E1]
 sites = 32
 seed = 75
+reference = "adapters/reference.py"  # the adapter of the float64 reference
 
 # The raster sides of each distance, and its shared parameters.
 [distances.resistance]
@@ -49,8 +55,10 @@ resistance = { 11 = 100, 21 = 500, 22 = 1000, 31 = 100, 41 = 1, 42 = 1, 43 = 1, 
 # One entry per tool and question. `adapter` runs a cell, and the table of a
 # distance holds the tool's settings for it, `dtype` and `solver` included. A
 # setting given per device is a table keyed by device. A tool of E2 or E3 is
-# compared with JAXScape's map under the distance `compared_with`, by default
-# its own.
+# compared with the map of JAXScape's GPU cell under the distance
+# `compared_with`, by default its own. `package` names the tool in the pins of
+# its toolchain, which give its version, by default the tool's name without
+# `.jl`.
 [[tools]]
 tool = "JAXScape"
 question = "E1"
@@ -172,6 +180,7 @@ tier = 1
 
 [[tools]]
 tool = "skimage.graph.MCP"
+package = "scikit-image"
 question = "E1"
 adapter = "adapters/skimage.py"
 devices = ["cpu"]
@@ -184,6 +193,7 @@ tier = 1
 # justifies.
 [[tools]]
 tool = "EcoScape"
+package = "ecoscape-connectivity"
 question = "E3"
 adapter = "adapters/ecoscape.py"
 devices = ["gpu"]
@@ -218,6 +228,7 @@ dtype = "float32"
 
 [[tools]]
 tool = "Graphab"
+package = "graphab"  # the jar of install.sh, java/graphab-<version>.jar
 question = "E2"
 adapter = "adapters/graphab.py"
 devices = ["cpu"]
@@ -251,17 +262,25 @@ reference_solver = "CuDSSSolver"
 # float32, and more than 10 with CholmodSolver and PyAMGSolver, which solve on
 # the CPU: at an hour, their timeouts alone would take 8 hours.
 timeout = 900
+# The combinations that fail by design, which the solver view leaves out; an
+# entry matches each combination whose fields hold its values. Free energy in
+# float32 resolves no distance across the raster (see E1), AMJaxCGSolver and
+# PyAMGSolver resolve no free energy in either dtype, and AMJaxCGSolver returns
+# non-finite output in float32 on the windows of E2 and E3.
+fails_by_design = [
+  { distance = "free_energy", dtype = "float32" },
+  { distance = "free_energy", solver = ["AMJaxCGSolver", "PyAMGSolver"] },
+  { solver = "AMJaxCGSolver", dtype = "float32", question = ["E2", "E3"] },
+]
 
-# The distances of each question, with the settings that every solver shares,
-# and `sides`, the synthetic rasters on which they run, Maryland left out, so
-# that the solver view takes about 5.5 hours on one RTX 3090. Exact windowed
-# resistance takes about 23 minutes a call of E2 or E3 at 1024^2 with
-# GridMultigridSolver in float32 (#78), against 2 at 256^2. E1 takes up to
-# about 7 minutes a call at 1024^2, with PyAMGSolver in float64, and its CPU
-# solvers would take about an hour a cell at 4096^2.
+# The distances of each question, with the settings that every solver shares.
+# E1 runs on every raster of its distance, as in the comparison. E2 and E3 run
+# on 256^2 alone (`sides`), and leave Maryland out: exact windowed resistance
+# takes about 23 minutes a call at 1024^2 with GridMultigridSolver in float32
+# (#78), against 2 at 256^2.
 [solver_view.questions.E1]
-resistance = { sides = [256, 1024] }
-free_energy = { sides = [256, 1024] }
+resistance = {}
+free_energy = {}
 
 [solver_view.questions.E2]
 resistance = { batch_size = 256, sides = [256] }

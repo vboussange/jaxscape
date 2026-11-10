@@ -28,8 +28,10 @@ function time_calls(cell, call)
     return output, warmup, times
 end
 
-function write_result(cell, output, warmup, times; version, files = false)
+"""Save the output of the last call, and write the result of the cell; `files`
+states whether the calls read or write files."""
+function write_result(cell, output, warmup, times; files = false)
     npzwrite(cell["output"], output)
-    result = Dict("version" => version, "files" => files, "warmup_s" => warmup, "times_s" => times)
+    result = Dict("files" => files, "warmup_s" => warmup, "times_s" => times)
     write(cell["result"], JSON.json(result))
 end

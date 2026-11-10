@@ -1,23 +1,26 @@
 """Turn the records of a run into its CSV, figures and Benchmark docs page.
 
-    uv run python report.py RUN_DIR
+    uv run python report.py RUN_DIR              # report the run
+    uv run python report.py RUN_DIR --publish    # and make it the docs page
 
 writes `results.csv`, one figure per question, such as `e1.png`, the Maryland
 figure `maryland.png`, the figure of the solver view `solvers.png`, and the page
-`index.md` into RUN_DIR. The report reads the records, the environment
-snapshot, the maps of the Maryland figure and the header comment of each
-adapter that the records name.
+`index.md` into RUN_DIR. The report reads the records, the configuration and the
+environment snapshot of the run, the maps of the Maryland figure and the header
+comment of each adapter that the records name. `--publish` points
+`docs/benchmark`, the Benchmark page of the docs, at RUN_DIR.
 """
 
 import argparse
 import csv
 import json
+import os
 from itertools import groupby
 from pathlib import Path
 
 import matplotlib
 import numpy as np
-from run import cell_id, map_path
+from run import FIELDS, map_path, RHO
 from scipy.stats import rankdata
 
 
@@ -28,15 +31,24 @@ from matplotlib.lines import Line2D
 
 
 HERE = Path(__file__).resolve().parent
+DOCS = HERE.parent / "docs" / "benchmark"  # the Benchmark page of the docs
 
-FIELDS = (
-    "view question tool distance device dtype solver case cells status reason warmup_s "
-    "median_s times_s measure agreement tier version files adapter"
-).split()
-CONFIGURATION = ("tool", "distance", "device", "dtype", "solver")
-LINE = ("tool", "distance", "device")  # a line of a figure
-SOLVER = ("question", "distance", "dtype", "solver")  # a row of the solver view
-RHO = "Spearman's ρ"
+# The fields of a configuration in the tables of the comparison and of the
+# solver view, and their headers.
+COMPARISON = ("tool", "distance", "device", "dtype", "solver", "tier")
+SOLVER_VIEW = ("question", "distance", "dtype", "solver")
+HEADERS = {
+    "question": "Question",
+    "tool": "Tool",
+    "distance": "Distance",
+    "device": "Device",
+    "dtype": "dtype",
+    "solver": "Solver",
+    "tier": "Tier",
+}
+LINE = ("tool", "distance", "device")  # a line of a figure of the comparison
+SOLID = {"gpu", "float32"}  # the lines of the figures drawn solid, others dashed
+STATUS_MARKERS = {"failed": "X", "timeout": "v", "oom": "s", "skipped": "o"}
 # The Maryland figure: JAXScape's map of a question next to a tool's map.
 MARYLAND = {"question": "E3", "tool": "Omniscape.jl", "map": "normalized current"}
 BLUES = "#cde2fb #9ec5f4 #6da7ec #3987e5 #256abf #184f95 #0d366b".split()
@@ -67,80 +79,6 @@ QUESTIONS = {
     ),
 }
 
-SETUPS = {
-    "E1": (
-        "Each tool computes the distances among 32 sites drawn at random from "
-        "the habitat cells with a fixed seed, across the whole raster: 496 "
-        "pairs. Every tool builds the same graph: rook contiguity, and the "
-        "resistance of an edge is the mean resistance of its two pixels. The "
-        "agreement of a record is the largest relative error over "
-        "the pairs against a float64 reference, computed once for each case and "
-        "distance: a sparse direct solve with `CholmodSolver` for resistance "
-        "and free energy, and Dijkstra's algorithm in SciPy for least-cost "
-        "distances."
-    ),
-    "E2": (
-        "JAXScape computes, in each call, the map of $\\partial C / \\partial q_i$ "
-        "with `SensitivityAnalysis`, which equals $2 S_i$ for symmetric "
-        "distances, and the total $C = \\sum_i q_i S_i$ with "
-        "`ConnectivityAnalysis`. Its windows have `dependency_range` 100 and "
-        "`coarsening_factor` 0.2, which gives blocks of 21 pixels: Omniscape's "
-        "`radius` and `block_size` in its Maryland example. Its proximity is "
-        "the default, $e^{-r/25}$ with $r$ in equivalent pixels. The windowed "
-        "analyses build their graphs with JAXScape's own edge rule: rook "
-        "contiguity, and the conductance of an edge is the mean permeability "
-        "of its two pixels. Resistance takes the setting of the [connectivity "
-        "example](../examples/connectivity_analysis/connectivity_analysis.ipynb): "
-        "`GridMultigridSolver(rtol=3e-4)` and "
-        "`SpielmanApproximation(epsilon=0.15)`, which estimates resistances "
-        "from random projections, on tiles of up to 2,601 block centres: at "
-        "8192², 64 tiles, the fewest at which E3 runs fastest on the GPU. Exact "
-        "resistance took 24 minutes a call of E3 at 1024², and would take 32 "
-        "hours at 8192². Free energy is left out of E2 and E3: its window "
-        "query holds the dense inverse of the 40,401 pixels of a window, and in "
-        "float64, the only precision that resolves its windows, one window ran "
-        "out of the 24 GB of the GPU, and out of memory on the CPU after taking "
-        "300 GB. The agreement of another tool is Spearman's ρ between its map "
-        "and JAXScape's map under the distance of its row, over the pixels "
-        "where both maps are defined. ConScape.jl computes its maps under free "
-        "energy on the whole raster, with targets at landmarks every 21 pixels "
-        "and the kernel $e^{-d/25}$ on its free-energy distance $d$; JAXScape "
-        "has no free-energy map to compare them with, and they are compared "
-        "with its maps under least-cost distance, which ranks pairs of sites "
-        "most like free energy at the $\\theta$ of the run."
-    ),
-    "E3": (
-        "JAXScape computes the map of $\\partial C / \\partial p_k$ with "
-        "`SensitivityAnalysis`, with the windows and proximity of E2. The "
-        "other tools map a flow, and the agreement of each is Spearman's ρ "
-        "over pixels between its map and the map of JAXScape under the "
-        "distance of its row, or under least-cost distance for ConScape.jl "
-        "(see E2). Omniscape.jl computes its normalized current, the "
-        "cumulative current divided by the flow potential, with the "
-        "configuration of its Maryland example on JAXScape's windows, on a "
-        "graph of eight neighbours."
-    ),
-}
-
-SOLVERS = (
-    "The solver view runs JAXScape with each of its linear solvers, in float32 "
-    "and float64 on the GPU, on the cases of E1, E2 and E3, so that a user can "
-    "trade speed for accuracy. `dense` is the dense solve (`solver=None`). "
-    "Resistance runs on every question, and free energy on E1 alone, since it "
-    "does not run on windows. Each cell runs like a cell of the comparison, "
-    "except that a call stops after 15 minutes, and on fewer rasters: E1 on "
-    "256² and 1024², and E2 and E3 on 256², since exact windowed resistance "
-    "takes about 23 minutes a call at 1024² with `GridMultigridSolver` in "
-    "float32. The error of a cell, for E1, is the largest relative error over "
-    "the pairs against the reference of E1, and for E2 and E3 the relative L2 "
-    "error of the map $m$, $\\lVert m - m_{\\mathrm{ref}} \\rVert_2 / "
-    "\\lVert m_{\\mathrm{ref}} \\rVert_2$, against the map of exact "
-    "resistance in float64 with `CuDSSSolver` on the GPU, on the same tiles. "
-    "In E2 and E3, `SpielmanApproximation(epsilon=0.15), "
-    "GridMultigridSolver(rtol=3e-4)` is the setting of the comparison for "
-    "resistance: Spielman's estimate of resistance, in float32."
-)
-
 EXCLUDED = [
     ("Linkage Mapper", "Needs ArcGIS."),
     ("Circuitscape 4", "Superseded by Circuitscape.jl."),
@@ -160,69 +98,126 @@ EXCLUDED = [
     ("radish", "Moves to `ilg-toolkit` with inverse landscape genetics."),
 ]
 
-STATUS_MARKERS = {"failed": "X", "timeout": "v", "oom": "s", "skipped": "o"}
+
+def main():
+    """Report a run from the command line, as the module docstring shows."""
+    parser = argparse.ArgumentParser(
+        description=__doc__.splitlines()[0],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("run_dir", type=Path)
+    parser.add_argument(
+        "--publish",
+        nargs="?",
+        const=DOCS,
+        type=Path,
+        metavar="LINK",
+        help="point LINK, by default docs/benchmark, at RUN_DIR",
+    )
+    arguments = parser.parse_args()
+    report(arguments.run_dir)
+    if arguments.publish:
+        publish(arguments.run_dir, arguments.publish)
 
 
-def view(record):
-    """Return the view of a record; a record without one belongs to the
-    comparison."""
-    return record.get("view", "comparison")
+def report(run_dir):
+    """Write the CSV, the figures and the page of a run into its directory.
+
+    **Arguments:**
+
+    - `run_dir`: The run directory, with `records.jsonl`, `config.json`,
+      `environment.json` and, when they are kept, the maps of the Maryland
+      figure. Without the maps, the Maryland figure drawn before stays.
+    """
+    lines = (run_dir / "records.jsonl").read_text().splitlines()
+    records = [json.loads(line) for line in lines if line.strip()]
+    config = json.loads((run_dir / "config.json").read_text())
+    environment = json.loads((run_dir / "environment.json").read_text())
+
+    write_csv(records, run_dir / "results.csv")
+    comparison = [record for record in records if record["view"] == "comparison"]
+    for question in sorted({record["question"] for record in comparison}):
+        path = run_dir / f"{question.lower()}.png"
+        plot(of_question(question, comparison), ("question",), LINE, path)
+    solvers = [record for record in records if record["view"] == "solver"]
+    if solvers:
+        plot(
+            solvers,
+            ("question", "distance"),
+            ("solver", "dtype"),
+            run_dir / "solvers.png",
+        )
+    pair = maryland_pair(comparison)
+    if pair and all(map_path(run_dir, record).exists() for record in pair):
+        plot_maryland(run_dir, *pair, run_dir / "maryland.png")
+    figure = pair if (run_dir / "maryland.png").exists() else None
+    text = page(run_dir.name, records, config, environment, figure)
+    (run_dir / "index.md").write_text(text)
 
 
-def is_synthetic(record):
-    return record["case"].startswith("synthetic-")
+def publish(run_dir, link):
+    """Point a link at a run directory, so that the page there is the run's.
+
+    **Arguments:**
+
+    - `run_dir`: The run directory.
+    - `link`: The link to point at it, by a relative path, such as
+      `docs/benchmark`.
+    """
+    link.unlink(missing_ok=True)
+    link.symlink_to(os.path.relpath(run_dir.resolve(), link.parent.resolve()))
+
+
+def of_question(question, records):
+    """Return the records of a question."""
+    return [record for record in records if record["question"] == question]
+
+
+def side(case):
+    """Return the side of a case: 256 for `synthetic-256`, `None` for Maryland."""
+    prefix = "synthetic-"
+    return int(case.removeprefix(prefix)) if case.startswith(prefix) else None
+
+
+def case_label(case):
+    """Return the label of a case in the tables, such as `256²`."""
+    return f"{side(case)}²" if side(case) else case.capitalize()
 
 
 def rank(record):
-    """Order the records of a raster: the fastest that succeeds first, then the
-    others by their status, in the order of `STATUS_MARKERS`."""
+    """Return the key that orders the records of a raster.
+
+    The fastest record that succeeds comes first, then the others by their
+    status, in the order of `STATUS_MARKERS`.
+    """
     if record["status"] == "ok":
         return (0, record["median_s"])
     return (1, list(STATUS_MARKERS).index(record["status"]))
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("run_dir", type=Path)
-    run_dir = parser.parse_args().run_dir
-    records = [
-        json.loads(line)
-        for line in (run_dir / "records.jsonl").read_text().splitlines()
-        if line.strip()
-    ]
-    environment = json.loads((run_dir / "environment.json").read_text())
-
-    write_csv(records, run_dir / "results.csv")
-    comparison = [record for record in records if view(record) == "comparison"]
-    questions = sorted({record["question"] for record in comparison})
-    for question in questions:
-        plot(question, of(question, comparison), run_dir / f"{question.lower()}.png")
-    solvers = [record for record in records if view(record) == "solver"]
-    if solvers:
-        plot_solvers(solvers, run_dir / "solvers.png")
-    # The maps are not committed: without them, the figure drawn before stays.
-    pair = maryland_pair(comparison)
-    if pair and all(path.exists() for path in maryland_maps(run_dir, *pair)):
-        plot_maryland(run_dir, *pair, run_dir / "maryland.png")
-    figure = pair if (run_dir / "maryland.png").exists() else None
-    (run_dir / "index.md").write_text(page(run_dir.name, records, environment, figure))
-
-
-def of(question, records):
-    return [record for record in records if record["question"] == question]
-
-
 def write_csv(records, path):
+    """Write the records as a CSV, one row each, its timed calls space-separated."""
     with open(path, "w", newline="") as file:
-        writer = csv.DictWriter(file, FIELDS, extrasaction="ignore")
+        writer = csv.DictWriter(file, FIELDS)
         writer.writeheader()
         for record in records:
-            times = record.get("times_s") or []
+            times = record["times_s"] or []
             writer.writerow({**record, "times_s": " ".join(map(str, times))})
 
 
-def configurations(records, fields=CONFIGURATION):
-    """Group records by the values of `fields`, in the order of their first record."""
+def group_by(records, fields):
+    """Group records by the values of `fields`.
+
+    **Arguments:**
+
+    - `records`: The records.
+    - `fields`: The fields whose values make a group.
+
+    **Yields:**
+
+    The values of `fields` and the records that share them, sorted by raster
+    cells, in the order of the first record of each group.
+    """
     order = {}
     for record in records:
         order.setdefault(tuple(record[field] for field in fields), len(order))
@@ -232,123 +227,58 @@ def configurations(records, fields=CONFIGURATION):
 
     for _, group in groupby(sorted(records, key=key), key=key):
         group = sorted(group, key=lambda record: record["cells"])
-        yield dict(zip(fields, (group[0][f] for f in fields))), group
+        yield {field: group[0][field] for field in fields}, group
 
 
-def plot(question, records, path):
-    """Plot the warm runtime of each tool, distance and device against the
-    raster cells.
+def plot(records, panel, line, path):
+    """Plot the warm runtime of each line against the raster cells.
 
-    At each raster, a line takes the fastest of the tool's settings that
-    succeeds. GPU lines are solid and CPU lines dashed, and join the synthetic
-    rasters; Maryland is a star. A raster where no setting succeeds shows a
-    status as a marker along the top edge, one row per line.
+    At each raster, a line takes the fastest of its records that succeeds, and
+    joins the synthetic rasters; Maryland is a star. A raster where none of its
+    records succeeds shows a status as a marker along the top edge, one row per
+    line.
+
+    **Arguments:**
+
+    - `records`: The records to plot.
+    - `panel`: The fields whose values give a panel, such as `("question",)`.
+    - `line`: The fields whose values give a line. The last, the device or the
+      dtype, sets its style: GPU and float32 lines are solid, and CPU and
+      float64 lines dashed. The others set its colour, and the legend gives
+      their values, with the tier of a tool.
+    - `path`: Where to save the figure.
     """
-    figure, axes = plt.subplots(figsize=(8, 4.5))
-    colors = {}
-    for index, (configuration, group) in enumerate(configurations(records, LINE)):
-        color = colors.setdefault(
-            (configuration["tool"], configuration["distance"]), f"C{len(colors) % 10}"
-        )
-        group = [
-            min(of_raster, key=rank)
-            for _, of_raster in groupby(group, key=lambda record: record["cells"])
-        ]
-        ok = [record for record in group if record["status"] == "ok"]
-        synthetic = [record for record in ok if is_synthetic(record)]
-        tier = f" · Tier {group[0]['tier']}" if group[0]["tier"] else ""
-        axes.plot(
-            [record["cells"] for record in synthetic],
-            [record["median_s"] for record in synthetic],
-            "-" if configuration["device"] == "gpu" else "--",
-            marker="o",
-            color=color,
-            label=f"{configuration['tool']} · {configuration['distance']} · "
-            f"{configuration['device'].upper()}{tier}",
-        )
-        for record in ok:
-            if not is_synthetic(record):
-                axes.plot(record["cells"], record["median_s"], "*", color=color)
-        for record in group:
-            if record["status"] != "ok":
-                axes.plot(
-                    record["cells"],
-                    0.96 - 0.04 * index,
-                    marker=STATUS_MARKERS[record["status"]],
-                    color=color,
-                    markerfacecolor="none" if record["status"] == "skipped" else color,
-                    transform=axes.get_xaxis_transform(),
-                    clip_on=False,
-                )
-    cells = [record["cells"] for record in records]
-    axes.set_xscale("log")
-    axes.set_yscale("log")
-    axes.set_xlim(min(cells) / 2, max(cells) * 2)
-    if not any(record["status"] == "ok" for record in records):
-        axes.set_ylim(1e-3, 1e3)
-    if any(record["status"] != "ok" for record in records):
-        # Headroom above the runtimes for the band of status markers.
-        low, high = np.log10(axes.get_ylim())
-        band = 0.06 + 0.04 * (index + 1)
-        axes.set_ylim(10**low, 10 ** (high + (high - low) * band / (1 - band)))
-    axes.set_xlabel("Raster cells")
-    axes.set_ylabel("Warm runtime (s)")
-    axes.set_title(f"{question}. {QUESTIONS[question][0]}")
-    statuses = [
-        Line2D(
-            [],
-            [],
-            linestyle="",
-            marker=marker,
-            color="gray",
-            markerfacecolor="none" if status == "skipped" else "gray",
-            label=status,
-        )
-        for status, marker in STATUS_MARKERS.items()
-    ]
-    if not all(map(is_synthetic, records)):
-        maryland = dict(linestyle="", marker="*", color="gray", label="Maryland")
-        statuses.insert(0, Line2D([], [], **maryland))
-    handles = axes.get_legend_handles_labels()[0] + statuses
-    axes.legend(handles=handles, loc="upper left", bbox_to_anchor=(1.02, 1), fontsize=8)
-    figure.savefig(path, dpi=150, bbox_inches="tight")
-    plt.close(figure)
-
-
-def plot_solvers(records, path):
-    """Plot the warm runtime of each solver and dtype against the raster cells,
-    one panel per question and distance.
-
-    float32 lines are solid and float64 dashed, and join the synthetic rasters;
-    Maryland is a star. A raster where a solver does not succeed shows its
-    status as a marker along the top edge, one row per line.
-    """
-    panels = list(configurations(records, ("question", "distance")))
-    solvers = list(dict.fromkeys(record["solver"] for record in records))
+    panels = list(group_by(records, panel))
+    colors = list(dict.fromkeys(tuple(r[f] for f in line[:-1]) for r in records))
+    tiers = {tuple(r[f] for f in line[:-1]): r["tier"] for r in records}
     columns = min(2, len(panels))
     rows = -(-len(panels) // columns)
     figure, grid = plt.subplots(
-        rows, columns, figsize=(5 * columns, 3.6 * rows), squeeze=False
+        rows, columns, figsize=(6 * columns, 4 * rows), squeeze=False
     )
     for axes in grid.flat[len(panels) :]:
         axes.set_visible(False)
-    for axes, (panel, group) in zip(grid.flat, panels):
+    for axes, (values, group) in zip(grid.flat, panels):
         band = 0
-        for line, of_line in configurations(group, ("solver", "dtype")):
-            color = f"C{solvers.index(line['solver']) % 10}"
-            ok = [record for record in of_line if record["status"] == "ok"]
-            synthetic = [record for record in ok if is_synthetic(record)]
+        for of_line, records_of_line in group_by(group, line):
+            color = f"C{colors.index(tuple(of_line.values())[:-1]) % 10}"
+            best = [
+                min(of_raster, key=rank)
+                for _, of_raster in groupby(records_of_line, key=lambda r: r["cells"])
+            ]
+            ok = [record for record in best if record["status"] == "ok"]
+            synthetic = [record for record in ok if side(record["case"])]
             axes.plot(
                 [record["cells"] for record in synthetic],
                 [record["median_s"] for record in synthetic],
-                "-" if line["dtype"] == "float32" else "--",
+                "-" if of_line[line[-1]] in SOLID else "--",
                 marker="o",
                 color=color,
             )
             for record in ok:
-                if not is_synthetic(record):
+                if not side(record["case"]):
                     axes.plot(record["cells"], record["median_s"], "*", color=color)
-            failed = [record for record in of_line if record["status"] != "ok"]
+            failed = [record for record in best if record["status"] != "ok"]
             for record in failed:
                 axes.plot(
                     record["cells"],
@@ -373,16 +303,35 @@ def plot_solvers(records, path):
             axes.set_ylim(10**low, 10 ** (high + (high - low) * share / (1 - share)))
         axes.set_xlabel("Raster cells")
         axes.set_ylabel("Warm runtime (s)")
-        axes.set_title(f"{panel['question']} · {panel['distance']}")
+        axes.set_title(
+            " · ".join(
+                f"{value}. {QUESTIONS[value][0]}" if value in QUESTIONS else value
+                for value in values.values()
+            )
+        )
     handles = [
-        Line2D([], [], color=f"C{index % 10}", label=solver)
-        for index, solver in enumerate(solvers)
+        Line2D(
+            [],
+            [],
+            color=f"C{index % 10}",
+            label=" · ".join(key) + (f" · Tier {tiers[key]}" if tiers[key] else ""),
+        )
+        for index, key in enumerate(colors)
     ]
+    styles = sorted(
+        {record[line[-1]] for record in records}, key=lambda v: v not in SOLID
+    )
     handles += [
-        Line2D([], [], color="gray", linestyle=style, label=dtype)
-        for dtype, style in (("float32", "-"), ("float64", "--"))
+        Line2D(
+            [],
+            [],
+            color="gray",
+            linestyle="-" if style in SOLID else "--",
+            label=style.upper() if line[-1] == "device" else style,
+        )
+        for style in styles
     ]
-    if not all(map(is_synthetic, records)):
+    if not all(side(record["case"]) for record in records):
         maryland = dict(linestyle="", marker="*", color="gray", label="Maryland")
         handles.append(Line2D([], [], **maryland))
     handles += [
@@ -404,45 +353,30 @@ def plot_solvers(records, path):
 
 
 def maryland_pair(records):
-    """Return the records of the Maryland figure: the first JAXScape record to
-    succeed under the tool's distance, whose map the runner keeps and compares
-    the tool's maps with, and the fastest setting of the tool that succeeds.
-    Return `None` when either is missing."""
-    question, tool = MARYLAND["question"], MARYLAND["tool"]
+    """Return the records of the Maryland figure, or `None` when one is missing.
+
+    They are the JAXScape GPU record under the tool's distance, whose map the
+    tool's maps are compared with, and the fastest setting of the tool that
+    succeeds.
+    """
     on_maryland = [
-        r
-        for r in of(question, records)
-        if r["case"] == "maryland" and r["status"] == "ok"
+        record
+        for record in of_question(MARYLAND["question"], records)
+        if record["case"] == "maryland" and record["status"] == "ok"
     ]
-    others = [r for r in on_maryland if r["tool"] == tool]
+    others = [record for record in on_maryland if record["tool"] == MARYLAND["tool"]]
     if not others:
         return None
     other = min(others, key=rank)
+    paired = ("JAXScape", "gpu", other["distance"])
     for record in on_maryland:
-        if record["tool"] == "JAXScape" and record["distance"] == other["distance"]:
+        if (record["tool"], record["device"], record["distance"]) == paired:
             return record, other
     return None
 
 
-def maryland_maps(run_dir, jaxscape, other):
-    """Return the paths of the maps of the Maryland figure, which the runner
-    keeps."""
-    return (
-        map_path(run_dir, jaxscape, jaxscape["distance"]),
-        run_dir / "maps" / f"{cell_id(other)}.npy",
-    )
-
-
-def runtime(record):
-    """Return the warm runtime of a record, or its status when it has none."""
-    if record["status"] != "ok":
-        return record["status"]
-    return f"{record['median_s']:.3g} s"
-
-
 def quantiles(values):
-    """Return the rank of each finite pixel as a quantile in [0, 1], and NaN
-    elsewhere."""
+    """Return the rank of each finite pixel as a quantile in [0, 1], else NaN."""
     finite = np.isfinite(values)
     quantile = np.full(values.shape, np.nan)
     quantile[finite] = (rankdata(values[finite]) - 1) / max(finite.sum() - 1, 1)
@@ -459,78 +393,82 @@ def plot_maryland(run_dir, jaxscape, other, path):
     colormap = colormap.with_extremes(bad="#9e9e9e")
     figure, axes = plt.subplots(1, 2, figsize=(10, 5), layout="constrained")
     labels = (f"sensitivity under {other['distance']}", MARYLAND["map"])
-    maps = maryland_maps(run_dir, jaxscape, other)
-    for axis, record, label, map_ in zip(axes, (jaxscape, other), labels, maps):
+    for axis, record, label in zip(axes, (jaxscape, other), labels):
         axis.set_axis_off()
         axis.set_title(
             f"{record['tool']}: {label}\n{record['device'].upper()}, {runtime(record)}"
         )
-        image = axis.imshow(quantiles(np.load(map_)), cmap=colormap, vmin=0, vmax=1)
+        quantile = quantiles(np.load(map_path(run_dir, record)))
+        image = axis.imshow(quantile, cmap=colormap, vmin=0, vmax=1)
     figure.colorbar(image, ax=axes, shrink=0.8, label="Rank of the pixel (quantile)")
-    figure.suptitle(f"Maryland · {RHO} = {value(other)}")
+    figure.suptitle(f"Maryland · {RHO} = {agreement(other)}")
     figure.savefig(path, dpi=150)
     plt.close(figure)
 
 
-def row(cells):
-    return "| " + " | ".join(str(cell) for cell in cells) + " |"
+def runtime(record):
+    """Return the warm runtime of a record that succeeded."""
+    return f"{record['median_s']:.3g} s"
 
 
-def table(header, rows):
-    lines = [row(header), row(["---"] * len(header))]
-    return "\n".join(lines + [row(cells) for cells in rows])
-
-
-def case_label(case):
-    side = case.removeprefix("synthetic-")
-    return f"{side}²" if side != case else case.capitalize()
-
-
-def value(record):
-    """Return the agreement of a record, or its status when it has none."""
-    if record["status"] != "ok" or not record["tier"]:
-        return record["status"]
+def agreement(record):
+    """Return the agreement of a record, or `missing` without one."""
     if record["agreement"] is None:
         return "missing"
-    if record["tier"] > 1:
+    if record["measure"] == RHO:
         return f"{record['agreement']:.2f}"
     return f"{record['agreement']:.1e}"
 
 
-def agreement_table(records):
-    cases = sorted({(r["cells"], r["case"]) for r in records})
-    rows = []
-    for configuration, group in configurations(records):
-        by_case = {record["case"]: value(record) for record in group}
-        rows.append(
-            [configuration[field] for field in CONFIGURATION]
-            + [group[0]["tier"] or ""]
-            + [by_case.get(case, "") for _, case in cases]
-        )
-    rows = [[cells[0], cells[1], cells[2].upper(), *cells[3:]] for cells in rows]
-    header = ["Tool", "Distance", "Device", "dtype", "Solver", "Tier"]
-    return table(header + [case_label(case) for _, case in cases], rows)
+def outcome(record):
+    """Return the text of a record in a table.
 
-
-def runtime_and_error(record):
-    """Return the warm runtime and the error of a record, or its status."""
+    The text is the warm runtime, the agreement and the landscape total of a
+    record that succeeded, and the status of another.
+    """
     if record["status"] != "ok":
         return record["status"]
-    error = "missing" if record["agreement"] is None else f"{record['agreement']:.1e}"
-    return f"{runtime(record)} · {error}"
+    parts = [runtime(record)]
+    if record["measure"]:
+        parts.append(agreement(record))
+    if record["total"] is not None:
+        parts.append(f"total {record['total']:.3g}")
+    return " · ".join(parts)
 
 
-def solver_table(records):
-    cases = sorted({(r["cells"], r["case"]) for r in records})
-    rows = [
-        list(configuration.values())
-        + [
-            next((runtime_and_error(r) for r in group if r["case"] == case), "")
-            for _, case in cases
+def row(cells):
+    """Return a row of a Markdown table."""
+    return "| " + " | ".join(str(cell) for cell in cells) + " |"
+
+
+def table(header, rows):
+    """Return a Markdown table."""
+    lines = [row(header), row(["---"] * len(header))]
+    return "\n".join(lines + [row(cells) for cells in rows])
+
+
+def outcome_table(records, fields):
+    """Return the table of the outcome of each configuration on each raster.
+
+    **Arguments:**
+
+    - `records`: The records of the table.
+    - `fields`: The fields whose values make a configuration, a row.
+
+    **Returns:**
+
+    The table, in Markdown, with one column per raster (see `outcome`).
+    """
+    cases = sorted({(record["cells"], record["case"]) for record in records})
+    rows = []
+    for values, group in group_by(records, fields):
+        by_case = {record["case"]: outcome(record) for record in group}
+        configuration = [
+            str(value).upper() if field == "device" else value or ""
+            for field, value in values.items()
         ]
-        for configuration, group in configurations(records, SOLVER)
-    ]
-    header = ["Question", "Distance", "dtype", "Solver"]
+        rows.append(configuration + [by_case.get(case, "") for _, case in cases])
+    header = [HEADERS[field] for field in fields]
     return table(header + [case_label(case) for _, case in cases], rows)
 
 
@@ -546,39 +484,185 @@ def mapping(adapter):
     return " ".join(line for line in lines if line).replace("|", "\\|")
 
 
-def page(run_name, records, environment, maryland=None):
-    """Return the Benchmark page; `maryland` holds the records of the Maryland
-    figure, when the run directory has it."""
-    solvers = [record for record in records if view(record) == "solver"]
-    records = [record for record in records if view(record) == "comparison"]
+def duration(seconds):
+    """Return a duration in hours, minutes or seconds, such as `15 min`."""
+    for unit, length in (("h", 3600), ("min", 60)):
+        if seconds % length == 0:
+            return f"{seconds // length} {unit}"
+    return f"{seconds} s"
+
+
+def jaxscape_setting(config, question, distance, name):
+    """Return a setting of JAXScape's entry of a question for a distance."""
+    for entry in config["tools"]:
+        if (entry["tool"], entry["question"]) == ("JAXScape", question):
+            return entry["distances"][distance][name]
+
+
+def combination(entry):
+    """Return the text of an entry of `fails_by_design`.
+
+    For `{distance = "free_energy", dtype = "float32"}`, the text is
+    `` `free_energy` in `float32` ``.
+    """
+    words = []
+    for field, joiner in (
+        ("distance", ""),
+        ("solver", "with "),
+        ("dtype", "in "),
+        ("question", "on "),
+    ):
+        if field in entry:
+            values = entry[field] if isinstance(entry[field], list) else [entry[field]]
+            either = " or ".join(f"`{value}`" for value in values)
+            words.append((joiner if words else "") + either)
+    return " ".join(words)
+
+
+def setups(config):
+    """Return the setup of each question, from the configuration of the run."""
+    windows = config["windows"]
+    reach = windows["dependency_range"]
+    scale = f"{reach / 4:g}"
+    sites = config["E1"]["sites"]
+    return {
+        "E1": (
+            f"Each tool computes the distances among {sites} sites drawn at "
+            "random from the habitat cells with a fixed seed, across the whole "
+            f"raster: {sites * (sites - 1) // 2} pairs. Every tool builds the "
+            "same graph: rook contiguity, and the resistance of an edge is the "
+            "mean resistance of its two pixels. The agreement of a record is the "
+            "largest relative error over the pairs against a float64 reference, "
+            "computed once for each case and distance: a sparse direct solve "
+            "with `CholmodSolver` for resistance and free energy, and Dijkstra's "
+            "algorithm in SciPy for least-cost distances."
+        ),
+        "E2": (
+            "JAXScape computes, in each call, the map of $\\partial C / \\partial "
+            "q_i$ with `SensitivityAnalysis`, which equals $2 S_i$ for symmetric "
+            "distances, and the landscape total $C = \\sum_i q_i S_i$ with "
+            "`ConnectivityAnalysis`. The table gives this total next to "
+            "Graphab's, the square of its equivalent connectivity, "
+            "$\\sum_I \\sum_J a_I a_J e^{-d_{IJ}/25}$ over its patches. Its "
+            f"windows have `dependency_range` {reach} and `coarsening_factor` "
+            f"{windows['coarsening_factor']}, which gives blocks of "
+            f"{windows['block_size']} pixels; Omniscape's Maryland example takes "
+            "`radius` 100 and `block_size` 21. Its proximity is the default, "
+            f"$e^{{-r/{scale}}}$ with $r$ in equivalent pixels. The windowed "
+            "analyses build their graphs with JAXScape's own edge rule: rook "
+            "contiguity, and the conductance of an edge is the mean "
+            "permeability of its two pixels. Resistance takes the setting of the "
+            "[connectivity example]"
+            "(../examples/connectivity_analysis/connectivity_analysis.ipynb): "
+            f"`{jaxscape_setting(config, 'E2', 'resistance', 'solver')}` and "
+            f"`{jaxscape_setting(config, 'E2', 'resistance', 'method')}`, which "
+            "estimates resistances from random projections, on tiles of up to "
+            f"{jaxscape_setting(config, 'E2', 'resistance', 'batch_size'):,} "
+            "block centres. Exact resistance took 24 minutes a call of E3 at "
+            "1024², and would take 32 hours at 8192². Free energy is left out of "
+            "E2 and E3: its window query holds the dense inverse of the pixels "
+            "of a window, 40,401 at `dependency_range` 100, and in float64, the "
+            "only precision that resolves its windows, one such window ran out "
+            "of the 24 GB of the GPU, and out of memory on the CPU after taking "
+            "300 GB. The agreement of another tool is "
+            "Spearman's ρ between its map and the map of JAXScape's GPU cell "
+            "under the distance of its row, over the pixels where both maps are "
+            "defined; it is missing when that cell fails. ConScape.jl computes "
+            "its maps under free energy on the whole raster, with targets at "
+            f"landmarks every {windows['block_size']} pixels and the kernel "
+            f"$e^{{-d/{scale}}}$ on its free-energy distance $d$; JAXScape has no "
+            "free-energy map to compare them with, and they are compared with "
+            "its maps under least-cost distance, which ranks pairs of sites most "
+            "like free energy at the $\\theta$ of the run, "
+            f"{config['distances']['free_energy']['theta']}."
+        ),
+        "E3": (
+            "JAXScape computes the map of $\\partial C / \\partial p_k$ with "
+            "`SensitivityAnalysis`, with the windows and proximity of E2. The "
+            "other tools map a flow, and the agreement of each is Spearman's ρ "
+            "over pixels between its map and the map of JAXScape's GPU cell "
+            "under the distance of its row, or under least-cost distance for "
+            "ConScape.jl (see E2). Omniscape.jl computes its normalized current, "
+            "the cumulative current divided by the flow potential, with the "
+            "configuration of its Maryland example on JAXScape's windows, on a "
+            "graph of eight neighbours."
+        ),
+    }
+
+
+def solver_view_text(config):
+    """Return the setup of the solver view, from the configuration of the run."""
+    view = config["solver_view"]
+    runs = []
+    for question, distances in view["questions"].items():
+        on = {}  # the rasters of the question -> its distances that run on them
+        for distance, settings in distances.items():
+            sides = settings.get("sides")
+            rasters = "every raster of its distance"
+            if sides:
+                rasters = " and ".join(f"{side}²" for side in sides)
+            on.setdefault(rasters, []).append(distance)
+        runs += [f"{question} with {' and '.join(d)} on {r}" for r, d in on.items()]
+    left_out = "; ".join(map(combination, view.get("fails_by_design", [])))
+    return (
+        "The solver view runs JAXScape with each of its linear solvers, in "
+        f"{' and '.join(view['dtypes'])} on the {view['device'].upper()}, so "
+        "that a user can trade speed for accuracy. `dense` is the dense solve "
+        f"(`solver=None`). It runs {', '.join(runs[:-1])} and {runs[-1]}: free "
+        "energy does not run on windows, and exact windowed resistance takes "
+        "about 23 minutes a call of E2 or E3 at 1024² with "
+        "`GridMultigridSolver` in float32, which keeps E2 and E3 on fewer "
+        "rasters than E1. Each cell runs like a "
+        f"cell of the comparison, except that a call stops after "
+        f"{duration(view['timeout'])}. The error of a cell, for E1, is the "
+        "largest relative error over the pairs against the reference of E1, and "
+        "for E2 and E3 the relative L2 error of the map $m$, $\\lVert m - "
+        "m_{\\mathrm{ref}} \\rVert_2 / \\lVert m_{\\mathrm{ref}} \\rVert_2$, "
+        "against the map of exact resistance in float64 with "
+        f"`{view['reference_solver']}` on the {view['device'].upper()}, on the "
+        "same tiles. In E2 and E3, `SpielmanApproximation(epsilon=0.15), "
+        "GridMultigridSolver(rtol=3e-4)` is the setting of the comparison for "
+        "resistance: Spielman's estimate of resistance, in float32. The view "
+        f"leaves out the combinations that fail by design: {left_out}."
+    )
+
+
+def page(run_name, records, config, environment, maryland=None):
+    """Return the Benchmark page of a run.
+
+    **Arguments:**
+
+    - `run_name`: The name of the run directory.
+    - `records`: The records of the run.
+    - `config`: The configuration of the run, which gives the settings that the
+      page states.
+    - `environment`: The environment snapshot of the run.
+    - `maryland`: The records of the Maryland figure, when the run directory
+      has it.
+
+    **Returns:**
+
+    The page, in Markdown.
+    """
+    solvers = [record for record in records if record["view"] == "solver"]
+    records = [record for record in records if record["view"] == "comparison"]
     questions = sorted({record["question"] for record in records})
     tools = {}
     for record in records:
-        tool = tools.setdefault(
-            record["tool"],
-            {"adapter": record["adapter"], "questions": set(), "versions": set()},
-        )
-        tool["questions"].add(record["question"])
-        if record["version"]:
-            tool["versions"].add(record["version"])
-    versions = ", ".join(
-        f"{name} {', '.join(sorted(tool['versions']))}" for name, tool in tools.items()
-    )
-    measures = {
-        question: sorted(
-            {record["measure"] for record in of(question, records) if record["tier"]}
-        )
-        for question in questions
-    }
+        tool = tools.setdefault(record["tool"], (record["adapter"], set()))
+        tool[1].add(record["question"])
+    landscape, run = config["landscape"], config["run"]
+    habitat = (1 - landscape["habitat_threshold"]) * 100
+    texts = setups(config)
 
     sections = [
         "# Benchmark",
-        "This page compares JAXScape "
-        f"{environment['packages']['jaxscape']} with the software that "
-        "ecologists use for connectivity analysis, on three questions from "
-        f"ecology. It is generated from the records of the run `{run_name}`, "
-        f"started on {environment['date'][:10]} on {environment['host']}. "
-        "[`results.csv`](results.csv) lists every cell of the run.",
+        f"This page compares JAXScape {environment['tools']['JAXScape']} with the "
+        "software that ecologists use for connectivity analysis, on three "
+        "questions from ecology. It is generated from the records of the run "
+        f"`{run_name}`, started on {environment['date'][:10]} on "
+        f"{environment['host']}. [`results.csv`](results.csv) lists every cell "
+        "of the run.",
         "## Questions",
         "\n".join(
             f"- **{name}. {title}.** {text}"
@@ -593,49 +677,65 @@ def page(run_name, records, environment, maryland=None):
         "Tier 1.",
         "## Landscapes",
         "Each synthetic case draws a Gaussian random field with a Gaussian "
-        "covariance of correlation length 25 pixels, on a periodic grid with a "
-        "fixed seed, and normalizes its ranks to [0, 1]. Quality equals the "
-        "field where the field is at least 0.7, and 0 elsewhere, so that 30 % of "
-        "the cells are habitat. Permeability is $10^{-2(1 - f)}$ for the field "
-        "$f$, from 0.01 to 1, and resistance is its inverse. A larger raster "
-        "covers a larger area at the same grain.",
-        "E2 and E3 also run on the Maryland case of Omniscape's example: the "
-        "2016 land cover of Frederick, Maryland, from the National Land Cover "
-        "Database, 694 × 725 pixels of 30 m. Each class takes the resistance "
-        "of Omniscape's reclassification table, medium- and high-intensity "
-        "development are barriers, and forest, the classes of resistance 1, is "
-        "habitat of quality 1.",
+        f"covariance of correlation length {landscape['correlation_length']} "
+        "pixels, on a periodic grid with a fixed seed, and normalizes its ranks "
+        "to [0, 1]. Quality equals the field where the field is at least "
+        f"{landscape['habitat_threshold']}, and 0 elsewhere, so that "
+        f"{habitat:.0f} % of the cells are habitat. Permeability is "
+        "$10^{-2(1 - f)}$ for the field $f$, from 0.01 to 1, and resistance is "
+        "its inverse. A larger raster covers a larger area at the same grain.",
+        f"{' and '.join(config['maryland']['questions'])} also run on the "
+        "Maryland case of Omniscape's example: the 2016 land cover of "
+        "Frederick, Maryland, from the National Land Cover Database, 694 × 725 "
+        "pixels of 30 m"
+        + (
+            f", of which this run takes the top-left {config['maryland']['side']} "
+            f"× {config['maryland']['side']} pixels"
+            if config["maryland"].get("side")
+            else ""
+        )
+        + ". Each class takes the resistance of Omniscape's reclassification "
+        "table, medium- and high-intensity development are barriers, and "
+        "forest, the classes of resistance 1, is habitat of quality 1.",
         "## Comparison",
         "Each cell runs in its own process, pinned to the cores of the "
         "environment table, with thread settings matched to them; XLA sizes "
         "its thread pools to these cores. A warm-up call comes first and "
         "compiles the code of tools that compile. The warm runtime is the "
-        "median of the five timed calls that follow it, or the time of a single "
-        "call when the warm-up takes more than five minutes. Every call redoes "
-        "all work that depends on the "
-        "landscape's values: graph assembly, factorization, multigrid hierarchy "
-        "and solver state. A call stops after one hour. Within a configuration, "
-        "rasters run from the smallest up, and after a failure, a timeout or "
-        "running out of memory (`oom`), the configuration skips its larger "
-        "rasters. A tool runs each setting of a small grid fixed in advance "
-        "from its documentation: the tables list every setting, and the "
-        "figures show, at each raster, the fastest setting that succeeds. In "
-        "the figures, tools on the GPU are solid and on the CPU dashed, "
-        "Maryland is a star, and rasters where no setting succeeds show a "
-        "status along the top edge.",
+        f"median of the timed calls that follow it, {run['repeats']} per cell, "
+        "or the time of a single call when the warm-up takes more than "
+        f"{duration(run['single_call_after'])}. Every call redoes all work that "
+        "depends on the landscape's values: graph assembly, factorization, "
+        "multigrid hierarchy and solver state. A call stops after "
+        f"{duration(run['timeout'])}. Within a configuration, synthetic rasters "
+        "run from the smallest up, and after a failure, a timeout or running "
+        "out of memory (`oom`), the configuration skips its larger synthetic "
+        "rasters; Maryland always runs, and its failure skips nothing. A tool "
+        "runs each setting of a small grid fixed in advance from its "
+        "documentation: the tables list every setting, and the figures show, "
+        "at each raster, the fastest setting that succeeds. In the figures, "
+        "tools on the GPU are solid and on the CPU dashed, Maryland is a star, "
+        "and rasters where no setting succeeds show a status along the top "
+        "edge.",
     ]
     for question in questions:
-        records_of_question = of(question, records)
+        measures = sorted(
+            {r["measure"] for r in of_question(question, records) if r["measure"]}
+        )
+        parts = ["Warm runtime"]
+        if measures:
+            parts.append(f"agreement ({', '.join(measures)})")
+        if question == "E2":
+            parts.append("landscape total, where the tool computes one,")
+        caption = ", ".join(parts[:-1]) + " and " + parts[-1] if parts[1:] else parts[0]
         sections += [
             f"### {question}. {QUESTIONS[question][0]}",
-            SETUPS.get(question, ""),
+            texts[question],
             f"![{question}: warm runtime against raster cells]({question.lower()}.png)",
-            f"Agreement ({', '.join(measures[question])}) of each configuration "
-            "and raster, or the status of the cell; `missing` marks a cell "
-            "whose reference is unavailable."
-            if measures[question]
-            else "Status of each configuration and raster.",
-            agreement_table(records_of_question),
+            f"{caption} of each configuration and raster, or the status of the "
+            "cell; `missing` marks an agreement whose reference is unavailable "
+            "or undefined.",
+            outcome_table(of_question(question, records), COMPARISON),
         ]
         if question == MARYLAND["question"] and maryland:
             jaxscape, other = maryland
@@ -647,33 +747,45 @@ def page(run_name, records, environment, maryland=None):
                 f"{runtime(jaxscape)}) next to {other['tool']}'s {MARYLAND['map']} "
                 f"({other['device'].upper()}, `{other['solver']}`, "
                 f"{runtime(other)}), each coloured by the rank of its pixels, with "
-                f"barriers in gray: {RHO} = {value(other)}.",
+                f"barriers in gray: {RHO} = {agreement(other)}.",
             ]
     if solvers:
         sections += [
             "## Solvers",
-            SOLVERS,
+            solver_view_text(config),
             "![Solvers: warm runtime against raster cells](solvers.png)",
-            "Warm runtime and error of each solver, dtype and raster, or the "
-            "status of the cell; `missing` marks a cell whose reference is "
-            "unavailable.",
-            solver_table(solvers),
+            "Warm runtime, error and, in E2, landscape total of each solver, "
+            "dtype and raster, or the status of the cell; `missing` marks an "
+            "error whose reference is unavailable or undefined.",
+            outcome_table(solvers, SOLVER_VIEW),
         ]
-    threads = ", ".join(f"`{k}={v}`" for k, v in environment["threads"].items())
-    packages = ", ".join(f"{k} {v}" for k, v in environment["packages"].items())
+    gpu = environment["gpu"]
+    if gpu:
+        gpu = (
+            f"{gpu['name']} (GPU {gpu['index']}, {gpu['uuid']}), driver "
+            f"{gpu['driver']}, {gpu['memory']}"
+        )
     sections += [
         "## Environment",
         table(
             ["Setting", "Value"],
             [
                 ["Host", environment["host"]],
-                ["GPU", environment["gpu"]],
+                ["GPU", gpu or "none"],
                 ["CPU", environment["cpu"]],
                 ["Cores", environment["cores"]],
-                ["Threads", threads],
-                ["Python", environment["python"]],
-                ["Packages", packages],
-                ["Tools", versions],
+                [
+                    "Threads",
+                    ", ".join(f"`{k}={v}`" for k, v in environment["threads"].items()),
+                ],
+                [
+                    "Runtimes",
+                    ", ".join(f"{k} {v}" for k, v in environment["runtimes"].items()),
+                ],
+                [
+                    "Tools",
+                    ", ".join(f"{k} {v}" for k, v in environment["tools"].items()),
+                ],
             ],
         ),
         "## Parameter mappings",
@@ -682,13 +794,8 @@ def page(run_name, records, environment, maryland=None):
         table(
             ["Tool", "Questions", "Adapter", "Mapping"],
             [
-                [
-                    name,
-                    ", ".join(sorted(tool["questions"])),
-                    f"`{tool['adapter']}`",
-                    mapping(tool["adapter"]),
-                ]
-                for name, tool in tools.items()
+                [name, ", ".join(sorted(asked)), f"`{adapter}`", mapping(adapter)]
+                for name, (adapter, asked) in tools.items()
             ],
         ),
         "## Excluded tools",

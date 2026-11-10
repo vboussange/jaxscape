@@ -1,38 +1,37 @@
-# A fake tool for the runner's tests: it returns the Euclidean distances among
-# the sites for E1 and the quality for other questions, both times 1 + `error`,
-# raises on rasters of side `fail_from` and larger, fails a check of JAXScape on
-# rasters of side `check_from` and larger, and outlasts the timeout on rasters of
-# side `sleep_from` and larger. With `off_graph`, its map is the exponential of
-# the quality, NaN on the first pixel, as on a pixel off a tool's graph.
+# A fake tool for the runner's tests. For E1, it returns the Euclidean
+# distances among the sites, and for E2 and E3 the quality, as a map, or minus
+# the quality with `reversed`, both times 1 + `error`; with `off_graph`, its map
+# is the exponential of the quality, NaN on the first pixel, as on a pixel off
+# a tool's graph, and with `nan`, its output is NaN. It reports the `total` of
+# its settings, raises on the cases of `fail_on`, and outlasts the timeout on
+# the cases of `sleep_on`.
 import time
+from pathlib import Path
 
 import numpy as np
 from adapters.protocol import read_cell, time_calls, write_result
 
 
 cell, arrays = read_cell()
-side = arrays["permeability"].shape[0]
 settings = cell["settings"]
-if side >= settings.get("fail_from", np.inf):
-    raise RuntimeError(f"fake failure on a raster of side {side}")
-if side >= settings.get("check_from", np.inf):
-    import equinox
-
-    raise equinox.EquinoxRuntimeError(f"fake check on a raster of side {side}")
+case = Path(cell["case"]).name
+if case in settings.get("fail_on", []):
+    raise RuntimeError(f"fake failure on {case}")
 
 
 def call():
-    if side >= settings.get("sleep_from", np.inf):
+    if case in settings.get("sleep_on", []):
         time.sleep(600)
-    if cell["question"] != "E1" and settings.get("off_graph"):
-        habitat = np.exp(arrays["quality"])
-        habitat[0, 0] = np.nan
-        return habitat
-    scale = 1 + settings.get("error", 0)
-    if cell["question"] != "E1":
-        return arrays["quality"] * scale
-    sites = arrays["sites"]
-    return np.linalg.norm(sites[:, None] - sites[None, :], axis=-1) * scale
+    if cell["question"] == "E1":
+        sites = arrays["sites"]
+        output = np.linalg.norm(sites[:, None] - sites[None, :], axis=-1)
+    elif settings.get("off_graph"):
+        output = np.exp(arrays["quality"])
+        output[0, 0] = np.nan
+    else:
+        output = -arrays["quality"] if settings.get("reversed") else arrays["quality"]
+    scale = np.nan if settings.get("nan") else 1 + settings.get("error", 0)
+    return output * scale
 
 
-write_result(cell, *time_calls(cell, call), version="1.0")
+write_result(cell, *time_calls(cell, call), total=settings.get("total"))
