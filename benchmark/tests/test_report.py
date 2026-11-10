@@ -38,7 +38,7 @@ def test_report_writes_the_csv_with_one_row_per_record(tmp_path):
     with open(run_dir / "results.csv", newline="") as file:
         rows = list(csv.DictReader(file))
 
-    assert len(rows) == 42
+    assert len(rows) == 56
     assert {row["status"] for row in rows} == {
         "ok",
         "failed",
@@ -151,6 +151,58 @@ def test_report_without_the_maps_keeps_the_maryland_figure(tmp_path):
     assert "](maryland.png)" in (run_dir / "index.md").read_text()
 
 
+def test_solver_table_lists_each_solver_with_its_runtime_and_error_or_status(
+    tmp_path,
+):
+    page = section((report(tmp_path) / "index.md").read_text(), "## Solvers")
+
+    assert table_row(page, "Question") == [
+        "Question",
+        "Distance",
+        "dtype",
+        "Solver",
+        "256²",
+        "Maryland",
+        "1024²",
+    ]
+    rows = {
+        ("E1", "resistance", "float32", "GridMultigridSolver"): [
+            "0.03 s · 2.0e-06",
+            "",
+            "0.35 s · 3.0e-06",
+        ],
+        ("E1", "resistance", "float64", "CuDSSSolver"): [
+            "0.3 s · 1.0e-12",
+            "",
+            "timeout",
+        ],
+        ("E1", "resistance", "float32", "AMJaxCGSolver"): ["failed", "", "skipped"],
+        ("E1", "resistance", "float32", "dense"): ["oom", "", "skipped"],
+        ("E1", "free_energy", "float64", "CuDSSSolver"): ["0.35 s · 4.7e-14", "", ""],
+        ("E2", "resistance", "float32", "GridMultigridSolver"): [
+            "91 s · 3.1e-04",
+            "812 s · missing",
+            "",
+        ],
+        (
+            "E2",
+            "resistance",
+            "float32",
+            "SpielmanApproximation(epsilon=0.15), GridMultigridSolver(rtol=3e-4)",
+        ): ["2 s · 4.2e-02", "", ""],
+        ("E3", "resistance", "float64", "PyAMGSolver"): ["timeout", "skipped", ""],
+    }
+    for configuration, cells in rows.items():
+        assert table_row(page, *configuration)[4:] == cells
+
+
+def test_report_writes_the_solver_figure(tmp_path):
+    run_dir = report(tmp_path)
+
+    assert (run_dir / "solvers.png").read_bytes().startswith(b"\x89PNG")
+    assert "](solvers.png)" in (run_dir / "index.md").read_text()
+
+
 def test_page_has_its_sections_and_references_the_figure(tmp_path):
     page = (report(tmp_path) / "index.md").read_text()
 
@@ -160,6 +212,7 @@ def test_page_has_its_sections_and_references_the_figure(tmp_path):
         "### E1. Isolation between populations",
         "### E2. Habitat connectivity",
         "### E3. Corridors and pinch points",
+        "## Solvers",
         "## Environment",
         "## Parameter mappings",
         "## Excluded tools",

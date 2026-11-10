@@ -28,7 +28,9 @@ change the pin, run, and report.
 
 - `config.toml`: how cells run (timeout, repeats, cores, GPU), the landscape,
   the raster sides and shared parameters of each distance, the windows of E2
-  and E3, the Maryland case, and one entry per tool and question.
+  and E3, the Maryland case, one entry per tool and question, and the solver
+  view, which runs JAXScape with each solver in float32 and float64 on the
+  GPU.
 - `landscape.py`: the synthetic landscape, the Maryland case of E2 and E3,
   and the sites of E1 and the conductance of its edges, which every tool of E1
   shares. Smoke mode takes the top-left 32 x 32 pixels of Maryland.
@@ -48,11 +50,12 @@ change the pin, run, and report.
   Julia and R adapters, and `reference.py` computes the float64 reference of
   E1.
 - `results/<run>/`: `records.jsonl`, the environment snapshot
-  `environment.json`, the references of E1, the logs of the cells and the
-  maps of E2 and E3 (neither committed): JAXScape's, and the other tools' maps
-  of Maryland. The report writes `results.csv`, one figure per question,
-  `e1.png` to `e3.png`, the Maryland figure `maryland.png`, which it draws
-  when the run directory holds its maps, and the page `index.md`.
+  `environment.json`, the references of E1, E2 and E3, the logs of the cells
+  and the maps of E2 and E3 (neither committed): JAXScape's, and the other
+  tools' maps of Maryland. The report writes `results.csv`, one figure per
+  question, `e1.png` to `e3.png`, the Maryland figure `maryland.png`, which it
+  draws when the run directory holds its maps, the figure of the solver view,
+  `solvers.png`, and the page `index.md`.
 
 ## The cell record
 
@@ -60,10 +63,10 @@ A record is the one contract between the runner and the report:
 
 | Field | Value |
 | --- | --- |
-| `question`, `tool`, `distance`, `device`, `dtype`, `solver`, `case` | The cell; `cells` is its number of raster cells. |
+| `view`, `question`, `tool`, `distance`, `device`, `dtype`, `solver`, `case` | The cell, in the `comparison` or the `solver` view; `cells` is its number of raster cells. |
 | `status`, `reason` | `ok`, `failed`, `timeout`, `oom` or `skipped`, and why. |
 | `warmup_s`, `times_s`, `median_s` | The warm-up call, the timed calls and their median, in seconds. |
-| `measure`, `agreement`, `tier` | The agreement measure of the tier, and its value, or `null` when the reference is unavailable. Tier 1 measures the largest relative error against the float64 reference of E1, and Tiers 2 and 3 Spearman's ρ against the JAXScape map of the same question and case. |
+| `measure`, `agreement`, `tier` | The agreement measure of the tier, or of the solver view, and its value, or `null` when the reference is unavailable. Tier 1 measures the largest relative error against the float64 reference of E1, and Tiers 2 and 3 Spearman's ρ against the JAXScape map of the same question and case. The solver view measures the largest relative error against the reference of E1 for E1, and for E2 and E3 the relative L2 error against the map of exact resistance in float64. |
 | `version`, `files`, `adapter` | The tool's version, whether its calls read or write files, and its adapter. |
 
 ## Add a tool
@@ -101,6 +104,20 @@ A tool takes one adapter script and one configuration entry.
    [tools.distances.resistance]
    solver = ["cg+amg", "cholmod"]
    ```
+
+## Add a solver
+
+A solver of the solver view takes one entry in `[solver_view.solvers]` of
+`config.toml`: its label, which its records carry as `solver`, and the
+settings that it adds, such as a `method` of resistance. It runs in each dtype
+on each distance of each question of the solver view, unless its `questions`
+and `dtypes` restrict it:
+
+```toml
+[solver_view.solvers]
+GridMultigridSolver = {}
+"GridMultigridSolver(rtol=1e-3)" = { dtypes = ["float32"] }
+```
 
 ## Publish a run
 

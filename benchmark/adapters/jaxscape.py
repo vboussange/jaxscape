@@ -9,8 +9,12 @@
 # shared `dependency_range` and `coarsening_factor`, the default proximity and
 # the `batch_size` of the settings; these windowed analyses build their graphs
 # with JAXScape's own edge rule, the mean permeability of the two pixels. The
-# distance runs with the solver and dtype of its settings, and every call
-# builds the graphs and the solver states.
+# distance runs with the solver, the resistance `method` and the dtype of its
+# settings, such as `GridMultigridSolver(rtol=3e-4)` (`dense` is the dense
+# solve, `solver=None`), and every call builds the graphs and the solver
+# states.
+import ast
+
 import jax
 from adapters.protocol import read_cell, time_calls, write_result
 
@@ -34,11 +38,26 @@ from jaxscape import (
 from landscape import conductance
 
 
+def construct(setting, module):
+    """Return the object of `module` that a setting such as
+    `GridMultigridSolver(rtol=3e-4)` names, or `None` for `dense`."""
+    if setting == "dense":
+        return None
+    call = ast.parse(setting if "(" in setting else f"{setting}()", mode="eval").body
+    keywords = {
+        keyword.arg: ast.literal_eval(keyword.value) for keyword in call.keywords
+    }
+    return getattr(module, call.func.id)(**keywords)
+
+
 solver = (
-    {"solver": getattr(solvers, settings["solver"])()} if "solver" in settings else {}
+    {"solver": construct(settings["solver"], solvers)} if "solver" in settings else {}
+)
+method = (
+    {"method": construct(settings["method"], jaxscape)} if "method" in settings else {}
 )
 distance = {
-    "resistance": lambda: ResistanceDistance(**solver),
+    "resistance": lambda: ResistanceDistance(**solver, **method),
     "lcp": lambda: LCPDistance(),
     "free_energy": lambda: FreeEnergyDistance(
         theta=cell["parameters"]["theta"], **solver
