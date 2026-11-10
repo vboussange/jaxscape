@@ -5,16 +5,19 @@ The runner calls an adapter with the path of a cell file, a JSON object with:
 - `question`, `distance`, `device`: what the cell computes, and where;
 - `settings`: the tool's settings for the distance, with `dtype` and `solver`;
 - `parameters`: the shared parameters of the distance, such as `theta`;
-- `windows`: the `dependency_range` and `coarsening_factor` of E2 and E3;
+- `windows`: the `dependency_range` and `coarsening_factor` of E2 and E3, and
+  `block_size`, the side of JAXScape's blocks;
 - `case`: a directory with `quality.npy`, `permeability.npy` and, for E1,
   `sites.npy`, the row and column of each site;
 - `repeats`, `single_call_after`: the timing protocol;
 - `progress`, `output`, `result`: the files that the adapter writes.
 
 The adapter touches `progress` at the start of each call, saves the output of
-its last call in `output` (`.npy`) and writes `result`, a JSON object with its
-`version`, `files` (whether its calls read or write files), `warmup_s` and
-`times_s`. Adapters in other languages follow the same protocol.
+its last call in `output` (`.npy`) and writes `result`, a JSON object with
+`files` (whether its calls read or write files), `warmup_s`, `times_s` and, for
+a tool of E2 that computes one, `total`, the landscape total of its last call.
+The runner takes the tool's version from the environment snapshot. Adapters in
+other languages follow the same protocol.
 """
 
 import json
@@ -62,7 +65,20 @@ def time_calls(cell, call):
     return output, warmup, times
 
 
-def write_result(cell, output, warmup, times, version, files=False):
+def write_result(cell, output, warmup, times, files=False, total=None):
+    """Save the output of the last call, and write the result of the cell.
+
+    **Arguments:**
+
+    - `cell`: The cell file.
+    - `output`: The output of the last call.
+    - `warmup`, `times`: The warm-up time and the times of the timed calls, in
+      seconds.
+    - `files`: Whether the calls read or write files.
+    - `total`: The landscape total of the last call, for a tool of E2 that
+      computes one.
+    """
     np.save(cell["output"], np.asarray(output))
-    result = {"version": version, "files": files, "warmup_s": warmup, "times_s": times}
+    total = None if total is None else float(total)
+    result = {"files": files, "warmup_s": warmup, "times_s": times, "total": total}
     Path(cell["result"]).write_text(json.dumps(result))

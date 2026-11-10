@@ -7,13 +7,15 @@
 # where the kernel falls to exp(-4). `d=25` and `p=exp(-1)` give the kernel
 # exp(-d/25) on the cost of the shortest path in the graph, which adds the
 # costs of crossing patches. The capacity a_I of a patch is its area in
-# pixels. Each call computes the PC of the graph, the landscape total, and the
-# flux F_I = sum over patches J != I of a_J exp(-d_IJ/25) (`beta=1`). The map
-# is F_I + a_I, the patch analogue of Hanski's S_i, which adds the patch's own
-# term that F leaves out, on the pixels of each patch, and NaN elsewhere.
-# `-proc` is the number of cores of the cell. Graphab reads and writes files:
-# each call writes the land and resistance rasters to /dev/shm, creates a new
-# project from them, and reads the patches back.
+# pixels. Each call computes the equivalent connectivity EC of the graph,
+# whose square, the sum over patches I and J of a_I a_J exp(-d_IJ/25), is the
+# landscape total, and the flux F_I = sum over patches J != I of
+# a_J exp(-d_IJ/25) (`beta=1`). The map is F_I + a_I, the patch analogue of
+# Hanski's S_i, which adds the patch's own term that F leaves out, on the
+# pixels of each patch, and NaN elsewhere. `-proc` is the number of cores of
+# the cell. Graphab reads and writes files: each call writes the land and
+# resistance rasters to /dev/shm, creates a new project from them, and reads
+# the patches and EC back.
 import math
 import os
 import shutil
@@ -22,6 +24,7 @@ import subprocess
 from contextlib import closing
 from pathlib import Path
 
+import landscape
 import numpy as np
 import rasterio
 from adapters.protocol import read_cell, time_calls, write_result
@@ -33,11 +36,9 @@ JAR = next((HERE / "java").glob("graphab-*.jar"))  # the jar of install.sh
 KERNEL = ["d=25", f"p={math.exp(-1)}"]
 
 cell, arrays = read_cell()
-if cell["question"] != "E2":
-    raise ValueError("Graphab computes the habitat connectivity of E2")
-quality, permeability = arrays["quality"], arrays["permeability"]
-land = np.where(permeability == 0, -1, np.where(quality > 0, 1, 2)).astype("int32")
-resistance = (1 / np.where(permeability == 0, 1, permeability)).astype("float32")
+resistance = landscape.resistance(arrays["permeability"])
+barrier = np.isnan(resistance)
+land = np.where(barrier, -1, np.where(arrays["quality"] > 0, 1, 2)).astype("int32")
 rows, columns = land.shape
 profile = dict(
     driver="GTiff",
@@ -75,7 +76,7 @@ def call():
     with rasterio.open(
         work / "resistance.tif", "w", dtype="float32", **profile
     ) as file:
-        file.write(resistance, 1)
+        file.write(np.where(barrier, 1, resistance).astype("float32"), 1)
     graphab("--create", "project", str(work / "land.tif"), "nodata=-1", f"dir={work}")
     graphab(
         "--project",
@@ -84,7 +85,7 @@ def call():
         *("--linkset", "distance=cost", "name=links", "topo=complete"),
         *(f"maxcost={cost}", f"extcost={work / 'resistance.tif'}"),
         *("--graph", "name=graph", f"threshold={cost}"),
-        *("--gmetric", "PC", *KERNEL),
+        *("--gmetric", "EC", *KERNEL),
         *("--lmetric", "F", *KERNEL, "beta=1"),
     )
     patches = work / "project" / "habitat"
@@ -100,8 +101,12 @@ def call():
     output = np.full(ids.shape, np.nan)
     habitat = ids > 0
     output[habitat] = [values[int(i)] for i in ids[habitat]]
-    return output
+    # EC.txt holds a header line and a line of values, whose last is EC.
+    equivalent_connectivity = float(
+        (work / "project" / "EC.txt").read_text().splitlines()[1].split("\t")[-1]
+    )
+    return output, equivalent_connectivity**2
 
 
-version = JAR.stem.removeprefix("graphab-")
-write_result(cell, *time_calls(cell, call), version=version, files=True)
+(output, total), warmup, times = time_calls(cell, call)
+write_result(cell, output, warmup, times, files=True, total=total)

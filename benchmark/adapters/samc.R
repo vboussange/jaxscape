@@ -16,7 +16,6 @@ source("adapters/protocol.R")
 suppressPackageStartupMessages(library(samc))
 
 cell <- read_cell()
-if (cell$question != "E3") stop("samc maps the corridors of E3")
 resistance <- 1 / cell$arrays$permeability
 barrier <- !is.finite(resistance)
 resistance[barrier] <- NA
@@ -31,4 +30,4 @@ call <- function() {
   map(chain, visitation(chain, init = quality))
 }
 
-write_result(cell, time_calls(cell, call), version = format(packageVersion("samc")))
+write_result(cell, time_calls(cell, call))

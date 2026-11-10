@@ -4,19 +4,23 @@
     uv run python run.py RUN_DIR --smoke    # every cell once, on a small raster
 
 A cell is one question, tool, distance, device and case, in the comparison or in
-the solver view, which runs JAXScape with each solver. The runner appends the
-record of each cell to `RUN_DIR/records.jsonl` as it finishes, and skips the
-cells recorded there when it restarts. It keeps the maps of JAXScape's E2 and
-E3 cells of the comparison in `RUN_DIR/maps`, against which it measures the
-other tools' maps, and the other tools' maps of Maryland, for the report's
-Maryland figure. Smoke mode runs every cell on a raster of `smoke_side` pixels a
-side, with windows of `smoke_dependency_range` and one timed call, into a new
-run directory, and exits with an error when a cell fails or lacks its
-agreement; a cell of the solver view may fail a check of JAXScape.
+the solver view, which runs JAXScape with each solver. The runner writes the
+configuration of the run to `RUN_DIR/config.json` and the environment snapshot
+to `RUN_DIR/environment.json`, appends the record of each cell to
+`RUN_DIR/records.jsonl` as it finishes, and skips the cells recorded there when
+it restarts. It keeps in `RUN_DIR/maps` the maps of JAXScape's E2 and E3 cells
+of the comparison on the GPU, with which it compares the other tools' maps, and
+the other tools' maps of Maryland, for the report's Maryland figure. Smoke mode
+runs every cell on a raster of `smoke_side` pixels a side, with windows of
+`smoke_dependency_range` and one timed call, into a new run directory, and
+exits with an error unless every cell is `ok` with its agreement, and every
+Tier 1 error is at most `smoke_tolerance`.
 """
 
 import argparse
+import copy
 import json
+import math
 import os
 import platform
 import re
@@ -38,18 +42,14 @@ from scipy.stats import spearmanr
 
 
 HERE = Path(__file__).resolve().parent
+# The fields of a cell record, the contract between the runner and the report;
+# the first ones, up to `case`, are the key of the cell.
 KEY = ("view", "question", "tool", "distance", "device", "dtype", "solver", "case")
-MEASURES = {
-    "E1": "largest relative error",
-    "E2": "Spearman's ρ",
-    "E3": "Spearman's ρ",
-}
-SOLVER_MEASURES = {
-    "E1": "largest relative error",
-    "E2": "relative L2 error",
-    "E3": "relative L2 error",
-}
-REFERENCE = "adapters/reference.py"
+FIELDS = (
+    *KEY,
+    *("cells", "status", "reason", "warmup_s", "times_s", "median_s"),
+    *("measure", "agreement", "tier", "total", "version", "files", "adapter"),
+)
 INTERPRETERS = {".jl": ["julia", f"--project={HERE / 'julia'}"], ".R": ["Rscript"]}
 OOM = re.compile(
     r"RESOURCE_EXHAUSTED|out of memory|OutOfMemoryError|MemoryError|bad_alloc|"
@@ -57,8 +57,6 @@ OOM = re.compile(
     re.IGNORECASE,
 )
 ERROR = re.compile(r"^([\w.]*(Error|Exception)\b|ERROR:)")
-CHECK = re.compile(r"^(equinox\.)?EquinoxRuntimeError\b")  # a check of JAXScape
-R_PACKAGES = ["gdistance", "samc"]  # the R tools, whose versions each run records
 
 
 def main():
@@ -75,110 +73,162 @@ def main():
     if arguments.smoke and records.exists():
         sys.exit(f"smoke mode needs a new run directory, and {records} exists")
 
-    run(config, arguments.run_dir, arguments.smoke)
+    run(run_config(config, arguments.smoke), arguments.run_dir)
 
     if arguments.smoke:
-        incomplete = [
+        tolerance = config["run"]["smoke_tolerance"]
+        failures = [
             record
             for record in map(json.loads, records.read_text().splitlines())
-            if not passes(record)
+            if not passes(record, tolerance)
         ]
-        for record in incomplete:
+        for record in failures:
             print(
-                f"smoke: {cell_name(record)} is {record['status']}, "
-                f"agreement {record['agreement']}: {record['reason']}"
+                f"smoke: {label(record)} is {record['status']}, "
+                f"{record['measure']} {record['agreement']} "
+                f"(Tier 1 tolerance {tolerance}): {record['reason']}"
             )
-        sys.exit(1 if incomplete else 0)
+        sys.exit(1 if failures else 0)
 
 
-def passes(record):
-    """Return whether a record passes smoke mode: `ok` with its agreement, or,
-    in the solver view, failed by a check of JAXScape, such as a solver's
-    non-finite output, which is how the solver fares."""
-    if record["status"] == "ok":
-        return record["measure"] is None or record["agreement"] is not None
-    return (
-        record["view"] == "solver"
-        and record["status"] == "failed"
-        and bool(CHECK.match(record["reason"]))
-    )
+def passes(record, tolerance):
+    """Return whether a record passes smoke mode.
+
+    A record passes when it is `ok` with the agreement of its measure, and when
+    its Tier 1 error is at most `tolerance`.
+    """
+    if record["status"] != "ok":
+        return False
+    if record["measure"] is None:
+        return True
+    if record["agreement"] is None:
+        return False
+    return record["tier"] != 1 or record["agreement"] <= tolerance
 
 
-def run(config, run_dir, smoke):
-    run_dir.mkdir(parents=True, exist_ok=True)
-    (run_dir / "logs").mkdir(exist_ok=True)
-    (run_dir / "references").mkdir(exist_ok=True)
-    (run_dir / "maps").mkdir(exist_ok=True)
-    if not (run_dir / "environment.json").exists():
-        snapshot = json.dumps(environment(config), indent=2)
-        (run_dir / "environment.json").write_text(snapshot + "\n")
+def run_config(config, smoke):
+    """Return the configuration of a run.
+
+    It adds the side of JAXScape's blocks to the windows, `block_size`:
+    `dependency_range * coarsening_factor` rounded up to an odd integer. Smoke
+    mode runs every distance, and every question of the solver view, on the
+    raster of `smoke_side`, takes the top-left square of Maryland of that side
+    and windows of `smoke_dependency_range`, and makes one timed call.
+    """
+    config = copy.deepcopy(config)
+    if smoke:
+        side = config["run"]["smoke_side"]
+        config["run"]["repeats"] = 1
+        for parameters in config["distances"].values():
+            parameters["sides"] = [side]
+        for distances in config.get("solver_view", {}).get("questions", {}).values():
+            for settings in distances.values():
+                if "sides" in settings:
+                    settings["sides"] = [side]
+        if "maryland" in config:
+            config["maryland"]["side"] = side
+        if "windows" in config:
+            config["windows"]["dependency_range"] = config["run"][
+                "smoke_dependency_range"
+            ]
+    if "windows" in config:
+        windows = config["windows"]
+        block = math.ceil(windows["dependency_range"] * windows["coarsening_factor"])
+        windows["block_size"] = block + 1 - block % 2
+    return config
+
+
+def run(config, run_dir):
+    """Run every cell of a configuration that `run_dir` holds no record of.
+
+    Within a configuration, synthetic rasters run from the smallest up, and
+    after a failure, a timeout or running out of memory, the configuration
+    skips its larger synthetic rasters. Maryland is outside this rule: it
+    always runs, and its failure skips nothing.
+    """
+    for directory in ("logs", "references", "maps"):
+        (run_dir / directory).mkdir(parents=True, exist_ok=True)
+    snapshots = {"config": lambda: config, "environment": lambda: environment(config)}
+    for name, snapshot in snapshots.items():
+        path = run_dir / f"{name}.json"
+        if not path.exists():
+            path.write_text(json.dumps(snapshot(), indent=2) + "\n")
+    versions = json.loads((run_dir / "environment.json").read_text())["tools"]
     records_path = run_dir / "records.jsonl"
     recorded = {}
     if records_path.exists():
         for record in map(json.loads, records_path.read_text().splitlines()):
             recorded[tuple(record[field] for field in KEY)] = record
+    # JAXScape runs first, so that its maps exist when other tools need them.
+    ordered = sorted(configurations(config), key=lambda c: c["tool"] != "JAXScape")
 
-    stopped = {}  # configuration -> case of its failure, timeout or oom
+    stopped_at = {}  # configuration key -> the synthetic case of its failure
     shm = "/dev/shm" if Path("/dev/shm").is_dir() else None
     with tempfile.TemporaryDirectory(dir=shm, prefix="jaxscape-benchmark-") as tmp:
-        for case in cases(config, smoke):
+        for case in cases(config):
             case_dir = Path(tmp) / case["case"]
-            for configuration in configurations(config):
-                if not (
-                    configuration["distance"] in case["distances"]
-                    and configuration["question"] in case["questions"]
-                    and runs_on(configuration, case, smoke)
-                ):
+            for configuration in ordered:
+                if not runs_on(configuration, case):
                     continue
-                cell = {**configuration, "case": case["case"], "cells": case["cells"]}
+                cell = {
+                    **configuration,
+                    "case": case["case"],
+                    "cells": case["cells"],
+                    "version": versions.get(configuration["tool"]),
+                }
                 key = tuple(cell[field] for field in KEY)
-                stop = key[:-1]
+                configuration_key = key[:-1]
+                synthetic_case = case["side"] is not None
                 if key in recorded:
                     record = recorded[key]
                 else:
-                    if stop in stopped:
-                        record = blank(cell, "skipped", f"after {stopped[stop]}")
+                    if synthetic_case and configuration_key in stopped_at:
+                        reason = f"after {stopped_at[configuration_key]}"
+                        record = new_record(cell, "skipped", reason)
                     else:
                         if not case_dir.exists():
-                            write_case(config, case["case"], case_dir, smoke)
-                        record = run_cell(config, cell, case_dir, run_dir, smoke)
+                            write_case(config, case, case_dir)
+                        record = run_cell(config, cell, case_dir, run_dir)
                     with open(records_path, "a") as file:
                         file.write(json.dumps(record) + "\n")
                     outcome = record["median_s"] or record["reason"]
-                    print(
-                        f"{cell_name(record)}: {record['status']} {outcome}", flush=True
-                    )
-                if record["status"] in ("failed", "timeout", "oom"):
-                    stopped[stop] = f"{record['status']} at {record['case']}"
+                    print(f"{label(record)}: {record['status']} {outcome}", flush=True)
+                if synthetic_case and record["status"] in ("failed", "timeout", "oom"):
+                    stopped_at[
+                        configuration_key
+                    ] = f"{record['status']} at {case['case']}"
             shutil.rmtree(case_dir, ignore_errors=True)
 
 
-def cases(config, smoke):
-    """Return the cases of the run, from the fewest cells up.
+def cases(config):
+    """Return the cases of a run, from the fewest cells up.
 
-    A case holds the distances and the questions that run on it: a synthetic
-    raster runs every question with the distances whose sides include it, and
-    the Maryland case every distance with its questions.
+    A case holds its `side`, or `None` for Maryland, and the distances and
+    questions that run on it: a synthetic raster runs every question with the
+    distances whose sides include it, and Maryland every distance with its
+    questions.
     """
     sides = {
-        distance: [config["run"]["smoke_side"]] if smoke else parameters["sides"]
-        for distance, parameters in config["distances"].items()
+        distance: values["sides"] for distance, values in config["distances"].items()
     }
+    questions = {entry["question"] for entry in config["tools"]}
+    questions |= set(config.get("solver_view", {}).get("questions", {}))
     found = [
         {
             "case": f"synthetic-{side}",
+            "side": side,
             "cells": side * side,
             "distances": {d for d, values in sides.items() if side in values},
-            "questions": {entry["question"] for entry in config["tools"]}
-            | set(config.get("solver_view", {}).get("questions", {})),
+            "questions": questions,
         }
         for side in {side for values in sides.values() for side in values}
     ]
     if "maryland" in config:
-        quality, _ = rasters(config, "maryland", smoke)
+        quality, _ = rasters(config, None)
         found.append(
             {
                 "case": "maryland",
+                "side": None,
                 "cells": quality.size,
                 "distances": set(sides),
                 "questions": set(config["maryland"]["questions"]),
@@ -187,19 +237,15 @@ def cases(config, smoke):
     return sorted(found, key=lambda case: (case["cells"], case["case"]))
 
 
-def rasters(config, case, smoke):
-    """Return the quality and permeability rasters of a case.
-
-    Smoke mode takes the top-left square of Maryland of `smoke_side` pixels a
-    side.
-    """
-    if case == "maryland":
-        maryland_ = config["maryland"]
-        side = config["run"]["smoke_side"] if smoke else None
-        return maryland(HERE / maryland_["raster"], maryland_["resistance"], side)
+def rasters(config, side):
+    """Return the quality and permeability rasters of the synthetic case of
+    `side` pixels a side, or of Maryland for `None`."""
+    if side is None:
+        case = config["maryland"]
+        return maryland(HERE / case["raster"], case["resistance"], case.get("side"))
     landscape = config["landscape"]
     return synthetic(
-        int(case.removeprefix("synthetic-")),
+        side,
         landscape["correlation_length"],
         landscape["habitat_threshold"],
         landscape["seed"],
@@ -207,10 +253,15 @@ def rasters(config, case, smoke):
 
 
 def configurations(config):
-    """Yield one configuration per tool entry, distance, device and solver.
+    """Yield the configurations of both views: what a cell runs, but its case.
 
-    A setting given as a table keyed by device takes its value for the device,
-    and a list of solvers gives one configuration per solver.
+    The comparison gives one configuration per tool entry, distance, device and
+    solver: a setting given as a table keyed by device takes its value for the
+    device, and a list of solvers gives one configuration per solver. The solver
+    view gives one per distance of each of its questions, dtype and solver, but
+    the combinations of its `fails_by_design`: a solver's entry gives the label
+    of its records and the settings that it adds to those of the distance, and
+    its `questions` and `dtypes` restrict where it runs.
     """
     for entry in config["tools"]:
         for distance, settings in entry["distances"].items():
@@ -221,90 +272,112 @@ def configurations(config):
                 }
                 solvers = resolved.get("solver", "")
                 for solver in solvers if isinstance(solvers, list) else [solvers]:
-                    yield {
-                        "view": "comparison",
-                        "question": entry["question"],
-                        "tool": entry["tool"],
-                        "distance": distance,
-                        "device": device,
-                        "dtype": resolved.get("dtype", "float64"),
-                        "solver": solver,
-                        "tier": entry.get("tier"),
-                        "measure": MEASURES.get(entry["question"])
-                        if entry.get("tier")
-                        else None,
-                        "compared_with": entry.get("compared_with", distance),
-                        "adapter": entry["adapter"],
-                        "settings": {**resolved, "solver": solver}
-                        if solver
-                        else resolved,
-                    }
-    yield from solver_configurations(config)
-
-
-def solver_configurations(config):
-    """Yield the configurations of the solver view: each solver in each dtype,
-    for each distance of each question.
-
-    A solver's entry gives the label of its records and the settings it adds
-    to those of the distance; its `questions` and `dtypes` restrict where it
-    runs.
-    """
+                    with_solver = {**resolved, "solver": solver} if solver else resolved
+                    yield configuration(
+                        "comparison", entry, distance, device, solver, with_solver
+                    )
     view = config.get("solver_view")
     if view is None:
         return
     for question, distances in view["questions"].items():
-        for distance, settings in distances.items():
-            settings = dict(settings)
-            sides = settings.pop("sides", None)
+        for distance, shared in distances.items():
             for dtype in view["dtypes"]:
                 for solver, added in view["solvers"].items():
                     added = dict(added)
-                    if question not in added.pop("questions", [question]):
+                    combination = dict(
+                        question=question, distance=distance, dtype=dtype, solver=solver
+                    )
+                    if (
+                        question not in added.pop("questions", [question])
+                        or dtype not in added.pop("dtypes", [dtype])
+                        or fails_by_design(view, combination)
+                    ):
                         continue
-                    if dtype not in added.pop("dtypes", [dtype]):
-                        continue
-                    yield {
-                        "view": "solver",
-                        "question": question,
-                        "tool": view["tool"],
-                        "distance": distance,
-                        "device": view["device"],
-                        "dtype": dtype,
-                        "solver": solver,
-                        "tier": None,
-                        "measure": SOLVER_MEASURES[question],
-                        "adapter": view["adapter"],
-                        "settings": {**settings, "dtype": dtype, "solver": solver}
-                        | added,
-                        "sides": sides,
-                        "timeout": view.get("timeout"),
-                    }
+                    settings = {**shared, "dtype": dtype, "solver": solver, **added}
+                    entry = {**view, "question": question}
+                    yield configuration(
+                        "solver", entry, distance, view["device"], solver, settings
+                    )
 
 
-def runs_on(configuration, case, smoke):
+def configuration(view, entry, distance, device, solver, settings):
+    """Return the configuration of a cell of a view, from its entry.
+
+    **Arguments:**
+
+    - `view`: `comparison` or `solver`.
+    - `entry`: The tool entry of the comparison, or the solver view with its
+      `question`.
+    - `distance`, `device`: What the cell computes, and where.
+    - `solver`: The label of the solver in the records, or `""`.
+    - `settings`: The settings that the adapter reads; their `sides` restrict
+      the synthetic rasters on which the configuration runs.
+
+    **Returns:**
+
+    The configuration, with the fields of the record that do not depend on the
+    case and what the runner needs to run its cells.
+    """
+    settings = dict(settings)
+    sides = settings.pop("sides", None)
+    tier = entry.get("tier")
+    measured = view == "solver" or tier is not None
+    return {
+        "view": view,
+        "question": entry["question"],
+        "tool": entry["tool"],
+        "distance": distance,
+        "device": device,
+        "dtype": settings.get("dtype", "float64"),
+        "solver": solver,
+        "tier": tier,
+        "measure": MEASURES[view, entry["question"]][0] if measured else None,
+        "compared_with": entry.get("compared_with", distance),
+        "adapter": entry["adapter"],
+        "settings": settings,
+        "sides": sides,
+        "timeout": entry.get("timeout"),
+    }
+
+
+def fails_by_design(view, combination):
+    """Return whether a combination of the solver view fails by design.
+
+    It does when it matches an entry of the view's `fails_by_design`: each
+    field of the entry holds the combination's value, or a list that holds it.
+    """
+    return any(
+        all(
+            combination[field] in (wanted if isinstance(wanted, list) else [wanted])
+            for field, wanted in entry.items()
+        )
+        for entry in view.get("fails_by_design", [])
+    )
+
+
+def runs_on(configuration, case):
     """Return whether a configuration runs on a case.
 
-    A configuration with `sides` runs on the synthetic rasters of these sides,
-    or on the raster of smoke mode, instead of every raster of its distance
-    and Maryland.
+    Its distance and question run on the case, and a configuration with `sides`
+    runs on the synthetic rasters of these sides alone.
     """
-    sides = configuration.get("sides")
-    if sides is None:
-        return True
-    if case["case"] == "maryland":
+    if configuration["distance"] not in case["distances"]:
         return False
-    return smoke or int(case["case"].removeprefix("synthetic-")) in sides
+    if configuration["question"] not in case["questions"]:
+        return False
+    return configuration["sides"] is None or case["side"] in configuration["sides"]
 
 
-def cell_name(cell):
-    return " ".join(str(cell[field]) for field in KEY if cell[field])
+def label(cell):
+    """Return the name of a cell in messages and file names: the values of its
+    key, joined by hyphens."""
+    return "-".join(str(cell[field]) for field in KEY if cell[field])
 
 
-def write_case(config, case, case_dir, smoke):
+def write_case(config, case, case_dir):
     """Write the quality and permeability rasters of a case, and the sites of
     E1."""
-    quality, permeability = rasters(config, case, smoke)
+    quality, permeability = rasters(config, case["side"])
     case_dir.mkdir(parents=True)
     np.save(case_dir / "quality.npy", quality)
     np.save(case_dir / "permeability.npy", permeability)
@@ -314,42 +387,29 @@ def write_case(config, case, case_dir, smoke):
     )
 
 
-def blank(cell, status, reason):
-    """Return the record of a cell without output."""
-    return {
-        **{field: cell[field] for field in KEY},
-        "cells": cell["cells"],
+def new_record(cell, status, reason):
+    """Return the record of a cell with its status and the reason, and without
+    output."""
+    return {field: cell.get(field) for field in FIELDS} | {
         "status": status,
         "reason": reason,
-        "warmup_s": None,
-        "times_s": None,
-        "median_s": None,
-        "measure": cell["measure"],
-        "agreement": None,
-        "tier": cell["tier"],
-        "version": None,
-        "files": None,
-        "adapter": cell["adapter"],
     }
 
 
-def cell_id(cell):
-    """Return the name of a cell's log, and of its map of Maryland: its fields,
-    led by `solver` for a cell of the solver view."""
-    fields = KEY if cell.get("view") == "solver" else KEY[1:]
-    return "-".join(str(cell[field]) for field in fields if cell[field])
-
-
-def run_cell(config, cell, case_dir, run_dir, smoke):
-    name = cell_id(cell)
+def run_cell(config, cell, case_dir, run_dir):
+    """Run a cell, and return its record."""
+    name = label(cell)
     work = case_dir.parent / "cells" / name
-    log = run_dir / "logs" / f"{name}.log"
-    cell_file = specification(config, cell, case_dir, work, smoke)
-    timeout = cell.get("timeout")
     status, reason = execute(
-        config, cell["adapter"], cell["device"], cell_file, work, log, timeout
+        config,
+        cell["adapter"],
+        cell["device"],
+        cell_file(config, cell, case_dir, work),
+        work,
+        run_dir / "logs" / f"{name}.log",
+        cell["timeout"],
     )
-    record = blank(cell, status, reason)
+    record = new_record(cell, status, reason)
     if status != "ok":
         return record
     result = json.loads((work / "result.json").read_text())
@@ -357,60 +417,56 @@ def run_cell(config, cell, case_dir, run_dir, smoke):
         warmup_s=result["warmup_s"],
         times_s=result["times_s"],
         median_s=statistics.median(result["times_s"]),
-        version=result["version"],
         files=result["files"],
+        total=result.get("total"),
     )
     output = np.load(work / "output.npy")
-    comparison = cell["view"] == "comparison"
-    if comparison and cell["tool"] == "JAXScape" and cell["question"] != "E1":
-        path = map_path(run_dir, cell, cell["distance"])
-        if not path.exists():
-            np.save(path, output)
-    if cell["tier"] == 1 or not comparison:
-        reference = reference_of(config, cell, case_dir, run_dir, smoke)
-        if reference is not None:
-            record["agreement"] = AGREEMENTS[cell["measure"]](output, reference)
-    elif cell["tier"]:
-        path = map_path(run_dir, cell, cell["compared_with"])
-        if path.exists():
-            record["agreement"] = rank_correlation(output, np.load(path))
+    jaxscape_gpu = cell["tool"] == "JAXScape" and cell["device"] == "gpu"
+    if cell["view"] == "comparison" and cell["question"] != "E1" and jaxscape_gpu:
+        np.save(map_path(run_dir, cell), output)
+    if cell["measure"] is None:
+        return record
+    if cell["measure"] == RHO:
+        paired = {**cell, "tool": "JAXScape", "distance": cell["compared_with"]}
+        path = map_path(run_dir, paired)
+        reference = np.load(path) if path.exists() else None
         if cell["case"] == "maryland":  # for the Maryland figure of the report
-            np.save(run_dir / "maps" / f"{name}.npy", output)
+            np.save(map_path(run_dir, cell), output)
+    else:
+        reference = reference_of(config, cell, case_dir, run_dir)
+    if reference is not None:
+        agreement = MEASURES[cell["view"], cell["question"]][1](output, reference)
+        record["agreement"] = None if math.isnan(agreement) else agreement
     return record
 
 
-def map_path(run_dir, cell, distance):
-    """Return where the JAXScape map of a question, case and distance is kept.
+def map_path(run_dir, cell):
+    """Return where the runner keeps the map of a cell of E2 or E3.
 
-    The first JAXScape cell of the comparison to succeed, in the order of the
-    configuration, keeps its map: the map that the tools of E2 and E3 compared
-    with this distance are compared with.
+    JAXScape's map is kept under its question, case and distance: it is the map
+    of its GPU cell of the comparison, with which the maps of the other tools
+    of that question and case paired with that distance are compared. Another
+    tool's map is kept under its label.
     """
-    return run_dir / "maps" / f"{cell['question']}-{cell['case']}-{distance}.npy"
+    if cell["tool"] == "JAXScape":
+        name = f"{cell['question']}-{cell['case']}-{cell['distance']}"
+    else:
+        name = label(cell)
+    return run_dir / "maps" / f"{name}.npy"
 
 
-def rank_correlation(output, reference):
-    """Return Spearman's ρ between two maps, over the pixels finite in both."""
-    finite = np.isfinite(output) & np.isfinite(reference)
-    return float(spearmanr(output[finite], reference[finite]).statistic)
-
-
-def specification(config, cell, case_dir, work, smoke):
+def cell_file(config, cell, case_dir, work):
     """Return the cell file that an adapter reads (see `adapters/protocol.py`)."""
-    parameters = dict(config["distances"][cell["distance"]])
-    parameters.pop("sides")
-    windows = dict(config.get("windows", {}))
-    if smoke and windows:
-        windows["dependency_range"] = config["run"]["smoke_dependency_range"]
+    parameters = config["distances"][cell["distance"]]
     return {
         "question": cell["question"],
         "distance": cell["distance"],
         "device": cell["device"],
         "settings": cell["settings"],
-        "parameters": parameters,
-        "windows": windows,
+        "parameters": {name: v for name, v in parameters.items() if name != "sides"},
+        "windows": config.get("windows", {}),
         "case": str(case_dir),
-        "repeats": 1 if smoke else config["run"]["repeats"],
+        "repeats": config["run"]["repeats"],
         "single_call_after": config["run"]["single_call_after"],
         "progress": str(work / "progress"),
         "output": str(work / "output.npy"),
@@ -418,25 +474,26 @@ def specification(config, cell, case_dir, work, smoke):
     }
 
 
-def reference_of(config, cell, case_dir, run_dir, smoke):
+def reference_of(config, cell, case_dir, run_dir):
     """Return the float64 reference of a cell, computed once per case and
     distance, and for E2 and E3 per question.
 
-    E1 takes `REFERENCE` on the CPU. E2 and E3 take the adapter of the solver
-    view on its device, in float64 with its `reference_solver` and the
-    settings of the distance in the question. A reference that failed is
-    recorded next to where it would be and never retried; the function then
-    returns `None`.
+    E1 takes the `reference` adapter of its configuration on the CPU. E2 and E3
+    take the adapter of the solver view on its device, in float64 with its
+    `reference_solver` and the settings of the distance in the question. A
+    reference that failed is recorded next to where it would be and never
+    retried; the function then returns `None`.
     """
     if cell["question"] == "E1":
         name = f"{cell['case']}-{cell['distance']}"
-        adapter, device, settings = REFERENCE, "cpu", {"dtype": "float64"}
+        adapter, device = config["E1"]["reference"], "cpu"
+        settings = {"dtype": "float64"}
     else:
         name = f"{cell['case']}-{cell['question']}-{cell['distance']}"
         view = config["solver_view"]
         adapter, device = view["adapter"], view["device"]
-        settings = dict(view["questions"][cell["question"]][cell["distance"]])
-        settings.pop("sides", None)
+        shared = view["questions"][cell["question"]][cell["distance"]]
+        settings = {k: v for k, v in shared.items() if k != "sides"}
         settings.update(dtype="float64", solver=view["reference_solver"])
     path = run_dir / "references" / f"{name}.npy"
     failure = path.with_suffix(".txt")
@@ -446,10 +503,9 @@ def reference_of(config, cell, case_dir, run_dir, smoke):
         return None
     work = case_dir.parent / "references" / name
     reference = {**cell, "settings": settings, "device": device}
-    specification_ = specification(config, reference, case_dir, work, smoke)
-    specification_["repeats"] = 0
+    contents = {**cell_file(config, reference, case_dir, work), "repeats": 0}
     log = run_dir / "logs" / f"reference-{name}.log"
-    status, reason = execute(config, adapter, device, specification_, work, log)
+    status, reason = execute(config, adapter, device, contents, work, log)
     if status != "ok":
         failure.write_text(f"{status}: {reason}\n")
         return None
@@ -458,22 +514,38 @@ def reference_of(config, cell, case_dir, run_dir, smoke):
 
 
 def largest_relative_error(output, reference):
+    """Return the largest relative error over the pairs of sites."""
     pairs = np.triu_indices(len(reference), 1)
     error = np.abs(output[pairs] - reference[pairs]) / np.abs(reference[pairs])
     return float(np.max(error))
 
 
 def relative_l2_error(output, reference):
+    """Return the relative L2 error of a map against its reference."""
     return float(np.linalg.norm(output - reference) / np.linalg.norm(reference))
 
 
-AGREEMENTS = {
-    "largest relative error": largest_relative_error,
-    "relative L2 error": relative_l2_error,
+def rank_correlation(output, reference):
+    """Return Spearman's ρ between two maps, over the pixels finite in both."""
+    finite = np.isfinite(output) & np.isfinite(reference)
+    return float(spearmanr(output[finite], reference[finite]).statistic)
+
+
+RHO = "Spearman's ρ"
+# The agreement measure of each view and question, and the function that
+# measures it from an output and its reference. A measure that is undefined,
+# NaN, is recorded as missing.
+MEASURES = {
+    ("comparison", "E1"): ("largest relative error", largest_relative_error),
+    ("comparison", "E2"): (RHO, rank_correlation),
+    ("comparison", "E3"): (RHO, rank_correlation),
+    ("solver", "E1"): ("largest relative error", largest_relative_error),
+    ("solver", "E2"): ("relative L2 error", relative_l2_error),
+    ("solver", "E3"): ("relative L2 error", relative_l2_error),
 }
 
 
-def execute(config, adapter, device, specification, work, log, timeout=None):
+def execute(config, adapter, device, contents, work, log, timeout=None):
     """Run an adapter on a cell file, and return the status and its reason.
 
     The adapter runs pinned to the cores of the configuration, and a call that
@@ -481,7 +553,7 @@ def execute(config, adapter, device, specification, work, log, timeout=None):
     stops it.
     """
     work.mkdir(parents=True)
-    (work / "cell.json").write_text(json.dumps(specification))
+    (work / "cell.json").write_text(json.dumps(contents))
     path = Path(adapter)
     if path.suffix == ".py":
         interpreter = [sys.executable, "-m", ".".join(path.with_suffix("").parts)]
@@ -543,13 +615,16 @@ def threads(cores):
 def variables(config, device):
     """Return the environment variables of a cell's process.
 
-    GPU cells allocate memory as they need it, so that JAX never fails to
-    preallocate on a GPU that another process uses, and keep the CPU platform,
-    on which Equinox raises the errors of their checks.
+    GPU cells see the GPU of the configuration, by its index in the order of
+    the PCI bus, as `nvidia-smi` numbers it. They allocate memory as they need
+    it, so that JAX never fails to preallocate on a GPU that another process
+    uses, and keep the CPU platform, on which Equinox raises the errors of its
+    checks.
     """
     env = {**os.environ, **threads(config["run"]["cores"])}
     if device == "gpu":
         env.update(
+            CUDA_DEVICE_ORDER="PCI_BUS_ID",
             CUDA_VISIBLE_DEVICES=str(config["run"]["gpu"]),
             JAX_PLATFORMS="cuda,cpu",
             XLA_PYTHON_CLIENT_PREALLOCATE="false",
@@ -560,26 +635,32 @@ def variables(config, device):
 
 
 def environment(config):
-    """Return the snapshot of the run's hardware, threads and versions."""
-    gpu = "none"
-    if config["run"]["gpu"] != "" and shutil.which("nvidia-smi"):
+    """Return the snapshot of the run's hardware, threads and versions.
+
+    The GPU is that of the configuration, with its index and UUID, or `None`
+    without one. The versions are those of the runtimes, and of each tool of
+    the configuration (see `tool_versions`).
+    """
+    gpu = None
+    if config["run"]["gpu"] != "":
         query = [
             "nvidia-smi",
             f"--id={config['run']['gpu']}",
-            "--query-gpu=name,driver_version,memory.total",
+            "--query-gpu=index,uuid,name,driver_version,memory.total",
             "--format=csv,noheader",
         ]
-        name, driver, memory = (
-            subprocess.run(query, capture_output=True, text=True, check=True)
-            .stdout.strip()
-            .split(", ")
-        )
-        gpu = f"{name}, driver {driver}, {memory}"
+        values = subprocess.run(query, capture_output=True, text=True, check=True)
+        names = ("index", "uuid", "name", "driver", "memory")
+        gpu = dict(zip(names, values.stdout.strip().split(", ")))
     cpu = next(
         line.split(":", 1)[1].strip()
         for line in Path("/proc/cpuinfo").read_text().splitlines()
         if line.startswith("model name")
     )
+    julia = tomllib.loads((HERE / "julia" / "Manifest.toml").read_text())
+    renv = json.loads((HERE / "renv.lock").read_text())
+    lines = (HERE / "java" / "jre" / "release").read_text().splitlines()
+    java = dict(line.split("=", 1) for line in lines if "=" in line)
     return {
         "date": datetime.now(UTC).isoformat(timespec="seconds"),
         "host": platform.node(),
@@ -587,59 +668,52 @@ def environment(config):
         "cpu": cpu,
         "cores": config["run"]["cores"],
         "threads": threads(config["run"]["cores"]),
-        "python": platform.python_version(),
-        "packages": {
-            **{
-                name: version(name)
-                for name in (
-                    "jaxscape",
-                    "jax",
-                    "jaxlib",
-                    "numpy",
-                    "scipy",
-                    "scikit-image",
-                    "ecoscape-connectivity",
-                    "torch",
-                    "eco-connectivity",
-                )
-            },
-            **julia_packages(),
-            **r_packages(),
-            **java_packages(),
+        "runtimes": {
+            "Python": platform.python_version(),
+            "JAX": version("jax"),
+            "jaxlib": version("jaxlib"),
+            "PyTorch": version("torch"),
+            "Julia": julia["julia_version"],
+            "R": renv["R"]["Version"],
+            "Java": java["JAVA_VERSION"].strip('"'),
         },
+        "tools": tool_versions(config, julia, renv),
     }
 
 
-def julia_packages():
-    """Return the versions of Julia and of the packages of its project, as
-    pinned by `julia/Manifest.toml`."""
-    project = tomllib.loads((HERE / "julia" / "Project.toml").read_text())
-    manifest = tomllib.loads((HERE / "julia" / "Manifest.toml").read_text())
-    return {
-        "Julia": manifest["julia_version"],
-        **{name: manifest["deps"][name][0]["version"] for name in project["deps"]},
-    }
+def tool_versions(config, julia, renv):
+    """Return the version of each tool of the configuration, as its toolchain
+    pins it.
 
+    **Arguments:**
 
-def r_packages():
-    """Return the versions of R and of `R_PACKAGES`, as pinned by `renv.lock`."""
-    lock = json.loads((HERE / "renv.lock").read_text())
-    return {
-        "R": lock["R"]["Version"],
-        **{name: lock["Packages"][name]["Version"] for name in R_PACKAGES},
-    }
+    - `config`: The configuration, whose tool entries and solver view name the
+      tools. An entry's `package`, by default its tool's name without `.jl`,
+      names the tool in the pins of its adapter's language.
+    - `julia`: `julia/Manifest.toml`, which pins the tools of Julia adapters.
+    - `renv`: `renv.lock`, which pins the tools of R adapters.
 
+    **Returns:**
 
-def java_packages():
-    """Return the versions of Graphab and of its Java runtime, which install.sh
-    installs in `java/`."""
-    jar = next((HERE / "java").glob("graphab-*.jar"))
-    lines = (HERE / "java" / "jre" / "release").read_text().splitlines()
-    release = dict(line.split("=", 1) for line in lines if "=" in line)
-    return {
-        "Graphab": jar.stem.removeprefix("graphab-"),
-        "Java": release["JAVA_VERSION"].strip('"'),
-    }
+    The version of each tool. The tool of a Python adapter is a distribution of
+    this project, or a jar of `java/` named `<package>-<version>.jar`, which
+    install.sh pins.
+    """
+    jars = dict(jar.stem.rsplit("-", 1) for jar in (HERE / "java").glob("*.jar"))
+
+    def pinned(entry):
+        package = entry.get("package", entry["tool"].removesuffix(".jl"))
+        language = Path(entry["adapter"]).suffix
+        if language == ".jl":
+            return julia["deps"][package][0]["version"]
+        if language == ".R":
+            return renv["Packages"][package]["Version"]
+        return jars[package] if package in jars else version(package)
+
+    entries = config["tools"] + (
+        [config["solver_view"]] if "solver_view" in config else []
+    )
+    return {entry["tool"]: pinned(entry) for entry in entries}
 
 
 if __name__ == "__main__":

@@ -56,12 +56,7 @@ function isolation()
     return (directed + directed') / 2
 end
 
-function landmarks()
-    window = cell["windows"]
-    block = ceil(Int, window["dependency_range"] * window["coarsening_factor"])
-    block += 1 - block % 2  # odd, as in JAXScape's windowed analyses
-    return ConScape.coarse_graining(grid(qualities = quality), block)
-end
+landmarks() = ConScape.coarse_graining(grid(qualities = quality), cell["windows"]["block_size"])
 
 function connectivity()
     grid_ = grid(source_qualities = ones(nrows, ncols), target_qualities = landmarks())
@@ -79,4 +74,4 @@ function corridors()
 end
 
 call = Dict("E1" => isolation, "E2" => connectivity, "E3" => corridors)[cell["question"]]
-write_result(cell, time_calls(cell, call)...; version = string(pkgversion(ConScape)))
+write_result(cell, time_calls(cell, call)...)

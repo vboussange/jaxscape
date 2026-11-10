@@ -26,4 +26,4 @@ call <- list(
   lcp = function() as.matrix(costDistance(layer(), xy))
 )[[cell$distance]]
 
-write_result(cell, time_calls(cell, call), version = format(packageVersion("gdistance")))
+write_result(cell, time_calls(cell, call))

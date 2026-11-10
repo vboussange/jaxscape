@@ -14,9 +14,9 @@
 # `n_threads` is the number of cores of the cell. The tool reads GeoTIFFs:
 # each call writes the two rasters to /dev/shm and computes the map from them.
 import os
-from importlib.metadata import version
 from pathlib import Path
 
+import landscape
 import numpy as np
 import rasterio
 from adapters.protocol import read_cell, time_calls, write_result
@@ -27,20 +27,16 @@ from rasterio.transform import from_origin
 OUTER_WINDOW = 9  # the default of `connectedness`
 
 cell, arrays = read_cell()
-if cell["question"] != "E2":
-    raise ValueError("eco-connectivity computes the habitat connectivity of E2")
-permeability = arrays["permeability"]
-barrier = permeability == 0
-resistance = 1 / np.where(barrier, 1, permeability)
-largest = resistance.max()
+resistance = landscape.resistance(arrays["permeability"])
+largest = np.nanmax(resistance)
 rasters = {
-    "condition": np.where(barrier, np.nan, arrays["quality"]),
-    "resistance": np.where(barrier, np.nan, (resistance - 1) / (largest - 1)),
+    "condition": np.where(np.isnan(resistance), np.nan, arrays["quality"]),
+    "resistance": (resistance - 1) / (largest - 1),
 }
 levels = [2]
 while OUTER_WINDOW * levels[-1] < cell["windows"]["dependency_range"]:
     levels.append(2 * levels[-1])
-rows, columns = permeability.shape
+rows, columns = resistance.shape
 profile = dict(
     driver="GTiff",
     height=rows,
@@ -70,6 +66,4 @@ def call():
     )
 
 
-write_result(
-    cell, *time_calls(cell, call), version=version("eco-connectivity"), files=True
-)
+write_result(cell, *time_calls(cell, call), files=True)

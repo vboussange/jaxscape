@@ -52,4 +52,4 @@ function call()
     return resistances
 end
 
-write_result(cell, time_calls(cell, call)...; version = string(pkgversion(Circuitscape)), files = true)
+write_result(cell, time_calls(cell, call)...; files = true)

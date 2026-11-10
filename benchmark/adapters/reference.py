@@ -9,7 +9,6 @@ import jax
 jax.config.update("jax_enable_x64", True)
 
 import jax.numpy as jnp
-import jaxscape
 import numpy as np
 from adapters.protocol import read_cell, time_calls, write_result
 from jaxscape import FreeEnergyDistance, GridGraph, ResistanceDistance
@@ -52,4 +51,4 @@ call = {
     ),
 }[cell["distance"]]
 
-write_result(cell, *time_calls(cell, call), version=jaxscape.__version__)
+write_result(cell, *time_calls(cell, call))
