@@ -50,8 +50,10 @@ class WindowOperation(eqx.Module):
     x_steps: int = eqx.field(static=True)
     y_steps: int = eqx.field(static=True)
 
-    def __init__(self, shape: tuple[int, int], window_size: int, buffer_size: int):
-        assert isinstance(shape, tuple)
+    def __init__(self, shape: tuple[int, ...], window_size: int, buffer_size: int):
+        assert isinstance(shape, tuple) and len(shape) == 2, (
+            f"`shape` must be (height, width), got {shape}."
+        )
         assert isinstance(window_size, int)
         assert isinstance(buffer_size, int)
         for i in range(2):
@@ -312,9 +314,8 @@ class WindowOperation(eqx.Module):
         y_steps = self.y_steps
         for i in range(x_steps):
             for j in range(y_steps):
-                x_start, y_start = i * self.window_size, j * self.window_size
-                window = self.extract_total_window([x_start, y_start], raster)
-                yield jnp.array([x_start, y_start]), window
+                xy = jnp.array([i * self.window_size, j * self.window_size])
+                yield xy, self.extract_total_window(xy, raster)
 
     @eqx.filter_jit
     def eager_iterator(self, matrix: Array) -> tuple[Array, Array]:

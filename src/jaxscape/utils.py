@@ -45,7 +45,7 @@ def graph_laplacian(A: BCOO) -> BCOO:
         ```
     """
     D = bcoo_diag(
-        A.sum(axis=1).todense(), indices_dtype=A.indices.dtype
+        sparse.bcoo_reduce_sum(A, axes=(1,)).todense(), indices_dtype=A.indices.dtype
     )  # Degree matrix
     L = D - A  # Laplacian matrix
     return L
@@ -98,8 +98,15 @@ def zero_copy_jax_csr_to_scipy_csr(A_jax: BCSR) -> ssp.csr_matrix:
 def _csr_arrays_to_numpy(A_jax: BCSR) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     arrays = (A_jax.data, A_jax.indices, A_jax.indptr)
     if all(_array_is_on_cpu(array) for array in arrays):
-        return tuple(np.from_dlpack(array) for array in arrays)
-    return tuple(np.asarray(array) for array in jax.device_get(arrays))
+        data, indices, indptr = (_from_dlpack(array) for array in arrays)
+    else:
+        data, indices, indptr = (np.asarray(array) for array in jax.device_get(arrays))
+    return data, indices, indptr
+
+
+def _from_dlpack(array: Array) -> np.ndarray:
+    # JAX's stub of `Array.__dlpack__` leaves out the keywords it accepts.
+    return np.from_dlpack(array)  # pyright: ignore[reportArgumentType]
 
 
 def _array_is_on_cpu(array: Array) -> bool:
@@ -128,7 +135,7 @@ def BCOO_to_csr(A: BCOO) -> csr_array:
 
 
 def get_largest_component_label(labels: np.ndarray) -> int:
-    largest_component_label = np.bincount(labels).argmax()
+    largest_component_label = int(np.bincount(labels).argmax())
     # largest_component_nodes = np.where(labels == largest_component_label)[0]
     return largest_component_label
 

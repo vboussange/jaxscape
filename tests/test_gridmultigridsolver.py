@@ -39,14 +39,15 @@ def system_matrix(conductance, neighbors=ROOK_CONTIGUITY):
     return ResistanceDistance().system_matrix(graph)
 
 
-def sparse_solve(matrix, b):
+def sparse_solve(matrix: BCOO, b) -> np.ndarray:
     """Solve `matrix`, a BCOO matrix with padding, with SciPy's sparse LU."""
     n = matrix.shape[0]
     indices = np.asarray(matrix.indices)
     stored = np.all((indices >= 0) & (indices < n), axis=1)
     data = np.asarray(matrix.data, np.float64)[stored]
     reference = scipy.sparse.csc_matrix((data, tuple(indices[stored].T)), (n, n))
-    return scipy.sparse.linalg.spsolve(reference, np.asarray(b, np.float64))
+    # A dense right-hand side gives a dense solution.
+    return np.asarray(scipy.sparse.linalg.spsolve(reference, np.asarray(b, np.float64)))
 
 
 @pytest.mark.parametrize(

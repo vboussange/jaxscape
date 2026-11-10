@@ -36,8 +36,8 @@ def test_coord_to_index(sample_gridgraph):
 
 
 def test_index_to_coord(sample_gridgraph):
-    assert jnp.array_equal(sample_gridgraph.index_to_coord(0), [[0, 0]])
-    assert jnp.array_equal(sample_gridgraph.index_to_coord(5), [[1, 2]])
+    assert jnp.array_equal(sample_gridgraph.index_to_coord(0), jnp.array([[0, 0]]))
+    assert jnp.array_equal(sample_gridgraph.index_to_coord(5), jnp.array([[1, 2]]))
     # assert sample_gridgraph.index_to_coord(6) == (-1, -1)  # Out of bounds
 
 

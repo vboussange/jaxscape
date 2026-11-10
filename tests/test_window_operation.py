@@ -43,6 +43,12 @@ def test_initialization(sample_raster_data):
     assert op.y_steps == 1
 
 
+@pytest.mark.parametrize("shape", [(4,), (4, 4, 4)])
+def test_initialization_rejects_shapes_of_other_than_two_dimensions(shape):
+    with pytest.raises(AssertionError, match=r"`shape` must be \(height, width\)"):
+        WindowOperation(shape=shape, window_size=2, buffer_size=1)
+
+
 def test_extract_total_window(window_op, sample_raster_data):
     """Test window extraction with buffering and NaN replacement."""
     xy = np.array([0, 0])
@@ -241,7 +247,7 @@ def test_update_raster_with_window():
         shape=raster.shape, window_size=window_size, buffer_size=buffer_size
     )
 
-    xy = np.array([0, 0])
+    xy = jnp.array([0, 0])
     window = jnp.ones(
         (window_op.total_window_size, window_op.total_window_size), dtype="float32"
     )

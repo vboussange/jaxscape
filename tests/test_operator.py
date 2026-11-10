@@ -27,11 +27,6 @@ PYAMG_AVAILABLE = find_spec("pyamg") is not None
 CHOLMOD_AVAILABLE = find_spec("cholespy") is not None
 AMJAX_AVAILABLE = PYAMG_AVAILABLE and find_spec("amjax") is not None
 
-if PYAMG_AVAILABLE:
-    from pyamg.gallery import poisson
-else:
-    poisson = None
-
 # Build list of available solvers
 available_solvers = []
 if PYAMG_AVAILABLE:
@@ -107,6 +102,12 @@ def test_solver_state_carries_no_gradient():
     np.testing.assert_array_equal(jax.grad(sum_of_state)(A.data), 0.0)
 
 
+def poisson_matrix(shape: tuple[int, int]) -> BCOO:
+    """The float32 Poisson matrix of PyAMG's gallery on a grid of `shape`."""
+    gallery = pytest.importorskip("pyamg.gallery")
+    return BCOO.from_scipy_sparse(gallery.poisson(shape, format="coo", dtype="float32"))
+
+
 def solver_state(solver, A):
     if isinstance(solver, AMJaxCGSolver):
         return solver.init(BCOOLinearOperator(A), {})
@@ -116,8 +117,7 @@ def solver_state(solver, A):
 @pytest.mark.skipif(len(available_solvers) == 0, reason="No solvers available")
 @pytest.mark.parametrize("solver", available_solvers)
 def test_solver(solver):
-    A_scipy = poisson((10, 10), format="coo", dtype="float32")
-    A_jax = BCOO.from_scipy_sparse(A_scipy)
+    A_jax = poisson_matrix((10, 10))
     b = jnp.ones(A_jax.shape[0], dtype=A_jax.dtype)
     state = solver_state(solver, A_jax)
     x = _linear_solve(A_jax, b, solver, state=state)
@@ -139,8 +139,7 @@ def test_solver(solver):
 
 @pytest.mark.skipif(not AMJAX_AVAILABLE, reason="AMJax not available")
 def test_amjax_state_uses_current_operator():
-    A_scipy = poisson((5, 5), format="coo", dtype="float32")
-    A_jax = BCOO.from_scipy_sparse(A_scipy)
+    A_jax = poisson_matrix((5, 5))
     A_scaled = BCOO(
         (1.2 * A_jax.data, A_jax.indices),
         shape=A_jax.shape,
@@ -159,8 +158,7 @@ def test_amjax_state_uses_current_operator():
 
 @pytest.mark.skipif(not AMJAX_AVAILABLE, reason="AMJax not available")
 def test_amjax_preconditioner_operator():
-    A_scipy = poisson((5, 5), format="coo", dtype="float32")
-    A_jax = BCOO.from_scipy_sparse(A_scipy)
+    A_jax = poisson_matrix((5, 5))
     b = jnp.ones(A_jax.shape[0], dtype=A_jax.data.dtype)
 
     amjax_solver = build_amjax_solver(A_jax)

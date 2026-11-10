@@ -23,10 +23,10 @@ D = 3
 RNG = np.random.default_rng(0)
 QUALITY = jnp.asarray(RNG.uniform(0, 1, (6, 7)) * (RNG.uniform(0, 1, (6, 7)) > 0.2))
 # A no-data column cuts the raster in two, and two more no-data pixels.
-PERMEABILITY = np.asarray(10 ** RNG.uniform(-1, 0, (6, 7)))
-PERMEABILITY[:, 3] = 0
-PERMEABILITY[[0, 4], [5, 1]] = 0
-PERMEABILITY = jnp.asarray(PERMEABILITY)
+_permeability = np.asarray(10 ** RNG.uniform(-1, 0, (6, 7)))
+_permeability[:, 3] = 0
+_permeability[[0, 4], [5, 1]] = 0
+PERMEABILITY = jnp.asarray(_permeability)
 # Documented: permeability is raised to at least 1e-4 times its maximum.
 FLOOR = 1e-4 * float(jnp.max(PERMEABILITY))
 

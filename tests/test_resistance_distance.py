@@ -1,4 +1,5 @@
 from importlib.util import find_spec
+from typing import Any, cast
 
 import jax
 import jax.numpy as jnp
@@ -57,7 +58,11 @@ def avg(x, y):
 
 
 def build_nx_resistance_distance_matrix(G):
-    Rnx_dict = nx.resistance_distance(G, weight="weight", invert_weight=False)
+    # Without `nodeA` or `nodeB`, the distances between all pairs of nodes.
+    Rnx_dict = cast(
+        dict[Any, dict[Any, float]],
+        nx.resistance_distance(G, weight="weight", invert_weight=False),
+    )
     Rnx = jnp.zeros((G.number_of_nodes(), G.number_of_nodes()))
     node_list = list(G)
     for n, rd in Rnx_dict.items():
