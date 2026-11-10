@@ -41,11 +41,6 @@ amjax = [
   "amjax>=0.0.3,<0.1",
   "pyamg>=5.1.0"
 ]
-benchmark = [
-  "matplotlib>=3.9",
-  "optimistix>=0.0.10",
-  "pyamg>=5.1.0"
-]
 cholespy = [
   "cholespy>=2.2.0"
 ]
@@ -103,8 +98,8 @@ markers = [
   "gpu: needs an NVIDIA GPU with spineax and cuDSS",
   "slow: slow tests, which CI runs"
 ]
-# Benchmark correctness tests import the repository-local benchmark package.
-pythonpath = ["."]
+# The benchmark directory holds a project of its own, with its own tests.
+testpaths = ["tests"]
 
 [tool.ruff]
 extend-include = ["*.ipynb"]

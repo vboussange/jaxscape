@@ -1,0 +1,78 @@
+# Benchmark
+
+This page compares JAXScape 0.0.16 with the software that ecologists use for connectivity analysis, on three questions from ecology. It is generated from the records of the run `smoke`, started on 2026-11-10 on gpunode05. [`results.csv`](results.csv) lists every cell of the run.
+
+## Questions
+
+- **E1. Isolation between populations.** How isolated are two populations once the landscape between them is taken into account? *Quantity:* the effective distance $d_{ij}$ between focal habitat sites, which replaces Euclidean distance in dispersal kernels and in models of isolation by distance.
+- **E2. Habitat connectivity.** How much habitat can each location functionally reach, and how much connected habitat does the landscape hold in total? *Quantity:* Hanski's connectivity $S_i = \sum_j K(d_{ij}) q_j$ at each location, and its quality-weighted total $\sum_i q_i S_i$, the quantity behind the equivalent connected area (ECA).
+- **E3. Corridors and pinch points.** Which locations carry dispersal between habitat areas, so that losing their permeability would reduce connectivity the most? *Quantity:* a map of how much each location contributes to connectivity: the marginal sensitivity $\partial C / \partial p_k$ in JAXScape, and a flow, such as current, betweenness or visits, in the other tools.
+
+Each comparison carries a tier of comparability. Tier 1 compares the same quantity, so that the error of each tool against a float64 reference measures its accuracy. Tier 2 compares the same quantity computed on another graph or with another kernel, and Tier 3 a related quantity that answers the same question; both report Spearman's rank correlation between maps. A runtime gap measures a speed-up only at Tier 1.
+
+## Landscapes
+
+Each synthetic case draws a Gaussian random field with a Gaussian covariance of correlation length 25 pixels, on a periodic grid with a fixed seed, and normalizes its ranks to [0, 1]. Quality equals the field where the field is at least 0.7, and 0 elsewhere, so that 30 % of the cells are habitat. Permeability is $10^{-2(1 - f)}$ for the field $f$, from 0.01 to 1, and resistance is its inverse. A larger raster covers a larger area at the same grain.
+
+## Comparison
+
+Each cell runs in its own process, pinned to the cores of the environment table, with thread settings matched to them; XLA sizes its thread pools to these cores. A warm-up call comes first and compiles the code of tools that compile. The warm runtime is the median of the five timed calls that follow it, or the time of a single call when the warm-up takes more than five minutes. Every call redoes all work that depends on the landscape's values: graph assembly, factorization, multigrid hierarchy and solver state. A call stops after one hour. Within a configuration, rasters run from the smallest up, and after a failure, a timeout or running out of memory (`oom`), the configuration skips its larger rasters. In the figures, JAXScape on the GPU is solid and on the CPU dashed, and cells without a runtime show their status along the top edge.
+
+### E1. Isolation between populations
+
+Each tool computes the distances among 32 sites drawn at random from the habitat cells with a fixed seed, across the whole raster: 496 pairs. The agreement of a record is the largest relative error over the pairs against a float64 reference, computed once for each case and distance: a sparse direct solve with `CholmodSolver` for resistance and free energy, and Dijkstra's algorithm in SciPy for least-cost distances.
+
+![E1: warm runtime against raster cells](e1.png)
+
+Agreement (largest relative error) of each configuration and raster, or the status of the cell; `missing` marks a cell whose reference is unavailable.
+
+| Tool | Distance | Device | dtype | Solver | Tier | 32² |
+| --- | --- | --- | --- | --- | --- | --- |
+| JAXScape | resistance | GPU | float32 | GridMultigridSolver | 1 | 1.1e-05 |
+| JAXScape | resistance | CPU | float32 | GridMultigridSolver | 1 | 6.5e-06 |
+| JAXScape | lcp | GPU | float32 |  | 1 | 2.0e-07 |
+| JAXScape | lcp | CPU | float32 |  | 1 | 2.0e-07 |
+| JAXScape | free_energy | GPU | float64 | CuDSSSolver | 1 | 2.2e-15 |
+| JAXScape | free_energy | CPU | float64 | CholmodSolver | 1 | 0.0e+00 |
+
+## Environment
+
+| Setting | Value |
+| --- | --- |
+| Host | gpunode05 |
+| GPU | NVIDIA GeForce RTX 3090, driver 580.178.04, 24576 MiB |
+| CPU | AMD EPYC 7742 64-Core Processor |
+| Cores | 48-63 |
+| Threads | `OMP_NUM_THREADS=16`, `OPENBLAS_NUM_THREADS=16`, `MKL_NUM_THREADS=16`, `JULIA_NUM_THREADS=16`, `RCPP_PARALLEL_NUM_THREADS=16` |
+| Python | 3.13.5 |
+| Packages | jaxscape 0.0.16, jax 0.12.0.1, jaxlib 0.12.0.1, numpy 2.5.4, scipy 1.18.1 |
+| Tools | JAXScape 0.0.16 |
+
+## Parameter mappings
+
+The header comment of each adapter states how it maps the shared parameters onto its tool.
+
+| Tool | Questions | Adapter | Mapping |
+| --- | --- | --- | --- |
+| JAXScape | E1 | `adapters/jaxscape.py` | JAXScape builds a `GridGraph` of the permeability raster with rook contiguity, the conductance of an edge being the mean permeability of its two pixels, as its windowed analyses do. Least-cost and free-energy distances take 1 / conductance as the edge cost, and the free energy takes the shared `theta`. E1 is a nodes-to-nodes query among the sites. The distance runs with the solver and dtype of its settings, and every call builds the graph and the solver state. |
+
+## Excluded tools
+
+| Tool | Reason |
+| --- | --- |
+| Linkage Mapper | Needs ArcGIS. |
+| Circuitscape 4 | Superseded by Circuitscape.jl. |
+| GFlow | Abandoned. |
+| UNICOR | Has no release and no licence. |
+| Conefor | Starts from a patch graph. |
+| Makurhini | Starts from vector patches. |
+| GRASS `r.cost` | Duplicates least-cost paths. |
+| WhiteboxTools | Duplicates least-cost paths. |
+| `terra` | Duplicates least-cost paths. |
+| DiffiScape | Wraps JAXScape. |
+| circuitscaper | Wraps Circuitscape.jl. |
+| enerscape | Computes no connectivity from resistance. |
+| Zonation | Computes no connectivity from resistance. |
+| MSPA | Computes no connectivity from resistance. |
+| ResistanceGA | Moves to `ilg-toolkit` with inverse landscape genetics. |
+| radish | Moves to `ilg-toolkit` with inverse landscape genetics. |

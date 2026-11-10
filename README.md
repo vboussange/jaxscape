@@ -131,12 +131,11 @@ and documentation previews.
 
 ## Benchmarking
 
-JAXScape includes a benchmark workspace that profiles internal JAXScape
-implementations and compares them with external landscape-connectivity tools.
-Published results and task definitions are available in the
+The [`benchmark`](benchmark/README.md) directory holds a benchmark, pinned to a
+JAXScape release, that compares JAXScape with the connectivity software of
+ecologists on three ecological questions: isolation between populations,
+habitat connectivity, and corridors. Its results are in the
 [benchmark documentation](https://vboussange.github.io/jaxscape/benchmark/).
-To reproduce the suite or run it on a local CPU/GPU device, follow the
-instructions in [`benchmark/README.md`](benchmark/README.md).
 
 ## License
 

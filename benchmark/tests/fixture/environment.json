@@ -1,0 +1,16 @@
+{
+  "date": "2026-11-10T12:00:00+00:00",
+  "host": "gpunode05",
+  "gpu": "NVIDIA GeForce RTX 3090, driver 580.178.04, 24576 MiB",
+  "cpu": "AMD EPYC 7742 64-Core Processor",
+  "cores": "48-63",
+  "threads": {
+    "OMP_NUM_THREADS": "16",
+    "OPENBLAS_NUM_THREADS": "16"
+  },
+  "python": "3.13.5",
+  "packages": {
+    "jaxscape": "0.0.16",
+    "jax": "0.12.0.1"
+  }
+}

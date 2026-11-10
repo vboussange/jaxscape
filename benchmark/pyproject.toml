@@ -1,0 +1,21 @@
+[project]
+name = "jaxscape-benchmark"
+version = "0"
+description = "Benchmark of JAXScape against connectivity software, pinned to a JAXScape release"
+requires-python = ">=3.12"
+dependencies = [
+  "jaxscape[cudss,cholespy]==0.0.16",
+  "jax[cuda13]",
+  "matplotlib>=3.9",
+  "numpy>=2",
+  "scipy>=1.14"
+]
+
+[dependency-groups]
+dev = ["pytest>=8.3"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,56 @@
+# The configuration of the benchmark: how cells run, the cases, the shared
+# parameters of each distance, and one entry per tool and question.
+
+[run]
+timeout = 3600           # seconds that a call may take
+repeats = 5              # timed calls after the warm-up call
+single_call_after = 300  # seconds of warm-up after which one timed call follows
+cores = "48-63"          # 16 physical cores of gpunode05, on the NUMA node of GPU 0
+gpu = "0"                # CUDA_VISIBLE_DEVICES of GPU cells
+smoke_side = 32
+
+# The synthetic landscape (see landscape.py).
+[landscape]
+correlation_length = 25
+habitat_threshold = 0.7
+seed = 74
+
+[E1]
+sites = 32
+seed = 75
+
+# The raster sides of each distance, and its shared parameters.
+[distances.resistance]
+sides = [256, 1024, 4096, 8192]
+
+[distances.lcp]
+sides = [256, 1024, 4096, 8192]
+
+[distances.free_energy]
+sides = [256, 1024]
+theta = 0.01  # provisional, until the tuning run of #78 fixes it
+
+# One entry per tool and question. `adapter` runs a cell, and the table of a
+# distance holds the tool's settings for it, `dtype` and `solver` included. A
+# setting given per device is a table keyed by device.
+[[tools]]
+tool = "JAXScape"
+question = "E1"
+adapter = "adapters/jaxscape.py"
+devices = ["gpu", "cpu"]
+tier = 1
+
+# The reference settings: the defaults of JAXScape 0.0.16, in float32.
+[tools.distances.resistance]
+dtype = "float32"
+solver = "GridMultigridSolver"
+
+[tools.distances.lcp]
+dtype = "float32"
+
+# Across the whole raster, float32 resolves no free-energy distance at any
+# theta, and the default dense solve does not fit: E1 takes float64 and the
+# direct solver that the docs give for each device.
+[tools.distances.free_energy]
+dtype = "float64"
+solver = { gpu = "CuDSSSolver", cpu = "CholmodSolver" }
