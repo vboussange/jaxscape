@@ -103,7 +103,7 @@ reportIncompatibleMethodOverride = true
 addopts = "-m 'not gpu and not slow'"
 markers = [
   "gpu: needs an NVIDIA GPU with spineax and cuDSS",
-  "slow: takes up to a minute on one CPU core"
+  "slow: slow tests, which CI runs"
 ]
 # Benchmark correctness tests import the repository-local benchmark package.
 pythonpath = ["."]

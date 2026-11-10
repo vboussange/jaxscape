@@ -218,7 +218,7 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
             failed = self._check_fails(factorization, pattern, values)
             # A factorization can pass its check and still leave its handle
             # unusable, as one with vertices cut off from the ground vertex did
-            # with cuDSS on an RTX 3090, so a failed refactorization is retried.
+            # with cuDSS, so a failed refactorization is retried.
             return jax.lax.cond(
                 failed,
                 analysed,

@@ -1,4 +1,5 @@
-"""Precision configuration and a reference sparse direct solver for the test suite."""
+"""Core pinning of pytest-xdist workers, precision configuration and a reference
+sparse direct solver for the test suite."""
 
 import os
 
@@ -47,7 +48,8 @@ def _release_compiled_programs():
     Every XLA:CPU executable keeps memory mappings for its code. A process that
     held the programs of the whole suite reached Linux's default limit of 65530
     mappings (`vm.max_map_count`), and XLA then crashed while compiling.
-    Releasing them after every test took 22 minutes instead of 13.
+    Releasing them after every test slows the suite down: later tests
+    recompile the programs they share.
     """
     yield
     if _memory_mappings() > 30_000:

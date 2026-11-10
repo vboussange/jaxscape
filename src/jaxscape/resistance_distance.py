@@ -26,10 +26,8 @@ from jaxscape.utils import _matmul, _VALUES_PER_STEP, bcoo_diag, graph_laplacian
 # enough that the streamed scan path is the safer default.
 SPIELMAN_DENSE_PROJECTION_MAX_SIGN_ENTRIES = 200_000_000
 
-# Exact sources-to-targets queries whose potentials of all targets hold more
-# than `_VALUES_PER_STEP` values solve the target columns this many at a time,
-# and again for the gradient. Sparse direct solvers reach their full throughput
-# from a few hundred columns on.
+# Target columns per step of exact queries above `_VALUES_PER_STEP`. Sparse
+# direct solvers reach their full throughput from a few hundred columns on.
 _TARGET_CHUNK_SIZE = 1024
 
 
