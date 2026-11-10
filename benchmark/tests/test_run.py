@@ -500,8 +500,10 @@ def test_smoke_mode_records_the_smoke_settings_as_the_configuration_of_its_run(
 
 
 def passing(error="1e-4", nan="false"):
-    """Return the passing configuration, with the error of its E1 tool and
-    whether its map is NaN."""
+    """Return the passing configuration with an E1 error and a NaN flag.
+
+    `error` is the error of its E1 tool, and `nan` whether its map is NaN.
+    """
     return PASSING.replace("ERROR", error).replace("NAN", nan)
 
 

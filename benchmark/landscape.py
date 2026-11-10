@@ -65,8 +65,10 @@ def maryland(path, resistance, side=None):
 
 
 def resistance(permeability):
-    """Return the resistance of each pixel, 1 / permeability, and NaN on the
-    barriers, the pixels of permeability 0."""
+    """Return the resistance raster: 1 / permeability, and NaN on barriers.
+
+    Barriers are the pixels of permeability 0.
+    """
     barrier = permeability == 0
     return np.where(barrier, np.nan, 1 / np.where(barrier, 1, permeability))
 

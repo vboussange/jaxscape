@@ -11,8 +11,11 @@ FIXTURE = Path(__file__).parent / "fixture"
 
 @pytest.fixture
 def report(script, tmp_path):
-    """Return a function that reports a copy of the fixture run, with the
-    changes `edit` makes to its configuration, and returns its directory."""
+    """Return a function that reports a copy of the fixture run.
+
+    The function takes the arguments of `report.py` and `edit`, a function that
+    changes the configuration of the run, and returns the run directory.
+    """
 
     def report(*arguments, edit=None):
         run_dir = tmp_path / "run"

@@ -19,21 +19,24 @@ uv run pytest                                 # tests of the runner and the repo
 ```
 
 Smoke mode takes a new run directory (remove `results/smoke` to run it again),
-and exits with an error when a cell fails or lacks its agreement. A full run
-appends one record per cell to `records.jsonl` as each cell finishes; when it
-restarts, it skips the cells recorded there. To benchmark a later release,
-change the pin, run, and report.
+and exits with an error unless every cell is `ok` with its agreement and every
+Tier 1 error is at most `smoke_tolerance`, which catches a tool whose graph
+departs from the shared edge rule. A full run appends one record per cell to
+`records.jsonl` as each cell finishes; when it restarts, it skips the cells
+recorded there. To benchmark a later release, change the pin, run, and report.
 
 ## Layout
 
-- `config.toml`: how cells run (timeout, repeats, cores, GPU), the landscape,
-  the raster sides and shared parameters of each distance, the windows of E2
-  and E3, the Maryland case, one entry per tool and question, and the solver
-  view, which runs JAXScape with each solver in float32 and float64 on the
-  GPU.
-- `landscape.py`: the synthetic landscape, the Maryland case of E2 and E3,
-  and the sites of E1 and the conductance of its edges, which every tool of E1
-  shares. Smoke mode takes the top-left 32 x 32 pixels of Maryland.
+- `config.toml`: how cells run (timeout, repeats, cores, GPU, smoke mode), the
+  landscape, the raster sides and shared parameters of each distance, the
+  windows of E2 and E3, the Maryland case, one entry per tool and question,
+  and the solver view, which runs JAXScape with each solver in float32 and
+  float64 on the GPU: E1 on every raster of its distance, and E2 and E3 on
+  256² alone.
+- `landscape.py`: the synthetic landscape, the Maryland case of E2 and E3, the
+  sites of E1 and the conductance of its edges, which every tool of E1 shares,
+  and the resistance raster of the adapters. Smoke mode takes the top-left
+  32 x 32 pixels of Maryland.
 - `install.sh`: installs the toolchains of the external tools and the data,
   each pinned: Julia and the packages of `julia/Manifest.toml`, through
   juliaup, the R packages of `renv.lock` in the renv library of this
@@ -43,19 +46,22 @@ change the pin, run, and report.
 - `run.py`: the runner. Each cell runs in its own process, pinned with
   `taskset` to the cores of the configuration, with the OpenMP, BLAS, Julia
   and R thread variables matched to them; XLA sizes its thread pools to the
-  same cores. GPU cells run on the configured GPU.
+  same cores. GPU cells run on the configured GPU, numbered as `nvidia-smi`
+  numbers it.
 - `report.py`: the report, from a run directory.
 - `adapters/`: one script per tool. `protocol.py` states the protocol between
   the runner and an adapter, `protocol.jl` and `protocol.R` implement it for
   Julia and R adapters, and `reference.py` computes the float64 reference of
   E1.
-- `results/<run>/`: `records.jsonl`, the environment snapshot
+- `results/<run>/`: `records.jsonl`, the configuration of the run
+  `config.json`, smoke settings applied, the environment snapshot
   `environment.json`, the references of E1, E2 and E3, the logs of the cells
-  and the maps of E2 and E3 (neither committed): JAXScape's, and the other
-  tools' maps of Maryland. The report writes `results.csv`, one figure per
-  question, `e1.png` to `e3.png`, the Maryland figure `maryland.png`, which it
-  draws when the run directory holds its maps, the figure of the solver view,
-  `solvers.png`, and the page `index.md`.
+  and the maps of E2 and E3 (neither committed): those of JAXScape's GPU
+  cells, and the other tools' maps of Maryland. The report writes
+  `results.csv`, one figure per question, `e1.png` to `e3.png`, the Maryland
+  figure `maryland.png`, which it draws when the run directory holds its maps,
+  the figure of the solver view, `solvers.png`, and the page `index.md`, whose
+  settings come from `config.json`.
 
 ## The cell record
 
@@ -66,8 +72,9 @@ A record is the one contract between the runner and the report:
 | `view`, `question`, `tool`, `distance`, `device`, `dtype`, `solver`, `case` | The cell, in the `comparison` or the `solver` view; `cells` is its number of raster cells. |
 | `status`, `reason` | `ok`, `failed`, `timeout`, `oom` or `skipped`, and why. |
 | `warmup_s`, `times_s`, `median_s` | The warm-up call, the timed calls and their median, in seconds. |
-| `measure`, `agreement`, `tier` | The agreement measure of the tier, or of the solver view, and its value, or `null` when the reference is unavailable. Tier 1 measures the largest relative error against the float64 reference of E1, and Tiers 2 and 3 Spearman's ρ against the JAXScape map of the same question and case. The solver view measures the largest relative error against the reference of E1 for E1, and for E2 and E3 the relative L2 error against the map of exact resistance in float64. |
-| `version`, `files`, `adapter` | The tool's version, whether its calls read or write files, and its adapter. |
+| `measure`, `agreement`, `tier` | The agreement measure of the tier, or of the solver view, and its value, or `null` when the reference is unavailable or the measure undefined. Tier 1 measures the largest relative error against the float64 reference of E1, and Tiers 2 and 3 Spearman's ρ against the map of JAXScape's GPU cell of the same question and case, under the distance that the tool is paired with. The solver view measures the largest relative error against the reference of E1 for E1, and for E2 and E3 the relative L2 error against the map of exact resistance in float64. |
+| `total` | The landscape total of E2, $\sum_i q_i S_i$, of a tool that computes one: JAXScape's `ConnectivityAnalysis`, and the square of Graphab's equivalent connectivity. |
+| `version`, `files`, `adapter` | The tool's version, from the environment snapshot, whether its calls read or write files, and its adapter. |
 
 ## Add a tool
 
@@ -83,15 +90,15 @@ A tool takes one adapter script and one configuration entry.
    `result`. Julia adapters include `adapters/protocol.jl` and run
    with `julia --project=julia`. R adapters source `adapters/protocol.R` and
    run with `Rscript` in this directory. To add an R package, load it in the
-   adapter, run `Rscript -e 'renv::install("samc"); renv::snapshot()'` here,
-   and add it to `R_PACKAGES` in `run.py`, which records its version with each
-   run.
+   adapter, and run `Rscript -e 'renv::install("samc"); renv::snapshot()'`
+   here.
 2. Add an entry to `config.toml`, with the tool's settings for each distance.
    A setting given per device is a table keyed by device, and a list of
-   solvers runs each. A tool of E2 or E3 is compared with the JAXScape map of
-   the distance `compared_with`, by default its own, which the adapter
-   justifies; the entries of JAXScape come first, so that its maps exist when
-   the other tools run:
+   solvers runs each. A tool of E2 or E3 is compared with the map of
+   JAXScape's GPU cell under the distance `compared_with`, by default its own,
+   which the adapter justifies. `package` names the tool in the pins of its
+   toolchain, which give the version of its records, when it differs from the
+   tool's name without `.jl`:
 
    ```toml
    [[tools]]
@@ -111,7 +118,7 @@ A solver of the solver view takes one entry in `[solver_view.solvers]` of
 `config.toml`: its label, which its records carry as `solver`, and the
 settings that it adds, such as a `method` of resistance. It runs in each dtype
 on each distance of each question of the solver view, unless its `questions`
-and `dtypes` restrict it:
+and `dtypes` restrict it, or an entry of `fails_by_design` matches it:
 
 ```toml
 [solver_view.solvers]
@@ -122,9 +129,9 @@ GridMultigridSolver = {}
 ## Publish a run
 
 `docs/benchmark` links to the published run directory, whose `index.md` is the
-Benchmark page. To publish a run, report it and point the link at it:
+Benchmark page. To publish a run, report it with `--publish`, which points the
+link at it, and commit both:
 
 ```bash
-uv run python report.py results/v0.0.16
-ln -sfn ../benchmark/results/v0.0.16 ../docs/benchmark
+uv run python report.py results/v0.0.16 --publish
 ```

@@ -100,6 +100,7 @@ EXCLUDED = [
 
 
 def main():
+    """Report a run from the command line, as the module docstring shows."""
     parser = argparse.ArgumentParser(
         description=__doc__.splitlines()[0],
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -173,8 +174,7 @@ def of_question(question, records):
 
 
 def side(case):
-    """Return the side of a synthetic case, such as 256 for `synthetic-256`, or
-    `None` for Maryland."""
+    """Return the side of a case: 256 for `synthetic-256`, `None` for Maryland."""
     prefix = "synthetic-"
     return int(case.removeprefix(prefix)) if case.startswith(prefix) else None
 
@@ -185,16 +185,18 @@ def case_label(case):
 
 
 def rank(record):
-    """Order the records of a raster: the fastest that succeeds first, then the
-    others by their status, in the order of `STATUS_MARKERS`."""
+    """Return the key that orders the records of a raster.
+
+    The fastest record that succeeds comes first, then the others by their
+    status, in the order of `STATUS_MARKERS`.
+    """
     if record["status"] == "ok":
         return (0, record["median_s"])
     return (1, list(STATUS_MARKERS).index(record["status"]))
 
 
 def write_csv(records, path):
-    """Write the records as a CSV, one row per record, with the timed calls
-    separated by spaces."""
+    """Write the records as a CSV, one row each, its timed calls space-separated."""
     with open(path, "w", newline="") as file:
         writer = csv.DictWriter(file, FIELDS)
         writer.writeheader()
@@ -204,8 +206,18 @@ def write_csv(records, path):
 
 
 def group_by(records, fields):
-    """Yield the values of `fields` and the records that share them, in the
-    order of their first record, each group sorted by raster cells."""
+    """Group records by the values of `fields`.
+
+    **Arguments:**
+
+    - `records`: The records.
+    - `fields`: The fields whose values make a group.
+
+    **Yields:**
+
+    The values of `fields` and the records that share them, sorted by raster
+    cells, in the order of the first record of each group.
+    """
     order = {}
     for record in records:
         order.setdefault(tuple(record[field] for field in fields), len(order))
@@ -341,10 +353,12 @@ def plot(records, panel, line, path):
 
 
 def maryland_pair(records):
-    """Return the records of the Maryland figure, or `None` when either is
-    missing: the JAXScape GPU record under the tool's distance, whose map the
+    """Return the records of the Maryland figure, or `None` when one is missing.
+
+    They are the JAXScape GPU record under the tool's distance, whose map the
     tool's maps are compared with, and the fastest setting of the tool that
-    succeeds."""
+    succeeds.
+    """
     on_maryland = [
         record
         for record in of_question(MARYLAND["question"], records)
@@ -354,19 +368,15 @@ def maryland_pair(records):
     if not others:
         return None
     other = min(others, key=rank)
+    paired = ("JAXScape", "gpu", other["distance"])
     for record in on_maryland:
-        if (record["tool"], record["device"], record["distance"]) == (
-            "JAXScape",
-            "gpu",
-            other["distance"],
-        ):
+        if (record["tool"], record["device"], record["distance"]) == paired:
             return record, other
     return None
 
 
 def quantiles(values):
-    """Return the rank of each finite pixel as a quantile in [0, 1], and NaN
-    elsewhere."""
+    """Return the rank of each finite pixel as a quantile in [0, 1], else NaN."""
     finite = np.isfinite(values)
     quantile = np.full(values.shape, np.nan)
     quantile[finite] = (rankdata(values[finite]) - 1) / max(finite.sum() - 1, 1)
@@ -411,8 +421,11 @@ def agreement(record):
 
 
 def outcome(record):
-    """Return the text of a record in a table: its warm runtime, its agreement
-    and its landscape total, or its status."""
+    """Return the text of a record in a table.
+
+    The text is the warm runtime, the agreement and the landscape total of a
+    record that succeeded, and the status of another.
+    """
     if record["status"] != "ok":
         return record["status"]
     parts = [runtime(record)]
@@ -424,17 +437,28 @@ def outcome(record):
 
 
 def row(cells):
+    """Return a row of a Markdown table."""
     return "| " + " | ".join(str(cell) for cell in cells) + " |"
 
 
 def table(header, rows):
+    """Return a Markdown table."""
     lines = [row(header), row(["---"] * len(header))]
     return "\n".join(lines + [row(cells) for cells in rows])
 
 
 def outcome_table(records, fields):
-    """Return the table of the outcome of each configuration, the values of
-    `fields`, on each raster."""
+    """Return the table of the outcome of each configuration on each raster.
+
+    **Arguments:**
+
+    - `records`: The records of the table.
+    - `fields`: The fields whose values make a configuration, a row.
+
+    **Returns:**
+
+    The table, in Markdown, with one column per raster (see `outcome`).
+    """
     cases = sorted({(record["cells"], record["case"]) for record in records})
     rows = []
     for values, group in group_by(records, fields):
@@ -476,8 +500,11 @@ def jaxscape_setting(config, question, distance, name):
 
 
 def combination(entry):
-    """Return the text of an entry of `fails_by_design`, such as `` `free_energy`
-    in `float32` ``."""
+    """Return the text of an entry of `fails_by_design`.
+
+    For `{distance = "free_energy", dtype = "float32"}`, the text is
+    `` `free_energy` in `float32` ``.
+    """
     words = []
     for field, joiner in (
         ("distance", ""),
@@ -493,8 +520,7 @@ def combination(entry):
 
 
 def setups(config):
-    """Return the text of the setup of each question, from the configuration of
-    the run."""
+    """Return the setup of each question, from the configuration of the run."""
     windows = config["windows"]
     reach = windows["dependency_range"]
     scale = f"{reach / 4:g}"
@@ -565,8 +591,7 @@ def setups(config):
 
 
 def solver_view_text(config):
-    """Return the text of the setup of the solver view, from the configuration
-    of the run."""
+    """Return the setup of the solver view, from the configuration of the run."""
     view = config["solver_view"]
     runs = []
     for question, distances in view["questions"].items():

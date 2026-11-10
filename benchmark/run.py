@@ -60,6 +60,7 @@ ERROR = re.compile(r"^([\w.]*(Error|Exception)\b|ERROR:)")
 
 
 def main():
+    """Run the benchmark from the command line, as the module docstring shows."""
     parser = argparse.ArgumentParser(
         description=__doc__.splitlines()[0],
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -109,11 +110,19 @@ def passes(record, tolerance):
 def run_config(config, smoke):
     """Return the configuration of a run.
 
-    It adds the side of JAXScape's blocks to the windows, `block_size`:
-    `dependency_range * coarsening_factor` rounded up to an odd integer. Smoke
-    mode runs every distance, and every question of the solver view, on the
-    raster of `smoke_side`, takes the top-left square of Maryland of that side
-    and windows of `smoke_dependency_range`, and makes one timed call.
+    **Arguments:**
+
+    - `config`: The configuration, as `config.toml` gives it.
+    - `smoke`: Whether the run is in smoke mode, which runs every distance, and
+      every question of the solver view, on the raster of `smoke_side`, takes
+      the top-left square of Maryland of that side and windows of
+      `smoke_dependency_range`, and makes one timed call.
+
+    **Returns:**
+
+    A copy of the configuration, with the smoke settings applied in smoke mode,
+    and with `block_size`, the side of JAXScape's blocks, added to the windows:
+    `dependency_range * coarsening_factor` rounded up to an odd integer.
     """
     config = copy.deepcopy(config)
     if smoke:
@@ -139,12 +148,19 @@ def run_config(config, smoke):
 
 
 def run(config, run_dir):
-    """Run every cell of a configuration that `run_dir` holds no record of.
+    """Run every cell of a configuration that a run directory has no record of.
 
     Within a configuration, synthetic rasters run from the smallest up, and
     after a failure, a timeout or running out of memory, the configuration
     skips its larger synthetic rasters. Maryland is outside this rule: it
     always runs, and its failure skips nothing.
+
+    **Arguments:**
+
+    - `config`: The configuration of the run (see `run_config`).
+    - `run_dir`: The run directory, into which the run writes `config.json`
+      and `environment.json` when they are missing, and appends to
+      `records.jsonl`.
     """
     for directory in ("logs", "references", "maps"):
         (run_dir / directory).mkdir(parents=True, exist_ok=True)
@@ -162,7 +178,7 @@ def run(config, run_dir):
     # JAXScape runs first, so that its maps exist when other tools need them.
     ordered = sorted(configurations(config), key=lambda c: c["tool"] != "JAXScape")
 
-    stopped_at = {}  # configuration key -> the synthetic case of its failure
+    stopped_at = {}  # configuration key -> its failure on a synthetic raster
     shm = "/dev/shm" if Path("/dev/shm").is_dir() else None
     with tempfile.TemporaryDirectory(dir=shm, prefix="jaxscape-benchmark-") as tmp:
         for case in cases(config):
@@ -183,7 +199,8 @@ def run(config, run_dir):
                     record = recorded[key]
                 else:
                     if synthetic_case and configuration_key in stopped_at:
-                        reason = f"after {stopped_at[configuration_key]}"
+                        failure = stopped_at[configuration_key]
+                        reason = f"after {failure['status']} at {failure['case']}"
                         record = new_record(cell, "skipped", reason)
                     else:
                         if not case_dir.exists():
@@ -194,9 +211,7 @@ def run(config, run_dir):
                     outcome = record["median_s"] or record["reason"]
                     print(f"{label(record)}: {record['status']} {outcome}", flush=True)
                 if synthetic_case and record["status"] in ("failed", "timeout", "oom"):
-                    stopped_at[
-                        configuration_key
-                    ] = f"{record['status']} at {case['case']}"
+                    stopped_at[configuration_key] = record
             shutil.rmtree(case_dir, ignore_errors=True)
 
 
@@ -238,8 +253,11 @@ def cases(config):
 
 
 def rasters(config, side):
-    """Return the quality and permeability rasters of the synthetic case of
-    `side` pixels a side, or of Maryland for `None`."""
+    """Return the quality and permeability rasters of a case.
+
+    The case is the synthetic raster of `side` pixels a side, or Maryland for
+    `None`.
+    """
     if side is None:
         case = config["maryland"]
         return maryland(HERE / case["raster"], case["resistance"], case.get("side"))
@@ -369,14 +387,21 @@ def runs_on(configuration, case):
 
 
 def label(cell):
-    """Return the name of a cell in messages and file names: the values of its
-    key, joined by hyphens."""
+    """Return the name of a cell in messages and file names.
+
+    **Arguments:**
+
+    - `cell`: A cell, or its record.
+
+    **Returns:**
+
+    The values of its key that are set, joined by hyphens.
+    """
     return "-".join(str(cell[field]) for field in KEY if cell[field])
 
 
 def write_case(config, case, case_dir):
-    """Write the quality and permeability rasters of a case, and the sites of
-    E1."""
+    """Write the rasters of a case and the sites of E1 to a directory."""
     quality, permeability = rasters(config, case["side"])
     case_dir.mkdir(parents=True)
     np.save(case_dir / "quality.npy", quality)
@@ -388,8 +413,7 @@ def write_case(config, case, case_dir):
 
 
 def new_record(cell, status, reason):
-    """Return the record of a cell with its status and the reason, and without
-    output."""
+    """Return the record of a cell with a status and its reason, but no output."""
     return {field: cell.get(field) for field in FIELDS} | {
         "status": status,
         "reason": reason,
@@ -443,10 +467,17 @@ def run_cell(config, cell, case_dir, run_dir):
 def map_path(run_dir, cell):
     """Return where the runner keeps the map of a cell of E2 or E3.
 
-    JAXScape's map is kept under its question, case and distance: it is the map
-    of its GPU cell of the comparison, with which the maps of the other tools
-    of that question and case paired with that distance are compared. Another
-    tool's map is kept under its label.
+    **Arguments:**
+
+    - `run_dir`: The run directory.
+    - `cell`: A cell of the comparison, or its record.
+
+    **Returns:**
+
+    For JAXScape, the path of its map under the question, case and distance of
+    the cell: the map of its GPU cell of the comparison, with which the maps of
+    the other tools of that question and case paired with that distance are
+    compared. For another tool, the path of its map under its label.
     """
     if cell["tool"] == "JAXScape":
         name = f"{cell['question']}-{cell['case']}-{cell['distance']}"
@@ -475,14 +506,14 @@ def cell_file(config, cell, case_dir, work):
 
 
 def reference_of(config, cell, case_dir, run_dir):
-    """Return the float64 reference of a cell, computed once per case and
-    distance, and for E2 and E3 per question.
+    """Return the float64 reference of a cell.
 
-    E1 takes the `reference` adapter of its configuration on the CPU. E2 and E3
-    take the adapter of the solver view on its device, in float64 with its
-    `reference_solver` and the settings of the distance in the question. A
-    reference that failed is recorded next to where it would be and never
-    retried; the function then returns `None`.
+    The reference is computed once per case and distance, and for E2 and E3 per
+    question. E1 takes the `reference` adapter of its configuration on the CPU.
+    E2 and E3 take the adapter of the solver view on its device, in float64
+    with its `reference_solver` and the settings of the distance in the
+    question. A reference that failed is recorded next to where it would be and
+    never retried; the function then returns `None`.
     """
     if cell["question"] == "E1":
         name = f"{cell['case']}-{cell['distance']}"
@@ -682,8 +713,7 @@ def environment(config):
 
 
 def tool_versions(config, julia, renv):
-    """Return the version of each tool of the configuration, as its toolchain
-    pins it.
+    """Return the version of each tool of the configuration, from its pins.
 
     **Arguments:**
 
