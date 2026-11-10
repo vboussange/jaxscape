@@ -150,6 +150,7 @@ class ResistanceDistance(AbstractSolverDistance):
     sources_share_work: ClassVar[bool] = True
     symmetric: ClassVar[bool] = True
 
+    @eqx.filter_jit
     def system_matrix(self, graph: AbstractGraph) -> BCOO:
         """Return the grounded Laplacian of `graph`."""
         return _grounded_laplacian(graph.get_adjacency_matrix())[0]

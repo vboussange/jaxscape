@@ -89,6 +89,7 @@ class FreeEnergyDistance(AbstractSolverDistance):
         )
         self.solver = solver
 
+    @eqx.filter_jit
     def system_matrix(self, graph: AbstractGraph) -> BCOO:
         return _operator(graph.get_adjacency_matrix(), self.theta)[0]
 
