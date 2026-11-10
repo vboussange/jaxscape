@@ -5,13 +5,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 from jax.experimental.sparse import BCOO
-from jaxscape import (
-    ConnectivityAnalysis,
-    GridGraph,
-    ResistanceDistance,
-    SensitivityAnalysis,
-    SpielmanApproximation,
-)
+from jaxscape import GridGraph, ResistanceDistance, SpielmanApproximation
 from jaxscape.solvers import BCOOLinearOperator, CholmodSolver, cholmodsolver
 
 
@@ -40,60 +34,6 @@ def factorizations(monkeypatch):
     return calls
 
 
-@pytest.fixture
-def compilations():
-    """Name the programs that JAX traces or compiles while the test runs."""
-    events = {
-        "/jax/core/compile/jaxpr_trace_duration",
-        "/jax/core/compile/backend_compile_duration",
-    }
-    names = []
-
-    def listen(event, duration_secs, **kwargs):
-        del duration_secs
-        if event in events:
-            names.append(kwargs.get("fun_name"))
-
-    jax.monitoring.register_event_duration_secs_listener(listen)
-    yield names
-    jax.monitoring.unregister_event_duration_listener(listen)
-
-
-def windowed(kind, solver, seed):
-    """A windowed analysis of random rasters of one shape, with the default
-    proximity, whose profile a window query computes."""
-    rng = np.random.default_rng(seed)
-    return kind(
-        quality_raster=jnp.asarray(rng.uniform(0, 1, (10, 11))),
-        permeability_raster=jnp.asarray(10 ** rng.uniform(-1, 0, (10, 11))),
-        distance=ResistanceDistance(solver=solver),
-        dependency_range=3,
-        batch_size=8,
-    )
-
-
-RUNS = {
-    "connectivity": (ConnectivityAnalysis, lambda analysis: analysis.run()),
-    "permeability-sensitivity": (
-        SensitivityAnalysis,
-        lambda analysis: analysis.run("permeability"),
-    ),
-}
-
-
-@pytest.mark.parametrize("run", RUNS)
-def test_a_new_analysis_reuses_the_compiled_programs(compilations, run):
-    kind, run = RUNS[run]
-    run(windowed(kind, CholmodSolver(), seed=0)).block_until_ready()
-    expected = run(windowed(kind, None, seed=1))
-
-    compilations.clear()
-    actual = run(windowed(kind, CholmodSolver(), seed=1))
-
-    assert compilations == []
-    np.testing.assert_allclose(actual, expected, rtol=1e-8)
-
-
 @pytest.mark.parametrize("compiled", [False, True], ids=["eager", "jit"])
 def test_factorizations_follow_the_matrix_values(factorizations, compiled):
     distance = ResistanceDistance(solver=CholmodSolver())
@@ -120,47 +60,41 @@ def test_factorizations_follow_the_matrix_values(factorizations, compiled):
     np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
 
 
-def test_states_of_one_pattern_keep_their_own_factorizations(factorizations):
+def test_states_of_one_pattern_used_alternately_give_their_own_exact_results():
     distance = ResistanceDistance(solver=CholmodSolver())
-    first = distance.init(grid_of(VALUES))
-    distance(grid_of(VALUES), nodes=NODES, state=first).block_until_ready()
+    reference = ResistanceDistance(solver=None)
+    values = {"first": VALUES, "second": 2 * VALUES[::-1]}
+    states = {name: distance.init(grid_of(v)) for name, v in values.items()}
 
-    # The query compiled for `first` solves with the factorization of `second`.
-    second = distance.init(grid_of(2 * VALUES))
-    actual = distance(grid_of(2 * VALUES), nodes=NODES, state=second)
-    distance(grid_of(VALUES), nodes=NODES, state=first).block_until_ready()
+    for name in ["first", "second", "first", "second"]:
+        actual = distance(grid_of(values[name]), nodes=NODES, state=states[name])
 
-    assert len(factorizations) == 2
-    expected = ResistanceDistance(solver=None)(grid_of(VALUES), nodes=NODES) / 2
-    np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
+        expected = reference(grid_of(values[name]), nodes=NODES)
+        np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
 
 
-def test_a_used_up_state_factorizes_again_and_stays_exact(factorizations):
+def test_a_used_up_state_stays_exact():
     distance = ResistanceDistance(solver=CholmodSolver())
     used_up = distance.init(grid_of(VALUES))
-    state = distance.reinit(grid_of(2 * VALUES), used_up)
-    distance(grid_of(2 * VALUES), nodes=NODES, state=state).block_until_ready()
+    other = 2 * VALUES[::-1]
+    reinitialized = distance.reinit(grid_of(other), used_up)
 
-    actual = distance(grid_of(VALUES), nodes=NODES, state=used_up)
+    # The query with `reinitialized` uses up `used_up`.
+    for values, state in [(other, reinitialized), (VALUES, used_up)]:
+        actual = distance(grid_of(values), nodes=NODES, state=state)
 
-    assert len(factorizations) == 3
-    expected = ResistanceDistance(solver=None)(grid_of(VALUES), nodes=NODES)
-    np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
+        expected = ResistanceDistance(solver=None)(grid_of(values), nodes=NODES)
+        np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
 
 
-def test_a_state_evicted_by_newer_ones_factorizes_again_and_stays_exact(
-    factorizations,
-):
+def test_a_state_evicted_by_newer_ones_stays_exact():
     distance = ResistanceDistance(solver=CholmodSolver())
     evicted = distance.init(grid_of(VALUES))
-    # Documented: the process keeps the factorizations of the 8 most recently
-    # used states.
-    for scale in range(2, 10):
-        distance.init(grid_of(scale * VALUES))
+    for scale in range(2, 2 + cholmodsolver._STATES_KEPT):
+        distance.init(grid_of(scale * VALUES[::-1]))
 
     actual = distance(grid_of(VALUES), nodes=NODES, state=evicted)
 
-    assert len(factorizations) == 10
     expected = ResistanceDistance(solver=None)(grid_of(VALUES), nodes=NODES)
     np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
 

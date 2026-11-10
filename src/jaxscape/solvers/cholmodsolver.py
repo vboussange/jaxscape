@@ -97,14 +97,8 @@ class CholmodSolver(AbstractReusableStateSolver):
     A linear solver that uses CHOLMOD (via cholespy) to solve a sparse linear system.
     Uses direct Cholesky factorization for symmetric positive definite matrices.
     A state keeps its last factorization, which solves reuse while the matrix values
-    stay the same. States of one sparsity pattern share their compiled programs.
-
-    !!! note
-
-        The process keeps the factorizations of the 8 most recently used states,
-        on the host. A state and the states that `reinit` returns from it share
-        one factorization. A state used up by a solve of other values, or evicted
-        by newer states, stays correct, and its next solve factorizes again.
+    stay the same. The solver keeps the factorizations of its 8 most recently used
+    states, and an older state factorizes again when it is next used.
 
     !!! example
 
