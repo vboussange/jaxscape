@@ -49,8 +49,10 @@ change the pin, run, and report.
   E1.
 - `results/<run>/`: `records.jsonl`, the environment snapshot
   `environment.json`, the references of E1, the logs of the cells and the
-  JAXScape maps of E2 and E3 (neither committed), and what the report writes: `results.csv`, one figure per
-  question, `e1.png` to `e3.png`, and the page `index.md`.
+  maps of E2 and E3 (neither committed): JAXScape's, and the other tools' maps
+  of Maryland. The report writes `results.csv`, one figure per question,
+  `e1.png` to `e3.png`, the Maryland figure `maryland.png`, which it draws
+  when the run directory holds its maps, and the page `index.md`.
 
 ## The cell record
 

@@ -6,7 +6,8 @@
 A cell is one question, tool, distance, device and case. The runner appends the
 record of each cell to `RUN_DIR/records.jsonl` as it finishes, and skips the
 cells recorded there when it restarts. It keeps the maps of JAXScape's E2 and
-E3 cells in `RUN_DIR/maps`, against which it measures the other tools' maps.
+E3 cells in `RUN_DIR/maps`, against which it measures the other tools' maps,
+and the other tools' maps of Maryland, for the report's Maryland figure.
 Smoke mode runs every cell on a raster of `smoke_side` pixels a side, with
 windows of `smoke_dependency_range` and one timed call, into a new run
 directory, and exits with an error when a cell fails or lacks its agreement.
@@ -250,8 +251,13 @@ def blank(cell, status, reason):
     }
 
 
+def cell_id(cell):
+    """Return the name of a cell's log, and of its map of Maryland."""
+    return "-".join(str(cell[field]) for field in KEY if cell[field])
+
+
 def run_cell(config, cell, case_dir, run_dir, smoke):
-    name = "-".join(str(cell[field]) for field in KEY if cell[field])
+    name = cell_id(cell)
     work = case_dir.parent / "cells" / name
     log = run_dir / "logs" / f"{name}.log"
     cell_file = specification(config, cell, case_dir, work, smoke)
@@ -282,6 +288,8 @@ def run_cell(config, cell, case_dir, run_dir, smoke):
         path = map_path(run_dir, cell, cell["compared_with"])
         if path.exists():
             record["agreement"] = rank_correlation(output, np.load(path))
+        if cell["case"] == "maryland":  # for the Maryland figure of the report
+            np.save(run_dir / "maps" / f"{name}.npy", output)
     return record
 
 

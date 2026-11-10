@@ -235,6 +235,16 @@ def test_runner_records_no_rank_correlation_without_a_jaxscape_map(run_dir):
     assert record["agreement"] is None
 
 
+def test_runner_keeps_the_maryland_map_of_a_tool_with_a_tier(run_dir):
+    kept = np.load(
+        run_dir / "maps" / "E2-Fake map-free_energy-cpu-float64-maryland.npy"
+    )
+
+    # The fake map of Maryland, NaN on its first pixel.
+    assert kept.shape == (20, 24)
+    assert np.isnan(kept[0, 0])
+
+
 def test_runner_records_why_a_cell_failed_or_was_skipped(run_dir):
     cells = records(run_dir)
 
@@ -253,6 +263,7 @@ def test_runner_snapshots_the_environment(run_dir):
     assert environment["packages"]["jaxscape"] == "0.0.16"
     assert environment["packages"]["Circuitscape"] == "6.1.0"
     assert environment["packages"]["ConScape"] == "0.3.0"
+    assert environment["packages"]["Omniscape"] == "0.6.4"
     assert environment["packages"]["R"] == "4.1.2"
     assert environment["packages"]["gdistance"] == "1.6.5"
     assert environment["packages"]["samc"] == "4.2.1"
