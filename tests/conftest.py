@@ -1,5 +1,19 @@
 """Precision configuration and a reference sparse direct solver for the test suite."""
 
+import os
+
+
+# A JAX process sizes its CPU thread pools to the cores it may run on: on
+# Linux, each pytest-xdist worker runs on one core, set before JAX starts, so
+# that `pytest -n auto` does not oversubscribe the machine. The threads that
+# NumPy's BLAS started on import, before this file, take that core too.
+_worker = os.environ.get("PYTEST_XDIST_WORKER")
+if _worker and hasattr(os, "sched_setaffinity"):
+    _cores = sorted(os.sched_getaffinity(0))
+    _core = {_cores[int(_worker.removeprefix("gw")) % len(_cores)]}
+    for _thread in os.listdir("/proc/self/task"):
+        os.sched_setaffinity(int(_thread), _core)
+
 from types import SimpleNamespace
 from typing import Any, final
 

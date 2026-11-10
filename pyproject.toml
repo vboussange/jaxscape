@@ -82,7 +82,8 @@ pyamg = [
 ]
 tests = [
   "networkx>=3.4",
-  "pytest>=8.3.5"
+  "pytest>=8.3.5",
+  "pytest-xdist>=3.6"
 ]
 
 [project.urls]
@@ -95,10 +96,13 @@ include = ["src", "tests"]
 reportIncompatibleMethodOverride = true
 
 [tool.pytest.ini_options]
-# Tests marked `gpu` need an NVIDIA GPU with spineax and cuDSS; the default run
-# leaves them out. Run them with `pytest -m gpu`, or every test with `-m ""`.
-addopts = "-m 'not gpu'"
-markers = ["gpu: needs an NVIDIA GPU with spineax and cuDSS"]
+# The default run leaves out the tests marked `gpu` or `slow`. Run them with
+# `pytest -m gpu` or `pytest -m slow`, or every test with `-m ""`.
+addopts = "-m 'not gpu and not slow'"
+markers = [
+  "gpu: needs an NVIDIA GPU with spineax and cuDSS",
+  "slow: takes up to a minute on one CPU core",
+]
 # Benchmark correctness tests import the repository-local benchmark package.
 pythonpath = ["."]
 
