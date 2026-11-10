@@ -152,6 +152,8 @@ def test_runner_snapshots_the_environment(run_dir):
     assert environment["packages"]["jaxscape"] == "0.0.16"
     assert environment["packages"]["Circuitscape"] == "6.1.0"
     assert environment["packages"]["ConScape"] == "0.3.0"
+    assert environment["packages"]["R"] == "4.1.2"
+    assert environment["packages"]["gdistance"] == "1.6.5"
 
 
 def test_restart_skips_the_recorded_cells(run_dir, tmp_path):

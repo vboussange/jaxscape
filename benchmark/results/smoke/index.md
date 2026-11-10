@@ -32,11 +32,14 @@ Agreement (largest relative error) of each configuration and raster, or the stat
 | JAXScape | resistance | CPU | float32 | GridMultigridSolver | 1 | 5.8e-06 |
 | JAXScape | lcp | GPU | float32 |  | 1 | 2.5e-07 |
 | JAXScape | lcp | CPU | float32 |  | 1 | 2.4e-07 |
-| JAXScape | free_energy | GPU | float64 | CuDSSSolver | 1 | 2.5e-15 |
+| JAXScape | free_energy | GPU | float64 | CuDSSSolver | 1 | 2.0e-15 |
 | JAXScape | free_energy | CPU | float64 | CholmodSolver | 1 | 0.0e+00 |
 | Circuitscape.jl | resistance | CPU | float64 | cg+amg | 1 | 8.9e-07 |
 | Circuitscape.jl | resistance | CPU | float64 | cholmod | 1 | 4.6e-12 |
 | ConScape.jl | free_energy | CPU | float64 |  | 1 | 1.4e-15 |
+| gdistance | resistance | CPU | float64 |  | 1 | 7.3e-14 |
+| gdistance | lcp | CPU | float64 |  | 1 | 8.1e-16 |
+| skimage.graph.MCP | lcp | CPU | float64 |  | 1 | 3.3e-16 |
 
 ## Environment
 
@@ -48,8 +51,8 @@ Agreement (largest relative error) of each configuration and raster, or the stat
 | Cores | 48-63 |
 | Threads | `OMP_NUM_THREADS=16`, `OPENBLAS_NUM_THREADS=16`, `MKL_NUM_THREADS=16`, `JULIA_NUM_THREADS=16`, `RCPP_PARALLEL_NUM_THREADS=16` |
 | Python | 3.13.5 |
-| Packages | jaxscape 0.0.16, jax 0.12.0.1, jaxlib 0.12.0.1, numpy 2.5.4, scipy 1.18.1, Julia 1.13.3, Circuitscape 6.1.0, ConScape 0.3.0, JSON 1.13.4, NPZ 0.4.3 |
-| Tools | JAXScape 0.0.16, Circuitscape.jl 6.1.0, ConScape.jl 0.3.0 |
+| Packages | jaxscape 0.0.16, jax 0.12.0.1, jaxlib 0.12.0.1, numpy 2.5.4, scipy 1.18.1, scikit-image 0.26.0, Julia 1.13.3, Circuitscape 6.1.0, ConScape 0.3.0, JSON 1.13.4, NPZ 0.4.3, R 4.1.2, gdistance 1.6.5 |
+| Tools | JAXScape 0.0.16, Circuitscape.jl 6.1.0, ConScape.jl 0.3.0, gdistance 1.6.5, skimage.graph.MCP 0.26.0 |
 
 ## Parameter mappings
 
@@ -60,6 +63,8 @@ The header comment of each adapter states how it maps the shared parameters onto
 | JAXScape | E1 | `adapters/jaxscape.py` | JAXScape builds a `GridGraph` of the permeability raster with rook contiguity, the conductance of an edge being the harmonic mean of the permeabilities of its two pixels (`landscape.conductance`), so that its resistance is their mean resistance. Least-cost and free-energy distances take 1 / conductance as the edge cost, and the free energy takes the shared `theta`. E1 is a nodes-to-nodes query among the sites. The distance runs with the solver and dtype of its settings, and every call builds the graph and the solver state. |
 | Circuitscape.jl | E1 | `adapters/circuitscape.jl` | Circuitscape.jl computes the pairwise resistances among the E1 sites, in its `pairwise` scenario, with the permeability raster as the conductance of each cell. `connect_four_neighbors_only` gives rook contiguity, and `connect_using_avg_resistances` makes the resistance of an edge the mean resistance of its two cells, as `landscape.conductance` does. The solver is `cg+amg` or `cholmod`, in double precision, with `parallelize` on the Julia threads of the cell. Circuitscape.jl has no public in-memory API for this scenario: each call builds its `RasterData` in memory and runs the internals that `compute` runs after reading files (`build_problem`, `single_ground_all_pairs`), and writes only its table of resistances, to /dev/shm. Every call rebuilds the graph, the Laplacian and the AMG hierarchy or Cholesky factor. |
 | ConScape.jl | E1 | `adapters/conscape.jl` | ConScape.jl computes the free-energy distances among the E1 sites, with the shared `theta`. Its graph has rook contiguity (`N4`), the affinity of an edge being the harmonic mean of the permeabilities of its two pixels (`AverageWeight`), as `landscape.conductance` gives, and the cost of an edge 1 / affinity (`Inv`). The sites are the targets of a `GridRSP`. ConScape's free-energy distance is directed, and the adapter returns the mean of the two directions between two sites, as JAXScape's `FreeEnergyDistance` does. Every call rebuilds the affinities, the `Grid` and the `GridRSP`, with its sparse LU factorization, which runs on the BLAS threads of the cell. |
+| gdistance | E1 | `adapters/gdistance.R` | gdistance builds a transition layer of the resistance raster, 1 / permeability, with 4 neighbours (rook contiguity) and the transition function 1 / mean(x): the conductance between two pixels is the reciprocal of their mean resistance, `landscape.conductance`. Resistance distances are `commuteDistance` divided by the volume of the graph, the sum of its conductances in both directions, and least-cost distances are `costDistance`, whose edge cost is 1 / conductance. Pixels have side 1, so `geoCorrection` leaves the layer unchanged and is left out. Every call builds the transition layer, whose conductances depend on the resistance. |
+| skimage.graph.MCP | E1 | `adapters/skimage.py` | skimage.graph.MCP_Geometric finds least-cost paths on the resistance raster, 1 / permeability, with rook contiguity (`fully_connected=False`). The cost of a step is the mean resistance of its two pixels, 1 / `landscape.conductance`, the edge cost of JAXScape. Each call builds the MCP object, and searches from each site until it reaches all the others. |
 
 ## Excluded tools
 

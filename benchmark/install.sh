@@ -11,3 +11,9 @@ julia_version=$(sed -n 's/^julia_version = "\(.*\)"$/\1/p' julia/Manifest.toml)
 juliaup add "$julia_version"
 juliaup override set "$julia_version"
 julia --project=julia -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
+
+# R 4.1.2: the packages of renv.lock (gdistance), in the renv library of this
+# directory, for every `Rscript` started in it. renv installs itself, and builds
+# the packages from source; terra needs the GDAL, GEOS and PROJ development
+# libraries.
+MAKEFLAGS="-j$(nproc)" Rscript -e 'renv::restore(prompt = FALSE)'
