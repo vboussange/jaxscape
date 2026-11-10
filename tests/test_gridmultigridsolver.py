@@ -281,13 +281,11 @@ def test_the_default_runs_eagerly_and_under_jax_transformations():
     nodes = jnp.array([0, 17, 179, 90])
     distance = ResistanceDistance()
 
-    def distances(permeability):
+    def distances(permeability, distance=distance):
         return distance(GridGraph(permeability, fun=avg), nodes=nodes)
 
     def objective(permeability, distance=distance):
-        return jnp.sum(
-            jnp.exp(-distance(GridGraph(permeability, fun=avg), nodes=nodes))
-        )
+        return jnp.sum(jnp.exp(-distances(permeability, distance)))
 
     grid = GridGraph(permeability, fun=avg)
     expected = ResistanceDistance(solver=None)(grid, nodes=nodes)
@@ -328,7 +326,9 @@ def test_the_default_raises_on_disconnected_graphs():
         jax.block_until_ready(ResistanceDistance()(grid, **QUERIES["nodes"]))
 
 
-@pytest.mark.parametrize("solver", [GridMultigridSolver(), None])
+@pytest.mark.parametrize(
+    "solver", [GridMultigridSolver(), None], ids=["default", "dense"]
+)
 def test_a_grid_of_one_pixel_has_zero_resistance_and_gradient(solver):
     # The pixel has no neighbours: its ground has degree zero.
     distance = ResistanceDistance(solver=solver)
