@@ -14,7 +14,9 @@ dependencies = [
   "numpy>=2",
   "scikit-image>=0.26",
   "scipy>=1.14",
-  "torch"
+  "torch",
+  "eco-connectivity==2.5.0",
+  "rasterio>=1.4",
 ]
 
 [dependency-groups]

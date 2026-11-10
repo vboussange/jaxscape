@@ -38,7 +38,7 @@ def test_report_writes_the_csv_with_one_row_per_record(tmp_path):
     with open(run_dir / "results.csv", newline="") as file:
         rows = list(csv.DictReader(file))
 
-    assert len(rows) == 37
+    assert len(rows) == 42
     assert {row["status"] for row in rows} == {
         "ok",
         "failed",
@@ -100,6 +100,11 @@ def test_e2_and_e3_tables_list_each_configuration_with_its_status(tmp_path):
     assert cpu[-4:] == ["oom", "skipped", "skipped", ""]
     conscape = table_row(e2, "ConScape.jl", "free_energy", "CPU", "float64", "")
     assert conscape[-5:] == ["3", "0.91", "", "", ""]
+    eco = table_row(e2, "eco-connectivity", "lcp", "CPU", "float32", "")
+    assert eco[-5:] == ["2", "0.98", "0.81", "timeout", ""]
+    graphab = table_row(e2, "Graphab", "lcp", "CPU", "float64", "")
+    assert graphab[-5:] == ["3", "-0.06", "missing", "", ""]
+    assert "Spearman's ρ" in e2
     assert table_row(e3, "Tool")[-2:] == ["256²", "Maryland"]
     assert table_row(e3, "JAXScape", "resistance", "GPU")[-2:] == ["ok", "ok"]
     assert table_row(e3, "JAXScape", "lcp", "GPU")[-2:] == ["failed", "skipped"]
@@ -171,7 +176,8 @@ def test_page_has_its_sections_and_references_the_figure(tmp_path):
     assert (
         table_row(page, "Tools")[1]
         == "JAXScape 0.0.16, Circuitscape.jl 6.1.0, ConScape.jl 0.3.0, "
-        "EcoScape 0.2.5, samc 4.2.1, Omniscape.jl 0.6.4"
+        "EcoScape 0.2.5, samc 4.2.1, eco-connectivity 2.5.0, Graphab 3.0.8, "
+        "Omniscape.jl 0.6.4"
     )
     mapping = table_row(page, "JAXScape", "E1, E2, E3")
     assert mapping[2] == "`adapters/jaxscape.py`"
@@ -189,6 +195,12 @@ def test_page_has_its_sections_and_references_the_figure(tmp_path):
     samc = table_row(page, "samc", "E3")
     assert samc[2] == "`adapters/samc.R`"
     assert "absorption" in samc[3]
+    eco = table_row(page, "eco-connectivity", "E2")
+    assert eco[2] == "`adapters/eco_connectivity.py`"
+    assert "exp(-d/25)" in eco[3]
+    graphab = table_row(page, "Graphab", "E2")
+    assert graphab[2] == "`adapters/graphab.py`"
+    assert "F_I + a_I" in graphab[3]
     omniscape = table_row(page, "Omniscape.jl", "E3")
     assert omniscape[2] == "`adapters/omniscape.jl`"
     assert "`radius` is the shared `dependency_range`" in omniscape[3]

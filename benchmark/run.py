@@ -489,10 +489,12 @@ def environment(config):
                     "scikit-image",
                     "ecoscape-connectivity",
                     "torch",
+                    "eco-connectivity",
                 )
             },
             **julia_packages(),
             **r_packages(),
+            **java_packages(),
         },
     }
 
@@ -514,6 +516,18 @@ def r_packages():
     return {
         "R": lock["R"]["Version"],
         **{name: lock["Packages"][name]["Version"] for name in R_PACKAGES},
+    }
+
+
+def java_packages():
+    """Return the versions of Graphab and of its Java runtime, which install.sh
+    installs in `java/`."""
+    jar = next((HERE / "java").glob("graphab-*.jar"))
+    lines = (HERE / "java" / "jre" / "release").read_text().splitlines()
+    release = dict(line.split("=", 1) for line in lines if "=" in line)
+    return {
+        "Graphab": jar.stem.removeprefix("graphab-"),
+        "Java": release["JAVA_VERSION"].strip('"'),
     }
 
 

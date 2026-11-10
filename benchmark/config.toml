@@ -203,6 +203,26 @@ tier = 3
 [tools.distances.resistance]
 solver = "direct"
 
+# E2 against eco-connectivity and Graphab, both under least-cost distances.
+[[tools]]
+tool = "eco-connectivity"
+question = "E2"
+adapter = "adapters/eco_connectivity.py"
+devices = ["cpu"]
+tier = 2
+
+[tools.distances.lcp]
+dtype = "float32"
+
+[[tools]]
+tool = "Graphab"
+question = "E2"
+adapter = "adapters/graphab.py"
+devices = ["cpu"]
+tier = 3
+
+[tools.distances.lcp]
+
 [[tools]]
 tool = "Omniscape.jl"
 question = "E3"
