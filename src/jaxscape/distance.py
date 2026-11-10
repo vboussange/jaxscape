@@ -48,9 +48,10 @@ class AbstractDistance(eqx.Module):
       gradient. Defaults to `False`.
     - `averages_sources`: Whether window queries take `source_weights` and
       return the mean of the distances from the pixels around each source,
-      with these weights, at the cost of one query. Coarsened windowed
-      analyses then take the permeability sensitivity of a block centre from
-      its block source. Defaults to `False`.
+      with these weights, at the cost of one query (see
+      `sources_to_windows_distance`). Coarsened windowed analyses then take
+      the permeability sensitivity of a block centre from its block source.
+      Defaults to `False`.
 
     **Returns:**
 
@@ -217,7 +218,12 @@ class AbstractDistance(eqx.Module):
         return self.init(graph)
 
     def sources_to_windows_distance(
-        self, graph: GridGraph, sources: Array, size: int, state: Any = None
+        self,
+        graph: GridGraph,
+        sources: Array,
+        size: int,
+        state: Any = None,
+        source_weights: Array | None = None,
     ) -> Array:
         """Return the distances from each source to the pixels of its window.
 
@@ -229,8 +235,8 @@ class AbstractDistance(eqx.Module):
         the sources to every vertex and slices their windows: it holds
         `m * n` distances for `m` sources and `n` vertices, besides the memory
         of the query. A distance may override it to hold fewer values, as
-        `ResistanceDistance` does with `SpielmanApproximation`, or for speed,
-        as `LCPDistance` does on grid graphs.
+        `ResistanceDistance` does, or for speed, as `LCPDistance` does on grid
+        graphs.
 
         **Arguments:**
 
@@ -238,6 +244,9 @@ class AbstractDistance(eqx.Module):
         - `sources`: Source vertex indices with shape `(m,)`.
         - `size`: Odd number of pixels along a side of the windows.
         - `state`: Optional solver state. Defaults to automatic initialization.
+        - `source_weights`: Optional weights of the pixels around each source,
+          for distances that average sources (see `averages_sources`); other
+          distances raise. Defaults to the source alone.
 
         **Returns:**
 
@@ -247,6 +256,11 @@ class AbstractDistance(eqx.Module):
         """
         if size % 2 == 0:
             raise ValueError("`size` must be odd.")
+        if source_weights is not None:
+            raise ValueError(
+                f"{type(self).__name__} does not average sources: its window "
+                "queries take no `source_weights`."
+            )
         sources = _inside_windows(graph, sources, size)
         distances = self(graph, sources=sources, state=state)
         return _windows(distances.reshape(-1, graph.height, graph.width), sources, size)
