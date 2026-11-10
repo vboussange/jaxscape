@@ -103,9 +103,11 @@ def test_hierarchies_of_four_grids_match_grids_built_one_after_another(neighbors
     state = solver.init(BCOOLinearOperator(matrix), {})
     hierarchy = gridmultigridsolver._hierarchy(state)
 
-    shapes = [s[0].shape for s in hierarchy.stencils]
+    shapes = [level.A[0].shape for level in hierarchy.levels]
     assert shapes == [(129, 131), (65, 66), (33, 33), (17, 17)]
-    actual = jax.tree.leaves((hierarchy.stencils, hierarchy.interpolations))
+    A = [level.A for level in hierarchy.levels]
+    P = [level.P for level in hierarchy.levels]
+    actual = jax.tree.leaves((A, P))
     expected = jax.tree.leaves(grids_one_after_another(state))
     for a, e in zip(actual, expected, strict=True):
         assert a.shape == e.shape
@@ -399,7 +401,7 @@ def test_the_hierarchy_traces_the_coarse_grids_after_the_first_once(monkeypatch)
     distance = ResistanceDistance(solver=GridMultigridSolver())
     state = distance.init(GridGraph(landscape((130, 140)), fun=avg))
     hierarchy = gridmultigridsolver._hierarchy(state)
-    assert [s[0].shape for s in hierarchy.stencils] == [
+    assert [level.A[0].shape for level in hierarchy.levels] == [
         (130, 140),
         (65, 70),
         (33, 35),
