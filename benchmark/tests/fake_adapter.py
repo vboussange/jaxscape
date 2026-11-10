@@ -1,7 +1,7 @@
 # A fake tool for the runner's tests: it returns the Euclidean distances among
-# the sites for E1 and the quality for other questions, raises on rasters of
-# side `fail_from` and larger, and outlasts the timeout on rasters of side
-# `sleep_from` and larger.
+# the sites for E1 and the quality times `sign` for other questions, raises on
+# rasters of side `fail_from` and larger, and outlasts the timeout on rasters of
+# side `sleep_from` and larger.
 import time
 
 import numpy as np
@@ -19,7 +19,7 @@ def call():
     if side >= settings.get("sleep_from", np.inf):
         time.sleep(600)
     if cell["question"] != "E1":
-        return arrays["quality"]
+        return settings.get("sign", 1) * arrays["quality"]
     sites = arrays["sites"]
     return np.linalg.norm(sites[:, None] - sites[None, :], axis=-1)
 

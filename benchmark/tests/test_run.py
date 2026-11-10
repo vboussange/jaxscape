@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -84,6 +85,30 @@ devices = ["cpu"]
 
 [tools.distances.resistance]
 dtype = "float32"
+
+[[tools]]
+tool = "JAXScape"
+question = "E3"
+adapter = "tests/fake_adapter.py"
+devices = ["gpu", "cpu"]
+
+[tools.distances.resistance]
+sign = {{ gpu = 1, cpu = -1 }}
+
+[tools.distances.lcp]
+fail_from = 16
+
+[[tools]]
+tool = "Fake E3"
+question = "E3"
+adapter = "tests/fake_adapter.py"
+devices = ["cpu"]
+tier = 3
+
+[tools.distances.resistance]
+sign = -1
+
+[tools.distances.lcp]
 """
 # A land cover of 20 x 24 pixels, of classes 1 (resistance 1), 2 (resistance 10)
 # and 3 (a barrier).
@@ -178,6 +203,40 @@ def test_runner_records_no_agreement_for_a_tool_without_tier(run_dir):
     assert record["agreement"] is None
 
 
+def test_runner_records_the_rank_correlation_against_the_first_jaxscape_map(run_dir):
+    # The first JAXScape configuration of E3 runs on the GPU and returns the
+    # quality, and Fake E3 its opposite.
+    record = records(run_dir, "Fake E3")[("resistance", "synthetic-8")]
+
+    assert record["tier"] == 3
+    assert record["measure"] == "Spearman's ρ"
+    assert record["agreement"] == pytest.approx(-1)
+
+
+def test_runner_records_a_missing_rank_correlation_when_jaxscape_has_no_map(run_dir):
+    # JAXScape fails on the raster of side 16 under least-cost distances.
+    record = records(run_dir, "Fake E3")[("lcp", "synthetic-16")]
+
+    assert record["status"] == "ok"
+    assert record["median_s"] > 0
+    assert record["agreement"] is None
+
+
+def test_restart_compares_a_map_with_the_jaxscape_map_of_the_first_run(
+    run_dir, tmp_path
+):
+    restarted = tmp_path / "run"
+    shutil.copytree(run_dir, restarted)
+    lines = (restarted / "records.jsonl").read_text().splitlines()
+    kept = [line for line in lines if json.loads(line)["tool"] != "Fake E3"]
+    (restarted / "records.jsonl").write_text("\n".join(kept) + "\n")
+
+    run(tmp_path, restarted)
+
+    record = records(restarted, "Fake E3")[("resistance", "synthetic-8")]
+    assert record["agreement"] == pytest.approx(-1)
+
+
 def test_runner_records_why_a_cell_failed_or_was_skipped(run_dir):
     cells = records(run_dir)
 
@@ -196,6 +255,7 @@ def test_runner_snapshots_the_environment(run_dir):
     assert environment["packages"]["jaxscape"] == "0.0.16"
     assert environment["packages"]["Circuitscape"] == "6.1.0"
     assert environment["packages"]["ConScape"] == "0.3.0"
+    assert environment["packages"]["Omniscape"] == "0.6.4"
     assert environment["packages"]["R"] == "4.1.2"
     assert environment["packages"]["gdistance"] == "1.6.5"
 

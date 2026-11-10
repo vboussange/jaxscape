@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 
 # Julia, from juliaup: the version that resolved julia/Manifest.toml, for every
 # `julia` started in this directory, and the packages of the Manifest
-# (Circuitscape.jl, ConScape.jl).
+# (Circuitscape.jl, ConScape.jl, Omniscape.jl).
 julia_version=$(sed -n 's/^julia_version = "\(.*\)"$/\1/p' julia/Manifest.toml)
 juliaup add "$julia_version"
 juliaup override set "$julia_version"

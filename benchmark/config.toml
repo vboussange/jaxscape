@@ -51,7 +51,9 @@ resistance = { 11 = 100, 21 = 500, 22 = 1000, 31 = 100, 41 = 1, 42 = 1, 43 = 1, 
 
 # One entry per tool and question. `adapter` runs a cell, and the table of a
 # distance holds the tool's settings for it, `dtype` and `solver` included. A
-# setting given per device is a table keyed by device.
+# setting given per device is a table keyed by device. In E2 and E3, the map of
+# a tool with a tier is compared with the map of the first JAXScape
+# configuration of its question and distance, on the same case.
 [[tools]]
 tool = "JAXScape"
 question = "E1"
@@ -151,3 +153,13 @@ devices = ["cpu"]
 tier = 1
 
 [tools.distances.lcp]
+
+[[tools]]
+tool = "Omniscape.jl"
+question = "E3"
+adapter = "adapters/omniscape.jl"
+devices = ["cpu"]
+tier = 3
+
+[tools.distances.resistance]
+solver = ["cg+amg", "cholmod"]

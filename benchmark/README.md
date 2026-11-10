@@ -47,9 +47,11 @@ change the pin, run, and report.
   Julia and R adapters, and `reference.py` computes the float64 reference of
   E1.
 - `results/<run>/`: `records.jsonl`, the environment snapshot
-  `environment.json`, the references of E1, the logs of the cells (not
-  committed), and what the report writes: `results.csv`, one figure per
-  question, `e1.png` to `e3.png`, and the page `index.md`.
+  `environment.json`, the references of E1, the maps of E2 and E3 that enter
+  an agreement in `maps/` (on Maryland only, committed), the logs of the cells
+  (not committed), and what the report writes: `results.csv`, one figure per
+  question, `e1.png` to `e3.png`, the Maryland figure `maryland.png`, and the
+  page `index.md`.
 
 ## The cell record
 
@@ -60,7 +62,7 @@ A record is the one contract between the runner and the report:
 | `question`, `tool`, `distance`, `device`, `dtype`, `solver`, `case` | The cell; `cells` is its number of raster cells. |
 | `status`, `reason` | `ok`, `failed`, `timeout`, `oom` or `skipped`, and why. |
 | `warmup_s`, `times_s`, `median_s` | The warm-up call, the timed calls and their median, in seconds. |
-| `measure`, `agreement`, `tier` | The agreement measure of the tier, and its value, or `null` when the reference is unavailable. |
+| `measure`, `agreement`, `tier` | The agreement measure of the tier, and its value, or `null` when the reference is unavailable. In E2 and E3, the reference is the map of the first JAXScape configuration of the cell's question and distance, on the same case. |
 | `version`, `files`, `adapter` | The tool's version, whether its calls read or write files, and its adapter. |
 
 ## Add a tool
@@ -72,7 +74,8 @@ A tool takes one adapter script and one configuration entry.
    this comment into the table of parameter mappings. The adapter follows the
    protocol of `adapters/protocol.py`: it reads the cell file named by its
    argument, touches `progress` at the start of each call, saves the output
-   of its last call to `output` (for E1, the distances among the sites), and
+   of its last call to `output` (for E1, the distances among the sites; for E2
+   and E3, its map, NaN on the pixels without a value), and
    writes `result`. Julia adapters include `adapters/protocol.jl` and run
    with `julia --project=julia`. R adapters source `adapters/protocol.R` and
    run with `Rscript` in this directory. To add an R package, load it in the

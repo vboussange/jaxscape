@@ -38,7 +38,7 @@ def test_report_writes_the_csv_with_one_row_per_record(tmp_path):
     with open(run_dir / "results.csv", newline="") as file:
         rows = list(csv.DictReader(file))
 
-    assert len(rows) == 28
+    assert len(rows) == 32
     assert {row["status"] for row in rows} == {
         "ok",
         "failed",
@@ -103,6 +103,34 @@ def test_e2_and_e3_tables_list_each_configuration_with_its_status(tmp_path):
     assert table_row(e3, "JAXScape", "lcp", "GPU")[-2:] == ["failed", "skipped"]
 
 
+def test_e3_table_lists_the_rank_correlation_of_each_omniscape_setting(tmp_path):
+    e3 = section(
+        (report(tmp_path) / "index.md").read_text(),
+        "### E3. Corridors and pinch points",
+    )
+
+    amg = table_row(e3, "Omniscape.jl", "resistance", "CPU", "float64", "cg+amg")
+    assert amg[-3:] == ["3", "0.41", "0.62"]
+    cholmod = table_row(e3, "Omniscape.jl", "resistance", "CPU", "float64", "cholmod")
+    assert cholmod[-3:] == ["3", "0.43", "timeout"]
+
+
+def test_report_writes_the_maryland_figure_with_its_correlation_and_runtimes(
+    tmp_path,
+):
+    run_dir = report(tmp_path)
+    e3 = section(
+        (run_dir / "index.md").read_text(), "### E3. Corridors and pinch points"
+    )
+
+    assert (run_dir / "maryland.png").read_bytes().startswith(b"\x89PNG")
+    assert "](maryland.png)" in e3
+    # The fastest Omniscape setting that succeeds on Maryland is cg+amg.
+    assert "ρ = 0.62" in e3
+    assert "240 s" in e3
+    assert "37 s" in e3
+
+
 def test_page_has_its_sections_and_references_the_figure(tmp_path):
     page = (report(tmp_path) / "index.md").read_text()
 
@@ -125,9 +153,8 @@ def test_page_has_its_sections_and_references_the_figure(tmp_path):
         == "NVIDIA GeForce RTX 3090, driver 580.178.04, 24576 MiB"
     )
     assert table_row(page, "Cores")[1] == "48-63"
-    assert (
-        table_row(page, "Tools")[1]
-        == "JAXScape 0.0.16, Circuitscape.jl 6.1.0, ConScape.jl 0.3.0"
+    assert table_row(page, "Tools")[1] == (
+        "JAXScape 0.0.16, Circuitscape.jl 6.1.0, ConScape.jl 0.3.0, Omniscape.jl 0.6.4"
     )
     mapping = table_row(page, "JAXScape", "E1, E2, E3")
     assert mapping[2] == "`adapters/jaxscape.py`"
@@ -138,4 +165,7 @@ def test_page_has_its_sections_and_references_the_figure(tmp_path):
     conscape = table_row(page, "ConScape.jl", "E1")
     assert conscape[2] == "`adapters/conscape.jl`"
     assert "AverageWeight" in conscape[3]
+    omniscape = table_row(page, "Omniscape.jl", "E3")
+    assert omniscape[2] == "`adapters/omniscape.jl`"
+    assert "`radius` is the shared `dependency_range`" in omniscape[3]
     assert table_row(page, "Linkage Mapper")[1] == "Needs ArcGIS."

@@ -5,7 +5,8 @@
 
 A cell is one question, tool, distance, device and case. The runner appends the
 record of each cell to `RUN_DIR/records.jsonl` as it finishes, and skips the
-cells recorded there when it restarts. Smoke mode runs every cell on a raster of
+cells recorded there when it restarts. It keeps the maps of E2 and E3 that enter
+an agreement in `RUN_DIR/maps`. Smoke mode runs every cell on a raster of
 `smoke_side` pixels a side, with windows of `smoke_dependency_range` and one
 timed call, into a new run directory, and exits with an error when a cell fails
 or lacks its agreement.
@@ -30,11 +31,13 @@ from pathlib import Path
 
 import numpy as np
 from landscape import maryland, sites, synthetic
+from scipy.stats import spearmanr
 
 
 HERE = Path(__file__).resolve().parent
 KEY = ("question", "tool", "distance", "device", "dtype", "solver", "case")
-MEASURES = {"E1": "largest relative error"}
+MEASURES = {"E1": "largest relative error", "E2": "Spearman's ρ", "E3": "Spearman's ρ"}
+MAPS = {"E2", "E3"}  # the questions whose cells return a map
 REFERENCE = "adapters/reference.py"
 INTERPRETERS = {".jl": ["julia", f"--project={HERE / 'julia'}"], ".R": ["Rscript"]}
 OOM = re.compile(
@@ -81,6 +84,7 @@ def run(config, run_dir, smoke):
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "logs").mkdir(exist_ok=True)
     (run_dir / "references").mkdir(exist_ok=True)
+    (run_dir / "maps").mkdir(exist_ok=True)
     if not (run_dir / "environment.json").exists():
         snapshot = json.dumps(environment(config), indent=2)
         (run_dir / "environment.json").write_text(snapshot + "\n")
@@ -210,6 +214,27 @@ def cell_name(cell):
     return " ".join(str(cell[field]) for field in KEY if cell[field])
 
 
+def cell_id(cell):
+    """Return the name of a cell's log and map files."""
+    return "-".join(str(cell[field]) for field in KEY if cell[field])
+
+
+def map_reference(config, cell):
+    """Return the cell whose map a tool's map of E2 or E3 is compared with.
+
+    It is the first JAXScape configuration of the cell's question and distance,
+    on the cell's case, or `None` when JAXScape leaves out the distance.
+    """
+    for configuration in configurations(config):
+        if (
+            configuration["tool"] == "JAXScape"
+            and configuration["question"] == cell["question"]
+            and configuration["distance"] == cell["distance"]
+        ):
+            return {**configuration, "case": cell["case"]}
+    return None
+
+
 def write_case(config, case, case_dir, smoke):
     """Write the quality and permeability rasters of a case, and the sites of
     E1."""
@@ -243,7 +268,7 @@ def blank(cell, status, reason):
 
 
 def run_cell(config, cell, case_dir, run_dir, smoke):
-    name = "-".join(str(cell[field]) for field in KEY if cell[field])
+    name = cell_id(cell)
     work = case_dir.parent / "cells" / name
     log = run_dir / "logs" / f"{name}.log"
     cell_file = specification(config, cell, case_dir, work, smoke)
@@ -261,12 +286,20 @@ def run_cell(config, cell, case_dir, run_dir, smoke):
         version=result["version"],
         files=result["files"],
     )
-    if cell["tier"]:
+    output = np.load(work / "output.npy")
+    if cell["question"] in MAPS:
+        reference = map_reference(config, cell)
+        is_reference = reference is not None and cell_id(reference) == name
+        if cell["tier"] or is_reference:
+            np.save(run_dir / "maps" / f"{name}.npy", output.astype(np.float32))
+        if cell["tier"] and reference is not None:
+            path = run_dir / "maps" / f"{cell_id(reference)}.npy"
+            if path.exists():
+                record["agreement"] = rank_correlation(output, np.load(path))
+    elif cell["tier"]:
         reference = reference_of(config, cell, case_dir, run_dir)
         if reference is not None:
-            record["agreement"] = largest_relative_error(
-                np.load(work / "output.npy"), reference
-            )
+            record["agreement"] = largest_relative_error(output, reference)
     return record
 
 
@@ -322,6 +355,13 @@ def largest_relative_error(output, reference):
     pairs = np.triu_indices(len(reference), 1)
     error = np.abs(output[pairs] - reference[pairs]) / np.abs(reference[pairs])
     return float(np.max(error))
+
+
+def rank_correlation(output, reference):
+    """Return Spearman's ρ between two maps, over the pixels where both are
+    finite."""
+    finite = np.isfinite(output) & np.isfinite(reference)
+    return float(spearmanr(output[finite], reference[finite]).statistic)
 
 
 def execute(config, adapter, device, specification, work, log):

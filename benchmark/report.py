@@ -2,9 +2,10 @@
 
     uv run python report.py RUN_DIR
 
-writes `results.csv`, one figure per question, such as `e1.png`, and the page
-`index.md` into RUN_DIR. The report reads the records, the environment snapshot
-and the header comment of each adapter that the records name.
+writes `results.csv`, one figure per question, such as `e1.png`, the Maryland
+figure `maryland.png`, and the page `index.md` into RUN_DIR. The report reads the
+records, the environment snapshot, the maps of the Maryland figure and the
+header comment of each adapter that the records name.
 """
 
 import argparse
@@ -15,10 +16,13 @@ from pathlib import Path
 
 import matplotlib
 import numpy as np
+from run import cell_id
+from scipy.stats import rankdata
 
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.lines import Line2D
 
 
@@ -30,6 +34,10 @@ FIELDS = (
 ).split()
 CONFIGURATION = ("tool", "distance", "device", "dtype", "solver")
 LINE = ("tool", "distance", "device")  # a line of a figure
+RHO = "Spearman's ρ"
+# The Maryland figure: JAXScape's map of a question next to a tool's map.
+MARYLAND = {"question": "E3", "tool": "Omniscape.jl", "map": "normalized current"}
+BLUES = "#cde2fb #9ec5f4 #6da7ec #3987e5 #256abf #184f95 #0d366b".split()
 
 QUESTIONS = {
     "E1": (
@@ -87,7 +95,10 @@ SETUPS = {
     ),
     "E3": (
         "JAXScape computes the map of $\\partial C / \\partial p_k$ with "
-        "`SensitivityAnalysis`, with the windows and proximity of E2."
+        "`SensitivityAnalysis`, with the windows and proximity of E2. "
+        "Omniscape.jl computes its normalized current, the cumulative current "
+        "divided by the flow potential, with the configuration of its Maryland "
+        "example on JAXScape's windows, on a graph of eight neighbours."
     ),
 }
 
@@ -140,6 +151,9 @@ def main():
     questions = sorted({record["question"] for record in records})
     for question in questions:
         plot(question, of(question, records), run_dir / f"{question.lower()}.png")
+    pair = maryland_pair(records)
+    if pair:
+        plot_maryland(run_dir, *pair, run_dir / "maryland.png")
     (run_dir / "index.md").write_text(page(run_dir.name, records, environment))
 
 
@@ -250,6 +264,71 @@ def plot(question, records, path):
     plt.close(figure)
 
 
+def maryland_pair(records):
+    """Return the records of the Maryland figure: the first JAXScape record of
+    the tool's distance, whose map the runner compares the tool's maps with, and
+    the fastest setting of the tool that succeeds. Return `None` when either is
+    missing."""
+    question, tool = MARYLAND["question"], MARYLAND["tool"]
+    on_maryland = [r for r in of(question, records) if r["case"] == "maryland"]
+    others = [r for r in on_maryland if r["tool"] == tool]
+    if not others:
+        return None
+    other = min(others, key=rank)
+    for record in on_maryland:
+        if record["tool"] == "JAXScape" and record["distance"] == other["distance"]:
+            return record, other
+    return None
+
+
+def runtime(record):
+    """Return the warm runtime of a record, or its status when it has none."""
+    if record["status"] != "ok":
+        return record["status"]
+    return f"{record['median_s']:.3g} s"
+
+
+def quantiles(values):
+    """Return the rank of each finite pixel as a quantile in [0, 1], and NaN
+    elsewhere."""
+    finite = np.isfinite(values)
+    quantile = np.full(values.shape, np.nan)
+    quantile[finite] = (rankdata(values[finite]) - 1) / max(finite.sum() - 1, 1)
+    return quantile
+
+
+def plot_maryland(run_dir, jaxscape, other, path):
+    """Plot JAXScape's map on Maryland next to the other tool's.
+
+    Each map is coloured by the rank of its pixels, which Spearman's ρ
+    compares, and pixels without a value, such as barriers, are gray.
+    """
+    colormap = LinearSegmentedColormap.from_list("blues", BLUES)
+    colormap = colormap.with_extremes(bad="#9e9e9e")
+    figure, axes = plt.subplots(1, 2, figsize=(10, 5), layout="constrained")
+    labels = (f"sensitivity under {other['distance']}", MARYLAND["map"])
+    image = None
+    for axis, record, label in zip(axes, (jaxscape, other), labels):
+        axis.set_axis_off()
+        axis.set_title(
+            f"{record['tool']}: {label}\n{record['device'].upper()}, {runtime(record)}"
+        )
+        map_path = run_dir / "maps" / f"{cell_id(record)}.npy"
+        if record["status"] == "ok" and map_path.exists():
+            image = axis.imshow(
+                quantiles(np.load(map_path)), cmap=colormap, vmin=0, vmax=1
+            )
+        else:
+            axis.text(0.5, 0.5, "no map", ha="center", transform=axis.transAxes)
+    if image:
+        figure.colorbar(
+            image, ax=axes, shrink=0.8, label="Rank of the pixel (quantile)"
+        )
+    figure.suptitle(f"Maryland · {RHO} = {value(other)}")
+    figure.savefig(path, dpi=150)
+    plt.close(figure)
+
+
 def row(cells):
     return "| " + " | ".join(str(cell) for cell in cells) + " |"
 
@@ -270,6 +349,8 @@ def value(record):
         return record["status"]
     if record["agreement"] is None:
         return "missing"
+    if record["measure"] == RHO:
+        return f"{record['agreement']:.2f}"
     return f"{record['agreement']:.1e}"
 
 
@@ -339,8 +420,10 @@ def page(run_name, records, environment):
         "reference measures its accuracy. Tier 2 compares the same quantity "
         "computed on another graph or with another kernel, and Tier 3 a related "
         "quantity that answers the same question; both report Spearman's rank "
-        "correlation between maps. A runtime gap measures a speed-up only at "
-        "Tier 1.",
+        "correlation between the tool's map and JAXScape's map under the same "
+        "distance on the same case, from the first JAXScape configuration of the "
+        "table, over the pixels where both maps have a value. A runtime gap "
+        "measures a speed-up only at Tier 1.",
         "## Landscapes",
         "Each synthetic case draws a Gaussian random field with a Gaussian "
         "covariance of correlation length 25 pixels, on a periodic grid with a "
@@ -374,6 +457,7 @@ def page(run_name, records, environment):
         "Maryland is a star, and rasters where no setting succeeds show a "
         "status along the top edge.",
     ]
+    pair = maryland_pair(records)
     for question in questions:
         records_of_question = of(question, records)
         sections += [
@@ -387,6 +471,18 @@ def page(run_name, records, environment):
             else "Status of each configuration and raster.",
             agreement_table(records_of_question),
         ]
+        if question == MARYLAND["question"] and pair:
+            jaxscape, other = pair
+            sections += [
+                f"![Maryland: JAXScape's sensitivity next to {other['tool']}'s "
+                f"{MARYLAND['map']}](maryland.png)",
+                "On Maryland, JAXScape's map of $\\partial C / \\partial p_k$ "
+                f"under {other['distance']} ({jaxscape['device'].upper()}, "
+                f"{runtime(jaxscape)}) next to {other['tool']}'s {MARYLAND['map']} "
+                f"({other['device'].upper()}, `{other['solver']}`, "
+                f"{runtime(other)}), each coloured by the rank of its pixels, with "
+                f"barriers in gray: {RHO} = {value(other)}.",
+            ]
     threads = ", ".join(f"`{k}={v}`" for k, v in environment["threads"].items())
     packages = ", ".join(f"{k} {v}" for k, v in environment["packages"].items())
     sections += [
