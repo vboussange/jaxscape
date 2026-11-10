@@ -326,9 +326,6 @@ class AbstractSolverDistance(AbstractDistance):
     def system_matrix(self, graph: AbstractGraph) -> BCOO:
         """Return the system matrix of `graph`.
 
-        Implementations compile it with `eqx.filter_jit`, so that an eager call
-        compiles one program instead of one per operation.
-
         **Arguments:**
 
         - `graph`: Graph of the queries.
@@ -393,16 +390,14 @@ def _grid_multigrid_state(distance: AbstractSolverDistance, graph: GridGraph) ->
     indices the solver checks.
     """
     concrete = graph
-    # The solver reads its grid from concrete sparse indices, which a traced
-    # graph may lack: the state then comes from a concrete stand-in.
+    # A traced graph may lack concrete sparse indices.
     if _has_tracers(graph):
         neighbors = graph.neighbors
-        # `eqx.filter_jit` traces the neighbours of a graph it takes whole:
-        # their number then tells the contiguity.
+        # `eqx.filter_jit` traces the neighbours of a graph it takes whole.
         if _has_tracers(neighbors):
             neighbors = _CONTIGUITIES.get(neighbors.shape[0])
         if neighbors is None:
-            # The solver raises: its grid needs concrete sparse indices.
+            # The solver raises.
             return distance.reinit(graph, None)
         with jax.ensure_compile_time_eval():
             permeability = jnp.ones(graph.grid.shape, graph.grid.dtype)

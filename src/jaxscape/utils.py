@@ -12,15 +12,12 @@ from scipy import sparse as ssp
 from scipy.sparse import coo_array, csr_array
 
 
-# Loops over sources or target columns take as many per step as keep about
-# this many values (16 MiB in float32) in each array of a step, on any device:
-# the window sums of a tile and their gradient, the squared window differences
-# of a batch of Spielman projections, and exact sources-to-targets queries,
-# which below it solve all their targets at once and keep them for the
-# gradient. The `batch_size` of windowed analyses bounds the distances that
-# these loops read. Unbounded, the connectivity of 4096 sources with windows
-# of 101 pixels a side took 844 MiB instead of 365 MiB on an RTX 3090, and the
-# window differences of 1225 windows of 201 pixels a side 12 GiB on a CPU.
+# Memory budget of loops over sources or target columns, in values per array
+# of a step (16 MiB in float32). The window sums and the Spielman window
+# differences take as many sources per step as keep about this many values.
+# Exact sources-to-targets queries whose potentials of all targets fit in it
+# solve all targets at once, and the others `_TARGET_CHUNK_SIZE` target columns
+# per step. The `batch_size` of windowed analyses bounds the distances.
 _VALUES_PER_STEP = 2**22
 
 

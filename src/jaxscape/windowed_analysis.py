@@ -309,11 +309,11 @@ class WindowedAnalysis(eqx.Module):
         self.state = distance.init(self._uniform_graph(1, self.tile_sides))
         self.window_state = None
         if block_size > 1 or proximity is None:
-            self.window_state = distance.init(self._uniform_graph(1, window))
-        if proximity is None:
             graph = self._uniform_graph(1, window)
-            profile, self.window_state = _profile(distance, graph, self.window_state)
-            proximity = _PixelExponential(profile, dependency_range / 4)
+            self.window_state = distance.init(graph)
+            if proximity is None:
+                profile = _profile(distance, graph, self.window_state)
+                proximity = _PixelExponential(profile, dependency_range / 4)
         self.proximity = proximity
 
     @abstractmethod
@@ -534,12 +534,10 @@ def _batch(batch: _Batch, accumulated: Array) -> tuple[Array, Any]:
 
 
 @eqx.filter_jit
-def _profile(
-    distance: AbstractDistance, graph: GridGraph, state: Any
-) -> tuple[Array, Any]:
+def _profile(distance: AbstractDistance, graph: GridGraph, state: Any) -> Array:
     """The distances from the centre of the square window `graph` to the pixels
-    on its right, up to its edge, made non-decreasing, and the solver state of
-    `graph`, reinitialized from `state`.
+    on its right, up to its edge, made non-decreasing. `state` is a solver state
+    of a window graph, which the query reinitializes.
 
     Randomized distances, such as `SpielmanApproximation`, read them off the
     exact distances that they estimate.
@@ -549,4 +547,4 @@ def _profile(
     half = graph.width // 2
     row = half * graph.width + jnp.arange(half, graph.width)
     distances = exact(graph, sources=row[:1], targets=row, state=state)
-    return lax.cummax(distances[0]), state
+    return lax.cummax(distances[0])

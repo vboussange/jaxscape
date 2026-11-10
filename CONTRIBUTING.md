@@ -31,10 +31,9 @@ uv run pytest -n auto tests
 ```
 
 On Linux, each worker runs on a core of its own, and `pytest tests` runs the
-tests one after another. The default run leaves out the tests marked `slow`,
-which take up to a minute each on one core, and those marked `gpu`, which need
-an NVIDIA GPU with the `cudss` extra. The continuous integration runs every
-test but the GPU ones:
+tests one after another. The default run leaves out the slow tests, marked
+`slow`, and those marked `gpu`, which need an NVIDIA GPU with the `cudss`
+extra. The continuous integration runs every test but the GPU ones:
 
 ```bash
 uv run pytest -n 2 -m slow tests          # slow tests only
