@@ -23,13 +23,6 @@
       members:
         - sources_to_windows_distance
 
-!!! warning "Changed in 0.0.16"
-
-    `ResistanceDistance()` solves with `GridMultigridSolver()` by default, where
-    earlier versions took dense solves. Its queries raise on graphs other than
-    grid graphs, and on disconnected graphs: `ResistanceDistance(solver=None)`
-    takes the dense solves of earlier versions.
-
 ::: jaxscape.resistance_distance.ResistanceDistance
     options:
       members:

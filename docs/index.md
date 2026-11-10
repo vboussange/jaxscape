@@ -17,14 +17,13 @@ uv add jaxscape
 
 The default installation is CPU-only. For NVIDIA GPUs, use `uv add 'jaxscape[cuda]'`, or install JAX following the [official JAX installation guide](https://jax.readthedocs.io/en/latest/installation.html). JAXScape will automatically use the JAX backend you have configured.
 
-Resistance distances on grid graphs need no optional solver: `ResistanceDistance()` solves them with `GridMultigridSolver`, on CPU and GPU, in float32 and float64. Other graphs, and free-energy distances on large landscapes, may need an optional linear solver: `CholmodSolver`, `PyAMGSolver`, `AMJaxCGSolver`, and `CuDSSSolver` are documented on the [linear solver page](https://vboussange.github.io/jaxscape/api/linear_solvers), including how to reuse solver state for JIT-compiled and differentiable repeated solves.
+Graphs other than grids and large free-energy computations may need an optional linear solver; see the [linear solver page](https://vboussange.github.io/jaxscape/api/linear_solvers).
 
 ## Resistance distance methods
 
-`ResistanceDistance()` computes exact resistance distances by default, with
-`GridMultigridSolver` on grid graphs. For larger graphs, use the
-Spielman-Srivastava randomized approximation by selecting an explicit method
-object:
+`ResistanceDistance()` computes exact resistance distances by default. For
+larger graphs, use the Spielman-Srivastava randomized approximation by selecting
+an explicit method object:
 
 ```python
 from jaxscape import ResistanceDistance, SpielmanApproximation
@@ -98,13 +97,8 @@ plt.tight_layout()
 plt.show()
 ```
 
-The example runs in float32. `ResistanceDistance()` solves the grid graph
-with its default solver, `GridMultigridSolver`, on CPU or GPU, without an
-optional dependency. `theta` is the inverse temperature of the free-energy
-distance: larger values bring it closer to the least-cost distance. In float32
-on this grid, `theta` from 0.01 to 0.1 resolves every distance: below, the
-linear system is nearly singular, and above, distances into the barriers
-underflow. The
+`theta` is the inverse temperature of the free-energy distance: larger values
+bring it closer to the least-cost distance. The
 [solver guide](https://vboussange.github.io/jaxscape/api/linear_solvers/)
 covers solver choices for other graphs and larger landscapes.
 
