@@ -16,7 +16,7 @@ from pathlib import Path
 
 import matplotlib
 import numpy as np
-from run import cell_id
+from run import cell_id, map_path
 from scipy.stats import rankdata
 
 
@@ -91,14 +91,23 @@ SETUPS = {
         "query holds the dense inverse of the 40,401 pixels of a window, and in "
         "float64, the only precision that resolves its windows, one window ran "
         "out of the 24 GB of the GPU, and out of memory on the CPU after taking "
-        "300 GB."
+        "300 GB. ConScape.jl computes its maps under free energy on the whole "
+        "raster, with targets at landmarks every 21 pixels and the kernel "
+        "$e^{-d/25}$ on its free-energy distance $d$; JAXScape has no "
+        "free-energy map to compare them with, and they are compared with its "
+        "maps under least-cost distance, which ranks pairs of sites most like "
+        "free energy at the $\\theta$ of the run."
     ),
     "E3": (
         "JAXScape computes the map of $\\partial C / \\partial p_k$ with "
-        "`SensitivityAnalysis`, with the windows and proximity of E2. "
-        "Omniscape.jl computes its normalized current, the cumulative current "
-        "divided by the flow potential, with the configuration of its Maryland "
-        "example on JAXScape's windows, on a graph of eight neighbours."
+        "`SensitivityAnalysis`, with the windows and proximity of E2. The "
+        "other tools map a flow, and the agreement of each is Spearman's ρ "
+        "over pixels between its map and the map of JAXScape under the "
+        "distance of its row, or under least-cost distance for ConScape.jl "
+        "(see E2). Omniscape.jl computes its normalized current, the "
+        "cumulative current divided by the flow potential, with the "
+        "configuration of its Maryland example on JAXScape's windows, on a "
+        "graph of eight neighbours."
     ),
 }
 
@@ -151,10 +160,12 @@ def main():
     questions = sorted({record["question"] for record in records})
     for question in questions:
         plot(question, of(question, records), run_dir / f"{question.lower()}.png")
+    # The maps are not committed: without them, the figure drawn before stays.
     pair = maryland_pair(records)
-    if pair:
+    if pair and all(path.exists() for path in maryland_maps(run_dir, *pair)):
         plot_maryland(run_dir, *pair, run_dir / "maryland.png")
-    (run_dir / "index.md").write_text(page(run_dir.name, records, environment))
+    figure = pair if (run_dir / "maryland.png").exists() else None
+    (run_dir / "index.md").write_text(page(run_dir.name, records, environment, figure))
 
 
 def of(question, records):
@@ -265,12 +276,16 @@ def plot(question, records, path):
 
 
 def maryland_pair(records):
-    """Return the records of the Maryland figure: the first JAXScape record of
-    the tool's distance, whose map the runner compares the tool's maps with, and
-    the fastest setting of the tool that succeeds. Return `None` when either is
-    missing."""
+    """Return the records of the Maryland figure: the first JAXScape record to
+    succeed under the tool's distance, whose map the runner keeps and compares
+    the tool's maps with, and the fastest setting of the tool that succeeds.
+    Return `None` when either is missing."""
     question, tool = MARYLAND["question"], MARYLAND["tool"]
-    on_maryland = [r for r in of(question, records) if r["case"] == "maryland"]
+    on_maryland = [
+        r
+        for r in of(question, records)
+        if r["case"] == "maryland" and r["status"] == "ok"
+    ]
     others = [r for r in on_maryland if r["tool"] == tool]
     if not others:
         return None
@@ -279,6 +294,15 @@ def maryland_pair(records):
         if record["tool"] == "JAXScape" and record["distance"] == other["distance"]:
             return record, other
     return None
+
+
+def maryland_maps(run_dir, jaxscape, other):
+    """Return the paths of the maps of the Maryland figure, which the runner
+    keeps."""
+    return (
+        map_path(run_dir, jaxscape, jaxscape["distance"]),
+        run_dir / "maps" / f"{cell_id(other)}.npy",
+    )
 
 
 def runtime(record):
@@ -307,23 +331,14 @@ def plot_maryland(run_dir, jaxscape, other, path):
     colormap = colormap.with_extremes(bad="#9e9e9e")
     figure, axes = plt.subplots(1, 2, figsize=(10, 5), layout="constrained")
     labels = (f"sensitivity under {other['distance']}", MARYLAND["map"])
-    image = None
-    for axis, record, label in zip(axes, (jaxscape, other), labels):
+    maps = maryland_maps(run_dir, jaxscape, other)
+    for axis, record, label, map_ in zip(axes, (jaxscape, other), labels, maps):
         axis.set_axis_off()
         axis.set_title(
             f"{record['tool']}: {label}\n{record['device'].upper()}, {runtime(record)}"
         )
-        map_path = run_dir / "maps" / f"{cell_id(record)}.npy"
-        if record["status"] == "ok" and map_path.exists():
-            image = axis.imshow(
-                quantiles(np.load(map_path)), cmap=colormap, vmin=0, vmax=1
-            )
-        else:
-            axis.text(0.5, 0.5, "no map", ha="center", transform=axis.transAxes)
-    if image:
-        figure.colorbar(
-            image, ax=axes, shrink=0.8, label="Rank of the pixel (quantile)"
-        )
+        image = axis.imshow(quantiles(np.load(map_)), cmap=colormap, vmin=0, vmax=1)
+    figure.colorbar(image, ax=axes, shrink=0.8, label="Rank of the pixel (quantile)")
     figure.suptitle(f"Maryland · {RHO} = {value(other)}")
     figure.savefig(path, dpi=150)
     plt.close(figure)
@@ -349,7 +364,7 @@ def value(record):
         return record["status"]
     if record["agreement"] is None:
         return "missing"
-    if record["measure"] == RHO:
+    if record["tier"] > 1:
         return f"{record['agreement']:.2f}"
     return f"{record['agreement']:.1e}"
 
@@ -381,7 +396,9 @@ def mapping(adapter):
     return " ".join(line for line in lines if line).replace("|", "\\|")
 
 
-def page(run_name, records, environment):
+def page(run_name, records, environment, maryland=None):
+    """Return the Benchmark page; `maryland` holds the records of the Maryland
+    figure, when the run directory has it."""
     questions = sorted({record["question"] for record in records})
     tools = {}
     for record in records:
@@ -420,10 +437,8 @@ def page(run_name, records, environment):
         "reference measures its accuracy. Tier 2 compares the same quantity "
         "computed on another graph or with another kernel, and Tier 3 a related "
         "quantity that answers the same question; both report Spearman's rank "
-        "correlation between the tool's map and JAXScape's map under the same "
-        "distance on the same case, from the first JAXScape configuration of the "
-        "table, over the pixels where both maps have a value. A runtime gap "
-        "measures a speed-up only at Tier 1.",
+        "correlation between maps. A runtime gap measures a speed-up only at "
+        "Tier 1.",
         "## Landscapes",
         "Each synthetic case draws a Gaussian random field with a Gaussian "
         "covariance of correlation length 25 pixels, on a periodic grid with a "
@@ -457,7 +472,6 @@ def page(run_name, records, environment):
         "Maryland is a star, and rasters where no setting succeeds show a "
         "status along the top edge.",
     ]
-    pair = maryland_pair(records)
     for question in questions:
         records_of_question = of(question, records)
         sections += [
@@ -471,8 +485,8 @@ def page(run_name, records, environment):
             else "Status of each configuration and raster.",
             agreement_table(records_of_question),
         ]
-        if question == MARYLAND["question"] and pair:
-            jaxscape, other = pair
+        if question == MARYLAND["question"] and maryland:
+            jaxscape, other = maryland
             sections += [
                 f"![Maryland: JAXScape's sensitivity next to {other['tool']}'s "
                 f"{MARYLAND['map']}](maryland.png)",

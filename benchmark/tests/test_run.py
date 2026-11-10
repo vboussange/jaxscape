@@ -1,6 +1,5 @@
 import json
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -88,27 +87,31 @@ dtype = "float32"
 
 [[tools]]
 tool = "JAXScape"
-question = "E3"
+question = "E2"
 adapter = "tests/fake_adapter.py"
-devices = ["gpu", "cpu"]
-
-[tools.distances.resistance]
-sign = {{ gpu = 1, cpu = -1 }}
+devices = ["cpu"]
 
 [tools.distances.lcp]
-fail_from = 16
 
 [[tools]]
-tool = "Fake E3"
-question = "E3"
+tool = "Fake map"
+question = "E2"
+adapter = "tests/fake_adapter.py"
+devices = ["cpu"]
+tier = 3
+compared_with = "lcp"
+
+[tools.distances.free_energy]
+off_graph = true
+
+[[tools]]
+tool = "Fake map without JAXScape"
+question = "E2"
 adapter = "tests/fake_adapter.py"
 devices = ["cpu"]
 tier = 3
 
 [tools.distances.resistance]
-sign = -1
-
-[tools.distances.lcp]
 """
 # A land cover of 20 x 24 pixels, of classes 1 (resistance 1), 2 (resistance 10)
 # and 3 (a barrier).
@@ -203,38 +206,43 @@ def test_runner_records_no_agreement_for_a_tool_without_tier(run_dir):
     assert record["agreement"] is None
 
 
-def test_runner_records_the_rank_correlation_against_the_first_jaxscape_map(run_dir):
-    # The first JAXScape configuration of E3 runs on the GPU and returns the
-    # quality, and Fake E3 its opposite.
-    record = records(run_dir, "Fake E3")[("resistance", "synthetic-8")]
+def test_runner_records_the_rank_correlation_with_the_jaxscape_map_it_is_compared_with(
+    run_dir,
+):
+    cells = records(run_dir, "Fake map")
 
-    assert record["tier"] == 3
-    assert record["measure"] == "Spearman's ρ"
-    assert record["agreement"] == pytest.approx(-1)
+    assert set(cells) == {
+        ("free_energy", "synthetic-8"),
+        ("free_energy", "synthetic-16"),
+        ("free_energy", "maryland"),
+    }
+    for record in cells.values():
+        assert record["status"] == "ok"
+        assert record["tier"] == 3
+        assert record["measure"] == "Spearman's ρ"
+        # The map is a monotone function of JAXScape's map, apart from a pixel
+        # off its graph.
+        assert record["agreement"] == pytest.approx(1)
 
 
-def test_runner_records_a_missing_rank_correlation_when_jaxscape_has_no_map(run_dir):
-    # JAXScape fails on the raster of side 16 under least-cost distances.
-    record = records(run_dir, "Fake E3")[("lcp", "synthetic-16")]
+def test_runner_records_no_rank_correlation_without_a_jaxscape_map(run_dir):
+    record = records(run_dir, "Fake map without JAXScape")[
+        ("resistance", "synthetic-8")
+    ]
 
     assert record["status"] == "ok"
-    assert record["median_s"] > 0
+    assert record["measure"] == "Spearman's ρ"
     assert record["agreement"] is None
 
 
-def test_restart_compares_a_map_with_the_jaxscape_map_of_the_first_run(
-    run_dir, tmp_path
-):
-    restarted = tmp_path / "run"
-    shutil.copytree(run_dir, restarted)
-    lines = (restarted / "records.jsonl").read_text().splitlines()
-    kept = [line for line in lines if json.loads(line)["tool"] != "Fake E3"]
-    (restarted / "records.jsonl").write_text("\n".join(kept) + "\n")
+def test_runner_keeps_the_maryland_map_of_a_tool_with_a_tier(run_dir):
+    kept = np.load(
+        run_dir / "maps" / "E2-Fake map-free_energy-cpu-float64-maryland.npy"
+    )
 
-    run(tmp_path, restarted)
-
-    record = records(restarted, "Fake E3")[("resistance", "synthetic-8")]
-    assert record["agreement"] == pytest.approx(-1)
+    # The fake map of Maryland, NaN on its first pixel.
+    assert kept.shape == (20, 24)
+    assert np.isnan(kept[0, 0])
 
 
 def test_runner_records_why_a_cell_failed_or_was_skipped(run_dir):
@@ -258,6 +266,8 @@ def test_runner_snapshots_the_environment(run_dir):
     assert environment["packages"]["Omniscape"] == "0.6.4"
     assert environment["packages"]["R"] == "4.1.2"
     assert environment["packages"]["gdistance"] == "1.6.5"
+    assert environment["packages"]["samc"] == "4.2.1"
+    assert environment["packages"]["ecoscape-connectivity"] == "0.2.5"
 
 
 def test_restart_skips_the_recorded_cells(run_dir, tmp_path):

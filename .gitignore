@@ -14,6 +14,6 @@ uv.lock
 !benchmark/uv.lock
 .python-version
 benchmark/results/*/logs/
-benchmark/results/*/maps/*-synthetic-*
+benchmark/results/*/maps/
 benchmark/data/
 .agents/*

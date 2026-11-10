@@ -1,5 +1,5 @@
 {
-  "date": "2026-11-10T14:55:06+00:00",
+  "date": "2026-11-10T14:45:24+00:00",
   "host": "gpunode05",
   "gpu": "NVIDIA GeForce RTX 3090, driver 580.178.04, 24576 MiB",
   "cpu": "AMD EPYC 7742 64-Core Processor",
@@ -24,7 +24,6 @@
     "ConScape": "0.3.0",
     "JSON": "1.13.4",
     "NPZ": "0.4.3",
-    "Omniscape": "0.6.4",
     "R": "4.1.2",
     "gdistance": "1.6.5"
   }

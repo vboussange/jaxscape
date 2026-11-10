@@ -38,7 +38,7 @@ def test_report_writes_the_csv_with_one_row_per_record(tmp_path):
     with open(run_dir / "results.csv", newline="") as file:
         rows = list(csv.DictReader(file))
 
-    assert len(rows) == 32
+    assert len(rows) == 37
     assert {row["status"] for row in rows} == {
         "ok",
         "failed",
@@ -98,6 +98,8 @@ def test_e2_and_e3_tables_list_each_configuration_with_its_status(tmp_path):
     assert table_row(e2, "JAXScape", "lcp", "CPU")[-4:] == ["ok", "ok", "", ""]
     cpu = table_row(e2, "JAXScape", "resistance", "CPU")
     assert cpu[-4:] == ["oom", "skipped", "skipped", ""]
+    conscape = table_row(e2, "ConScape.jl", "free_energy", "CPU", "float64", "")
+    assert conscape[-5:] == ["3", "0.91", "", "", ""]
     assert table_row(e3, "Tool")[-2:] == ["256²", "Maryland"]
     assert table_row(e3, "JAXScape", "resistance", "GPU")[-2:] == ["ok", "ok"]
     assert table_row(e3, "JAXScape", "lcp", "GPU")[-2:] == ["failed", "skipped"]
@@ -131,6 +133,19 @@ def test_report_writes_the_maryland_figure_with_its_correlation_and_runtimes(
     assert "37 s" in e3
 
 
+def test_report_without_the_maps_keeps_the_maryland_figure(tmp_path):
+    run_dir = report(tmp_path)
+    figure = (run_dir / "maryland.png").read_bytes()
+    shutil.rmtree(run_dir / "maps")  # the maps of a run are not committed
+
+    subprocess.run(
+        [sys.executable, "report.py", str(run_dir)], cwd=BENCHMARK, check=True
+    )
+
+    assert (run_dir / "maryland.png").read_bytes() == figure
+    assert "](maryland.png)" in (run_dir / "index.md").read_text()
+
+
 def test_page_has_its_sections_and_references_the_figure(tmp_path):
     page = (report(tmp_path) / "index.md").read_text()
 
@@ -153,8 +168,10 @@ def test_page_has_its_sections_and_references_the_figure(tmp_path):
         == "NVIDIA GeForce RTX 3090, driver 580.178.04, 24576 MiB"
     )
     assert table_row(page, "Cores")[1] == "48-63"
-    assert table_row(page, "Tools")[1] == (
-        "JAXScape 0.0.16, Circuitscape.jl 6.1.0, ConScape.jl 0.3.0, Omniscape.jl 0.6.4"
+    assert (
+        table_row(page, "Tools")[1]
+        == "JAXScape 0.0.16, Circuitscape.jl 6.1.0, ConScape.jl 0.3.0, "
+        "EcoScape 0.2.5, samc 4.2.1, Omniscape.jl 0.6.4"
     )
     mapping = table_row(page, "JAXScape", "E1, E2, E3")
     assert mapping[2] == "`adapters/jaxscape.py`"
@@ -162,9 +179,16 @@ def test_page_has_its_sections_and_references_the_figure(tmp_path):
     circuitscape = table_row(page, "Circuitscape.jl", "E1")
     assert circuitscape[2] == "`adapters/circuitscape.jl`"
     assert "connect_using_avg_resistances" in circuitscape[3]
-    conscape = table_row(page, "ConScape.jl", "E1")
+    conscape = table_row(page, "ConScape.jl", "E1, E2")
     assert conscape[2] == "`adapters/conscape.jl`"
     assert "AverageWeight" in conscape[3]
+    assert "connected_habitat" in conscape[3]
+    ecoscape = table_row(page, "EcoScape", "E3")
+    assert ecoscape[2] == "`adapters/ecoscape.py`"
+    assert "dispersal" in ecoscape[3]
+    samc = table_row(page, "samc", "E3")
+    assert samc[2] == "`adapters/samc.R`"
+    assert "absorption" in samc[3]
     omniscape = table_row(page, "Omniscape.jl", "E3")
     assert omniscape[2] == "`adapters/omniscape.jl`"
     assert "`radius` is the shared `dependency_range`" in omniscape[3]
