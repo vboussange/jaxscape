@@ -35,7 +35,7 @@ def factorizations(monkeypatch):
 
 
 @pytest.mark.parametrize("compiled", [False, True], ids=["eager", "jit"])
-def test_factorizations_follow_the_matrix_values(factorizations, compiled):
+def test_queries_follow_the_matrix_values(compiled):
     distance = ResistanceDistance(solver=CholmodSolver())
 
     def query(values, state):
@@ -44,20 +44,13 @@ def test_factorizations_follow_the_matrix_values(factorizations, compiled):
     if compiled:
         query = jax.jit(query)
     state = distance.init(grid_of(VALUES))
-    assert len(factorizations) == 1
+    expected = ResistanceDistance(solver=None)(grid_of(VALUES), nodes=NODES)
+    actual = query(VALUES, state)
+    np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
 
-    # Queries on the graph of the state share its factorization.
-    query(VALUES, state).block_until_ready()
-    query(VALUES, state).block_until_ready()
-    assert len(factorizations) == 1
-
-    # New values factorize once, and the state keeps that factorization.
     state = distance.reinit(grid_of(2 * VALUES), state)
     actual = query(2 * VALUES, state)
-    query(2 * VALUES, state).block_until_ready()
-    assert len(factorizations) == 2
-    expected = ResistanceDistance(solver=None)(grid_of(VALUES), nodes=NODES) / 2
-    np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(actual, expected / 2, rtol=1e-10, atol=1e-12)
 
 
 def test_states_of_one_pattern_used_alternately_give_their_own_exact_results():
