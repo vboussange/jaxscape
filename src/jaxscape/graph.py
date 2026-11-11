@@ -139,11 +139,15 @@ class GridTopology(eqx.Module):
 
     It holds what their adjacency matrices share whatever the conductances:
     the source and target of each edge, which set the sparsity pattern of the
-    matrices. Build it once and pass it to each `GridGraph` of that shape and
-    contiguity, as in a loop over conductance surfaces: the graph then computes
-    its edge weights alone, and its adjacency matrix equals that of the same
-    `GridGraph` without topology. Build it outside `jax.jit` and pass it in, so
-    that compiled programs read its edges.
+    matrices. In graph terms, it is their underlying, unweighted graph.
+
+    A `GridGraph` alone rebuilds these edges each time it builds its adjacency
+    matrix, although only the weights change from one conductance surface to
+    the next, as when an optimizer fits a surface. A topology builds them once:
+    pass it to each `GridGraph` of that shape and contiguity, and the graph
+    computes its edge weights alone. Its adjacency matrix equals that of the
+    same `GridGraph` without topology. Build the topology outside `jax.jit` and
+    pass it in, so that compiled programs read its edges.
 
     **Arguments:**
 

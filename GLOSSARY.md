@@ -31,7 +31,7 @@ The positions of the stored entries of a system matrix. On a grid, the raster sh
 _Avoid_: Geometry, structure
 
 **Grid topology**:
-The edges of the grid graphs of one raster shape and contiguity, without their weights (`GridTopology`). The conductance surfaces of one raster share it, and it fixes the sparsity pattern of their system matrices.
+The edges of the grid graphs of one raster shape and contiguity, without their weights (`GridTopology`): their underlying graph. The conductance surfaces of one raster share it, so it is built once rather than with each graph, and it fixes the sparsity pattern of their system matrices.
 _Avoid_: Grid geometry
 
 **Analysis**:
