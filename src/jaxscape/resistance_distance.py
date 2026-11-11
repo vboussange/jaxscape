@@ -17,7 +17,7 @@ from jaxscape.distance import (
     AbstractSolverDistance,
 )
 from jaxscape.graph import AbstractGraph, GridGraph
-from jaxscape.solvers.gridmultigridsolver import GridMultigridSolver
+from jaxscape.solvers.gridmultigridsolver import _grid_width, GridMultigridSolver
 from jaxscape.solvers.operator import _batched_linear_solve_impl, _solver_state
 from jaxscape.utils import _matmul, _VALUES_PER_STEP, bcoo_diag, graph_laplacian
 
@@ -593,15 +593,15 @@ def _grounded_laplacian(A: BCOO) -> tuple[BCOO, Array]:
     The ground is, among the vertices whose weighted degree is at least half the
     largest, the nearest to the middle vertex in Manhattan distance on a grid of
     `n // w` rows and `w` columns, with the lowest index among the nearest. The
-    middle vertex is the pixel of row `n // w // 2` and column `w // 2`. As in
-    `GridMultigridSolver`, `w` is the largest index difference `k` between
-    neighbours, or `k - 1` when the differences also include `k - 1` and
-    `k - 2`, as with queen contiguity. On a grid graph of `h` rows and `w`
-    columns, the middle vertex is thus its centre pixel, of row `h // 2` and
-    column `w // 2`, and the ground is the pixel of near-maximum permeability
-    nearest to it. In float32, a ground on a barrier or in floored padding makes
-    the system too ill-conditioned to solve, and a ground near the sources of
-    windows and tiles, at their centre, avoids cancellation in their distances.
+    middle vertex is the pixel of row `n // w // 2` and column `w // 2`. The
+    width `w` is that which `GridMultigridSolver` reads (`_grid_width`): the
+    largest index difference between neighbours, or one less for queen
+    contiguity. On a grid graph of `h` rows and `w` columns, the middle vertex
+    is thus its centre pixel, of row `h // 2` and column `w // 2`, and the
+    ground is the pixel of near-maximum permeability nearest to it. In float32,
+    a ground on a barrier or in floored padding makes the system too
+    ill-conditioned to solve, and a ground near the sources of windows and
+    tiles, at their centre, avoids cancellation in their distances.
 
     The returned matrix `L + d e_g e_g^T` adds the degree `d` of the ground `g`
     to its diagonal entry, or `d = 1` for a ground without neighbours, as in a
@@ -614,10 +614,7 @@ def _grounded_laplacian(A: BCOO) -> tuple[BCOO, Array]:
     rows, columns = A.indices[:, 0], A.indices[:, 1]
     # Padding indices, from `n` on, are dropped.
     degree = jax.ops.segment_sum(A.data, rows, num_segments=n)
-    gaps = jnp.where(rows < n, jnp.abs(rows - columns), 0)
-    width = jnp.maximum(jnp.max(gaps), 1)
-    queen = (width >= 3) & jnp.any(gaps == width - 1) & jnp.any(gaps == width - 2)
-    width = width - queen
+    width = _grid_width(jnp.where(rows < n, jnp.abs(rows - columns), 0))
     vertices = jnp.arange(n)
     middle = n // width // 2 * width + width // 2
     offset = jnp.abs(vertices // width - middle // width) + jnp.abs(
