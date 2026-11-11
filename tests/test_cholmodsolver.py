@@ -80,14 +80,18 @@ def test_a_used_up_state_stays_exact():
         np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
 
 
-def test_adjoint_solves_reuse_the_forward_factorization(factorizations):
+def test_adjoint_solves_give_the_gradient_of_the_dense_solve():
     method = SpielmanApproximation(epsilon=0.5, seed=3)
     distance = ResistanceDistance(solver=CholmodSolver(), method=method)
     state = distance.init(grid_of(VALUES))
 
-    jax.grad(lambda v: jnp.sum(distance(grid_of(v), nodes=NODES, state=state)))(VALUES)
+    actual = jax.grad(
+        lambda v: jnp.sum(distance(grid_of(v), nodes=NODES, state=state))
+    )(VALUES)
 
-    assert len(factorizations) == 1
+    reference = ResistanceDistance(solver=None, method=method)
+    expected = jax.grad(lambda v: jnp.sum(reference(grid_of(v), nodes=NODES)))(VALUES)
+    np.testing.assert_allclose(actual, expected, rtol=1e-8, atol=1e-12)
 
 
 def test_a_deferred_factorization_runs_with_the_first_solve(factorizations):
