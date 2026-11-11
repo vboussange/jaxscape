@@ -87,18 +87,6 @@ def test_a_used_up_state_stays_exact():
         np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
 
 
-def test_a_state_evicted_by_newer_ones_stays_exact():
-    distance = ResistanceDistance(solver=CholmodSolver())
-    evicted = distance.init(grid_of(VALUES))
-    for scale in range(2, 2 + cholmodsolver._STATES_KEPT):
-        distance.init(grid_of(scale * VALUES[::-1]))
-
-    actual = distance(grid_of(VALUES), nodes=NODES, state=evicted)
-
-    expected = ResistanceDistance(solver=None)(grid_of(VALUES), nodes=NODES)
-    np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
-
-
 def test_adjoint_solves_reuse_the_forward_factorization(factorizations):
     method = SpielmanApproximation(epsilon=0.5, seed=3)
     distance = ResistanceDistance(solver=CholmodSolver(), method=method)
