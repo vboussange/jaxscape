@@ -32,8 +32,8 @@ class CSRPattern(eqx.Module):
     - `ell_slots`, `ell_columns`: The CSR values and columns of each row, padded
       to the longest row with the number of CSR values and column 0, with shape
       `(n, width)`, or `None` when they would hold more than twice as many
-      entries as the CSR values, or rows of more than 32 entries. Products of
-      the matrix with vectors add up one term per column of them.
+      entries as the CSR values, or rows longer than products unroll. Products
+      of the matrix with vectors add up one term per column of them.
     """
 
     offsets: Array
@@ -396,12 +396,12 @@ def _product(pattern: CSRPattern, values: Array, vector: Array) -> Array:
 
     With rows padded to the longest (see `CSRPattern`), it adds up one term per
     column of the padded rows, and `jax.vmap` gathers each term from the whole
-    batch of vectors: the residual checks of 4096 solutions of 40400 vertices
-    took 3.7 ms on an RTX 3090, beside a 232 ms solve, and 28 ms as one sum over
-    the padded rows. Without padded rows, under `jax.vmap` over vectors alone,
-    it computes the products one vector after another. XLA gathers the entries
-    of a batch of vectors as a slice per index, which reads the batch in strides
-    of the vector size and runs slower.
+    batch of vectors. The residual checks of a batch of solutions then cost
+    little beside their solve, and less than one sum over the padded rows.
+    Without padded rows, under `jax.vmap` over vectors alone, it computes the
+    products one vector after another. XLA gathers the entries of a batch of
+    vectors as a slice per index, which reads the batch in strides of the
+    vector size and runs slower.
     """
     return _product_of(pattern, values, vector)
 
@@ -436,6 +436,6 @@ def _product_of(pattern: CSRPattern, values: Array, vector: Array) -> Array:
 
 
 # Longest rows that products pad (see `CSRPattern`). They add up one term per
-# entry of a row, which XLA compiles separately: an unrolled product of rows of
-# 101 entries took 1.5 s to compile on a CPU, and of 1001 entries 31 s.
+# entry of a row, which XLA compiles separately, so their compile time grows
+# with the length of the rows; products of longer rows sum over the CSR values.
 _ELL_WIDTH = 32

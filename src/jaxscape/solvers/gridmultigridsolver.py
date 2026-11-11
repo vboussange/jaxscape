@@ -205,14 +205,28 @@ def _matrix(operator: AbstractLinearOperator) -> BCOO:
     return lax.stop_gradient(matrix)
 
 
+def _grid_width(gaps: Array | np.ndarray) -> Array | np.integer:
+    """The number of columns of a grid graph, from the index differences `gaps`
+    between the vertices of its stored entries.
+
+    The vertex `i * width + j` is the point `(i, j)` of the grid. The width is
+    the largest difference, or one less for queen contiguity, whose differences
+    also include the width minus one and two. Differences of 0, as for padding
+    entries, leave it unchanged, and it is 1 without entries. It takes NumPy
+    arrays, for concrete sparse indices, as well as JAX arrays, also traced.
+    """
+    width = gaps.max(initial=1)
+    queen = (width >= 3) & (gaps == width - 1).any() & (gaps == width - 2).any()
+    return width - queen
+
+
 def _grid(
     matrix: BCOO,
 ) -> tuple[Array, tuple[int, int], tuple[tuple[int, int], ...]]:
     """The stencil slot of each stored entry, the grid shape and the offsets.
 
-    The vertex `i * width + j` is the point `(i, j)` of the grid. The width is
-    the largest index difference of stored entries, or one less for queen
-    contiguity, whose differences also include the width minus one and two.
+    The vertex `i * width + j` is the point `(i, j)` of the grid, of the width
+    of `_grid_width`.
     """
     try:
         indices = np.asarray(matrix.indices, dtype=np.int64)
@@ -228,10 +242,7 @@ def _grid(
     rows, columns = indices[:, 0], indices[:, 1]
     stored = (rows >= 0) & (rows < n) & (columns >= 0) & (columns < n)
     rows, columns = rows[stored], columns[stored]
-    gaps = np.abs(columns - rows)
-    width = int(np.max(gaps, initial=1))
-    if width >= 3 and np.any(gaps == width - 1) and np.any(gaps == width - 2):
-        width -= 1
+    width = int(_grid_width(np.abs(columns - rows)))
     steps = np.stack(
         [columns // width - rows // width, columns % width - rows % width], axis=1
     )

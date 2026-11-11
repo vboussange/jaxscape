@@ -357,7 +357,7 @@ def test_padded_sparse_resistance_has_zero_padding_gradient():
     ],
     ids=str,
 )
-def test_tiles_are_grounded_at_their_centre_pixel(shape, centre, neighbors):
+def test_grid_graphs_are_grounded_at_their_centre_pixel(shape, centre, neighbors):
     # Each row of the Laplacian sums to zero, except that of the ground, whose
     # degree its diagonal entry adds.
     grid = GridGraph(jnp.ones(shape), neighbors=neighbors)
@@ -420,7 +420,7 @@ def test_sources_to_targets_match_all_pairs(solver, pairs, monkeypatch):
 
 @pytest.mark.parametrize("solver", ["dense", "cholmod"])
 @pytest.mark.parametrize("shape", [(6, 8), (6, 7), (7, 6)], ids=str)
-def test_queries_on_tiles_with_even_sides_match_the_pseudo_inverse(solver, shape):
+def test_queries_on_grid_graphs_with_even_sides_match_the_pseudo_inverse(solver, shape):
     # The ground is a gauge choice: queries grounded at the centre pixel give
     # the resistances of the pseudo-inverse, which grounds no vertex.
     if solver == "cholmod":
