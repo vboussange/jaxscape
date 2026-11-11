@@ -1,8 +1,8 @@
 import abc
 from collections.abc import Callable
+from typing import final
 
 import equinox as eqx
-import jax
 import jax.numpy as jnp
 import numpy as np
 from jax import Array, errors as jax_errors
@@ -73,6 +73,7 @@ QUEEN_CONTIGUITY = jnp.array(
 )
 
 
+@eqx.filter_jit
 def _grid_edges(
     shape: tuple[int, ...], neighbors: Array
 ) -> tuple[Array, Array, Array, Array]:
@@ -104,7 +105,7 @@ def _grid_edges(
     )  # Shape (num_nodes, num_neighbors, 2)
 
     # Compute edge validity
-    in_bounds = (
+    inside = (
         (candidate_target_xy_coord[..., 0] >= 0)
         & (candidate_target_xy_coord[..., 0] < nrows)
         & (candidate_target_xy_coord[..., 1] >= 0)
@@ -112,28 +113,26 @@ def _grid_edges(
     )
 
     # For invalid edges, set indices to 0
-    target_xy_coord = jnp.where(in_bounds[..., None], candidate_target_xy_coord, 0)
+    target_xy_coord = jnp.where(inside[..., None], candidate_target_xy_coord, 0)
 
     # Get target node indices
     target_node_indices = target_xy_coord[..., 0] * ncols + target_xy_coord[..., 1]
-    target_node_indices = jnp.where(in_bounds, target_node_indices, 0)
+    target_node_indices = jnp.where(inside, target_node_indices, 0)
 
     # Source node indices
     source_node_indices = jnp.broadcast_to(
         jnp.arange(num_nodes)[:, None], (num_nodes, num_neighbors)
     )
-    source_node_indices = jnp.where(in_bounds, source_node_indices, 0)
+    source_node_indices = jnp.where(inside, source_node_indices, 0)
 
     # Construct indices array
     row_col_indices = jnp.stack(
         [source_node_indices.ravel(), target_node_indices.ravel()], axis=1
     )
-    return source_xy_coord, target_xy_coord, in_bounds, row_col_indices
+    return source_xy_coord, target_xy_coord, inside, row_col_indices
 
 
-_edges = jax.jit(_grid_edges, static_argnums=0)
-
-
+@final
 class GridTopology(eqx.Module):
     """The edges of the grid graphs of one raster shape and contiguity.
 
@@ -200,7 +199,9 @@ class GridTopology(eqx.Module):
             raise ValueError("`neighbors` must have shape `(k, 2)`, with `k >= 1`.")
         self.shape = (int(shape[0]), int(shape[1]))
         self.offsets = tuple((int(i), int(j)) for i, j in offsets)
-        _, _, self.inside, self.indices = _edges(self.shape, jnp.asarray(neighbors))
+        _, _, self.inside, self.indices = _grid_edges(
+            self.shape, jnp.asarray(neighbors)
+        )
 
     def _adjacency_matrix(
         self, grid: Array, fun: Callable[[Array, Array], Array]
@@ -251,7 +252,8 @@ class GridGraph(AbstractGraph):
     """
 
     grid: Array
-    neighbors: Array
+    # The contiguity of a graph without topology; a topology holds its own.
+    _neighbors: Array | None
     fun: Callable[[Array, Array], Array] = eqx.field(static=True)
     topology: GridTopology | None
 
@@ -275,14 +277,23 @@ class GridGraph(AbstractGraph):
                     f"{tuple(grid.shape)}: build a `GridTopology` of the shape "
                     "of the raster."
                 )
-            neighbors = jnp.asarray(topology.offsets)
+        elif neighbors is None:
+            neighbors = ROOK_CONTIGUITY
         self.grid = grid
+        self._neighbors = neighbors
         self.fun = fun
-        self.neighbors = ROOK_CONTIGUITY if neighbors is None else neighbors
         self.topology = topology
 
     def __repr__(self) -> str:
         return f"GridGraph of size {self.height}x{self.width}"
+
+    @property
+    def neighbors(self) -> Array:
+        """The contiguity pattern, as `(row, column)` offsets with shape `(k, 2)`."""
+        if self.topology is not None:
+            return jnp.asarray(self.topology.offsets)
+        assert self._neighbors is not None
+        return self._neighbors
 
     @property
     def height(self) -> int:
@@ -337,7 +348,7 @@ class GridGraph(AbstractGraph):
             return self.topology._adjacency_matrix(self.grid, self.fun)
         num_nodes = self.nv
         permeability_raster = self.grid
-        source_xy_coord, target_xy_coord, in_bounds, row_col_indices = _grid_edges(
+        source_xy_coord, target_xy_coord, inside, row_col_indices = _grid_edges(
             self.grid.shape, self.neighbors
         )
 
@@ -348,7 +359,7 @@ class GridGraph(AbstractGraph):
             ],
             permeability_raster[target_xy_coord[..., 0], target_xy_coord[..., 1]],
         )
-        values = jnp.where(in_bounds, values, 0.0)
+        values = jnp.where(inside, values, 0.0)
 
         # Create BCOO matrix
         A = BCOO(
