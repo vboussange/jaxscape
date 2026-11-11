@@ -152,6 +152,29 @@ def test_a_topology_gives_the_adjacency_matrix_of_each_surface(neighbors):
         np.testing.assert_array_equal(actual.data, expected.data)
 
 
+@pytest.mark.parametrize("neighbors", [ROOK_CONTIGUITY, QUEEN_CONTIGUITY])
+def test_a_topology_keeps_float32_gradients_accurate(neighbors):
+    # Each pixel's gradient, the corner one included, keeps float32 accuracy
+    # on a large raster, against float64 gradients without topology.
+    shape = (512, 512)
+    topology = GridTopology(shape, neighbors)
+    surface = jr.uniform(jr.key(0), shape, jnp.float64, minval=0.1, maxval=2.0)
+    weights = jr.uniform(jr.key(1), (surface.size * neighbors.shape[0],))
+
+    def objective(surface, topology):
+        if topology is None:
+            graph = GridGraph(surface, fun=_harmonic, neighbors=neighbors)
+        else:
+            graph = GridGraph(surface, fun=_harmonic, topology=topology)
+        data = graph.get_adjacency_matrix().data
+        return jnp.sum(weights.astype(surface.dtype) * data)
+
+    actual = grad(objective)(surface.astype(jnp.float32), topology)
+    expected = grad(objective)(surface, None)
+
+    np.testing.assert_allclose(actual, expected, rtol=1e-5)
+
+
 def test_a_graph_takes_its_contiguity_from_its_topology():
     topology = GridTopology((4, 7), QUEEN_CONTIGUITY)
 

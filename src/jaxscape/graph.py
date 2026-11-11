@@ -3,6 +3,7 @@ from collections.abc import Callable
 from typing import final
 
 import equinox as eqx
+import jax
 import jax.numpy as jnp
 import numpy as np
 from jax import Array, errors as jax_errors
@@ -216,7 +217,12 @@ class GridTopology(eqx.Module):
         height, width = self.shape
         num_nodes = height * width
         reach = max(max(abs(i), abs(j)) for i, j in self.offsets)
-        padded = jnp.pad(grid, reach, constant_values=grid[0, 0])
+        # The edges off the raster weigh 0, so the padding value has no
+        # gradient. Its gradient through `jnp.pad`, the sum over the padded
+        # raster minus that over the raster, would round to the scale of that
+        # sum at pixel `(0, 0)`.
+        padding = jax.lax.stop_gradient(grid[0, 0])
+        padded = jnp.pad(grid, reach, constant_values=padding)
         targets = jnp.stack(
             [
                 padded[reach + i : reach + i + height, reach + j : reach + j + width]
