@@ -1,7 +1,7 @@
 """Sparse direct solvers assembled from factorization and solve phases."""
 
 import abc
-from typing import Any, final, Generic, TypeVar
+from typing import Any, final
 
 import equinox as eqx
 import jax
@@ -13,9 +13,6 @@ from jaxtyping import Array
 from lineax import AbstractLinearOperator, RESULTS
 
 from .operator import AbstractReusableStateSolver
-
-
-_Factorization = TypeVar("_Factorization")
 
 
 @final
@@ -35,8 +32,8 @@ class CSRPattern(eqx.Module):
     - `ell_slots`, `ell_columns`: The CSR values and columns of each row, padded
       to the longest row with the number of CSR values and column 0, with shape
       `(n, width)`, or `None` when they would hold more than twice as many
-      entries as the CSR values. Products of the matrix with vectors read them
-      row by row.
+      entries as the CSR values, or rows longer than products unroll. Products
+      of the matrix with vectors add up one term per column of them.
     """
 
     offsets: Array
@@ -56,7 +53,7 @@ class CSRPattern(eqx.Module):
 
 
 @final
-class SparseDirectState(eqx.Module, Generic[_Factorization]):
+class SparseDirectState[Factorization](eqx.Module):
     """State of an `AbstractSparseDirectSolver` for one sparsity pattern.
 
     **Attributes:**
@@ -68,13 +65,13 @@ class SparseDirectState(eqx.Module, Generic[_Factorization]):
       state fail, and the next `reinit` analyses its values afresh.
     """
 
-    factorization: _Factorization
+    factorization: Factorization
     pattern: CSRPattern
     values: Array
     failed: Array
 
 
-class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factorization]):
+class AbstractSparseDirectSolver[Factorization](AbstractReusableStateSolver):
     """Direct solver for sparse symmetric positive definite matrices.
 
     Subclass it with the phases of a sparse factorization library: `factorize`,
@@ -107,7 +104,7 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
     """
 
     @abc.abstractmethod
-    def factorize(self, pattern: CSRPattern, values: Array) -> _Factorization:
+    def factorize(self, pattern: CSRPattern, values: Array) -> Factorization:
         """Analyse `pattern` and factorize `values` on a new handle.
 
         **Arguments:**
@@ -122,8 +119,8 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
         """
 
     def refactorize(
-        self, factorization: _Factorization, pattern: CSRPattern, values: Array
-    ) -> _Factorization:
+        self, factorization: Factorization, pattern: CSRPattern, values: Array
+    ) -> Factorization:
         """Factorize new `values`. Defaults to a new analysis with `factorize`.
 
         **Arguments:**
@@ -141,7 +138,7 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
         return self.factorize(pattern, values)
 
     @abc.abstractmethod
-    def solve(self, factorization: _Factorization, vector: Array) -> Array:
+    def solve(self, factorization: Factorization, vector: Array) -> Array:
         """Solve for one right-hand side, also under `jax.vmap` over `vector`.
 
         **Arguments:**
@@ -170,7 +167,7 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
 
     def init(
         self, operator: AbstractLinearOperator, options: dict[str, Any]
-    ) -> SparseDirectState[_Factorization]:
+    ) -> SparseDirectState[Factorization]:
         del options
         matrix = self._matrix(operator)
         return _initial_state(self, self._pattern(matrix), matrix.data)
@@ -179,8 +176,8 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
         self,
         operator: AbstractLinearOperator,
         options: dict[str, Any],
-        state: SparseDirectState[_Factorization],
-    ) -> SparseDirectState[_Factorization]:
+        state: SparseDirectState[Factorization],
+    ) -> SparseDirectState[Factorization]:
         """Return the state of the values of `operator`, keeping the analysis.
 
         **Arguments:**
@@ -239,7 +236,7 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
 
     def compute(
         self,
-        state: SparseDirectState[_Factorization],
+        state: SparseDirectState[Factorization],
         vector: Array,
         options: dict[str, Any],
     ) -> tuple[Array, RESULTS, dict[str, Any]]:
@@ -265,10 +262,10 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
         solution = jnp.where(solved, jnp.ldexp(solution, exponent), jnp.nan)
         return solution, RESULTS.where(solved, RESULTS.successful, RESULTS.singular), {}
 
-    def transpose(self, state: SparseDirectState[_Factorization], options: dict):
+    def transpose(self, state: SparseDirectState[Factorization], options: dict):
         return state, options
 
-    def conj(self, state: SparseDirectState[_Factorization], options: dict):
+    def conj(self, state: SparseDirectState[Factorization], options: dict):
         return state, options
 
     def assume_full_rank(self):
@@ -279,7 +276,7 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
         return factorization, self._check_fails(factorization, pattern, values)
 
     def _check_fails(
-        self, factorization: _Factorization, pattern: CSRPattern, values: Array
+        self, factorization: Factorization, pattern: CSRPattern, values: Array
     ) -> Array:
         """Whether `factorization` of `values` fails its check, a solve of `A x = A 1`.
 
@@ -332,7 +329,7 @@ class AbstractSparseDirectSolver(AbstractReusableStateSolver, Generic[_Factoriza
         value_map[valid] = slots
         ell_slots = ell_columns = None
         width = int(row_counts.max(initial=0))
-        if n * width <= 2 * nnz:
+        if n * width <= 2 * nnz and width <= _ELL_WIDTH:
             position = np.arange(width)
             stored = position[None, :] < row_counts[:, None]
             ell = np.where(stored, offsets[:-1, None] + position[None, :], nnz)
@@ -397,10 +394,14 @@ def _csr_values(data: Array, pattern: CSRPattern) -> Array:
 def _product(pattern: CSRPattern, values: Array, vector: Array) -> Array:
     """The product of the matrix with CSR `values` and `vector`.
 
-    Under `jax.vmap` over vectors alone, it computes the products one vector
-    after another, with rows padded to the longest (see `CSRPattern`). XLA
-    gathers the entries of a batch of vectors as a slice per index, which
-    reads the batch in strides of the vector size and runs slower.
+    With rows padded to the longest (see `CSRPattern`), it adds up one term per
+    column of the padded rows, and `jax.vmap` gathers each term from the whole
+    batch of vectors. The residual checks of a batch of solutions then cost
+    little beside their solve, and less than one sum over the padded rows.
+    Without padded rows, under `jax.vmap` over vectors alone, it computes the
+    products one vector after another. XLA gathers the entries of a batch of
+    vectors as a slice per index, which reads the batch in strides of the
+    vector size and runs slower.
     """
     return _product_of(pattern, values, vector)
 
@@ -410,12 +411,13 @@ def _(
     axis_size: int, in_batched: Any, pattern: CSRPattern, values: Array, vector: Array
 ):
     del axis_size
-    if any(jax.tree.leaves(in_batched[:2])) or not in_batched[2]:
-        axes = jax.tree.map(lambda batched: 0 if batched else None, in_batched)
-        return jax.vmap(_product_of, in_axes=axes)(pattern, values, vector), True
-    return jax.lax.map(
-        lambda vector: _product_of(pattern, values, vector), vector
-    ), True
+    vectors_alone = in_batched[2] and not any(jax.tree.leaves(in_batched[:2]))
+    if pattern.ell_slots is None and vectors_alone:
+        return jax.lax.map(
+            lambda vector: _product_of(pattern, values, vector), vector
+        ), True
+    axes = jax.tree.map(lambda batched: 0 if batched else None, in_batched)
+    return jax.vmap(_product_of, in_axes=axes)(pattern, values, vector), True
 
 
 def _product_of(pattern: CSRPattern, values: Array, vector: Array) -> Array:
@@ -427,4 +429,13 @@ def _product_of(pattern: CSRPattern, values: Array, vector: Array) -> Array:
             indices_are_sorted=True,
         )
     padded = jnp.append(values, jnp.zeros((1,), values.dtype))[pattern.ell_slots]
-    return jnp.sum(padded * vector[pattern.ell_columns], axis=1)
+    product = jnp.zeros(pattern.n, jnp.result_type(values, vector))
+    for k in range(padded.shape[1]):
+        product = product + padded[:, k] * vector[pattern.ell_columns[:, k]]
+    return product
+
+
+# Longest rows that products pad (see `CSRPattern`). They add up one term per
+# entry of a row, which XLA compiles separately, so their compile time grows
+# with the length of the rows; products of longer rows sum over the CSR values.
+_ELL_WIDTH = 32

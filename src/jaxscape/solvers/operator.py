@@ -112,13 +112,15 @@ def _batched_linear_solve_impl(
     # already coalesce the RHS batch into one host callback; direct callback
     # fast paths measured slower because they bypass Lineax's primitive batching.
     return jax.vmap(
-        lambda b: lx.linear_solve(
-            operator,
-            b,
-            solver=solver,
-            options=options,
-            state=state,
-        ).value,
+        lambda b: (
+            lx.linear_solve(
+                operator,
+                b,
+                solver=solver,
+                options=options,
+                state=state,
+            ).value
+        ),
         in_axes=1,
         out_axes=1,
     )(B)

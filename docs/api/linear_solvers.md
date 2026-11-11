@@ -217,6 +217,11 @@ What a state keeps from one graph to the next:
 | `CholmodSolver` | Its last factorization, while the values stay the same |
 | `PyAMGSolver`, Lineax solvers | Nothing: each query runs `init`, which only records the matrix |
 
+The graphs of one raster shape and contiguity can also share a
+[`GridTopology`][jaxscape.graph.GridTopology], built once outside `jax.jit`:
+it holds their edges, and each `GridGraph(surface, fun=fun, topology=topology)`
+then computes its edge weights alone.
+
 Windowed analyses build their own states and carry them from tile to tile. See
 [`WindowedAnalysis`][jaxscape.windowed_analysis.WindowedAnalysis].
 

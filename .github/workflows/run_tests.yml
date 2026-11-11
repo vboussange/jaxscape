@@ -9,6 +9,24 @@ on:
     tags: '*'
 
 jobs:
+  # Every pre-commit hook on every file, in the project environment.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install uv and set the Python version
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --extra lint --extra tests --extra docs --extra pyamg --extra amjax --extra cholespy
+
+      - name: Run pre-commit hooks
+        run: uv run --no-sync pre-commit run --all-files --show-diff-on-failure
+
   run-tests:
     strategy:
       matrix:

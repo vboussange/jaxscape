@@ -1,11 +1,17 @@
+import jax
 import jax.numpy as jnp
 import jax.random as jr
 import networkx as nx
+import numpy as np
 import pytest
 from jax import grad
 from jax.experimental.sparse import BCOO
-from jaxscape import GridGraph
+from jaxscape import GridGraph, GridTopology, QUEEN_CONTIGUITY, ROOK_CONTIGUITY
 from networkx import grid_2d_graph
+
+
+def _harmonic(x, y):
+    return 2 * x * y / (x + y)
 
 
 # TODO: implement test ROOK_CONTIGUITY vs QUEEN_CONTIGUITY
@@ -15,7 +21,6 @@ from networkx import grid_2d_graph
 def sample_gridgraph():
     grid = jnp.ones((2, 3))  # Uniform weights for simplicity
     grid = GridGraph(grid)
-    sample_gridgraph = grid  # to comment
     return grid
 
 
@@ -31,8 +36,8 @@ def test_coord_to_index(sample_gridgraph):
 
 
 def test_index_to_coord(sample_gridgraph):
-    assert jnp.array_equal(sample_gridgraph.index_to_coord(0), [[0, 0]])
-    assert jnp.array_equal(sample_gridgraph.index_to_coord(5), [[1, 2]])
+    assert jnp.array_equal(sample_gridgraph.index_to_coord(0), jnp.array([[0, 0]]))
+    assert jnp.array_equal(sample_gridgraph.index_to_coord(5), jnp.array([[1, 2]]))
     # assert sample_gridgraph.index_to_coord(6) == (-1, -1)  # Out of bounds
 
 
@@ -126,3 +131,68 @@ def test_differentiability_adjacency_matrix():
     assert permeability_gradient[0, 0] == 2
     assert permeability_gradient[0, 1] == 3
     assert permeability_gradient[1, 1] == 4
+
+
+@pytest.mark.parametrize("neighbors", [ROOK_CONTIGUITY, QUEEN_CONTIGUITY])
+def test_a_topology_gives_the_adjacency_matrix_of_each_surface(neighbors):
+    topology = GridTopology((4, 7), neighbors)
+    for seed in range(3):
+        surface = jr.uniform(jr.key(seed), (4, 7), minval=0.1, maxval=2.0)
+
+        actual = GridGraph(surface, fun=_harmonic, topology=topology)
+        expected = GridGraph(surface, fun=_harmonic, neighbors=neighbors)
+
+        actual, expected = (
+            actual.get_adjacency_matrix(),
+            expected.get_adjacency_matrix(),
+        )
+        assert actual.shape == expected.shape
+        assert actual.indices.dtype == expected.indices.dtype
+        np.testing.assert_array_equal(actual.indices, expected.indices)
+        np.testing.assert_array_equal(actual.data, expected.data)
+
+
+@pytest.mark.parametrize("neighbors", [ROOK_CONTIGUITY, QUEEN_CONTIGUITY])
+def test_a_topology_keeps_float32_gradients_accurate(neighbors):
+    # Each pixel's gradient, the corner one included, keeps float32 accuracy
+    # on a large raster, against float64 gradients without topology.
+    shape = (512, 512)
+    topology = GridTopology(shape, neighbors)
+    surface = jr.uniform(jr.key(0), shape, jnp.float64, minval=0.1, maxval=2.0)
+    weights = jr.uniform(jr.key(1), (surface.size * neighbors.shape[0],))
+
+    def objective(surface, topology):
+        if topology is None:
+            graph = GridGraph(surface, fun=_harmonic, neighbors=neighbors)
+        else:
+            graph = GridGraph(surface, fun=_harmonic, topology=topology)
+        data = graph.get_adjacency_matrix().data
+        return jnp.sum(weights.astype(surface.dtype) * data)
+
+    actual = grad(objective)(surface.astype(jnp.float32), topology)
+    expected = grad(objective)(surface, None)
+
+    np.testing.assert_allclose(actual, expected, rtol=1e-5)
+
+
+def test_a_graph_takes_its_contiguity_from_its_topology():
+    topology = GridTopology((4, 7), QUEEN_CONTIGUITY)
+
+    graph = GridGraph(jnp.ones((4, 7)), topology=topology)
+
+    np.testing.assert_array_equal(graph.neighbors, QUEEN_CONTIGUITY)
+    with pytest.raises(ValueError, match="contiguity"):
+        GridGraph(jnp.ones((4, 7)), neighbors=QUEEN_CONTIGUITY, topology=topology)
+
+
+def test_a_topology_of_another_shape_raises():
+    with pytest.raises(ValueError, match="shape"):
+        GridGraph(jnp.ones((7, 4)), topology=GridTopology((4, 7)))
+
+
+def test_a_topology_needs_concrete_neighbors():
+    def build(neighbors):
+        return GridTopology((4, 7), neighbors).indices
+
+    with pytest.raises(ValueError, match="concrete"):
+        jax.jit(build)(ROOK_CONTIGUITY)

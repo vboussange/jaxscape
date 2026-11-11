@@ -13,3 +13,7 @@
         - index_to_coord
         - node_values_to_array
         - array_to_node_values
+
+::: jaxscape.graph.GridTopology
+    options:
+      members: false

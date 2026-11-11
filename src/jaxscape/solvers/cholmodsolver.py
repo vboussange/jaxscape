@@ -1,4 +1,4 @@
-from typing import Any, TypeAlias
+from typing import Any
 
 import equinox as eqx
 import jax
@@ -39,13 +39,20 @@ class _CholespyFactor(eqx.Module):
 class _FactorCache:
     """The last factorization of a solver state, kept on the host.
 
-    A state keeps one cache for its whole life, so its structure stays the same
-    under `jax.jit` whatever the matrix values. A factorization is a function of
-    the matrix, so caching it leaves host callbacks pure.
+    All caches compare and hash equal, so that the states of one sparsity pattern
+    share their compiled programs, which solve with the cache they were traced
+    with. A factorization is a function of the matrix, so caching it leaves host
+    callbacks pure.
     """
 
     def __init__(self) -> None:
         self._entry: tuple[np.ndarray, _CholespyFactor] | None = None
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, _FactorCache)
+
+    def __hash__(self) -> int:
+        return hash(_FactorCache)
 
     def factor_of(self, A_bcoo: BCOO, solve_dtype: np.dtype) -> _CholespyFactor:
         # The first slice of any callback batch, in NumPy: this runs on every solve.
@@ -63,15 +70,15 @@ class _FactorCache:
         return factor
 
 
-_CholmodSolverState: TypeAlias = tuple[BCOO, PackedStructures, _FactorCache | None]
+type _CholmodSolverState = tuple[BCOO, PackedStructures, _FactorCache | None]
 
 
 class CholmodSolver(AbstractReusableStateSolver):
     """
     A linear solver that uses CHOLMOD (via cholespy) to solve a sparse linear system.
     Uses direct Cholesky factorization for symmetric positive definite matrices.
-    A state keeps its last factorization, which solves reuse while the matrix values
-    stay the same.
+    States of one sparsity pattern share a factorization, which solves reuse while
+    the matrix values stay the same and which is factorized again when they change.
 
 
     !!! example
@@ -266,9 +273,7 @@ def _solve_with_factor_host(factor: _CholespyFactor, b_jax: JaxArray) -> np.ndar
     # output buffers must exactly match CholeskySolverF/D precision.
     rhs = _writable_c_array(b_jax, dtype=factor.solve_dtype)
     if rhs.shape[-1] != factor.size:
-        raise ValueError(
-            "The last dimension of b must match the operator dimension."
-        )
+        raise ValueError("The last dimension of b must match the operator dimension.")
 
     rhs_shape = rhs.shape
     # Lineax gives vector-shaped RHS values; cholespy's fast path expects
