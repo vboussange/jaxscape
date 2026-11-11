@@ -1,7 +1,3 @@
-import atexit
-import itertools
-import threading
-from collections import OrderedDict
 from typing import Any
 
 import equinox as eqx
@@ -39,15 +35,24 @@ class _CholespyFactor(eqx.Module):
     size: int = eqx.field(static=True)
 
 
+@jax.tree_util.register_static
 class _FactorCache:
     """The last factorization of a solver state, kept on the host.
 
-    A factorization is a function of the matrix, so caching it leaves host
+    All caches compare and hash equal, so that the states of one sparsity pattern
+    share their compiled programs, which solve with the cache they were traced
+    with. A factorization is a function of the matrix, so caching it leaves host
     callbacks pure.
     """
 
     def __init__(self) -> None:
         self._entry: tuple[np.ndarray, _CholespyFactor] | None = None
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, _FactorCache)
+
+    def __hash__(self) -> int:
+        return hash(_FactorCache)
 
     def factor_of(self, A_bcoo: BCOO, solve_dtype: np.dtype) -> _CholespyFactor:
         # The first slice of any callback batch, in NumPy: this runs on every solve.
@@ -65,42 +70,16 @@ class _FactorCache:
         return factor
 
 
-# A solver state holds, as an array, the handle of its last factorization on the
-# host, so that states of one sparsity pattern share their compiled programs.
-# The process keeps the factorizations of the most recently used states, for
-# every `CholmodSolver`.
-_STATES_KEPT = 8
-_caches: OrderedDict[int, _FactorCache] = OrderedDict()
-_caches_lock = threading.Lock()
-_handles = itertools.count()
-# Factorizations left at interpreter shutdown make nanobind report leaks.
-atexit.register(_caches.clear)
-
-
-def _cache_of(handle: int) -> _FactorCache:
-    """The holder of the last factorization of the state `handle`, now the most
-    recently used; it holds none if the state was left out of the table."""
-    with _caches_lock:
-        cache = _caches.pop(handle, None)
-        if cache is None:
-            cache = _FactorCache()
-        _caches[handle] = cache
-        while len(_caches) > _STATES_KEPT:
-            _caches.popitem(last=False)
-    return cache
-
-
-type _CholmodSolverState = tuple[BCOO, PackedStructures, Array | None]
+type _CholmodSolverState = tuple[BCOO, PackedStructures, _FactorCache | None]
 
 
 class CholmodSolver(AbstractReusableStateSolver):
     """
     A linear solver that uses CHOLMOD (via cholespy) to solve a sparse linear system.
     Uses direct Cholesky factorization for symmetric positive definite matrices.
-    A state keeps its last factorization, which solves reuse while the matrix values
-    stay the same. Every `CholmodSolver` of the process shares one table of the
-    factorizations of the most recently used states, and a state left out of it
-    factorizes again when it is next used.
+    States of one sparsity pattern share a factorization, which solves reuse while
+    the matrix values stay the same and which is factorized again when they change.
+
 
     !!! example
 
@@ -147,11 +126,11 @@ class CholmodSolver(AbstractReusableStateSolver):
         # function would keep a cache across its calls, so each solve factorizes.
         if not _can_materialize_bcoo(A_bcoo):
             return A_bcoo, packed_structures, None
-        handle = next(_handles)
+        cache = _FactorCache()
         solve_dtype = _factor_dtype_from_matrix(A_bcoo)
         if self.factorize_in_init and solve_dtype is not None:
-            _cache_of(handle).factor_of(A_bcoo, solve_dtype)
-        return A_bcoo, packed_structures, jnp.asarray(handle, jnp.int32)
+            cache.factor_of(A_bcoo, solve_dtype)
+        return A_bcoo, packed_structures, cache
 
     def reinit(
         self,
@@ -174,18 +153,14 @@ class CholmodSolver(AbstractReusableStateSolver):
         """
         del options
         b_jax = vector
-        A_bcoo, packed_structures, handle = state
+        A_bcoo, packed_structures, cache = state
         result_shape = jax.ShapeDtypeStruct(b_jax.shape, b_jax.dtype)
 
-        def solve_host(
-            A_bcoo: BCOO, handle: JaxArray | None, b_jax: JaxArray
-        ) -> np.ndarray:
+        def solve_host(A_bcoo: BCOO, b_jax: JaxArray) -> np.ndarray:
             solve_dtype = _solve_dtype_from_rhs(b_jax)
-            if handle is None:
+            if cache is None:
                 factor = _factorize_host(_unbatched_bcoo(A_bcoo), solve_dtype)
             else:
-                # The first handle of any callback batch.
-                cache = _cache_of(int(np.asarray(handle).reshape(-1)[0]))
                 factor = cache.factor_of(A_bcoo, solve_dtype)
             return _solve_with_factor_host(factor, b_jax)
 
@@ -193,7 +168,6 @@ class CholmodSolver(AbstractReusableStateSolver):
         solution = eqx.filter_pure_callback(
             solve_host,
             A_bcoo,
-            handle,
             b_jax,
             result_shape_dtypes=result_shape,
             vmap_method="expand_dims",
@@ -204,22 +178,22 @@ class CholmodSolver(AbstractReusableStateSolver):
 
     def transpose(self, state: _CholmodSolverState, options: dict[str, Any]):
         del options
-        A_bcoo, packed_structures, handle = state
+        A_bcoo, packed_structures, cache = state
         transposed_packed_structures = transpose_packed_structures(packed_structures)
         A_bcoo_T = A_bcoo.T
-        transpose_state = (A_bcoo_T, transposed_packed_structures, handle)
+        transpose_state = (A_bcoo_T, transposed_packed_structures, cache)
         return transpose_state, {}
 
     def conj(self, state: _CholmodSolverState, options: dict[str, Any]):
         del options
-        A_bcoo, packed_structures, handle = state
+        A_bcoo, packed_structures, cache = state
         A_conj = BCOO(
             (jnp.conj(A_bcoo.data), A_bcoo.indices),
             shape=A_bcoo.shape,
             indices_sorted=A_bcoo.indices_sorted,
             unique_indices=A_bcoo.unique_indices,
         )
-        conj_state = (A_conj, packed_structures, handle)
+        conj_state = (A_conj, packed_structures, cache)
         return conj_state, {}
 
     def assume_full_rank(self):

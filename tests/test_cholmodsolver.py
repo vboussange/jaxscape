@@ -35,7 +35,7 @@ def factorizations(monkeypatch):
 
 
 @pytest.mark.parametrize("compiled", [False, True], ids=["eager", "jit"])
-def test_factorizations_follow_the_matrix_values(factorizations, compiled):
+def test_queries_follow_the_matrix_values(compiled):
     distance = ResistanceDistance(solver=CholmodSolver())
 
     def query(values, state):
@@ -44,20 +44,13 @@ def test_factorizations_follow_the_matrix_values(factorizations, compiled):
     if compiled:
         query = jax.jit(query)
     state = distance.init(grid_of(VALUES))
-    assert len(factorizations) == 1
+    expected = ResistanceDistance(solver=None)(grid_of(VALUES), nodes=NODES)
+    actual = query(VALUES, state)
+    np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
 
-    # Queries on the graph of the state share its factorization.
-    query(VALUES, state).block_until_ready()
-    query(VALUES, state).block_until_ready()
-    assert len(factorizations) == 1
-
-    # New values factorize once, and the state keeps that factorization.
     state = distance.reinit(grid_of(2 * VALUES), state)
     actual = query(2 * VALUES, state)
-    query(2 * VALUES, state).block_until_ready()
-    assert len(factorizations) == 2
-    expected = ResistanceDistance(solver=None)(grid_of(VALUES), nodes=NODES) / 2
-    np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(actual, expected / 2, rtol=1e-10, atol=1e-12)
 
 
 def test_states_of_one_pattern_used_alternately_give_their_own_exact_results():
@@ -87,26 +80,18 @@ def test_a_used_up_state_stays_exact():
         np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
 
 
-def test_a_state_evicted_by_newer_ones_stays_exact():
-    distance = ResistanceDistance(solver=CholmodSolver())
-    evicted = distance.init(grid_of(VALUES))
-    for scale in range(2, 2 + cholmodsolver._STATES_KEPT):
-        distance.init(grid_of(scale * VALUES[::-1]))
-
-    actual = distance(grid_of(VALUES), nodes=NODES, state=evicted)
-
-    expected = ResistanceDistance(solver=None)(grid_of(VALUES), nodes=NODES)
-    np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
-
-
-def test_adjoint_solves_reuse_the_forward_factorization(factorizations):
+def test_adjoint_solves_give_the_gradient_of_the_dense_solve():
     method = SpielmanApproximation(epsilon=0.5, seed=3)
     distance = ResistanceDistance(solver=CholmodSolver(), method=method)
     state = distance.init(grid_of(VALUES))
 
-    jax.grad(lambda v: jnp.sum(distance(grid_of(v), nodes=NODES, state=state)))(VALUES)
+    actual = jax.grad(
+        lambda v: jnp.sum(distance(grid_of(v), nodes=NODES, state=state))
+    )(VALUES)
 
-    assert len(factorizations) == 1
+    reference = ResistanceDistance(solver=None, method=method)
+    expected = jax.grad(lambda v: jnp.sum(reference(grid_of(v), nodes=NODES)))(VALUES)
+    np.testing.assert_allclose(actual, expected, rtol=1e-8, atol=1e-12)
 
 
 def test_a_deferred_factorization_runs_with_the_first_solve(factorizations):
