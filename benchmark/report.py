@@ -6,15 +6,17 @@
 writes `results.csv`, one figure per question, such as `e1.png`, the Maryland
 figure `maryland.png`, the figure of the solver view `solvers.png`, and the page
 `index.md` into RUN_DIR. The report reads the records, the configuration and the
-environment snapshot of the run, the maps of the Maryland figure and the header
-comment of each adapter that the records name. `--publish` points
-`docs/benchmark`, the Benchmark page of the docs, at RUN_DIR.
+environment snapshot of the run, the maps of the Maryland figure, the notes of
+the run, `notes.toml`, when it has them, and the header comment of each adapter
+that the records name. `--publish` points `docs/benchmark`, the Benchmark page
+of the docs, at RUN_DIR.
 """
 
 import argparse
 import csv
 import json
 import os
+import tomllib
 from itertools import groupby
 from pathlib import Path
 
@@ -28,6 +30,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.lines import Line2D
+from matplotlib.ticker import LogLocator
 
 
 HERE = Path(__file__).resolve().parent
@@ -127,12 +130,17 @@ def report(run_dir):
 
     - `run_dir`: The run directory, with `records.jsonl`, `config.json`,
       `environment.json` and, when they are kept, the maps of the Maryland
-      figure. Without the maps, the Maryland figure drawn before stays.
+      figure. Without the maps, the Maryland figure drawn before stays. Its
+      `notes.toml`, written by hand, holds notes on the run: Markdown keyed by
+      a question, such as `E1`, or by `Solvers`, which the page adds after the
+      table of that section.
     """
     lines = (run_dir / "records.jsonl").read_text().splitlines()
     records = [json.loads(line) for line in lines if line.strip()]
     config = json.loads((run_dir / "config.json").read_text())
     environment = json.loads((run_dir / "environment.json").read_text())
+    notes_path = run_dir / "notes.toml"
+    notes = tomllib.loads(notes_path.read_text()) if notes_path.exists() else {}
 
     write_csv(records, run_dir / "results.csv")
     comparison = [record for record in records if record["view"] == "comparison"]
@@ -151,7 +159,7 @@ def report(run_dir):
     if pair and all(map_path(run_dir, record).exists() for record in pair):
         plot_maryland(run_dir, *pair, run_dir / "maryland.png")
     figure = pair if (run_dir / "maryland.png").exists() else None
-    text = page(run_dir.name, records, config, environment, figure)
+    text = page(run_dir.name, records, config, environment, figure, notes)
     (run_dir / "index.md").write_text(text)
 
 
@@ -235,8 +243,8 @@ def plot(records, panel, line, path):
 
     At each raster, a line takes the fastest of its records that succeeds, and
     joins the synthetic rasters; Maryland is a star. A raster where none of its
-    records succeeds shows a status as a marker along the top edge, one row per
-    line.
+    records succeeds shows a status as a marker in a band along the top edge,
+    one row per line, above a gray rule; the band carries no runtime ticks.
 
     **Arguments:**
 
@@ -297,10 +305,16 @@ def plot(records, panel, line, path):
         if not any(record["status"] == "ok" for record in group):
             axes.set_ylim(1e-3, 1e3)
         if band:
-            # Headroom above the runtimes for the band of status markers.
+            # Headroom above the runtimes for the band of status markers, which
+            # a rule separates from the runtimes and which carries no ticks.
             low, high = np.log10(axes.get_ylim())
             share = 0.06 + 0.04 * band
             axes.set_ylim(10**low, 10 ** (high + (high - low) * share / (1 - share)))
+            for minor, subs in ((False, (1.0,)), (True, "auto")):
+                ticks = LogLocator(subs=subs).tick_values(10**low, 10**high)
+                within = [tick for tick in ticks if 10**low <= tick <= 10**high]
+                axes.set_yticks(within, minor=minor)
+            axes.axhline(10**high, color="lightgray", linewidth=0.8)
         axes.set_xlabel("Raster cells")
         axes.set_ylabel("Warm runtime (s)")
         axes.set_title(
@@ -627,7 +641,7 @@ def solver_view_text(config):
     )
 
 
-def page(run_name, records, config, environment, maryland=None):
+def page(run_name, records, config, environment, maryland=None, notes=None):
     """Return the Benchmark page of a run.
 
     **Arguments:**
@@ -639,11 +653,14 @@ def page(run_name, records, config, environment, maryland=None):
     - `environment`: The environment snapshot of the run.
     - `maryland`: The records of the Maryland figure, when the run directory
       has it.
+    - `notes`: The notes on the run, Markdown keyed by a question, such as
+      `E1`, or by `Solvers`, which follow the table of that section.
 
     **Returns:**
 
     The page, in Markdown.
     """
+    notes = notes or {}
     solvers = [record for record in records if record["view"] == "solver"]
     records = [record for record in records if record["view"] == "comparison"]
     questions = sorted({record["question"] for record in records})
@@ -715,8 +732,8 @@ def page(run_name, records, config, environment, maryland=None):
         "documentation: the tables list every setting, and the figures show, "
         "at each raster, the fastest setting that succeeds. In the figures, "
         "tools on the GPU are solid and on the CPU dashed, Maryland is a star, "
-        "and rasters where no setting succeeds show a status along the top "
-        "edge.",
+        "and rasters where no setting succeeds show a status in a band along "
+        "the top edge, above a gray rule.",
     ]
     for question in questions:
         measures = sorted(
@@ -736,6 +753,7 @@ def page(run_name, records, config, environment, maryland=None):
             "cell; `missing` marks an agreement whose reference is unavailable "
             "or undefined.",
             outcome_table(of_question(question, records), COMPARISON),
+            notes.get(question, "").strip(),
         ]
         if question == MARYLAND["question"] and maryland:
             jaxscape, other = maryland
@@ -758,6 +776,7 @@ def page(run_name, records, config, environment, maryland=None):
             "dtype and raster, or the status of the cell; `missing` marks an "
             "error whose reference is unavailable or undefined.",
             outcome_table(solvers, SOLVER_VIEW),
+            notes.get("Solvers", "").strip(),
         ]
     gpu = environment["gpu"]
     if gpu:
