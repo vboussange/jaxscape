@@ -137,6 +137,15 @@
         "lcp": {
           "dtype": "float32",
           "batch_size": 512
+        },
+        "resistance, K = -R, normalized": {
+          "distance": "resistance",
+          "dtype": "float32",
+          "solver": "GridMultigridSolver(rtol=3e-4)",
+          "method": "SpielmanApproximation(epsilon=0.15)",
+          "batch_size": 2601,
+          "proximity": "lambda d: -d",
+          "normalized": true
         }
       }
     },
@@ -293,7 +302,8 @@
             "cholmod"
           ]
         }
-      }
+      },
+      "compared_with": "resistance, K = -R, normalized"
     }
   ],
   "solver_view": {

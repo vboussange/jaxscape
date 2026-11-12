@@ -9,8 +9,13 @@
 # `SensitivityAnalysis(var="permeability")`, with the shared `dependency_range`
 # and `coarsening_factor`, the default proximity and the `batch_size` of the
 # settings; these windowed analyses build their graphs with JAXScape's own edge
-# rule, the mean permeability of the two pixels. The distance runs with the
-# solver, the resistance `method` and the dtype of its settings, such as
+# rule, the mean permeability of the two pixels. A `proximity` setting, a
+# function of the distance in Python such as `lambda d: -d`, replaces the
+# default proximity. With `normalized`, the map of E3 is the normalized
+# sensitivity to resistance of the connectivity example: p^2 dC/dp divided by
+# dC/dp on a flat landscape of permeability 1 and the same quality, and 0 where
+# the latter is not positive, both computed in each call. The distance runs
+# with the solver, the resistance `method` and the dtype of its settings, such as
 # `GridMultigridSolver(rtol=3e-4)` (`dense` is the dense solve,
 # `solver=None`), and every call builds the graphs and the solver states.
 import ast
@@ -67,6 +72,9 @@ distance = {
     ),
 }[cell["distance"]]()
 permeability = jnp.asarray(arrays["permeability"], dtype=settings["dtype"])
+proximity = (
+    {"proximity": eval(settings["proximity"])} if "proximity" in settings else {}
+)
 windows = dict(
     quality_raster=jnp.asarray(arrays["quality"], dtype=settings["dtype"]),
     permeability_raster=permeability,
@@ -74,6 +82,7 @@ windows = dict(
     batch_size=settings.get("batch_size"),
     dependency_range=cell["windows"].get("dependency_range"),
     coarsening_factor=cell["windows"].get("coarsening_factor"),
+    **proximity,
 )
 
 
@@ -92,7 +101,19 @@ def corridors():
     return SensitivityAnalysis(**windows).run("permeability").block_until_ready()
 
 
-call = {"E1": isolation, "E2": connectivity, "E3": corridors}[cell["question"]]
+def normalized_corridors():
+    # p^2 dC/dp over dC/dp on the flat landscape, as the connectivity example
+    # computes it.
+    flat = {**windows, "permeability_raster": jnp.ones_like(permeability)}
+    sensitivity = SensitivityAnalysis(**windows).run("permeability")
+    flat_sensitivity = SensitivityAnalysis(**flat).run("permeability")
+    positive = flat_sensitivity > 0
+    ratio = permeability**2 * sensitivity / jnp.where(positive, flat_sensitivity, 1)
+    return jnp.where(positive, ratio, 0).block_until_ready()
+
+
+e3 = normalized_corridors if settings.get("normalized") else corridors
+call = {"E1": isolation, "E2": connectivity, "E3": e3}[cell["question"]]
 output, warmup, times = time_calls(cell, call)
 output, total = output if cell["question"] == "E2" else (output, None)
 write_result(cell, output, warmup, times, total=total)

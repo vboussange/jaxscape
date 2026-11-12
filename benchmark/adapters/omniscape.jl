@@ -7,9 +7,13 @@
 # resistances of the example's reclassification table and the forest sources
 # of its `source_from_resistance` with `r_cutoff` 1. The map is the cumulative
 # current divided by the flow potential (`calc_normalized_current`,
-# `calc_flow_potential`), compared with JAXScape's sensitivity under
-# resistance, the distance of Omniscape's circuits. Omniscape keeps its other
-# defaults: eight neighbours, the conductance of an edge being the mean
+# `calc_flow_potential`), compared with JAXScape's normalized sensitivity to
+# resistance, `resistance, K = -R, normalized`, which the connectivity example
+# relates to it: resistance is the distance of Omniscape's circuits, the
+# proximity K(R) = -R weighs every pair of habitat pixels equally, as Omniscape
+# injects the current of every source of a window, and the flat landscape
+# normalizes it, as the flow potential normalizes the current. Omniscape keeps
+# its other defaults: eight neighbours, the conductance of an edge being the mean
 # permeability of its two pixels, divided by √2 on diagonals; artifact
 # correction; double precision; the solver of the settings, with the windows
 # solved in parallel on the Julia threads of the cell. Each call runs
