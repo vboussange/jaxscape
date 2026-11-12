@@ -48,7 +48,8 @@ KEY = ("view", "question", "tool", "distance", "device", "dtype", "solver", "cas
 FIELDS = (
     *KEY,
     *("cells", "status", "reason", "warmup_s", "times_s", "median_s"),
-    *("measure", "agreement", "tier", "total", "version", "files", "adapter"),
+    *("measure", "agreement", "tier", "compared_with", "total", "version"),
+    *("files", "adapter"),
 )
 INTERPRETERS = {".jl": ["julia", f"--project={HERE / 'julia'}"], ".R": ["Rscript"]}
 OOM = re.compile(
@@ -326,7 +327,9 @@ def configuration(view, entry, distance, device, solver, settings):
     - `view`: `comparison` or `solver`.
     - `entry`: The tool entry of the comparison, or the solver view with its
       `question`.
-    - `distance`, `device`: What the cell computes, and where.
+    - `distance`, `device`: What the cell computes, and where. `distance` is
+      the key of the settings' table, which labels the records; the cell
+      computes under the settings' `distance`, by default this key.
     - `solver`: The label of the solver in the records, or `""`.
     - `settings`: The settings that the adapter reads; their `sides` restrict
       the synthetic rasters on which the configuration runs.
@@ -334,12 +337,16 @@ def configuration(view, entry, distance, device, solver, settings):
     **Returns:**
 
     The configuration, with the fields of the record that do not depend on the
-    case and what the runner needs to run its cells.
+    case and what the runner needs to run its cells: `computed_with`, the
+    distance under which it computes, and, for a tool compared by Spearman's
+    ρ, `compared_with`, the label of the JAXScape map compared.
     """
     settings = dict(settings)
     sides = settings.pop("sides", None)
+    computed_with = settings.pop("distance", distance)
     tier = entry.get("tier")
     measured = view == "solver" or tier is not None
+    measure = MEASURES[view, entry["question"]][0] if measured else None
     return {
         "view": view,
         "question": entry["question"],
@@ -349,8 +356,11 @@ def configuration(view, entry, distance, device, solver, settings):
         "dtype": settings.get("dtype", "float64"),
         "solver": solver,
         "tier": tier,
-        "measure": MEASURES[view, entry["question"]][0] if measured else None,
-        "compared_with": entry.get("compared_with", distance),
+        "measure": measure,
+        "compared_with": (
+            entry.get("compared_with", distance) if measure == RHO else None
+        ),
+        "computed_with": computed_with,
         "adapter": entry["adapter"],
         "settings": settings,
         "sides": sides,
@@ -376,10 +386,11 @@ def fails_by_design(view, combination):
 def runs_on(configuration, case):
     """Return whether a configuration runs on a case.
 
-    Its distance and question run on the case, and a configuration with `sides`
-    runs on the synthetic rasters of these sides alone.
+    The distance under which it computes and its question run on the case, and
+    a configuration with `sides` runs on the synthetic rasters of these sides
+    alone.
     """
-    if configuration["distance"] not in case["distances"]:
+    if configuration["computed_with"] not in case["distances"]:
         return False
     if configuration["question"] not in case["questions"]:
         return False
@@ -488,10 +499,10 @@ def map_path(run_dir, cell):
 
 def cell_file(config, cell, case_dir, work):
     """Return the cell file that an adapter reads (see `adapters/protocol.py`)."""
-    parameters = config["distances"][cell["distance"]]
+    parameters = config["distances"][cell["computed_with"]]
     return {
         "question": cell["question"],
-        "distance": cell["distance"],
+        "distance": cell["computed_with"],
         "device": cell["device"],
         "settings": cell["settings"],
         "parameters": {name: v for name, v in parameters.items() if name != "sides"},
@@ -516,14 +527,14 @@ def reference_of(config, cell, case_dir, run_dir):
     never retried; the function then returns `None`.
     """
     if cell["question"] == "E1":
-        name = f"{cell['case']}-{cell['distance']}"
+        name = f"{cell['case']}-{cell['computed_with']}"
         adapter, device = config["E1"]["reference"], "cpu"
         settings = {"dtype": "float64"}
     else:
-        name = f"{cell['case']}-{cell['question']}-{cell['distance']}"
+        name = f"{cell['case']}-{cell['question']}-{cell['computed_with']}"
         view = config["solver_view"]
         adapter, device = view["adapter"], view["device"]
-        shared = view["questions"][cell["question"]][cell["distance"]]
+        shared = view["questions"][cell["question"]][cell["computed_with"]]
         settings = {k: v for k, v in shared.items() if k != "sides"}
         settings.update(dtype="float64", solver=view["reference_solver"])
     path = run_dir / "references" / f"{name}.npy"

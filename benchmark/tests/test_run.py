@@ -135,6 +135,17 @@ devices = ["cpu"]
 fail_on = ["maryland"]
 
 [[tools]]
+tool = "Fake map paired with a label"
+package = "numpy"
+question = "E2"
+adapter = "tests/fake_adapter.py"
+devices = ["cpu"]
+tier = 3
+compared_with = "lcp, reversed"
+
+[tools.distances.lcp]
+
+[[tools]]
 tool = "JAXScape"
 package = "numpy"
 question = "E2"
@@ -146,6 +157,10 @@ reversed = {{ cpu = true, gpu = false }}
 
 [tools.distances.resistance]
 fail_on = {{ cpu = [], gpu = ["synthetic-8", "maryland"] }}
+
+[tools.distances."lcp, reversed"]
+distance = "lcp"
+reversed = true
 
 [solver_view]
 tool = "Fake solvers"
@@ -411,6 +426,38 @@ def test_runner_compares_a_map_with_the_jaxscape_gpu_map_of_its_paired_distance(
         # The map is a monotone function of JAXScape's GPU map, apart from a
         # pixel off its graph, and reverses its CPU map.
         assert record["agreement"] == pytest.approx(1)
+
+
+def test_a_table_labelled_with_its_distance_runs_as_a_configuration_of_its_own(
+    run_dir,
+):
+    lines = (run_dir / "records.jsonl").read_text().splitlines()
+    labelled = {
+        (r["device"], r["case"]): r["status"]
+        for r in map(json.loads, lines)
+        if (r["tool"], r["distance"]) == ("JAXScape", "lcp, reversed")
+    }
+
+    # It runs on the cases of the distance that it names, on each device.
+    cases = ("synthetic-8", "synthetic-16", "synthetic-32", "maryland")
+    assert labelled == {(d, case): "ok" for d in ("cpu", "gpu") for case in cases}
+
+
+def test_runner_compares_a_map_with_the_jaxscape_gpu_map_of_the_label_it_names(
+    run_dir,
+):
+    cells = records(run_dir, "Fake map paired with a label")
+
+    assert len(cells) == 4
+    for record in cells.values():
+        assert record["compared_with"] == "lcp, reversed"
+        # The map is the quality, which JAXScape's GPU map under the label
+        # reverses, and its GPU map under least-cost distance equals.
+        assert record["agreement"] == pytest.approx(-1)
+    assert {r["compared_with"] for r in records(run_dir, "Fake map").values()} == {
+        "lcp"
+    }
+    assert {r["compared_with"] for r in records(run_dir, "JAXScape").values()} == {None}
 
 
 def test_runner_records_no_rank_correlation_when_the_jaxscape_gpu_cell_failed(

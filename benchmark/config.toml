@@ -54,11 +54,13 @@ resistance = { 11 = 100, 21 = 500, 22 = 1000, 31 = 100, 41 = 1, 42 = 1, 43 = 1, 
 
 # One entry per tool and question. `adapter` runs a cell, and the table of a
 # distance holds the tool's settings for it, `dtype` and `solver` included. A
-# setting given per device is a table keyed by device. A tool of E2 or E3 is
-# compared with the map of JAXScape's GPU cell under the distance
-# `compared_with`, by default its own. `package` names the tool in the pins of
-# its toolchain, which give its version, by default the tool's name without
-# `.jl`.
+# setting given per device is a table keyed by device. A table keyed by a label
+# of its own computes under the distance of its `distance` setting, and its
+# records carry the label in place of the distance. A tool of E2 or E3 is
+# compared with the map of JAXScape's GPU cell under the distance, or the
+# label, `compared_with`, by default its own distance. `package` names the tool
+# in the pins of its toolchain, which give its version, by default the tool's
+# name without `.jl`.
 [[tools]]
 tool = "JAXScape"
 question = "E1"
@@ -124,6 +126,22 @@ batch_size = 2601
 [tools.distances.lcp]
 dtype = "float32"
 batch_size = 512
+
+# The normalized sensitivity to resistance of the connectivity example, in its
+# section "Link with Omniscape's normalized current", with which Omniscape.jl
+# is compared: resistance with the setting above and the proximity K(R) = -R,
+# which weighs every pair of habitat pixels equally. Its map is p^2 dC/dp, the
+# sensitivity to the resistance of each pixel with its sign changed, divided by
+# dC/dp on a flat landscape of permeability 1 and the same quality, and 0 where
+# the latter is not positive; each call runs both sensitivity analyses.
+[tools.distances."resistance, K = -R, normalized"]
+distance = "resistance"
+dtype = "float32"
+solver = "GridMultigridSolver(rtol=3e-4)"
+method = "SpielmanApproximation(epsilon=0.15)"
+batch_size = 2601
+proximity = "lambda d: -d"
+normalized = true
 
 [[tools]]
 tool = "Circuitscape.jl"
@@ -242,6 +260,7 @@ question = "E3"
 adapter = "adapters/omniscape.jl"
 devices = ["cpu"]
 tier = 3
+compared_with = "resistance, K = -R, normalized"
 
 [tools.distances.resistance]
 solver = ["cg+amg", "cholmod"]

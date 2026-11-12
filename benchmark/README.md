@@ -71,10 +71,10 @@ A record is the one contract between the runner and the report:
 
 | Field | Value |
 | --- | --- |
-| `view`, `question`, `tool`, `distance`, `device`, `dtype`, `solver`, `case` | The cell, in the `comparison` or the `solver` view; `cells` is its number of raster cells. |
+| `view`, `question`, `tool`, `distance`, `device`, `dtype`, `solver`, `case` | The cell, in the `comparison` or the `solver` view; `cells` is its number of raster cells. The `distance` of a configuration whose table is keyed by a label is the label. |
 | `status`, `reason` | `ok`, `failed`, `timeout`, `oom` or `skipped`, and why. |
 | `warmup_s`, `times_s`, `median_s` | The warm-up call, the timed calls and their median, in seconds. |
-| `measure`, `agreement`, `tier` | The agreement measure of the tier, or of the solver view, and its value, or `null` when the reference is unavailable or the measure undefined. Tier 1 measures the largest relative error against the float64 reference of E1, and Tiers 2 and 3 Spearman's ρ against the map of JAXScape's GPU cell of the same question and case, under the distance that the tool is paired with. The solver view measures the largest relative error against the reference of E1 for E1, and for E2 and E3 the relative L2 error against the map of exact resistance in float64. |
+| `measure`, `agreement`, `tier`, `compared_with` | The agreement measure of the tier, or of the solver view, and its value, or `null` when the reference is unavailable or the measure undefined. Tier 1 measures the largest relative error against the float64 reference of E1, and Tiers 2 and 3 Spearman's ρ against the map of JAXScape's GPU cell of the same question and case, under the distance, or the label, `compared_with`. The solver view measures the largest relative error against the reference of E1 for E1, and for E2 and E3 the relative L2 error against the map of exact resistance in float64. |
 | `total` | The landscape total of E2, $\sum_i q_i S_i$, of a tool that computes one: JAXScape's `ConnectivityAnalysis`, and the square of Graphab's equivalent connectivity. |
 | `version`, `files`, `adapter` | The tool's version, from the environment snapshot, whether its calls read or write files, and its adapter. |
 
@@ -96,11 +96,14 @@ A tool takes one adapter script and one configuration entry.
    here.
 2. Add an entry to `config.toml`, with the tool's settings for each distance.
    A setting given per device is a table keyed by device, and a list of
-   solvers runs each. A tool of E2 or E3 is compared with the map of
-   JAXScape's GPU cell under the distance `compared_with`, by default its own,
-   which the adapter justifies. `package` names the tool in the pins of its
-   toolchain, which give the version of its records, when it differs from the
-   tool's name without `.jl`:
+   solvers runs each. A table keyed by a label of its own computes under the
+   distance of its `distance` setting, and its records carry the label in
+   place of the distance, as JAXScape's `resistance, K = -R, normalized` of
+   E3. A tool of E2 or E3 is compared with the map of JAXScape's GPU cell
+   under the distance, or the label, `compared_with`, by default its own
+   distance, which the adapter justifies. `package` names the tool in the
+   pins of its toolchain, which give the version of its records, when it
+   differs from the tool's name without `.jl`:
 
    ```toml
    [[tools]]

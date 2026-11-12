@@ -56,7 +56,7 @@ def test_report_writes_the_csv_with_one_row_per_record(report):
     with open(run_dir / "results.csv", newline="") as file:
         rows = list(csv.DictReader(file))
 
-    assert len(rows) == 56
+    assert len(rows) == 59
     assert {row["status"] for row in rows} == {
         "ok",
         "failed",
@@ -146,6 +146,32 @@ def test_e3_table_lists_the_rank_correlation_of_each_omniscape_setting(report):
     assert cholmod[-3:] == ["3", "8 s · 0.43", "timeout"]
 
 
+def test_e3_table_lists_a_labelled_jaxscape_configuration_in_rows_of_its_own(
+    report,
+):
+    e3 = section(page(report()), "### E3. Corridors and pinch points")
+    label = "resistance, K = -R, normalized"
+
+    gpu = table_row(e3, "JAXScape", label, "GPU", "float32", "GridMultigridSolver")
+    assert gpu[-2:] == ["70 s", "300 s"]
+    cpu = table_row(e3, "JAXScape", label, "CPU", "float32", "GridMultigridSolver")
+    assert cpu[-2:] == ["timeout", ""]
+    raw = table_row(e3, "JAXScape", "resistance", "GPU")
+    assert raw[-2:] == ["60 s", "240 s"]
+
+
+def test_e3_text_states_the_normalized_sensitivity_and_links_its_example(report):
+    e3 = section(page(report()), "### E3. Corridors and pinch points")
+    text = e3.strip().split("\n\n")[0]  # the paragraph that sets up the question
+
+    assert "`resistance, K = -R, normalized`" in text
+    assert "`proximity=lambda d: -d`" in text
+    assert "a flat landscape of permeability 1" in text
+    assert "each call runs both sensitivity analyses" in text.lower()
+    assert "](../examples/connectivity_analysis/connectivity_analysis.ipynb)" in text
+    assert "Link with Omniscape's normalized current" in text
+
+
 def test_report_writes_the_maryland_figure_with_its_correlation_and_runtimes(
     report,
 ):
@@ -155,10 +181,13 @@ def test_report_writes_the_maryland_figure_with_its_correlation_and_runtimes(
     assert (run_dir / "maryland.png").read_bytes().startswith(b"\x89PNG")
     assert "](maryland.png)" in e3
     # The fastest Omniscape setting that succeeds on Maryland is cg+amg, and
-    # JAXScape's map is that of its GPU cell.
+    # JAXScape's map is that of the GPU cell that Omniscape is compared with.
+    assert (
+        "On Maryland, JAXScape's map under `resistance, K = -R, normalized` "
+        "(GPU, 300 s) next to Omniscape.jl's normalized current (CPU, `cg+amg`, "
+        "37 s)" in e3
+    )
     assert "ρ = 0.62" in e3
-    assert "240 s" in e3
-    assert "37 s" in e3
 
 
 def test_report_without_the_maps_keeps_the_maryland_figure(report):

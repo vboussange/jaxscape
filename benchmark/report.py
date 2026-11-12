@@ -369,8 +369,8 @@ def plot(records, panel, line, path):
 def maryland_pair(records):
     """Return the records of the Maryland figure, or `None` when one is missing.
 
-    They are the JAXScape GPU record under the tool's distance, whose map the
-    tool's maps are compared with, and the fastest setting of the tool that
+    They are the JAXScape GPU record under the tool's `compared_with`, whose map
+    the tool's maps are compared with, and the fastest setting of the tool that
     succeeds.
     """
     on_maryland = [
@@ -382,7 +382,7 @@ def maryland_pair(records):
     if not others:
         return None
     other = min(others, key=rank)
-    paired = ("JAXScape", "gpu", other["distance"])
+    paired = ("JAXScape", "gpu", other["compared_with"])
     for record in on_maryland:
         if (record["tool"], record["device"], record["distance"]) == paired:
             return record, other
@@ -406,7 +406,7 @@ def plot_maryland(run_dir, jaxscape, other, path):
     colormap = LinearSegmentedColormap.from_list("blues", BLUES)
     colormap = colormap.with_extremes(bad="#9e9e9e")
     figure, axes = plt.subplots(1, 2, figsize=(10, 5), layout="constrained")
-    labels = (f"sensitivity under {other['distance']}", MARYLAND["map"])
+    labels = (jaxscape["distance"], MARYLAND["map"])
     for axis, record, label in zip(axes, (jaxscape, other), labels):
         axis.set_axis_off()
         axis.set_title(
@@ -592,12 +592,25 @@ def setups(config):
         ),
         "E3": (
             "JAXScape computes the map of $\\partial C / \\partial p_k$ with "
-            "`SensitivityAnalysis`, with the windows and proximity of E2. The "
-            "other tools map a flow, and the agreement of each is Spearman's ρ "
-            "over pixels between its map and the map of JAXScape's GPU cell "
-            "under the distance of its row, or under least-cost distance for "
-            "ConScape.jl (see E2). Omniscape.jl computes its normalized current, "
-            "the cumulative current divided by the flow potential, with the "
+            "`SensitivityAnalysis`, with the windows and proximity of E2. Its "
+            "configuration `resistance, K = -R, normalized` computes the "
+            "normalized sensitivity to resistance of the [connectivity example]"
+            "(../examples/connectivity_analysis/connectivity_analysis.ipynb), "
+            "in its section *Link with Omniscape's normalized current*. It takes "
+            "the setting of resistance with `proximity=lambda d: -d`, the "
+            "proximity $K(R) = -R$, which weighs every pair of habitat pixels "
+            "equally, and maps $p_k^2 \\, \\partial C / \\partial p_k = -\\partial "
+            "C / \\partial r_k$, the sensitivity to the resistance $r_k$ of the "
+            "pixel, divided by $\\partial C / \\partial p_k$ on a flat landscape "
+            "of permeability 1 with the same quality, and 0 where the latter is "
+            "not positive. Each call runs both sensitivity analyses, as "
+            "Omniscape.jl computes its flow potential in each call. The other "
+            "tools map a flow, and the agreement of each is Spearman's ρ over "
+            "pixels between its map and the map of JAXScape's GPU cell under the "
+            "distance of its row; ConScape.jl is compared with least-cost "
+            "distance (see E2), and Omniscape.jl with `resistance, K = -R, "
+            "normalized`. Omniscape.jl computes its normalized current, the "
+            "cumulative current divided by the flow potential, with the "
             "configuration of its Maryland example on JAXScape's windows, on a "
             "graph of eight neighbours."
         ),
@@ -758,11 +771,11 @@ def page(run_name, records, config, environment, maryland=None, notes=None):
         if question == MARYLAND["question"] and maryland:
             jaxscape, other = maryland
             sections += [
-                f"![Maryland: JAXScape's sensitivity next to {other['tool']}'s "
+                f"![Maryland: JAXScape's map next to {other['tool']}'s "
                 f"{MARYLAND['map']}](maryland.png)",
-                "On Maryland, JAXScape's map of $\\partial C / \\partial p_k$ "
-                f"under {other['distance']} ({jaxscape['device'].upper()}, "
-                f"{runtime(jaxscape)}) next to {other['tool']}'s {MARYLAND['map']} "
+                f"On Maryland, JAXScape's map under `{jaxscape['distance']}` "
+                f"({jaxscape['device'].upper()}, {runtime(jaxscape)}) next to "
+                f"{other['tool']}'s {MARYLAND['map']} "
                 f"({other['device'].upper()}, `{other['solver']}`, "
                 f"{runtime(other)}), each coloured by the rank of its pixels, with "
                 f"barriers in gray: {RHO} = {agreement(other)}.",
