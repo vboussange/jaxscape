@@ -29,11 +29,14 @@ class AbstractGraph(eqx.Module):
 
 class Graph(AbstractGraph):
     """
-    A simple graph defined by an adjacency matrix.
+    Graph given by its weighted adjacency matrix.
 
     **Arguments:**
 
-    - `adjacency_matrix`: A `jax.experimental.sparse.BCOO` adjacency matrix.
+    - `adjacency_matrix`: Adjacency matrix, as a `jax.experimental.sparse.BCOO`
+      matrix of shape `(n, n)` for `n` vertices. Entry `(i, j)` is the weight of
+      the edge from vertex `i` to vertex `j`, which distances read as a
+      conductance.
     """
 
     adjacency_matrix: BCOO
@@ -241,16 +244,21 @@ class GridTopology(eqx.Module):
 
 class GridGraph(AbstractGraph):
     """
-    Grid graph where vertices are defined by a rectangular `grid`.
+    Graph whose vertices are the pixels of a raster, with edges between
+    neighbouring pixels.
+
+    The pixel of row `i` and column `j` is the vertex `i * width + j`.
 
     **Arguments:**
 
-    - `grid`: 2D array with shape `(height, width)` used to define edge weights.
-      When calculating distances, edge weights are assumed to represent
-      permeability (1/resistance; higher values indicate easier movement).
-    - `fun`: Function applied to the source and target node values to define
-      the edge weight. Takes two arrays and returns an array of the same size.
-      Defaults to the target vertex weight (`fun = lambda x, y: y`).
+    - `grid`: Raster of pixel values, such as permeability, with shape
+      `(height, width)`, from which `fun` computes the edge weights. Distances
+      read the edge weights as conductances, the inverses of resistances:
+      higher values ease movement.
+    - `fun`: Function of the values of the source and target pixels of the
+      edges that returns their weights. It takes two arrays and returns an
+      array of the same shape. Defaults to the value of the target pixel,
+      `fun = lambda x, y: y`.
     - `neighbors`: Contiguity pattern, either `ROOK_CONTIGUITY` or
       `QUEEN_CONTIGUITY`. Defaults to `ROOK_CONTIGUITY`, or to the contiguity of
       `topology`; pass one or the other.
@@ -322,13 +330,13 @@ class GridGraph(AbstractGraph):
 
     # @jit
     def coord_to_index(self, i: Array, j: Array) -> Array:
-        """Convert (i, j) grid coordinates to the associated passive vertex index."""
+        """Convert the grid coordinates `(i, j)` of pixels to their vertex indices."""
         num_columns = self.grid.shape[1]  # Get the number of columns in the grid
         return i * num_columns + j
 
     # @jit
     def index_to_coord(self, v: Array) -> Array:
-        """Convert passive vertex index `v` to (i, j) grid coordinates."""
+        """Convert vertex indices `v` to the grid coordinates `(i, j)` of pixels."""
         num_columns = self.grid.shape[1]  # Get the number of columns in the grid
         i = v // num_columns  # Row index
         j = v % num_columns  # Column index
@@ -336,12 +344,12 @@ class GridGraph(AbstractGraph):
 
     # @jit
     def node_values_to_array(self, values: Array) -> Array:
-        """Reshapes the 1D array values of vertices to the underlying 2D grid."""
+        """Reshape the values of the vertices, with shape `(n,)`, to the grid."""
         canvas = values.reshape(*self.grid.shape)
         return canvas
 
     def array_to_node_values(self, array: Array) -> Array:
-        """Reshapes the 1D array values of vertices to the underlying 2D grid."""
+        """Flatten a raster of the shape of the grid to the values of the vertices."""
         q = array.ravel()
         return q
 

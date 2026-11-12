@@ -23,7 +23,7 @@ from jaxscape.solvers import (
     AMJaxCGSolver,
     CholmodSolver,
     CuDSSSolver,
-    PyAMGSolver,
+    PyAMGCGSolver,
 )
 
 
@@ -121,7 +121,7 @@ def make_solver(name):
         return CholmodSolver()
     pytest.importorskip("pyamg")
     if name == "pyamg":
-        return PyAMGSolver(rtol=1e-13, atol=1e-13, maxiter=500)
+        return PyAMGCGSolver(rtol=1e-13, atol=1e-13, maxiter=500)
     pytest.importorskip("amjax")
     return AMJaxCGSolver(rtol=1e-13, atol=1e-13, max_steps=500)
 

@@ -7,20 +7,22 @@ from jax import Array, lax, vmap
 
 
 class WindowOperation(eqx.Module):
-    """Manages window-based operations on raster data with buffering.
+    """Division of a raster into square core windows, each with a buffer.
 
-    Used for processing large rasters by dividing them into smaller windows with
-    overlapping buffer regions. Ensures each window has sufficient context for
-    operations that depend on neighboring pixels.
+    A large raster is processed window by window. The buffer of a window is the
+    band of `buffer_size` pixels around its core, which overlaps the
+    neighbouring windows: it holds the pixels that a computation on the core
+    depends on.
 
     **Attributes:**
 
-    - `shape`: Raster dimensions `(height, width)`.
-    - `window_size`: Core window size in pixels.
-    - `buffer_size`: Buffer region size around each core window.
-    - `total_window_size`: Total window size including buffers
-      `(window_size + 2 * buffer_size)`.
-    - `x_steps`, `y_steps`: Number of windows in each dimension.
+    - `shape`: Raster shape `(height, width)`.
+    - `window_size`: Side of a core window, in pixels.
+    - `buffer_size`: Width of the buffer around each core window, in pixels.
+    - `total_window_size`: Side of a window with its buffer,
+      `window_size + 2 * buffer_size`.
+    - `x_steps`, `y_steps`: Number of windows along the rows (axis 0) and
+      along the columns (axis 1).
 
     !!! example
 
@@ -37,10 +39,10 @@ class WindowOperation(eqx.Module):
         ```
 
     !!! warning
-        You must ensure that `(shape[i] - 2 * buffer_size)` is divisible by
-        `window_size` for both dimensions `i = 0, 1`. Consider using
-        [`jaxscape.utils.padding`][jaxscape.utils.padding] to pad your raster data
-        automatically.
+        `shape[i] - 2 * buffer_size` must be divisible by `window_size` along
+        both axes `i = 0, 1`.
+        [`jaxscape.utils.padding`][jaxscape.utils.padding] pads a raster to such
+        a shape.
     """
 
     shape: tuple[int, int] = eqx.field(static=True)
@@ -284,8 +286,8 @@ class WindowOperation(eqx.Module):
     ) -> Generator[tuple[Array, Array], None, None]:
         """Iterate over windows one at a time.
 
-        Memory-efficient iteration that yields windows sequentially without
-        pre-computing all windows.
+        Yields the windows one after another, so that only one window is
+        extracted at a time.
 
         **Arguments:**
 
@@ -319,10 +321,10 @@ class WindowOperation(eqx.Module):
 
     @eqx.filter_jit
     def eager_iterator(self, matrix: Array) -> tuple[Array, Array]:
-        """Extract all windows at once for parallel processing.
+        """Extract all windows at once, for batched processing.
 
-        Pre-computes all windows in a single operation using `vmap`, enabling
-        efficient batch processing and parallelization.
+        Extracts the windows, with their buffers, in one operation with
+        `jax.vmap`, so that a computation can then run on all of them at once.
 
         **Arguments:**
 
@@ -332,7 +334,7 @@ class WindowOperation(eqx.Module):
 
         Tuple `(xy, windows)` where `xy` has shape `(num_windows, 2)` containing
         start coordinates, and `windows` has shape
-        `(num_windows, window_height, window_width)`.
+        `(num_windows, total_window_size, total_window_size)`.
 
         !!! example
 

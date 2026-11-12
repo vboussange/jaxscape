@@ -13,7 +13,7 @@ from jaxscape.solvers import (
     BCOOLinearOperator,
     build_amjax_solver,
     CholmodSolver,
-    PyAMGSolver,
+    PyAMGCGSolver,
 )
 from jaxscape.solvers.operator import (
     _batched_linear_solve,
@@ -30,7 +30,7 @@ AMJAX_AVAILABLE = PYAMG_AVAILABLE and find_spec("amjax") is not None
 # Build list of available solvers
 available_solvers = []
 if PYAMG_AVAILABLE:
-    solver = PyAMGSolver()
+    solver = PyAMGCGSolver()
     available_solvers.append(solver)
 if CHOLMOD_AVAILABLE:
     solver = CholmodSolver()
@@ -170,3 +170,20 @@ def test_amjax_preconditioner_operator():
     assert preconditioner.in_structure().shape == b.shape
     assert preconditioner.out_structure().shape == b.shape
     assert jnp.all(jnp.isfinite(preconditioner.mv(b)))
+
+
+@pytest.mark.parametrize(
+    "old_name, new_name",
+    [
+        ("AMJaxCGSolverState", "AMJaxCGState"),
+        ("GridMultigridSolver", "GridMultigridCGSolver"),
+        ("GridMultigridState", "GridMultigridCGState"),
+        ("PyAMGSolver", "PyAMGCGSolver"),
+    ],
+)
+def test_former_solver_names_are_deprecated_aliases(old_name, new_name):
+    import jaxscape.solvers
+
+    with pytest.warns(DeprecationWarning, match=f"`jaxscape.solvers.{new_name}`"):
+        alias = getattr(jaxscape.solvers, old_name)
+    assert alias is getattr(jaxscape.solvers, new_name)

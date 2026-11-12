@@ -297,10 +297,10 @@ def _permeability_calibration(
 
 
 class ConnectivityAnalysis(WindowedAnalysis):
-    r"""Compute landscape connectivity metrics for large rasters.
+    r"""Connectivity of a landscape raster: the sum of the proximities of its pairs
+    of pixels.
 
-    Quantifies connectivity by summing pairwise proximity in the graph. When
-    quality-weighted, retrieves the quantity:
+    With quality weights, the connectivity is
 
     $$C = \sum_i \sum_{j \neq i} q_i \, K_{ij} \, q_j$$
 
@@ -326,20 +326,24 @@ class ConnectivityAnalysis(WindowedAnalysis):
 
     $$C \approx \sum_c \Big(\sum_i T_c(i) \, q_i\Big) \sum_{j \neq c} K_{cj} \, q_j$$
 
-    Pairs within a block count, and no calibration is needed.
+    The pairs of pixels within a block contribute to this sum, so that it needs
+    no calibration.
 
-    Uses windowed processing for memory efficiency. See
-    [`WindowedAnalysis`][jaxscape.windowed_analysis.WindowedAnalysis] for
-    windowing parameters, coarsening, edge padding and the permeability floor.
+    The analysis computes distances window by window, so that its memory does
+    not grow with the size of the raster. See
+    [`WindowedAnalysis`][jaxscape.windowed_analysis.WindowedAnalysis] for the
+    windows, coarsening, padding at the raster edges and the permeability
+    floor.
 
     !!! note "Distance units"
         A custom `proximity` receives distances in the units of `distance`:
 
         - `EuclideanDistance`: pixels.
-        - `LCPDistance`: edge costs `1 / permeability` summed along the path,
-          hence pixels at permeability 1.
-        - `ResistanceDistance`: effective resistance, with edge resistance
-          `1 / permeability`. It grows like the logarithm of the pixel
+        - `LCPDistance`: the sum of the edge costs `1 / a` along the path, for
+          the conductance `a` of each edge, the mean permeability of its two
+          pixels; hence pixels at permeability 1.
+        - `ResistanceDistance`: effective resistance, with edge resistances
+          `1 / a`. It grows like the logarithm of the pixel
           distance: at permeability 1 in a window of 41 pixels a side, it is
           0.50, 1.28 and 1.89 at 1, 10 and 20 pixels from the centre. A kernel
           `exp(-d / c)` of the resistance therefore decays as a power law in
@@ -371,9 +375,9 @@ class ConnectivityAnalysis(WindowedAnalysis):
         ```
 
     !!! note "Contiguity"
-        The underlying graph is constructed using rook contiguity (4-neighbor
-        connectivity), and edge weights are computed as the average permeability
-        between adjacent pixels.
+        The graph connects each pixel to its four neighbours along the rows
+        and columns (rook contiguity), and the weight of each edge is the mean
+        permeability of its two pixels.
     """
 
     def run(self, q_weighted: bool = True) -> Array:
@@ -381,9 +385,9 @@ class ConnectivityAnalysis(WindowedAnalysis):
 
         **Arguments:**
 
-        - `q_weighted`: If `True`, compute quality-weighted connectivity (expected
-          habitat amount). If `False`, compute unweighted proximity sum, with
-          $q_i = 1$ inside the raster.
+        - `q_weighted`: If `True`, weight each pair of pixels by their habitat
+          qualities. If `False`, sum the proximities alone, with $q_i = 1$
+          inside the raster.
 
         **Returns:**
 
@@ -394,7 +398,7 @@ class ConnectivityAnalysis(WindowedAnalysis):
 
 
 class SensitivityAnalysis(WindowedAnalysis):
-    r"""Compute connectivity sensitivity via automatic differentiation.
+    r"""Sensitivity of connectivity to the quality or permeability of each pixel.
 
     Returns $\partial C / \partial q_i$ or $\partial C / \partial p_i$: how the
     connectivity $C$ of
@@ -405,8 +409,9 @@ class SensitivityAnalysis(WindowedAnalysis):
 
     Without coarsening, the result is the gradient of
     [`ConnectivityAnalysis.run`][jaxscape.connectivity_analysis.ConnectivityAnalysis.run]
-    with the same arguments. With `SpielmanApproximation`, the permeability
-    gradient is estimated from that of the exact resistances (see
+    with the same arguments, computed by automatic differentiation. With
+    `SpielmanApproximation`, the gradient with respect to permeability is
+    computed from an estimate of the gradient of the exact resistances (see
     `ResistanceDistance.sources_to_windows_distance`).
 
     With coarsening, the windows of block centres $c$, with interpolation
@@ -444,7 +449,7 @@ class SensitivityAnalysis(WindowedAnalysis):
     With other distances, the gradient of
     $\sum_c \big(\sum_i T_c(i)\, q_i\big) \sum_{j \notin \text{block}(c)} K_{cj} q_j$,
     without the pairs within blocks, is multiplied pixel by pixel by a block
-    correction after Omniscape's:
+    correction adapted from that of Omniscape:
 
     $$\kappa(x) = \frac{\sum_c \sum_s w_c(s)\, g(x - c - s)}
     {\sum_c g_\text{far}(x - c) \sum_s w_c(s)},
@@ -475,7 +480,7 @@ class SensitivityAnalysis(WindowedAnalysis):
           the raster edges, on tiles larger than windows, whose graphs extend
           beyond the windows, and around barriers, where it leaves marks
           along the lattice of block centres.
-        - Randomized distances give noisy permeability sensitivity where
+        - Randomized distances give noisy sensitivities to permeability where
           permeability varies over orders of magnitude: lower `epsilon`, or
           compare seeds.
 
@@ -502,19 +507,20 @@ class SensitivityAnalysis(WindowedAnalysis):
     """
 
     def run(self, var: str = "quality", q_weighted: bool = True) -> Array:
-        """Compute connectivity gradients with respect to a landscape parameter.
+        """Compute the gradient of connectivity with respect to a raster.
 
         **Arguments:**
 
         - `var`: Parameter to differentiate: `"quality"` or `"permeability"`.
-        - `q_weighted`: If `True`, compute quality-weighted connectivity gradients.
-          If `False`, compute unweighted gradients.
+        - `q_weighted`: If `True`, differentiate the connectivity weighted by
+          habitat quality. If `False`, differentiate the sum of proximities
+          alone.
 
         **Returns:**
 
-        Gradient raster with the same shape as the input, showing sensitivity at
-        each pixel. Pixels whose permeability is at or below the permeability
-        floor have zero permeability sensitivity.
+        Gradient raster with the shape of the input rasters: the sensitivity
+        of connectivity at each pixel. Pixels whose permeability is at or below
+        the permeability floor have a sensitivity to permeability of zero.
         """
         coarse = self.block_size > 1
         block, calibration = None, None

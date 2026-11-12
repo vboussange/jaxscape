@@ -194,10 +194,11 @@ def bcoo_at_set(mat: BCOO, row_idx: Array, col_idx: Array, vals: Array) -> BCOO:
 
 
 def padding(raster: Array, buffer_size: int, window_size: int) -> Array:
-    """Pad raster to ensure dimensions are compatible with
-    [`WindowOperation`][jaxscape.window_operation.WindowOperation].
+    """Pad `raster` to a shape that
+    [`WindowOperation`][jaxscape.window_operation.WindowOperation] accepts.
 
-    Ensures `(raster.shape[i] - 2 * buffer_size) % window_size == 0`.
+    Appends rows and columns of zeros at the bottom and right edges, so that
+    `(raster.shape[i] - 2 * buffer_size) % window_size == 0` along both axes.
 
     !!! example
 

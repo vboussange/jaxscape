@@ -10,7 +10,7 @@ from jaxscape.graph import AbstractGraph, GridGraph
 
 class EuclideanDistance(AbstractDistance):
     """
-    Straight-line distance in grid coordinates. Only works with `GridGraph`.
+    Straight-line distance between pixels, in pixels. It requires a `GridGraph`.
     Distances take the floating dtype of the grid, or JAX's default floating
     dtype for an integer or boolean grid.
 

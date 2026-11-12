@@ -76,8 +76,9 @@ class AbstractSparseDirectSolver[Factorization](AbstractReusableStateSolver):
 
     Subclass it with the phases of a sparse factorization library: `factorize`,
     `solve`, `residual_tolerance` and, when the library can reuse an analysis,
-    `refactorize`. The base class provides the Lineax solver: it derives the CSR
-    pattern once, refactorizes when the values change, and checks results.
+    `refactorize`. The base class provides the Lineax solver: it derives the
+    compressed sparse row (CSR) pattern of the matrix once, factorizes the
+    matrix again when its values change, and checks the results.
 
     The checks assume nothing from the library. Each factorization solves
     `A x = A 1`, and fails when the backward error

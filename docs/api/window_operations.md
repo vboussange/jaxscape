@@ -1,10 +1,16 @@
-# Advanced: custom window operations
+# Window operations
 
-:::jaxscape.utils.padding
+`WindowOperation` divides a raster into square core windows, each with a
+buffer of the neighbouring pixels that a computation on the core depends on,
+and writes the results of a computation on each window back into a raster. It
+serves to build window-based computations other than the analyses of
+[Connectivity analysis](connectivity_analysis.md).
+`padding` pads a raster to a shape that `WindowOperation` accepts.
 
 ::: jaxscape.window_operation.WindowOperation
     options:
-      members: 
+      heading_level: 2
+      members:
         - nb_steps
         - extract_total_window
         - extract_core_window
@@ -13,6 +19,6 @@
         - lazy_iterator
         - eager_iterator
 
-::: jaxscape.windowed_analysis.WindowedAnalysis
+::: jaxscape.utils.padding
     options:
-      members: false
+      heading_level: 2

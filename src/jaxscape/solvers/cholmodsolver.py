@@ -74,12 +74,17 @@ type _CholmodSolverState = tuple[BCOO, PackedStructures, _FactorCache | None]
 
 
 class CholmodSolver(AbstractReusableStateSolver):
-    """
-    A linear solver that uses CHOLMOD (via cholespy) to solve a sparse linear system.
-    Uses direct Cholesky factorization for symmetric positive definite matrices.
-    States of one sparsity pattern share a factorization, which solves reuse while
-    the matrix values stay the same and which is factorized again when they change.
+    """Sparse Cholesky factorization with CHOLMOD, through cholespy, on the CPU.
 
+    Solves symmetric positive definite matrices through a host callback. The
+    states of one sparsity pattern share a factorization, which solves reuse
+    while the matrix values stay the same, and which is computed again when they
+    change.
+
+    **Attributes:**
+
+    - `factorize_in_init`: Whether `init` factorizes the matrix. Otherwise, the
+      first solve factorizes it.
 
     !!! example
 
@@ -88,7 +93,7 @@ class CholmodSolver(AbstractReusableStateSolver):
 
         solver = CholmodSolver()
         distance = ResistanceDistance(solver=solver)
-        state = distance.init(grid)  # pre-factorizes the grounded Laplacian
+        state = distance.init(grid)  # factorizes the grounded Laplacian
         dist = distance(grid, state=state)
         ```
 
@@ -96,11 +101,11 @@ class CholmodSolver(AbstractReusableStateSolver):
         `cholespy` must be installed to use this solver.
 
     !!! warning
-        Float64 callback-backed solves require process-wide x64 support to be
-        enabled before JAX work starts, e.g. via `JAX_ENABLE_X64=1` or
-        `jax.config.update("jax_enable_x64", True)`. A thread-local
-        `with jax.enable_x64()` block is not sufficient for host callback
-        threads, and can surface as a callback dtype mismatch such as
+        Float64 solves run through a host callback, and require 64-bit floats
+        enabled for the whole process before JAX computes anything, with
+        `JAX_ENABLE_X64=1` or `jax.config.update("jax_enable_x64", True)`. A
+        `with jax.enable_x64()` block enables them in its own thread only, and
+        the host callback then fails with a dtype mismatch such as
         `Expected: float64, Actual: float32`.
     """
 

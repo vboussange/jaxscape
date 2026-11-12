@@ -8,7 +8,7 @@ from jaxscape import GridGraph, ResistanceDistance
 from jaxscape.solvers import (
     amjax_preconditioner_operator,
     AMJaxCGSolver,
-    AMJaxCGSolverState,
+    AMJaxCGState,
     BCOOLinearOperator,
     build_amjax_solver,
 )
@@ -153,5 +153,5 @@ def test_deprecated_state_methods_are_aliases(amjax_dependencies):
     with pytest.warns(DeprecationWarning, match="use `init`"):
         distance_state = distance.init_preconditioner(grid)
 
-    assert isinstance(state, AMJaxCGSolverState)
-    assert isinstance(distance_state, AMJaxCGSolverState)
+    assert isinstance(state, AMJaxCGState)
+    assert isinstance(distance_state, AMJaxCGState)

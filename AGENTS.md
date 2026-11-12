@@ -19,3 +19,7 @@ The five default triage labels: `needs-triage`, `needs-info`, `ready-for-agent`,
 ### Domain docs
 
 Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root, created only when a term or decision gets settled. See `docs/agents/domain.md`.
+
+### README benchmark table
+
+Update the "Why JAXScape?" table of `README.md` whenever a benchmark run is published. See `docs/agents/benchmark-table.md`.

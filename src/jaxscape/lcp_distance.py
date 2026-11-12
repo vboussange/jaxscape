@@ -50,8 +50,8 @@ class LCPDistance(AbstractDistance):
     !!! note
 
         Bellman–Ford requires positive, finite conductances; zero means no edge.
-        Gradients assume the graph connections stay fixed. `jax.jvp`, `jax.jacfwd`,
-        and higher-order derivatives are currently unsupported.
+        Gradients assume that the edges of the graph stay the same. `jax.jvp`,
+        `jax.jacfwd`, and higher-order derivatives are currently unsupported.
 
     !!! example
 
