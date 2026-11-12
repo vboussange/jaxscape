@@ -61,7 +61,9 @@ recorded there. To benchmark a later release, change the pin, run, and report.
   `results.csv`, one figure per question, `e1.png` to `e3.png`, the Maryland
   figure `maryland.png`, which it draws when the run directory holds its maps,
   the figure of the solver view, `solvers.png`, and the page `index.md`, whose
-  settings come from `config.json`.
+  settings come from `config.json`. `notes.toml`, written by hand, holds notes
+  on the run, such as why a cell failed: Markdown keyed by a question, such as
+  `E1`, or by `Solvers`, which the page adds after the table of that section.
 
 ## The cell record
 
@@ -130,7 +132,9 @@ GridMultigridSolver = {}
 
 `docs/benchmark` links to the published run directory, whose `index.md` is the
 Benchmark page. To publish a run, report it with `--publish`, which points the
-link at it, and commit both:
+link at it, and commit both: the link, and the run's `records.jsonl`,
+`config.json`, `environment.json`, `notes.toml`, `results.csv`, figures and
+page. Its logs, maps, references and `run.log` stay out of the repository.
 
 ```bash
 uv run python report.py results/v0.0.16 --publish

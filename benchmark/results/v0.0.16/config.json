@@ -1,0 +1,372 @@
+{
+  "run": {
+    "timeout": 3600,
+    "repeats": 5,
+    "single_call_after": 300,
+    "cores": "80-95",
+    "gpu": "5",
+    "smoke_side": 32,
+    "smoke_dependency_range": 10,
+    "smoke_tolerance": 0.0001
+  },
+  "landscape": {
+    "correlation_length": 25,
+    "habitat_threshold": 0.7,
+    "seed": 74
+  },
+  "E1": {
+    "sites": 32,
+    "seed": 75,
+    "reference": "adapters/reference.py"
+  },
+  "distances": {
+    "resistance": {
+      "sides": [
+        256,
+        1024,
+        4096,
+        8192
+      ]
+    },
+    "lcp": {
+      "sides": [
+        256,
+        1024,
+        4096,
+        8192
+      ]
+    },
+    "free_energy": {
+      "sides": [
+        256,
+        1024
+      ],
+      "theta": 0.01
+    }
+  },
+  "windows": {
+    "dependency_range": 100,
+    "coarsening_factor": 0.2,
+    "block_size": 21
+  },
+  "maryland": {
+    "raster": "data/nlcd_2016_frederick_md.tif",
+    "questions": [
+      "E2",
+      "E3"
+    ],
+    "resistance": {
+      "11": 100,
+      "21": 500,
+      "22": 1000,
+      "31": 100,
+      "41": 1,
+      "42": 1,
+      "43": 1,
+      "52": 20,
+      "71": 30,
+      "81": 200,
+      "82": 300,
+      "90": 20,
+      "95": 30
+    }
+  },
+  "tools": [
+    {
+      "tool": "JAXScape",
+      "question": "E1",
+      "adapter": "adapters/jaxscape.py",
+      "devices": [
+        "gpu",
+        "cpu"
+      ],
+      "tier": 1,
+      "distances": {
+        "resistance": {
+          "dtype": "float32",
+          "solver": "GridMultigridSolver"
+        },
+        "lcp": {
+          "dtype": "float32"
+        },
+        "free_energy": {
+          "dtype": "float64",
+          "solver": {
+            "gpu": "CuDSSSolver",
+            "cpu": "CholmodSolver"
+          }
+        }
+      }
+    },
+    {
+      "tool": "JAXScape",
+      "question": "E2",
+      "adapter": "adapters/jaxscape.py",
+      "devices": [
+        "gpu",
+        "cpu"
+      ],
+      "distances": {
+        "resistance": {
+          "dtype": "float32",
+          "solver": "GridMultigridSolver(rtol=3e-4)",
+          "method": "SpielmanApproximation(epsilon=0.15)",
+          "batch_size": 2601
+        },
+        "lcp": {
+          "dtype": "float32",
+          "batch_size": 512
+        }
+      }
+    },
+    {
+      "tool": "JAXScape",
+      "question": "E3",
+      "adapter": "adapters/jaxscape.py",
+      "devices": [
+        "gpu",
+        "cpu"
+      ],
+      "distances": {
+        "resistance": {
+          "dtype": "float32",
+          "solver": "GridMultigridSolver(rtol=3e-4)",
+          "method": "SpielmanApproximation(epsilon=0.15)",
+          "batch_size": 2601
+        },
+        "lcp": {
+          "dtype": "float32",
+          "batch_size": 512
+        }
+      }
+    },
+    {
+      "tool": "Circuitscape.jl",
+      "question": "E1",
+      "adapter": "adapters/circuitscape.jl",
+      "devices": [
+        "cpu"
+      ],
+      "tier": 1,
+      "distances": {
+        "resistance": {
+          "solver": [
+            "cg+amg",
+            "cholmod"
+          ]
+        }
+      }
+    },
+    {
+      "tool": "ConScape.jl",
+      "question": "E1",
+      "adapter": "adapters/conscape.jl",
+      "devices": [
+        "cpu"
+      ],
+      "tier": 1,
+      "distances": {
+        "free_energy": {}
+      }
+    },
+    {
+      "tool": "ConScape.jl",
+      "question": "E2",
+      "adapter": "adapters/conscape.jl",
+      "devices": [
+        "cpu"
+      ],
+      "tier": 3,
+      "compared_with": "lcp",
+      "distances": {
+        "free_energy": {}
+      }
+    },
+    {
+      "tool": "ConScape.jl",
+      "question": "E3",
+      "adapter": "adapters/conscape.jl",
+      "devices": [
+        "cpu"
+      ],
+      "tier": 3,
+      "compared_with": "lcp",
+      "distances": {
+        "free_energy": {}
+      }
+    },
+    {
+      "tool": "gdistance",
+      "question": "E1",
+      "adapter": "adapters/gdistance.R",
+      "devices": [
+        "cpu"
+      ],
+      "tier": 1,
+      "distances": {
+        "resistance": {},
+        "lcp": {}
+      }
+    },
+    {
+      "tool": "skimage.graph.MCP",
+      "package": "scikit-image",
+      "question": "E1",
+      "adapter": "adapters/skimage.py",
+      "devices": [
+        "cpu"
+      ],
+      "tier": 1,
+      "distances": {
+        "lcp": {}
+      }
+    },
+    {
+      "tool": "EcoScape",
+      "package": "ecoscape-connectivity",
+      "question": "E3",
+      "adapter": "adapters/ecoscape.py",
+      "devices": [
+        "gpu"
+      ],
+      "tier": 3,
+      "distances": {
+        "lcp": {
+          "dtype": "float32",
+          "batch_size": 4
+        }
+      }
+    },
+    {
+      "tool": "samc",
+      "question": "E3",
+      "adapter": "adapters/samc.R",
+      "devices": [
+        "cpu"
+      ],
+      "tier": 3,
+      "distances": {
+        "resistance": {
+          "solver": "direct"
+        }
+      }
+    },
+    {
+      "tool": "eco-connectivity",
+      "question": "E2",
+      "adapter": "adapters/eco_connectivity.py",
+      "devices": [
+        "cpu"
+      ],
+      "tier": 2,
+      "distances": {
+        "lcp": {
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "tool": "Graphab",
+      "package": "graphab",
+      "question": "E2",
+      "adapter": "adapters/graphab.py",
+      "devices": [
+        "cpu"
+      ],
+      "tier": 3,
+      "distances": {
+        "lcp": {}
+      }
+    },
+    {
+      "tool": "Omniscape.jl",
+      "question": "E3",
+      "adapter": "adapters/omniscape.jl",
+      "devices": [
+        "cpu"
+      ],
+      "tier": 3,
+      "distances": {
+        "resistance": {
+          "solver": [
+            "cg+amg",
+            "cholmod"
+          ]
+        }
+      }
+    }
+  ],
+  "solver_view": {
+    "tool": "JAXScape",
+    "adapter": "adapters/jaxscape.py",
+    "device": "gpu",
+    "dtypes": [
+      "float32",
+      "float64"
+    ],
+    "reference_solver": "CuDSSSolver",
+    "timeout": 900,
+    "fails_by_design": [
+      {
+        "distance": "free_energy",
+        "dtype": "float32"
+      },
+      {
+        "distance": "free_energy",
+        "solver": [
+          "AMJaxCGSolver",
+          "PyAMGSolver"
+        ]
+      },
+      {
+        "solver": "AMJaxCGSolver",
+        "dtype": "float32",
+        "question": [
+          "E2",
+          "E3"
+        ]
+      }
+    ],
+    "questions": {
+      "E1": {
+        "resistance": {},
+        "free_energy": {}
+      },
+      "E2": {
+        "resistance": {
+          "batch_size": 256,
+          "sides": [
+            256
+          ]
+        }
+      },
+      "E3": {
+        "resistance": {
+          "batch_size": 256,
+          "sides": [
+            256
+          ]
+        }
+      }
+    },
+    "solvers": {
+      "GridMultigridSolver": {},
+      "CholmodSolver": {},
+      "CuDSSSolver": {},
+      "AMJaxCGSolver": {},
+      "PyAMGSolver": {},
+      "dense": {},
+      "SpielmanApproximation(epsilon=0.15), GridMultigridSolver(rtol=3e-4)": {
+        "solver": "GridMultigridSolver(rtol=3e-4)",
+        "method": "SpielmanApproximation(epsilon=0.15)",
+        "questions": [
+          "E2",
+          "E3"
+        ],
+        "dtypes": [
+          "float32"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "date": "2026-11-10T18:19:43+00:00",
+  "host": "gpunode05",
+  "gpu": {
+    "index": "5",
+    "uuid": "GPU-b8590203-5a3b-fdba-68c9-0142ee891fb0",
+    "name": "NVIDIA GeForce RTX 3090",
+    "driver": "580.178.04",
+    "memory": "24576 MiB"
+  },
+  "cpu": "AMD EPYC 7742 64-Core Processor",
+  "cores": "80-95",
+  "threads": {
+    "OMP_NUM_THREADS": "16",
+    "OPENBLAS_NUM_THREADS": "16",
+    "MKL_NUM_THREADS": "16",
+    "JULIA_NUM_THREADS": "16",
+    "RCPP_PARALLEL_NUM_THREADS": "16"
+  },
+  "runtimes": {
+    "Python": "3.13.5",
+    "JAX": "0.12.0.1",
+    "jaxlib": "0.12.0.1",
+    "PyTorch": "2.15.0",
+    "Julia": "1.13.3",
+    "R": "4.1.2",
+    "Java": "21.0.13"
+  },
+  "tools": {
+    "JAXScape": "0.0.16",
+    "Circuitscape.jl": "6.1.0",
+    "ConScape.jl": "0.3.0",
+    "gdistance": "1.6.5",
+    "skimage.graph.MCP": "0.26.0",
+    "EcoScape": "0.2.5",
+    "samc": "4.2.1",
+    "eco-connectivity": "2.5.0",
+    "Graphab": "3.0.8",
+    "Omniscape.jl": "0.6.4"
+  }
+}

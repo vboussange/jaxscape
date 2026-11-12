@@ -226,6 +226,21 @@ def test_solver_section_lists_the_combinations_that_fail_by_design(report):
     )
 
 
+def test_page_adds_the_notes_of_the_run_after_the_table_of_their_section(report):
+    run_dir = report()
+    (run_dir / "notes.toml").write_text(
+        'E1 = "A note on E1."\nSolvers = "A note on the solvers."\n'
+    )
+
+    text = page(report())
+
+    e1 = section(text, "### E1. Isolation between populations")
+    assert e1.rstrip().endswith("|\n\nA note on E1.")
+    solvers = section(text, "## Solvers")
+    assert solvers.rstrip().endswith("|\n\nA note on the solvers.")
+    assert "A note" not in section(text, "### E2. Habitat connectivity")
+
+
 def test_report_writes_the_solver_figure(report):
     run_dir = report()
 
