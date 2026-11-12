@@ -2,13 +2,22 @@
 # section: Markdown keyed by question, or by `Solvers`.
 
 E1 = """\
+The run was resumed on 12 November to rerun, on GPU 5 with no other job, the \
+GPU cells that had run out of memory on an allocation below the limit of JAX \
+on the GPU, about 17.7 GiB, and to add the normalized map of E3, with which it \
+compares Omniscape.jl.
+
 At 8192², JAXScape 0.0.16 runs out of GPU memory for resistance distances: its \
 nodes-to-nodes query solves for the 32 sites at once, and \
 `jit_nodes_to_nodes_distance` asks for a single buffer of 44.98 GiB, 180 times \
 the raster in float32 and nearly twice the 24 GiB of the RTX 3090. This is a \
 limit of JAXScape 0.0.16, which offers no way to solve fewer sites at a time; \
 the same query takes 308 s on the CPU. The errors of resistance at 8192² are \
-missing: CHOLMOD stops their float64 reference with `problem too large`.\
+missing: CHOLMOD stops their float64 reference with `problem too large`.
+
+At 4096², least-cost distance on the GPU runs out of memory in the resumed run \
+as in the first, on the same allocation of 14.00 GiB in \
+`jit_nodes_to_nodes_distance`: a limit of JAXScape 0.0.16 on this GPU.\
 """
 
 E3 = """\
@@ -17,11 +26,31 @@ there is missing.\
 """
 
 Solvers = """\
-At 4096², `GridMultigridSolver` in float32 ran out of memory in E1, where the \
-same query of the comparison ran in 5.48 s: from 08:54 to 09:01 UTC on 11 \
-November, a job outside the benchmark ran on GPU 5, which its launcher had \
-found idle while the benchmark ran a CPU cell, and held 8.5 GiB of it, which \
-left about 10.6 GiB for the 11.25 GiB buffer of the query. The record shows \
-this contention for the GPU, and the record of the comparison gives the \
-runtime of the setting at 4096².\
+On 11 November around 09:00 UTC, a job outside the benchmark shared GPU 5, and \
+`GridMultigridSolver` in float32 ran out of memory in E1 at 4096². In the \
+resumed run it takes 5.46 s there, as the same query of the comparison, \
+5.48 s. The other cells that the resumed run reran fail again on the same \
+allocations, and are limits of JAXScape 0.0.16 on this GPU:
+
+- E1 at 4096²: `CholmodSolver` in float64 fails to allocate 9.88 GiB and \
+`CuDSSSolver` in float64 13.62 GiB, and in float32 cuDSS fails to allocate \
+8.00 GiB in its analysis. XLA counts 20.1 GiB of input and output buffers for \
+`AMJaxCGSolver` in float64, whose autotuning runs out of memory.
+- E2 and E3 at 256²: XLA cannot bring the memory of `AMJaxCGSolver` in float64 \
+below 17.8 GiB in E2 and 19.1 GiB in E3, and the cells fail to allocate 16.17 \
+and 17.40 GiB.
+- E1 at 8192²: `CholmodSolver` in float32 fails to allocate 2.50 GiB as it \
+builds its solver state.
+
+Above the limit of JAX, `GridMultigridSolver` in E1 asks for 22.50 GiB in \
+float64 at 4096², and in float32 at 8192² for the buffer of 44.98 GiB of the \
+comparison (see E1).
+
+The run recorded two combinations before the configuration counted them among \
+those that fail by design, and the table keeps their records. In E1, \
+`AMJaxCGSolver` in float32 failed at 256² with `A linear solver returned \
+non-finite (NaN or inf) output`, and skipped the larger rasters; \
+`GridMultigridSolver` on free energy in float64 failed at 256² with \
+`FreeEnergyDistance cannot resolve the requested logarithms accurately`, and \
+skipped 1024².\
 """

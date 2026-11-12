@@ -137,6 +137,15 @@
         "lcp": {
           "dtype": "float32",
           "batch_size": 512
+        },
+        "resistance, K = -R, normalized": {
+          "distance": "resistance",
+          "dtype": "float32",
+          "solver": "GridMultigridSolver(rtol=3e-4)",
+          "method": "SpielmanApproximation(epsilon=0.15)",
+          "batch_size": 2601,
+          "proximity": "lambda d: -d",
+          "normalized": true
         }
       }
     },
@@ -286,6 +295,7 @@
         "cpu"
       ],
       "tier": 3,
+      "compared_with": "resistance, K = -R, normalized",
       "distances": {
         "resistance": {
           "solver": [
@@ -314,17 +324,14 @@
       {
         "distance": "free_energy",
         "solver": [
+          "GridMultigridSolver",
           "AMJaxCGSolver",
           "PyAMGSolver"
         ]
       },
       {
         "solver": "AMJaxCGSolver",
-        "dtype": "float32",
-        "question": [
-          "E2",
-          "E3"
-        ]
+        "dtype": "float32"
       }
     ],
     "questions": {
