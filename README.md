@@ -20,23 +20,10 @@ JAXScape implements custom methods and leverages JAX's capabilities to accelerat
 
 ## Why JAXScape?
 
-We report below some key runtimes from a comprehensive benchmark testing JAXScape on a RTX 3090 GPU against other related CPU-based software in Python, R, and Julia backends. 
-See the [benchmark documentation](https://vboussange.github.io/jaxscape/benchmark/)
-for the full setup, raw scorecards, convergence status, and fit-quality metrics.
+The [benchmark](https://vboussange.github.io/jaxscape/benchmark/) compares JAXScape 0.0.16 with the connectivity software that ecologists use, on rasters of up to `8192 x 8192` pixels, with JAXScape on an RTX 3090 GPU and every tool on the same 16 CPU cores.
 
-### Resistance distance calculation
-On a `1000 x 1000` spatial grid, JAXScape is `74x` faster than [`Circuitscape.jl`](https://github.com/Circuitscape/Circuitscape.jl) with `cg+amg` solver and `17x` faster than [`Circuitscape.jl`](https://github.com/Circuitscape/Circuitscape.jl) with `cholmod` solver. 
-<!-- TODO: [`gdistance`](https://cran.r-project.org/package=gdistance) `commuteDistance` result. -->
-
-<!-- ### Least-cost path
-On a `1000 x 1000` spatial grid, the current scorecard does not report a successful JAXScape GPU run, so no GPU speed-up against [`gdistance`](https://cran.r-project.org/package=gdistance) `costDistance` is reported there. -->
-
-### Sensitivity analysis
-On a `175 x 175` spatial grid, JAXScape is `12x` faster than [`gdistance`](https://cran.r-project.org/package=gdistance) `shortestPath` for shortest-path sensitivity and `5.0x` faster than [`gdistance`](https://cran.r-project.org/package=gdistance) `passage` for resistance sensitivity. 
-<!-- Cosine similarity to the `gdistance` reference surfaces is `0.130` and `0.173`, respectively. -->
-
-### Inverse landscape genetics 
-On a `100 x 100` spatial grid, JAXScape is `32x` faster than [`ResistanceGA`](https://github.com/wpeterman/ResistanceGA) and reaches a final relative RMSE about `16x` lower.
+- **Resistance distance.** On a `4096 x 4096` raster, JAXScape computes the resistance distances among 32 sites in 5.5 s on the GPU, in float32 with a largest relative error of 3e-3: `24x` faster than [`Circuitscape.jl`](https://github.com/Circuitscape/Circuitscape.jl) with `cholmod` (130 s), `113x` faster than with `cg+amg` (622 s), and `309x` faster than [`gdistance`](https://cran.r-project.org/package=gdistance) (1,696 s). At `8192 x 8192`, JAXScape 0.0.16 runs out of GPU memory, and takes 308 s on the CPU, against 646 s for Circuitscape.jl with `cholmod`.
+- **Corridors.** On an `8192 x 8192` raster, JAXScape maps the sensitivity of connectivity to the permeability of each pixel in 264 s on the GPU, with the windows of Omniscape's Maryland example. [`Omniscape.jl`](https://github.com/Circuitscape/Omniscape.jl) computes its normalized current, a related map, in 2,751 s.
 
 
 ## Installation
