@@ -5,7 +5,7 @@
 timeout = 3600           # seconds that a call may take
 repeats = 5              # timed calls after the warm-up call
 single_call_after = 300  # seconds of warm-up after which one timed call follows
-cores = "48-63"          # 16 physical cores of gpunode05, on NUMA node 3, that of GPU 0
+cores = "48-63"          # 16 physical cores, on the NUMA node of the GPU
 gpu = "0"                # the GPU of GPU cells, numbered as nvidia-smi numbers it
 smoke_side = 32
 smoke_dependency_range = 10  # windows of the windowed analyses in smoke mode
@@ -300,15 +300,12 @@ timeout = 900
 # entry matches each combination whose fields hold its values. Free energy in
 # float32 resolves no distance across the raster (see the distance
 # calculation), and the iterative solvers, GeometricMultigridCGSolver and
-# AMJaxCGSolver, resolve no free energy in either dtype: in the run of v0.0.16,
-# GeometricMultigridCGSolver failed to resolve it in float64 at 256^2.
-# AMJaxCGSolver returns non-finite output in float32, in the distance
-# calculation, from 256^2 in the run of v0.0.16, as on the windows of the
-# connectivity and sensitivity analyses.
+# AMJaxCGSolver, resolve no free energy in either dtype: as the docstring of
+# FreeEnergyDistance states, they need tolerances far below their defaults to
+# resolve the small entries of Z between distant vertices.
 fails_by_design = [
   { distance = "free_energy", dtype = "float32" },
   { distance = "free_energy", solver = ["GeometricMultigridCGSolver", "AMJaxCGSolver"] },
-  { solver = "AMJaxCGSolver", dtype = "float32" },
 ]
 
 # The distances of each question, with the settings that every solver shares;
@@ -338,11 +335,10 @@ dense = {}
 # float64, a call of the sensitivity analysis at 8192^2 with CuDSSSolver takes
 # about 30 minutes. GeometricMultigridCGSolver takes the setting of the
 # comparison.
-# CuDSSSolver takes the `batch_size` of the tuning run of #85, on GPU 5 while
-# another process held 12 GiB of it. On tiles of the shape of those of
-# 8192^2, a call of the sensitivity analysis in float64 takes about 1900 s at
-# 8192^2 with 256, 576 or 1024 centres a tile, and in float32 1000, 920, 850
-# and 780 s with 256, 576, 1024 and 1600. At 8192^2 in float64, 576 runs at
+# CuDSSSolver takes the `batch_size` of the tuning run of #85. On tiles of the
+# shape of those of 8192^2, a call of the sensitivity analysis in float64
+# takes about 1900 s at 8192^2 with 256, 576 or 1024 centres a tile, and in
+# float32 1000, 920, 850 and 780 s with 256, 576, 1024 and 1600. At 8192^2 in float64, 576 runs at
 # 5.8 s a tile, 28 minutes a call, with 9.3 GiB for the process, and 1024
 # fails to allocate 3.7 GiB on its first tile; on the tiles of 8192^2, 1600
 # in float64, and 2601 and 4096 in either dtype, fail to allocate.

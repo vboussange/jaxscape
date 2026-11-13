@@ -577,11 +577,22 @@ def test_runner_appends_one_csv_row_per_cell_with_its_timed_calls_in_one_cell(
     assert not (run_dir / "records.jsonl").exists()
 
 
-def test_restart_skips_the_recorded_cells(run, run_dir, tmp_path):
+def test_restart_skips_the_recorded_cells(run, run_dir):
     before = (run_dir / "records.csv").read_text()
 
-    run(tmp_path, run_dir)
+    run(run_dir.parent, run_dir)
 
+    assert (run_dir / "records.csv").read_text() == before
+
+
+def test_restart_with_another_configuration_exits_with_the_difference(run, run_dir):
+    before = (run_dir / "records.csv").read_text()
+    other = CONFIG.replace("repeats = 3", "repeats = 4")
+
+    result = run(run_dir.parent, run_dir, config_text=other)
+
+    assert result.returncode != 0
+    assert "config.json: run.repeats: 3, 4" in result.stderr
     assert (run_dir / "records.csv").read_text() == before
 
 
@@ -642,14 +653,17 @@ def test_smoke_mode_exits_with_an_error_when_a_tier_1_error_exceeds_its_toleranc
     assert "tolerance 0.001" in result.stdout
 
 
-def test_an_undefined_agreement_is_missing_and_fails_smoke_mode(run, tmp_path):
+def test_a_non_finite_output_fails_its_cell_and_smoke_mode(run, tmp_path):
     config = PASSING.replace("error = ERROR", "nan = true").replace("NAN", "true")
     result = run(tmp_path, tmp_path / "smoke", "--smoke", config_text=config)
 
     assert result.returncode != 0
-    agreements = {
-        tool: record["agreement"]
+    outcomes = {
+        (record["status"], record["reason"])
         for tool in ("Fake", "Fake map")
         for record in records(tmp_path / "smoke", tool).values()
     }
-    assert agreements == {"Fake": None, "Fake map": None}
+    assert outcomes == {
+        ("failed", "non-finite output: 16 of 16 values are NaN or infinite"),
+        ("failed", "non-finite output: 256 of 256 values are NaN or infinite"),
+    }

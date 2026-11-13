@@ -8,14 +8,15 @@ the solver view, which runs JAXScape with each solver. The runner writes the
 configuration of the run to `RUN_DIR/config.json` and the environment snapshot
 to `RUN_DIR/environment.json`, appends the record of each cell to
 `RUN_DIR/records.csv` as it finishes, and skips the cells recorded there when
-it restarts. It keeps in `RUN_DIR/maps` the maps of JAXScape's GPU cells of the
-connectivity and sensitivity analyses in the comparison, with which it compares
-the other tools' maps, and the other tools' maps of Maryland, for the report's
-Maryland figure. Smoke mode
-runs every cell on a raster of `smoke_side` pixels a side, with windows of
-`smoke_dependency_range` and one timed call, into a new run directory, and
-exits with an error unless every cell is `ok` with its agreement, and every
-Tier 1 error is at most `smoke_tolerance`.
+it restarts, which it does only with the configuration and environment of the
+run. It deletes the work files of each cell when the cell ends, and keeps in
+`RUN_DIR/maps` the maps of JAXScape's GPU cells of the connectivity and
+sensitivity analyses in the comparison, with which it compares the other tools'
+maps, and the other tools' maps of Maryland, for the report's Maryland figure.
+Smoke mode runs every cell on a raster of `smoke_side` pixels a side, with
+windows of `smoke_dependency_range` and one timed call, into a new run
+directory, and exits with an error unless every cell is `ok` with its
+agreement, and every Tier 1 error is at most `smoke_tolerance`.
 """
 
 import argparse
@@ -56,9 +57,10 @@ FIELDS = {
     **{"files": bool, "adapter": str},
 }
 INTERPRETERS = {".jl": ["julia", f"--project={HERE / 'julia'}"], ".R": ["Rscript"]}
+# Out-of-memory errors; cuDSS's status 2 is `CUDSS_STATUS_ALLOC_FAILED`.
 OOM = re.compile(
     r"RESOURCE_EXHAUSTED|out of memory|OutOfMemoryError|MemoryError|bad_alloc|"
-    r"cannot allocate",
+    r"cannot allocate|cuDSS call failed \(status 2\)",
     re.IGNORECASE,
 )
 ERROR = re.compile(r"^([\w.]*(Error|Exception)\b|ERROR:)")
@@ -172,16 +174,29 @@ def run(config, run_dir):
     - `config`: The configuration of the run (see `run_config`).
     - `run_dir`: The run directory, into which the run writes `config.json`
       and `environment.json` when they are missing, and appends to
-      `records.csv`.
+      `records.csv`. When they exist, the run resumes only if they equal the
+      configuration and the environment snapshot of this run, but for the
+      date of the snapshot, and exits with their differences otherwise.
     """
     for directory in ("logs", "references", "maps"):
         (run_dir / directory).mkdir(parents=True, exist_ok=True)
-    snapshots = {"config": lambda: config, "environment": lambda: environment(config)}
+    snapshots = {"config": config, "environment": environment(config)}
+    differ = []
     for name, snapshot in snapshots.items():
         path = run_dir / f"{name}.json"
         if not path.exists():
-            path.write_text(json.dumps(snapshot(), indent=2) + "\n")
-    versions = json.loads((run_dir / "environment.json").read_text())["tools"]
+            path.write_text(json.dumps(snapshot, indent=2) + "\n")
+        saved, current = json.loads(path.read_text()), json.loads(json.dumps(snapshot))
+        saved.pop("date", None)
+        current.pop("date", None)
+        differ += [f"{name}.json: {where}" for where in differences(saved, current)]
+    if differ:
+        sys.exit(
+            f"{run_dir} holds a run of another configuration or environment, "
+            "which this run does not resume (saved value, then value of this "
+            "run):\n" + "\n".join(differ)
+        )
+    versions = snapshots["environment"]["tools"]
     records_path = run_dir / "records.csv"
     recorded = {}
     if records_path.exists():
@@ -220,6 +235,8 @@ def run(config, run_dir):
                     else:
                         if not case_dir.exists():
                             write_case(config, case, case_dir)
+                        if cell["device"] == "gpu":
+                            wait_for_gpu(config, cell)
                         record = run_cell(config, cell, case_dir, run_dir)
                     append_record(records_path, record)
                     outcome = record["median_s"] or record["reason"]
@@ -227,6 +244,23 @@ def run(config, run_dir):
                 if synthetic_case and record["status"] in ("failed", "timeout", "oom"):
                     stopped_at[configuration_key] = record
             shutil.rmtree(case_dir, ignore_errors=True)
+
+
+def differences(saved, current, path=""):
+    """Return where two snapshots differ, such as `run.repeats: 5, 3`.
+
+    Each difference names the key, joined by dots, the saved value and the
+    current one.
+    """
+    if isinstance(saved, dict) and isinstance(current, dict):
+        return [
+            difference
+            for key in sorted(saved.keys() | current.keys())
+            for difference in differences(
+                saved.get(key), current.get(key), f"{path}.{key}" if path else key
+            )
+        ]
+    return [] if saved == current else [f"{path}: {saved!r}, {current!r}"]
 
 
 def append_record(path, record):
@@ -492,21 +526,50 @@ def new_record(cell, status, reason):
 
 
 def run_cell(config, cell, case_dir, run_dir):
-    """Run a cell, and return its record."""
+    """Run a cell, and return its record.
+
+    A cell whose adapter succeeds but whose output cannot be measured is
+    `failed`, with the error. The work files of the cell are deleted when it
+    ends.
+    """
     name = label(cell)
     work = case_dir.parent / "cells" / name
-    status, reason = execute(
-        config,
-        cell["adapter"],
-        cell["device"],
-        cell_file(config, cell, case_dir, work),
-        work,
-        run_dir / "logs" / f"{name}.log",
-        cell["timeout"],
-    )
-    record = new_record(cell, status, reason)
-    if status != "ok":
-        return record
+    try:
+        status, reason = execute(
+            config,
+            cell["adapter"],
+            cell["device"],
+            cell_file(config, cell, case_dir, work),
+            work,
+            run_dir / "logs" / f"{name}.log",
+            cell["timeout"],
+        )
+        if status != "ok":
+            return new_record(cell, status, reason)
+        try:
+            return measured(config, cell, work, case_dir, run_dir)
+        except Exception as error:
+            return new_record(cell, "failed", f"{type(error).__name__}: {error}"[:300])
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def measured(config, cell, work, case_dir, run_dir):
+    """Return the record of a cell whose adapter succeeded, from its work files.
+
+    A non-finite output is `failed`: an output of the distance calculation or
+    of JAXScape with a value that is NaN or infinite, or the map of another
+    tool without a finite pixel, since such a tool gives NaN to the pixels off
+    its graph.
+    """
+    output = np.load(work / "output.npy")
+    finite = np.isfinite(output)
+    strict = cell["question"] == "distance" or cell["tool"] == "JAXScape"
+    if not (finite.all() if strict else finite.any()):
+        count = output.size - np.count_nonzero(finite)
+        reason = f"{count} of {output.size} values are NaN or infinite"
+        return new_record(cell, "failed", f"non-finite output: {reason}")
+    record = new_record(cell, "ok", None)
     result = json.loads((work / "result.json").read_text())
     record.update(
         warmup_s=result["warmup_s"],
@@ -515,7 +578,6 @@ def run_cell(config, cell, case_dir, run_dir):
         files=result["files"],
         total=result.get("total"),
     )
-    output = np.load(work / "output.npy")
     jaxscape_gpu = cell["tool"] == "JAXScape" and cell["device"] == "gpu"
     windowed = cell["question"] != "distance"
     if cell["view"] == "comparison" and windowed and jaxscape_gpu:
@@ -609,11 +671,14 @@ def reference_of(config, cell, case_dir, run_dir):
     reference = {**cell, "settings": settings, "device": device}
     contents = {**cell_file(config, reference, case_dir, work), "repeats": 0}
     log = run_dir / "logs" / f"reference-{name}.log"
-    status, reason = execute(config, adapter, device, contents, work, log)
-    if status != "ok":
-        failure.write_text(f"{status}: {reason}\n")
-        return None
-    shutil.copy(work / "output.npy", path)
+    try:
+        status, reason = execute(config, adapter, device, contents, work, log)
+        if status != "ok":
+            failure.write_text(f"{status}: {reason}\n")
+            return None
+        shutil.copy(work / "output.npy", path)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
     return np.load(path)
 
 
@@ -692,8 +757,14 @@ def execute(config, adapter, device, contents, work, log, timeout=None):
     if process.returncode == 0 and (work / "result.json").exists():
         return "ok", None
     lines = [line.strip() for line in log.read_text(errors="replace").splitlines()]
-    errors = [line for line in lines if ERROR.match(line)]
-    reason = (errors or [line for line in lines if line] or [""])[-1][:300]
+    lines = [line for line in lines if line]
+    errors = [index for index, line in enumerate(lines) if ERROR.match(line)]
+    # The last error, or the last line, with the line that follows an error
+    # line ending in ":", such as the message of R's `Error in f(x) :`.
+    reason = ""
+    if lines:
+        last = (errors or [len(lines) - 1])[-1]
+        reason = " ".join(lines[last : last + 1 + lines[last].endswith(":")])[:300]
     reason = reason or f"exit status {process.returncode}"
     if process.returncode == -signal.SIGKILL or OOM.search(reason):
         return "oom", reason
@@ -724,13 +795,19 @@ def core_count(cores):
 def variables(config, device):
     """Return the environment variables of a cell's process.
 
-    GPU cells see the GPU of the configuration, by its index in the order of
-    the PCI bus, as `nvidia-smi` numbers it. They allocate memory as they need
-    it, so that JAX never fails to preallocate on a GPU that another process
-    uses, and keep the CPU platform, on which Equinox raises the errors of its
+    The process inherits the variables of the runner, but those of JAX and XLA,
+    such as `JAX_ENABLE_X64`, which would change what a cell computes. GPU
+    cells see the GPU of the configuration, by its index in the order of the
+    PCI bus, as `nvidia-smi` numbers it. They allocate memory as they need it,
+    and keep the CPU platform, on which Equinox raises the errors of its
     checks.
     """
-    env = {**os.environ, **threads(config["run"]["cores"])}
+    inherited = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith(("JAX_", "XLA_"))
+    }
+    env = {**inherited, **threads(config["run"]["cores"])}
     if device == "gpu":
         env.update(
             CUDA_DEVICE_ORDER="PCI_BUS_ID",
@@ -743,14 +820,43 @@ def variables(config, device):
     return env
 
 
+def wait_for_gpu(config, cell):
+    """Wait for the GPU of the configuration to run no other compute process.
+
+    The run stops, to resume later, when another process still computes on
+    the GPU after a minute, since it would share the GPU with the cell. A
+    configuration without a GPU waits for none.
+    """
+    if config["run"]["gpu"] == "":
+        return
+    query = [
+        "nvidia-smi",
+        f"--id={config['run']['gpu']}",
+        "--query-compute-apps=pid,used_memory",
+        "--format=csv,noheader",
+    ]
+    for _ in range(60):
+        processes = subprocess.run(query, capture_output=True, text=True, check=True)
+        if not processes.stdout.strip():
+            return
+        time.sleep(1)
+    sys.exit(
+        f"GPU {config['run']['gpu']} runs other processes (pid, memory): "
+        f"{'; '.join(processes.stdout.strip().splitlines())}. The run stops before "
+        f"{label(cell)}, and resumes from it when restarted."
+    )
+
+
 def environment(config):
     """Return the snapshot of the run's hardware, threads and versions.
 
     The GPU is the model of that of the configuration, with its driver, the
     CUDA version of the driver and its memory, or `None` without one. `cores`
     is the number of cores of the configuration. The versions are those of the
-    operating system, the runtimes, and each tool of the configuration (see
-    `tool_versions`).
+    operating system, the runtimes, Julia and R as their interpreters print
+    them, and each tool of the configuration (see `tool_versions`).
+    `benchmark` is the commit of this directory, and whether its tracked files
+    outside `results` differ from it.
     """
     gpu = None
     if config["run"]["gpu"] != "":
@@ -773,8 +879,23 @@ def environment(config):
     renv = json.loads((HERE / "renv.lock").read_text())
     lines = (HERE / "java" / "jre" / "release").read_text().splitlines()
     java = dict(line.split("=", 1) for line in lines if "=" in line)
+
+    def printed(*command):
+        output = subprocess.run(command, cwd=HERE, capture_output=True, text=True)
+        return output.stdout + output.stderr  # Rscript prints its version to stderr
+
+    def interpreter(command):
+        return re.search(r"version (\S+)", printed(command, "--version")).group(1)
+
+    changes = printed(
+        "git", "status", "--porcelain", "--untracked-files=no", "--", ".", ":!results"
+    )
     return {
         "date": datetime.now(UTC).isoformat(timespec="seconds"),
+        "benchmark": {
+            "commit": printed("git", "rev-parse", "HEAD").strip(),
+            "modified": bool(changes.strip()),
+        },
         "gpu": gpu,
         "cpu": cpu,
         "cores": core_count(config["run"]["cores"]),
@@ -785,8 +906,8 @@ def environment(config):
             "JAX": version("jax"),
             "jaxlib": version("jaxlib"),
             "PyTorch": version("torch"),
-            "Julia": julia["julia_version"],
-            "R": renv["R"]["Version"],
+            "Julia": interpreter("julia"),
+            "R": interpreter("Rscript"),
             "Java": java["JAVA_VERSION"].strip('"'),
         },
         "tools": tool_versions(config, julia, renv),

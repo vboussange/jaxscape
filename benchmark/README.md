@@ -8,9 +8,8 @@ the [Benchmark page](https://vboussange.github.io/jaxscape/benchmark/) of the
 docs.
 
 This directory is a uv project of its own, outside the root project, pinned to
-the commit of a JAXScape release (`jaxscape @ git+...@<commit>` in
-`pyproject.toml`, the commit of 0.0.18). Run every command from this
-directory:
+a commit of JAXScape (`jaxscape @ git+...@<commit>` in `pyproject.toml`). Run
+every command from this directory:
 
 ```bash
 uv sync
@@ -26,7 +25,9 @@ with an error unless every cell is `ok` with its agreement and every Tier 1
 error is at most `smoke_tolerance`, which catches a tool whose graph departs
 from the shared edge rule. A full run appends one record per cell to
 `records.csv` as each cell finishes; when it restarts, it skips the cells
-recorded there. To benchmark a later release, change the pin, run, and report.
+recorded there. It resumes only with the configuration and environment
+snapshot of the run, and otherwise exits with their differences. To benchmark
+a later release, change the pin, run, and report.
 
 ## Layout
 
@@ -52,7 +53,9 @@ recorded there. To benchmark a later release, change the pin, run, and report.
   `taskset` to the cores of the configuration, with the OpenMP, BLAS, Julia
   and R thread variables matched to them; XLA sizes its thread pools to the
   same cores. GPU cells run on the configured GPU, numbered as `nvidia-smi`
-  numbers it.
+  numbers it, once no other process computes on it; the run stops when one
+  still does after a minute. The work files of each cell, in `/dev/shm` where
+  it exists, are deleted when the cell ends.
 - `report.py`: the report, from a run directory.
 - `adapters/`: one script per tool. `protocol.py` states the protocol between
   the runner and an adapter, `protocol.jl` and `protocol.R` implement it for
@@ -78,7 +81,7 @@ make one value, joined by `;`, and a missing value is empty.
 | Field | Value |
 | --- | --- |
 | `view`, `question`, `tool`, `distance`, `device`, `dtype`, `solver`, `case` | The cell, in the `comparison` or the `solver` view; `cells` is its number of raster cells. The `distance` of a configuration whose table is keyed by a label is the label. |
-| `status`, `reason` | `ok`, `failed`, `timeout`, `oom` or `skipped`, and why. |
+| `status`, `reason` | `ok`, `failed`, `timeout`, `oom` or `skipped`, and why. A cell whose output is not finite is `failed`: an output of the distance calculation or of JAXScape with a NaN or infinite value, or the map of another tool without a finite pixel. |
 | `warmup_s`, `times_s`, `median_s` | The warm-up call, the timed calls and their median, in seconds. |
 | `measure`, `agreement`, `tier`, `compared_with` | The agreement measure of the tier, or of the solver view, and its value, or missing when the reference is unavailable or the measure undefined. At Tier 1, the measure is the largest relative error with respect to the float64 reference of the distance calculation, and at Tiers 2 and 3, Spearman's ρ between the map of the tool and the map of JAXScape's GPU cell of the same question and case, under the distance, or the label, `compared_with`. In the solver view, the measure is the largest relative error with respect to the reference of the distance calculation, and in the windowed analyses the relative L2 error with respect to the map of exact resistance distance in float64, on the cases of the question's distance alone: elsewhere, `measure` is missing. The page does not show `total`. |
 | `total` | The landscape total of the connectivity analysis, $\sum_i q_i S_i$, of a tool that computes one: JAXScape's `ConnectivityAnalysis`, and the square of Graphab's equivalent connectivity. |
