@@ -121,7 +121,6 @@ def make_solver(name):
         return CholmodSolver()
     if name == "multigrid":
         return GeometricMultigridCGSolver(rtol=1e-13)
-    pytest.importorskip("pyamg")
     pytest.importorskip("amjax")
     return AMJaxCGSolver(rtol=1e-13, max_steps=500)
 
