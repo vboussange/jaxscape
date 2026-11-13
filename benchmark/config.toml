@@ -5,8 +5,8 @@
 timeout = 3600           # seconds that a call may take
 repeats = 5              # timed calls after the warm-up call
 single_call_after = 300  # seconds of warm-up after which one timed call follows
-cores = "80-95"          # 16 physical cores of gpunode05, on NUMA node 5, that of GPU 5
-gpu = "5"                # the GPU of GPU cells, numbered as nvidia-smi numbers it
+cores = "48-63"          # 16 physical cores of gpunode05, on NUMA node 3, that of GPU 0
+gpu = "0"                # the GPU of GPU cells, numbered as nvidia-smi numbers it
 smoke_side = 32
 smoke_dependency_range = 10  # windows of the windowed analyses in smoke mode
 # The largest Tier 1 error that smoke mode passes. The smoke run's errors reach
@@ -71,10 +71,10 @@ adapter = "adapters/jaxscape.py"
 devices = ["gpu", "cpu"]
 tier = 1
 
-# The reference settings: the defaults of JAXScape 0.0.16, in float32.
+# The reference settings: the defaults of JAXScape 0.0.18, in float32.
 [tools.distances.resistance]
 dtype = "float32"
-solver = "GridMultigridSolver"
+solver = "GeometricMultigridCGSolver"
 
 [tools.distances.lcp]
 dtype = "float32"
@@ -107,7 +107,7 @@ devices = ["gpu", "cpu"]
 
 [tools.distances.resistance]
 dtype = "float32"
-solver = "GridMultigridSolver(rtol=3e-4)"
+solver = "GeometricMultigridCGSolver(rtol=3e-4)"
 method = "SpielmanApproximation(epsilon=0.15)"
 batch_size = 2601
 
@@ -123,7 +123,7 @@ devices = ["gpu", "cpu"]
 
 [tools.distances.resistance]
 dtype = "float32"
-solver = "GridMultigridSolver(rtol=3e-4)"
+solver = "GeometricMultigridCGSolver(rtol=3e-4)"
 method = "SpielmanApproximation(epsilon=0.15)"
 batch_size = 2601
 
@@ -141,7 +141,7 @@ batch_size = 512
 [tools.distances."resistance, K = -R, normalized"]
 distance = "resistance"
 dtype = "float32"
-solver = "GridMultigridSolver(rtol=3e-4)"
+solver = "GeometricMultigridCGSolver(rtol=3e-4)"
 method = "SpielmanApproximation(epsilon=0.15)"
 batch_size = 2601
 proximity = "lambda d: -d"
@@ -274,9 +274,10 @@ solver = ["cg+amg", "cholmod"]
 # the GPU. The distance calculation runs every solver on every raster of its
 # distance, as in the comparison, and the connectivity and sensitivity analyses
 # run every solver on exact resistance at 256^2 alone (`cases`): exact windowed
-# resistance takes about 23 minutes a call at 1024^2 with GridMultigridSolver
-# in float32 (#78), against 2 at 256^2. Spielman's approximation runs with
-# GridMultigridSolver and CuDSSSolver on every raster and on Maryland. The
+# resistance takes about 23 minutes a call at 1024^2 with
+# GeometricMultigridCGSolver in float32 (#78), against 2 at 256^2. Spielman's
+# approximation runs with GeometricMultigridCGSolver and CuDSSSolver on every
+# raster and on Maryland. The
 # error of a record is measured against the reference of the distance
 # calculation, and for the windowed analyses against the map of exact
 # resistance in float64 with `reference_solver`, on the same tiles, which runs
@@ -291,22 +292,23 @@ dtypes = ["float32", "float64"]
 reference_solver = "CuDSSSolver"
 # A call of the solver view stops after 15 minutes. At 256^2, one call of the
 # connectivity or sensitivity analysis took 2 to 5 minutes with
-# GridMultigridSolver and CuDSSSolver in float32, and more than 10 with
-# CholmodSolver and PyAMGSolver, which solve on the CPU: at an hour, their
+# GeometricMultigridCGSolver and CuDSSSolver in float32, and more than 10 with
+# CholmodSolver and PyAMGCGSolver, which solve on the CPU: at an hour, their
 # timeouts alone would take 8 hours.
 timeout = 900
 # The combinations that fail by design, which the solver view leaves out; an
 # entry matches each combination whose fields hold its values. Free energy in
 # float32 resolves no distance across the raster (see the distance
-# calculation), and the iterative solvers, GridMultigridSolver, AMJaxCGSolver
-# and PyAMGSolver, resolve no free energy in either dtype: in the run of
-# v0.0.16, GridMultigridSolver failed to resolve it in float64 at 256^2.
+# calculation), and the iterative solvers, GeometricMultigridCGSolver,
+# AMJaxCGSolver and PyAMGCGSolver, resolve no free energy in either dtype: in the
+# run of
+# v0.0.16, GeometricMultigridCGSolver failed to resolve it in float64 at 256^2.
 # AMJaxCGSolver returns non-finite output in float32, in the distance
 # calculation, from 256^2 in the run of v0.0.16, as on the windows of the
 # connectivity and sensitivity analyses.
 fails_by_design = [
   { distance = "free_energy", dtype = "float32" },
-  { distance = "free_energy", solver = ["GridMultigridSolver", "AMJaxCGSolver", "PyAMGSolver"] },
+  { distance = "free_energy", solver = ["GeometricMultigridCGSolver", "AMJaxCGSolver", "PyAMGCGSolver"] },
   { solver = "AMJaxCGSolver", dtype = "float32" },
 ]
 
@@ -326,17 +328,18 @@ resistance = { batch_size = 256, cases = ["synthetic-256"] }
 # adds or replaces; `questions` and `dtypes` restrict where it runs. `dense` is
 # the dense solve, `solver=None`.
 [solver_view.solvers]
-GridMultigridSolver = {}
+GeometricMultigridCGSolver = {}
 CholmodSolver = {}
 CuDSSSolver = {}
 AMJaxCGSolver = {}
-PyAMGSolver = {}
+PyAMGCGSolver = {}
 dense = {}
 
 # Spielman's approximation of resistance, with the two solvers that the docs
 # give for it, on every case of the comparison, with an hour a call: in
 # float64, a call of the sensitivity analysis at 8192^2 with CuDSSSolver takes
-# about 30 minutes. GridMultigridSolver takes the setting of the comparison.
+# about 30 minutes. GeometricMultigridCGSolver takes the setting of the
+# comparison.
 # CuDSSSolver takes the `batch_size` of the tuning run of #85, on GPU 5 while
 # another process held 12 GiB of it. On tiles of the shape of those of
 # 8192^2, a call of the sensitivity analysis in float64 takes about 1900 s at
@@ -345,8 +348,8 @@ dense = {}
 # 5.8 s a tile, 28 minutes a call, with 9.3 GiB for the process, and 1024
 # fails to allocate 3.7 GiB on its first tile; on the tiles of 8192^2, 1600
 # in float64, and 2601 and 4096 in either dtype, fail to allocate.
-[solver_view.solvers."SpielmanApproximation(epsilon=0.15), GridMultigridSolver(rtol=3e-4)"]
-solver = "GridMultigridSolver(rtol=3e-4)"
+[solver_view.solvers."SpielmanApproximation(epsilon=0.15), GeometricMultigridCGSolver(rtol=3e-4)"]
+solver = "GeometricMultigridCGSolver(rtol=3e-4)"
 method = "SpielmanApproximation(epsilon=0.15)"
 batch_size = 2601
 questions = ["connectivity", "sensitivity"]

@@ -15,7 +15,6 @@ RUN_DIR.
 import argparse
 import json
 import os
-import re
 import textwrap
 from itertools import groupby
 from pathlib import Path
@@ -48,11 +47,6 @@ NAMES = {
     "lcp": "least-cost path",
     "free_energy": "free energy",
     "resistance, K = -R, normalized": "normalized sensitivity (K = −R)",
-}
-# The solvers of the pinned release under their names in the current API.
-RENAMED = {
-    "GridMultigridSolver": "GridMultigridCGSolver",
-    "PyAMGSolver": "PyAMGCGSolver",
 }
 
 # The fields of a setting in the tables of the comparison and of the solver
@@ -162,8 +156,7 @@ def solver_view(records):
 
 def name(value):
     """Return the name on the page of a distance, label or solver of the records."""
-    value = NAMES.get(value, value or "")
-    return re.sub("|".join(RENAMED), lambda match: RENAMED[match[0]], value)
+    return NAMES.get(value, value or "")
 
 
 def side(case):
@@ -559,7 +552,7 @@ def jaxscape_setting(config, question, distance, setting):
 
 
 def code(value):
-    """Return a setting as inline code, under its name in the current API."""
+    """Return a setting as inline code, under its name on the page."""
     return f"`{name(value)}`"
 
 
@@ -588,18 +581,17 @@ def combination(entry):
     return " ".join(words)
 
 
-def introduction(environment):
+def introduction():
     """Return the introduction of the page."""
     return [
         "# Benchmark",
         "This page compares JAXScape with the software that ecologists use for "
         "connectivity analysis on three tasks, distance calculation, "
         "connectivity analysis and sensitivity analysis, and compares the "
-        "linear solvers of JAXScape. The results were obtained with JAXScape "
-        f"{environment['tools']['JAXScape']}; the page names its solvers as "
-        "the current API does. [`records.csv`](records.csv) holds the record "
-        "of every cell of the run, and [Setup](#setup) states the hardware, the "
-        "timing protocol and the settings.",
+        "linear solvers of JAXScape. [`records.csv`](records.csv) holds the "
+        "record of every cell of the run, and [Setup](#setup) states the "
+        "hardware, the timing protocol, the settings and the version of each "
+        "tool.",
         "Each comparison carries a tier of comparability. Tier 1 computes the "
         "same quantity as JAXScape, and the largest relative error against a "
         "float64 reference measures its accuracy; only at Tier 1 do two "
@@ -880,7 +872,7 @@ def page(records, config, environment, maryland=None):
     solvers = solver_view(records)
     comparison = [record for record in records if record["view"] == "comparison"]
     sections = [
-        *introduction(environment),
+        *introduction(),
         *distance_section(of_question("distance", comparison), config),
         *connectivity_section(of_question("connectivity", comparison), config),
         *sensitivity_section(of_question("sensitivity", comparison), maryland),

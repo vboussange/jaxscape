@@ -29,7 +29,7 @@ class FreeEnergyDistance(AbstractSolverDistance):
       same choices as for `ResistanceDistance`, or `None`, the default, for
       dense linear algebra, which suits small graphs. Larger graphs need a
       sparse direct solver, `CholmodSolver` on CPU and `CuDSSSolver` on GPU:
-      iterative solvers, `GridMultigridCGSolver` included, need tolerances far
+      iterative solvers, `GeometricMultigridCGSolver` included, need tolerances far
       below their defaults to resolve the small entries of $Z$ between distant
       vertices. See [Choosing a solver](linear_solvers.md#choosing-a-solver).
 

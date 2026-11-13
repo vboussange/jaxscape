@@ -68,7 +68,14 @@ def test_page_has_a_section_per_task_then_the_solvers_and_the_setup(report):
 
     headings = [line for line in text.splitlines() if line.startswith("## ")]
     assert headings == list(SECTIONS)
-    assert "JAXScape 0.0.16" in text.split(SECTIONS[0])[0]
+
+
+def test_introduction_names_no_release_and_setup_takes_it_from_the_snapshot(report):
+    text = page(report())
+
+    assert "0.0.18" not in text.split(SECTIONS[0])[0]
+    [(_, tools)] = collapsed(section(text, "## Setup"))
+    assert table_row(tools, "JAXScape", "0.0.18")
 
 
 def test_report_reads_the_records_and_writes_no_other_table_of_them(report):
@@ -119,11 +126,11 @@ def test_distance_table_lists_each_setting_with_its_runtime_and_error(report):
     [(_, table)] = collapsed(section(page(report()), "## Distance calculation"))
 
     gpu = table_row(
-        table, "JAXScape", "resistance", "GPU", "float32", "GridMultigridCGSolver"
+        table, "JAXScape", "resistance", "GPU", "float32", "GeometricMultigridCGSolver"
     )
     assert gpu[-4:][:2] == ["0.061 s · 2.1e-06", "0.41 s · 3.4e-06"]
     cpu = table_row(
-        table, "JAXScape", "resistance", "CPU", "float32", "GridMultigridCGSolver"
+        table, "JAXScape", "resistance", "CPU", "float32", "GeometricMultigridCGSolver"
     )
     assert cpu[-4:][:2] == ["0.39 s · missing", "timeout (3)"]
     free_energy = table_row(
@@ -140,7 +147,7 @@ def test_a_cell_that_did_not_succeed_shows_its_status_and_recorded_reason(report
     [(_, table)] = collapsed(section(page(report()), "## Distance calculation"))
 
     gpu = table_row(
-        table, "JAXScape", "resistance", "GPU", "float32", "GridMultigridCGSolver"
+        table, "JAXScape", "resistance", "GPU", "float32", "GeometricMultigridCGSolver"
     )
     oom, skipped = gpu[-2:]
     assert re.fullmatch(r"oom \(\d+\)", oom)
@@ -239,7 +246,7 @@ def test_solver_table_names_the_solvers_of_the_current_api(report):
         "4096²",
     ]
     rows = {
-        ("distance", "resistance", "float32", "GridMultigridCGSolver"): [
+        ("distance", "resistance", "float32", "GeometricMultigridCGSolver"): [
             "0.03 s · 2.0e-06",
             "0.35 s · 3.0e-06",
             "5.1 s · 4.0e-06",
@@ -249,7 +256,7 @@ def test_solver_table_names_the_solvers_of_the_current_api(report):
             "",
             "",
         ],
-        ("connectivity", "resistance", "float32", "GridMultigridCGSolver"): [
+        ("connectivity", "resistance", "float32", "GeometricMultigridCGSolver"): [
             "91 s · 3.1e-04 · C = 1.2e+05",
             "",
             "",
@@ -275,7 +282,7 @@ def test_solver_section_states_the_combinations_that_do_not_run(report):
 
     assert (
         "These combinations are not run: free energy in float32; free energy with "
-        "`GridMultigridCGSolver`, `AMJaxCGSolver` or `PyAMGCGSolver`; "
+        "`GeometricMultigridCGSolver`, `AMJaxCGSolver` or `PyAMGCGSolver`; "
         "`AMJaxCGSolver` in float32." in text
     )
 
@@ -296,7 +303,7 @@ def test_setup_states_the_hardware_protocol_and_versions_of_the_run(report):
     assert "Python 3.13.5, JAX 0.12.0.1, Julia 1.13.3" in setup
     [(title, tools)] = collapsed(setup)
     assert title == "Tools: version, tasks and parameter mapping"
-    jaxscape = table_row(tools, "JAXScape", "0.0.16")
+    jaxscape = table_row(tools, "JAXScape", "0.0.18")
     assert jaxscape[2] == "distance, connectivity, sensitivity"
     assert "rook contiguity" in jaxscape[3]
     assert table_row(tools, "Omniscape.jl", "0.6.4", "sensitivity")

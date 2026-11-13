@@ -1,35 +1,35 @@
 view,question,tool,distance,device,dtype,solver,case,cells,status,reason,warmup_s,times_s,median_s,measure,agreement,tier,compared_with,total,version,files,adapter
-comparison,distance,JAXScape,resistance,gpu,float32,GridMultigridSolver,synthetic-256,65536,ok,,2.5,0.061;0.06;0.062;0.059;0.061,0.061,largest relative error,2.1e-06,1,,,0.0.16,False,adapters/jaxscape.py
-comparison,distance,JAXScape,resistance,gpu,float32,GridMultigridSolver,synthetic-1024,1048576,ok,,3.1,0.41;0.4;0.42;0.4;0.41,0.41,largest relative error,3.4e-06,1,,,0.0.16,False,adapters/jaxscape.py
-comparison,distance,JAXScape,resistance,gpu,float32,GridMultigridSolver,synthetic-4096,16777216,oom,jaxlib.XlaRuntimeError: RESOURCE_EXHAUSTED: Out of memory while trying to allocate 9.1GiB.,,,,largest relative error,,1,,,0.0.16,,adapters/jaxscape.py
-comparison,distance,JAXScape,resistance,gpu,float32,GridMultigridSolver,synthetic-8192,67108864,skipped,after oom at synthetic-4096,,,,largest relative error,,1,,,0.0.16,,adapters/jaxscape.py
-comparison,distance,JAXScape,resistance,cpu,float32,GridMultigridSolver,synthetic-256,65536,ok,,4.0,0.39,0.39,largest relative error,,1,,,0.0.16,False,adapters/jaxscape.py
-comparison,distance,JAXScape,resistance,cpu,float32,GridMultigridSolver,synthetic-1024,1048576,timeout,a call exceeded 3600 s,,,,largest relative error,,1,,,0.0.16,,adapters/jaxscape.py
-comparison,distance,JAXScape,resistance,cpu,float32,GridMultigridSolver,synthetic-4096,16777216,skipped,after timeout at synthetic-1024,,,,largest relative error,,1,,,0.0.16,,adapters/jaxscape.py
-comparison,distance,JAXScape,lcp,gpu,float32,,synthetic-256,65536,failed,ValueError: shapes do not match,,,,largest relative error,,1,,,0.0.16,,adapters/jaxscape.py
-comparison,distance,JAXScape,lcp,gpu,float32,,synthetic-1024,1048576,skipped,after failed at synthetic-256,,,,largest relative error,,1,,,0.0.16,,adapters/jaxscape.py
-comparison,distance,JAXScape,free_energy,gpu,float64,CuDSSSolver,synthetic-256,65536,ok,,1.2,0.53;0.52;0.54;0.53;0.53,0.53,largest relative error,1e-09,1,,,0.0.16,False,adapters/jaxscape.py
+comparison,distance,JAXScape,resistance,gpu,float32,GeometricMultigridCGSolver,synthetic-256,65536,ok,,2.5,0.061;0.06;0.062;0.059;0.061,0.061,largest relative error,2.1e-06,1,,,0.0.18,False,adapters/jaxscape.py
+comparison,distance,JAXScape,resistance,gpu,float32,GeometricMultigridCGSolver,synthetic-1024,1048576,ok,,3.1,0.41;0.4;0.42;0.4;0.41,0.41,largest relative error,3.4e-06,1,,,0.0.18,False,adapters/jaxscape.py
+comparison,distance,JAXScape,resistance,gpu,float32,GeometricMultigridCGSolver,synthetic-4096,16777216,oom,jaxlib.XlaRuntimeError: RESOURCE_EXHAUSTED: Out of memory while trying to allocate 9.1GiB.,,,,largest relative error,,1,,,0.0.18,,adapters/jaxscape.py
+comparison,distance,JAXScape,resistance,gpu,float32,GeometricMultigridCGSolver,synthetic-8192,67108864,skipped,after oom at synthetic-4096,,,,largest relative error,,1,,,0.0.18,,adapters/jaxscape.py
+comparison,distance,JAXScape,resistance,cpu,float32,GeometricMultigridCGSolver,synthetic-256,65536,ok,,4.0,0.39,0.39,largest relative error,,1,,,0.0.18,False,adapters/jaxscape.py
+comparison,distance,JAXScape,resistance,cpu,float32,GeometricMultigridCGSolver,synthetic-1024,1048576,timeout,a call exceeded 3600 s,,,,largest relative error,,1,,,0.0.18,,adapters/jaxscape.py
+comparison,distance,JAXScape,resistance,cpu,float32,GeometricMultigridCGSolver,synthetic-4096,16777216,skipped,after timeout at synthetic-1024,,,,largest relative error,,1,,,0.0.18,,adapters/jaxscape.py
+comparison,distance,JAXScape,lcp,gpu,float32,,synthetic-256,65536,failed,ValueError: shapes do not match,,,,largest relative error,,1,,,0.0.18,,adapters/jaxscape.py
+comparison,distance,JAXScape,lcp,gpu,float32,,synthetic-1024,1048576,skipped,after failed at synthetic-256,,,,largest relative error,,1,,,0.0.18,,adapters/jaxscape.py
+comparison,distance,JAXScape,free_energy,gpu,float64,CuDSSSolver,synthetic-256,65536,ok,,1.2,0.53;0.52;0.54;0.53;0.53,0.53,largest relative error,1e-09,1,,,0.0.18,False,adapters/jaxscape.py
 comparison,distance,Circuitscape.jl,resistance,cpu,float64,cg+amg,synthetic-256,65536,ok,,20.0,0.9;0.9;0.9;0.9;0.9,0.9,largest relative error,4.2e-07,1,,,6.1.0,True,adapters/circuitscape.jl
 comparison,distance,Circuitscape.jl,resistance,cpu,float64,cg+amg,synthetic-1024,1048576,ok,,20.0,6.0;6.0;6.0;6.0;6.0,6.0,largest relative error,5.1e-07,1,,,6.1.0,True,adapters/circuitscape.jl
 comparison,distance,Circuitscape.jl,resistance,cpu,float64,cholmod,synthetic-256,65536,ok,,20.0,0.4;0.4;0.4;0.4;0.4,0.4,largest relative error,3e-13,1,,,6.1.0,True,adapters/circuitscape.jl
 comparison,distance,Circuitscape.jl,resistance,cpu,float64,cholmod,synthetic-1024,1048576,oom,OutOfMemoryError(),,,,largest relative error,,1,,,6.1.0,,adapters/circuitscape.jl
 comparison,distance,ConScape.jl,free_energy,cpu,float64,,synthetic-256,65536,ok,,20.0,2.5;2.5;2.5;2.5;2.5,2.5,largest relative error,2e-14,1,,,0.3.0,False,adapters/conscape.jl
-comparison,connectivity,JAXScape,resistance,gpu,float32,GridMultigridSolver,synthetic-256,65536,ok,,100.0,50.0,50.0,,,,,120000.0,0.0.16,False,adapters/jaxscape.py
-comparison,connectivity,JAXScape,resistance,gpu,float32,GridMultigridSolver,maryland,503150,ok,,400.0,200.0,200.0,,,,,410000.0,0.0.16,False,adapters/jaxscape.py
-comparison,connectivity,JAXScape,resistance,gpu,float32,GridMultigridSolver,synthetic-1024,1048576,timeout,a call exceeded 3600 s,,,,,,,,,0.0.16,,adapters/jaxscape.py
-comparison,connectivity,JAXScape,resistance,gpu,float32,GridMultigridSolver,synthetic-4096,16777216,skipped,after timeout at synthetic-1024,,,,,,,,,0.0.16,,adapters/jaxscape.py
-comparison,connectivity,JAXScape,lcp,cpu,float32,,synthetic-256,65536,ok,,6.0,3.0,3.0,,,,,90000.0,0.0.16,False,adapters/jaxscape.py
-comparison,connectivity,JAXScape,lcp,cpu,float32,,maryland,503150,ok,,24.0,12.0,12.0,,,,,300000.0,0.0.16,False,adapters/jaxscape.py
-comparison,connectivity,JAXScape,resistance,cpu,float32,GridMultigridSolver,synthetic-256,65536,oom,jax.errors.JaxRuntimeError: RESOURCE_EXHAUSTED: Out of memory while trying to allocate 12.18GiB.,,,,,,,,,0.0.16,,adapters/jaxscape.py
-comparison,connectivity,JAXScape,resistance,cpu,float32,GridMultigridSolver,maryland,503150,oom,MemoryError,,,,,,,,,0.0.16,,adapters/jaxscape.py
-comparison,connectivity,JAXScape,resistance,cpu,float32,GridMultigridSolver,synthetic-1024,1048576,skipped,after oom at synthetic-256,,,,,,,,,0.0.16,,adapters/jaxscape.py
-comparison,sensitivity,JAXScape,resistance,gpu,float32,GridMultigridSolver,synthetic-256,65536,ok,,120.0,60.0,60.0,,,,,,0.0.16,False,adapters/jaxscape.py
-comparison,sensitivity,JAXScape,resistance,gpu,float32,GridMultigridSolver,maryland,503150,ok,,480.0,240.0,240.0,,,,,,0.0.16,False,adapters/jaxscape.py
-comparison,sensitivity,JAXScape,"resistance, K = -R, normalized",gpu,float32,GridMultigridSolver,synthetic-256,65536,ok,,140.0,70.0,70.0,,,,,,0.0.16,False,adapters/jaxscape.py
-comparison,sensitivity,JAXScape,"resistance, K = -R, normalized",gpu,float32,GridMultigridSolver,maryland,503150,ok,,600.0,300.0,300.0,,,,,,0.0.16,False,adapters/jaxscape.py
-comparison,sensitivity,JAXScape,"resistance, K = -R, normalized",cpu,float32,GridMultigridSolver,synthetic-256,65536,timeout,a call exceeded 3600 s,,,,,,,,,0.0.16,,adapters/jaxscape.py
-comparison,sensitivity,JAXScape,lcp,gpu,float32,,synthetic-256,65536,failed,ValueError: shapes do not match,,,,,,,,,0.0.16,,adapters/jaxscape.py
-comparison,sensitivity,JAXScape,lcp,gpu,float32,,maryland,503150,failed,RuntimeError: a fake failure,,,,,,,,,0.0.16,,adapters/jaxscape.py
+comparison,connectivity,JAXScape,resistance,gpu,float32,GeometricMultigridCGSolver,synthetic-256,65536,ok,,100.0,50.0,50.0,,,,,120000.0,0.0.18,False,adapters/jaxscape.py
+comparison,connectivity,JAXScape,resistance,gpu,float32,GeometricMultigridCGSolver,maryland,503150,ok,,400.0,200.0,200.0,,,,,410000.0,0.0.18,False,adapters/jaxscape.py
+comparison,connectivity,JAXScape,resistance,gpu,float32,GeometricMultigridCGSolver,synthetic-1024,1048576,timeout,a call exceeded 3600 s,,,,,,,,,0.0.18,,adapters/jaxscape.py
+comparison,connectivity,JAXScape,resistance,gpu,float32,GeometricMultigridCGSolver,synthetic-4096,16777216,skipped,after timeout at synthetic-1024,,,,,,,,,0.0.18,,adapters/jaxscape.py
+comparison,connectivity,JAXScape,lcp,cpu,float32,,synthetic-256,65536,ok,,6.0,3.0,3.0,,,,,90000.0,0.0.18,False,adapters/jaxscape.py
+comparison,connectivity,JAXScape,lcp,cpu,float32,,maryland,503150,ok,,24.0,12.0,12.0,,,,,300000.0,0.0.18,False,adapters/jaxscape.py
+comparison,connectivity,JAXScape,resistance,cpu,float32,GeometricMultigridCGSolver,synthetic-256,65536,oom,jax.errors.JaxRuntimeError: RESOURCE_EXHAUSTED: Out of memory while trying to allocate 12.18GiB.,,,,,,,,,0.0.18,,adapters/jaxscape.py
+comparison,connectivity,JAXScape,resistance,cpu,float32,GeometricMultigridCGSolver,maryland,503150,oom,MemoryError,,,,,,,,,0.0.18,,adapters/jaxscape.py
+comparison,connectivity,JAXScape,resistance,cpu,float32,GeometricMultigridCGSolver,synthetic-1024,1048576,skipped,after oom at synthetic-256,,,,,,,,,0.0.18,,adapters/jaxscape.py
+comparison,sensitivity,JAXScape,resistance,gpu,float32,GeometricMultigridCGSolver,synthetic-256,65536,ok,,120.0,60.0,60.0,,,,,,0.0.18,False,adapters/jaxscape.py
+comparison,sensitivity,JAXScape,resistance,gpu,float32,GeometricMultigridCGSolver,maryland,503150,ok,,480.0,240.0,240.0,,,,,,0.0.18,False,adapters/jaxscape.py
+comparison,sensitivity,JAXScape,"resistance, K = -R, normalized",gpu,float32,GeometricMultigridCGSolver,synthetic-256,65536,ok,,140.0,70.0,70.0,,,,,,0.0.18,False,adapters/jaxscape.py
+comparison,sensitivity,JAXScape,"resistance, K = -R, normalized",gpu,float32,GeometricMultigridCGSolver,maryland,503150,ok,,600.0,300.0,300.0,,,,,,0.0.18,False,adapters/jaxscape.py
+comparison,sensitivity,JAXScape,"resistance, K = -R, normalized",cpu,float32,GeometricMultigridCGSolver,synthetic-256,65536,timeout,a call exceeded 3600 s,,,,,,,,,0.0.18,,adapters/jaxscape.py
+comparison,sensitivity,JAXScape,lcp,gpu,float32,,synthetic-256,65536,failed,ValueError: shapes do not match,,,,,,,,,0.0.18,,adapters/jaxscape.py
+comparison,sensitivity,JAXScape,lcp,gpu,float32,,maryland,503150,failed,RuntimeError: a fake failure,,,,,,,,,0.0.18,,adapters/jaxscape.py
 comparison,connectivity,ConScape.jl,free_energy,cpu,float64,,synthetic-256,65536,ok,,30.0,15.0,15.0,Spearman's ρ,0.9123,3,lcp,,0.3.0,False,adapters/conscape.jl
 comparison,sensitivity,EcoScape,lcp,gpu,float32,,synthetic-256,65536,ok,,6.1,4.2;4.1;4.3;4.2;4.2,4.2,Spearman's ρ,0.751,3,lcp,,0.2.5,True,adapters/ecoscape.py
 comparison,sensitivity,EcoScape,lcp,gpu,float32,,maryland,503150,ok,,31.0,30.2;30.5;30.1;30.4;30.3,30.3,Spearman's ρ,0.618,3,lcp,,0.2.5,True,adapters/ecoscape.py
@@ -44,19 +44,19 @@ comparison,sensitivity,Omniscape.jl,resistance,cpu,float64,cg+amg,synthetic-256,
 comparison,sensitivity,Omniscape.jl,resistance,cpu,float64,cg+amg,maryland,503150,ok,,74.0,37.0,37.0,Spearman's ρ,0.62,3,"resistance, K = -R, normalized",,0.6.4,False,adapters/omniscape.jl
 comparison,sensitivity,Omniscape.jl,resistance,cpu,float64,cholmod,synthetic-256,65536,ok,,16.0,8.0,8.0,Spearman's ρ,0.43,3,"resistance, K = -R, normalized",,0.6.4,False,adapters/omniscape.jl
 comparison,sensitivity,Omniscape.jl,resistance,cpu,float64,cholmod,maryland,503150,timeout,a call exceeded 3600 s,,,,Spearman's ρ,,3,"resistance, K = -R, normalized",,0.6.4,,adapters/omniscape.jl
-solver,distance,JAXScape,resistance,gpu,float32,GridMultigridSolver,synthetic-256,65536,ok,,3.0,0.03;0.031;0.029,0.03,largest relative error,2e-06,,,,0.0.16,False,adapters/jaxscape.py
-solver,distance,JAXScape,resistance,gpu,float32,GridMultigridSolver,synthetic-1024,1048576,ok,,3.0,0.35;0.36;0.34,0.35,largest relative error,3e-06,,,,0.0.16,False,adapters/jaxscape.py
-solver,distance,JAXScape,resistance,gpu,float64,CuDSSSolver,synthetic-256,65536,ok,,3.0,0.3;0.31;0.29,0.3,largest relative error,1e-12,,,,0.0.16,False,adapters/jaxscape.py
-solver,distance,JAXScape,resistance,gpu,float64,CuDSSSolver,synthetic-1024,1048576,timeout,a call exceeded 3600 s,,,,largest relative error,,,,,0.0.16,,adapters/jaxscape.py
-solver,distance,JAXScape,resistance,gpu,float32,AMJaxCGSolver,synthetic-256,65536,failed,equinox.EquinoxRuntimeError: A linear solver returned non-finite (NaN or inf) output.,,,,largest relative error,,,,,0.0.16,,adapters/jaxscape.py
-solver,distance,JAXScape,resistance,gpu,float32,AMJaxCGSolver,synthetic-1024,1048576,skipped,after failed at synthetic-256,,,,largest relative error,,,,,0.0.16,,adapters/jaxscape.py
-solver,distance,JAXScape,resistance,gpu,float32,dense,synthetic-256,65536,oom,jax.errors.JaxRuntimeError: RESOURCE_EXHAUSTED: Out of memory while trying to allocate 16.02GiB,,,,largest relative error,,,,,0.0.16,,adapters/jaxscape.py
-solver,distance,JAXScape,resistance,gpu,float32,dense,synthetic-1024,1048576,skipped,after oom at synthetic-256,,,,largest relative error,,,,,0.0.16,,adapters/jaxscape.py
-solver,distance,JAXScape,free_energy,gpu,float64,CuDSSSolver,synthetic-256,65536,ok,,3.0,0.35;0.36;0.34,0.35,largest relative error,4.7e-14,,,,0.0.16,False,adapters/jaxscape.py
-solver,connectivity,JAXScape,resistance,gpu,float32,GridMultigridSolver,synthetic-256,65536,ok,,3.0,91.0;90.0;92.0,91.0,relative L2 error,0.00031,,,120000.0,0.0.16,False,adapters/jaxscape.py
-solver,connectivity,JAXScape,resistance,gpu,float32,"SpielmanApproximation(epsilon=0.15), GridMultigridSolver(rtol=3e-4)",synthetic-256,65536,ok,,3.0,2.0;2.1;1.9,2.0,relative L2 error,0.042,,,120000.0,0.0.16,False,adapters/jaxscape.py
-solver,sensitivity,JAXScape,resistance,gpu,float64,PyAMGSolver,synthetic-256,65536,timeout,a call exceeded 3600 s,,,,relative L2 error,,,,,0.0.16,,adapters/jaxscape.py
-solver,distance,JAXScape,resistance,gpu,float32,GridMultigridSolver,synthetic-4096,16777216,ok,,9.0,5.1;5.0;5.2;5.0;5.1,5.1,largest relative error,4e-06,,,,0.0.16,False,adapters/jaxscape.py
-solver,sensitivity,JAXScape,resistance,gpu,float32,GridMultigridSolver,synthetic-256,65536,ok,,120.0,95.0;96.0;94.0;95.0;95.0,95.0,relative L2 error,,,,,0.0.16,False,adapters/jaxscape.py
-solver,connectivity,JAXScape,resistance,gpu,float64,"SpielmanApproximation(epsilon=0.15), CuDSSSolver",synthetic-256,65536,ok,,9.0,1.5;1.4;1.6;1.5;1.5,1.5,relative L2 error,0.04,,,120000.0,0.0.16,False,adapters/jaxscape.py
-solver,connectivity,JAXScape,resistance,gpu,float64,"SpielmanApproximation(epsilon=0.15), CuDSSSolver",synthetic-1024,1048576,ok,,20.0,12.0;12.1;11.9;12.0;12.0,12.0,,,,,460000.0,0.0.16,False,adapters/jaxscape.py
+solver,distance,JAXScape,resistance,gpu,float32,GeometricMultigridCGSolver,synthetic-256,65536,ok,,3.0,0.03;0.031;0.029,0.03,largest relative error,2e-06,,,,0.0.18,False,adapters/jaxscape.py
+solver,distance,JAXScape,resistance,gpu,float32,GeometricMultigridCGSolver,synthetic-1024,1048576,ok,,3.0,0.35;0.36;0.34,0.35,largest relative error,3e-06,,,,0.0.18,False,adapters/jaxscape.py
+solver,distance,JAXScape,resistance,gpu,float64,CuDSSSolver,synthetic-256,65536,ok,,3.0,0.3;0.31;0.29,0.3,largest relative error,1e-12,,,,0.0.18,False,adapters/jaxscape.py
+solver,distance,JAXScape,resistance,gpu,float64,CuDSSSolver,synthetic-1024,1048576,timeout,a call exceeded 3600 s,,,,largest relative error,,,,,0.0.18,,adapters/jaxscape.py
+solver,distance,JAXScape,resistance,gpu,float32,AMJaxCGSolver,synthetic-256,65536,failed,equinox.EquinoxRuntimeError: A linear solver returned non-finite (NaN or inf) output.,,,,largest relative error,,,,,0.0.18,,adapters/jaxscape.py
+solver,distance,JAXScape,resistance,gpu,float32,AMJaxCGSolver,synthetic-1024,1048576,skipped,after failed at synthetic-256,,,,largest relative error,,,,,0.0.18,,adapters/jaxscape.py
+solver,distance,JAXScape,resistance,gpu,float32,dense,synthetic-256,65536,oom,jax.errors.JaxRuntimeError: RESOURCE_EXHAUSTED: Out of memory while trying to allocate 16.02GiB,,,,largest relative error,,,,,0.0.18,,adapters/jaxscape.py
+solver,distance,JAXScape,resistance,gpu,float32,dense,synthetic-1024,1048576,skipped,after oom at synthetic-256,,,,largest relative error,,,,,0.0.18,,adapters/jaxscape.py
+solver,distance,JAXScape,free_energy,gpu,float64,CuDSSSolver,synthetic-256,65536,ok,,3.0,0.35;0.36;0.34,0.35,largest relative error,4.7e-14,,,,0.0.18,False,adapters/jaxscape.py
+solver,connectivity,JAXScape,resistance,gpu,float32,GeometricMultigridCGSolver,synthetic-256,65536,ok,,3.0,91.0;90.0;92.0,91.0,relative L2 error,0.00031,,,120000.0,0.0.18,False,adapters/jaxscape.py
+solver,connectivity,JAXScape,resistance,gpu,float32,"SpielmanApproximation(epsilon=0.15), GeometricMultigridCGSolver(rtol=3e-4)",synthetic-256,65536,ok,,3.0,2.0;2.1;1.9,2.0,relative L2 error,0.042,,,120000.0,0.0.18,False,adapters/jaxscape.py
+solver,sensitivity,JAXScape,resistance,gpu,float64,PyAMGCGSolver,synthetic-256,65536,timeout,a call exceeded 3600 s,,,,relative L2 error,,,,,0.0.18,,adapters/jaxscape.py
+solver,distance,JAXScape,resistance,gpu,float32,GeometricMultigridCGSolver,synthetic-4096,16777216,ok,,9.0,5.1;5.0;5.2;5.0;5.1,5.1,largest relative error,4e-06,,,,0.0.18,False,adapters/jaxscape.py
+solver,sensitivity,JAXScape,resistance,gpu,float32,GeometricMultigridCGSolver,synthetic-256,65536,ok,,120.0,95.0;96.0;94.0;95.0;95.0,95.0,relative L2 error,,,,,0.0.18,False,adapters/jaxscape.py
+solver,connectivity,JAXScape,resistance,gpu,float64,"SpielmanApproximation(epsilon=0.15), CuDSSSolver",synthetic-256,65536,ok,,9.0,1.5;1.4;1.6;1.5;1.5,1.5,relative L2 error,0.04,,,120000.0,0.0.18,False,adapters/jaxscape.py
+solver,connectivity,JAXScape,resistance,gpu,float64,"SpielmanApproximation(epsilon=0.15), CuDSSSolver",synthetic-1024,1048576,ok,,20.0,12.0;12.1;11.9;12.0;12.0,12.0,,,,,460000.0,0.0.18,False,adapters/jaxscape.py

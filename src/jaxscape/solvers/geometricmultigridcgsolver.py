@@ -28,8 +28,8 @@ _OMEGA = 2 / 3
 
 
 @final
-class GridMultigridCGState(eqx.Module):
-    """State of a `GridMultigridCGSolver`: the stencil of one matrix on its grid.
+class GeometricMultigridCGState(eqx.Module):
+    """State of a `GeometricMultigridCGSolver`: the stencil of one matrix on its grid.
 
     **Attributes:**
 
@@ -79,7 +79,7 @@ class _MultilevelSolver(eqx.Module):
 
 
 @final
-class GridMultigridCGSolver(AbstractReusableStateSolver):
+class GeometricMultigridCGSolver(AbstractReusableStateSolver):
     """Conjugate gradients preconditioned by geometric multigrid, for grid graphs.
 
     Solves the symmetric positive definite matrices whose sparsity pattern is a
@@ -146,7 +146,7 @@ class GridMultigridCGSolver(AbstractReusableStateSolver):
 
     def init(
         self, operator: AbstractLinearOperator, options: dict[str, Any]
-    ) -> GridMultigridCGState:
+    ) -> GeometricMultigridCGState:
         del options
         matrix = _matrix(operator)
         slots, shape, offsets = _grid(matrix)
@@ -156,8 +156,8 @@ class GridMultigridCGSolver(AbstractReusableStateSolver):
         self,
         operator: AbstractLinearOperator,
         options: dict[str, Any],
-        state: GridMultigridCGState,
-    ) -> GridMultigridCGState:
+        state: GeometricMultigridCGState,
+    ) -> GeometricMultigridCGState:
         """Return the state of the values of `operator`.
 
         **Arguments:**
@@ -177,7 +177,7 @@ class GridMultigridCGSolver(AbstractReusableStateSolver):
         return _stencil(state.slots, (shape[0], shape[1]), state.offsets, data)
 
     def compute(
-        self, state: GridMultigridCGState, vector: Array, options: dict[str, Any]
+        self, state: GeometricMultigridCGState, vector: Array, options: dict[str, Any]
     ) -> tuple[Array, RESULTS, dict[str, Any]]:
         del options
         solution, solved = _solve(state, vector, self.rtol, self.max_steps)
@@ -190,10 +190,10 @@ class GridMultigridCGSolver(AbstractReusableStateSolver):
         )
         return solution, RESULTS.where(solved, RESULTS.successful, failed), {}
 
-    def transpose(self, state: GridMultigridCGState, options: dict[str, Any]):
+    def transpose(self, state: GeometricMultigridCGState, options: dict[str, Any]):
         return state, options
 
-    def conj(self, state: GridMultigridCGState, options: dict[str, Any]):
+    def conj(self, state: GeometricMultigridCGState, options: dict[str, Any]):
         return state, options
 
     def assume_full_rank(self):
@@ -203,7 +203,7 @@ class GridMultigridCGSolver(AbstractReusableStateSolver):
 def _matrix(operator: AbstractLinearOperator) -> BCOO:
     matrix = operator.as_matrix()
     if not isinstance(matrix, BCOO):
-        raise TypeError("GridMultigridCGSolver requires a BCOO-backed operator.")
+        raise TypeError("GeometricMultigridCGSolver requires a BCOO-backed operator.")
     return lax.stop_gradient(matrix)
 
 
@@ -234,9 +234,10 @@ def _grid(
         indices = np.asarray(matrix.indices, dtype=np.int64)
     except jax_errors.TracerArrayConversionError:
         raise ValueError(
-            "GridMultigridCGSolver reads its grid from concrete sparse indices, so it "
-            "initializes outside `jax.jit`, except for the state of a `GridGraph`, "
-            "which `distance.init(graph)` builds from its shape and contiguity. "
+            "GeometricMultigridCGSolver reads its grid from concrete sparse indices, "
+            "so it initializes outside `jax.jit`, except for the state of a "
+            "`GridGraph`, which `distance.init(graph)` builds from its shape and "
+            "contiguity. "
             "Create the state with `distance.init(graph)` (or "
             "`solver.init(operator, {})`) before compiling, and pass it as `state`."
         ) from None
@@ -250,9 +251,9 @@ def _grid(
     )
     if n % width or np.any(np.abs(steps) > 1):
         raise ValueError(
-            "GridMultigridCGSolver solves the matrices of grid graphs, whose stored "
-            "entries couple each vertex `i * width + j` to its neighbours on a grid "
-            "of `width` columns, such as those of a `GridGraph`. This matrix has "
+            "GeometricMultigridCGSolver solves the matrices of grid graphs, whose "
+            "stored entries couple each vertex `i * width + j` to its neighbours on a "
+            "grid of `width` columns, such as those of a `GridGraph`. This matrix has "
             "other entries. For other graphs, pass another solver, such as "
             "`CholmodSolver` or `CuDSSSolver`, or `solver=None` for the dense solve "
             "of a small graph, as in `ResistanceDistance(solver=None)`."
@@ -269,15 +270,15 @@ def _grid(
     return jnp.asarray(slots, jnp.int32), (n // width, width), offsets
 
 
-def _checked_data(matrix: BCOO, state: GridMultigridCGState) -> Array:
+def _checked_data(matrix: BCOO, state: GeometricMultigridCGState) -> Array:
     """Return the stored values of `matrix` after checking its sparse indices.
 
     It raises, at trace time for another number of stored entries and at run
     time for other indices.
     """
     mismatch = (
-        "GridMultigridCGSolver: the operator's sparse indices differ from those the "
-        "state was initialized for. A state belongs to one grid; initialize a new "
+        "GeometricMultigridCGSolver: the operator's sparse indices differ from those "
+        "the state was initialized for. A state belongs to one grid; initialize a new "
         "one, e.g. with `distance.init(graph)`, for this graph geometry."
     )
     if matrix.indices.shape != (state.slots.shape[0], 2):
@@ -301,7 +302,7 @@ def _initial_state(
     shape: tuple[int, int],
     offsets: tuple[tuple[int, int], ...],
     data: Array,
-) -> GridMultigridCGState:
+) -> GeometricMultigridCGState:
     """`_stencil` in one compiled program."""
     return _stencil(slots, shape, offsets, data)
 
@@ -311,12 +312,12 @@ def _stencil(
     shape: tuple[int, int],
     offsets: tuple[tuple[int, int], ...],
     data: Array,
-) -> GridMultigridCGState:
+) -> GeometricMultigridCGState:
     """The state of the matrix that stores `data` at `slots`."""
     height, width = shape
     stencil = jnp.zeros(len(offsets) * height * width, data.dtype)
     stencil = stencil.at[slots].add(data, mode="drop")
-    return GridMultigridCGState(
+    return GeometricMultigridCGState(
         slots, tuple(stencil.reshape(len(offsets), height, width)), offsets
     )
 
@@ -324,7 +325,7 @@ def _stencil(
 # Each solve traces it, and Lineax traces a solve up to three times: a jitted
 # function is traced once for its shapes.
 @eqx.filter_jit
-def _multilevel_solver(state: GridMultigridCGState) -> _MultilevelSolver:
+def _multilevel_solver(state: GeometricMultigridCGState) -> _MultilevelSolver:
     """The multigrid hierarchy of the matrix of `state`."""
     A = state.stencil
     height, width = A[0].shape
@@ -612,7 +613,7 @@ def _cg(
 
 
 def _solve(
-    state: GridMultigridCGState, vector: Array, rtol: float, max_steps: int
+    state: GeometricMultigridCGState, vector: Array, rtol: float, max_steps: int
 ) -> tuple[Array, Array]:
     """The solution of one right-hand side, and whether it converged. Under
     `jax.vmap`, the right-hand sides of a batch solve together."""

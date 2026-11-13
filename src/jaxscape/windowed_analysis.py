@@ -216,7 +216,7 @@ class WindowedAnalysis(eqx.Module):
         settings = dict(
             quality_raster=quality,
             permeability_raster=permeability,
-            distance=ResistanceDistance(),  # GridMultigridCGSolver
+            distance=ResistanceDistance(),  # GeometricMultigridCGSolver
             dependency_range=20,
             batch_size=100,
             coarsening_factor=0.25,  # blocks of 5 x 5 pixels

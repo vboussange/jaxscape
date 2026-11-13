@@ -13,24 +13,24 @@ runtime, the memory and the accuracy of the distances.
 
 ## Choosing a solver
 
-The default solver of `ResistanceDistance` is `GridMultigridCGSolver()`:
+The default solver of `ResistanceDistance` is `GeometricMultigridCGSolver()`:
 conjugate gradients (CG) preconditioned by geometric multigrid, in JAX on CPU
 and GPU, for the matrices of grid graphs such as those of `GridGraph`.
 `FreeEnergyDistance` uses dense linear algebra by default, `solver=None`.
 
 | Distance and query | GPU | CPU |
 |---|---|---|
-| Resistance distances among a few vertices: `nodes_to_nodes_distance`, few sources and targets, gradient-based fitting of conductances to observed distances, and `SpielmanApproximation` | `GridMultigridCGSolver`, the default | `GridMultigridCGSolver`, the default |
-| Resistance distances from one or all sources to every vertex: `all_pairs_distance`, and windowed analyses with `ExactResistance` | `solver=None` for small graphs and tiles; `GridMultigridCGSolver` for larger ones | `solver=None` for small graphs and tiles; `CholmodSolver` for larger ones |
+| Resistance distances among a few vertices: `nodes_to_nodes_distance`, few sources and targets, gradient-based fitting of conductances to observed distances, and `SpielmanApproximation` | `GeometricMultigridCGSolver`, the default | `GeometricMultigridCGSolver`, the default |
+| Resistance distances from one or all sources to every vertex: `all_pairs_distance`, and windowed analyses with `ExactResistance` | `solver=None` for small graphs and tiles; `GeometricMultigridCGSolver` for larger ones | `solver=None` for small graphs and tiles; `CholmodSolver` for larger ones |
 | Free-energy distances | `solver=None`, the default, for small graphs; `CuDSSSolver` for larger ones | `solver=None` for small graphs; `CholmodSolver` for larger ones |
 | Resistance or free-energy distances on graphs other than grid graphs | `CuDSSSolver` | `CholmodSolver` |
 
 In float64, on GPUs of low float64 throughput, `CuDSSSolver` can compute
-resistance distances faster than `GridMultigridCGSolver`.
+resistance distances faster than `GeometricMultigridCGSolver`.
 
 Memory restricts the choice first. Dense linear algebra stores matrices of
 $n^2$ entries for a graph of $n$ vertices, and so fits small graphs only.
-`GridMultigridCGSolver` stores the matrix on its grid and a few arrays of $n$
+`GeometricMultigridCGSolver` stores the matrix on its grid and a few arrays of $n$
 entries per right-hand side. Sparse Cholesky solvers store a factorization of
 the matrix; when it does not fit in memory, use `AMJaxCGSolver` on a GPU and
 `PyAMGCGSolver` on a CPU.
@@ -75,7 +75,7 @@ solvers and their options.
 
 ## `JAXScape` solvers
 
-`jaxscape.solvers` provides five solvers. `GridMultigridCGSolver` needs no
+`jaxscape.solvers` provides five solvers. `GeometricMultigridCGSolver` needs no
 optional dependency. Each of the four others needs one, installed with an
 extra of `jaxscape`:
 
@@ -88,7 +88,7 @@ uv add jaxscape --extra cudss      # CuDSSSolver (NVIDIA GPU, CUDA 13)
 
 | Solver | Method | Execution | Graphs |
 |---|---|---|---|
-| `GridMultigridCGSolver` | Conjugate gradients preconditioned by geometric multigrid | JAX, on CPU or GPU | Grid graphs |
+| `GeometricMultigridCGSolver` | Conjugate gradients preconditioned by geometric multigrid | JAX, on CPU or GPU | Grid graphs |
 | `AMJaxCGSolver` | Conjugate gradients preconditioned by algebraic multigrid | Preconditioner built on the CPU; solves in JAX, on CPU or GPU | Any connected graph |
 | `PyAMGCGSolver` | Conjugate gradients preconditioned by algebraic multigrid | SciPy and PyAMG on the CPU, through a host callback | Any connected graph |
 | `CholmodSolver` | Sparse Cholesky factorization | CHOLMOD on the CPU, through a host callback | Any connected graph |
@@ -99,7 +99,7 @@ on a GPU then travel to the CPU and back.
 
 !!! info "Testing"
 
-    The continuous integration tests `GridMultigridCGSolver`, `CholmodSolver`,
+    The continuous integration tests `GeometricMultigridCGSolver`, `CholmodSolver`,
     `PyAMGCGSolver` and `AMJaxCGSolver`. Its machines have no NVIDIA GPU: they
     test the logic of `AbstractSparseDirectSolver` with a dense Cholesky
     factorization in place of cuDSS. The `CuDSSSolver` tests are marked `gpu`
@@ -107,7 +107,7 @@ on a GPU then travel to the CPU and back.
 
 ### Geometric multigrid
 
-`GridMultigridCGSolver` solves the matrices of grid graphs, such as the
+`GeometricMultigridCGSolver` solves the matrices of grid graphs, such as the
 grounded Laplacian of a `GridGraph` with rook or queen contiguity, by conjugate
 gradients preconditioned by geometric multigrid. It is the default solver of
 `ResistanceDistance`. It runs in JAX on CPU and GPU, in float32 and float64,
@@ -137,11 +137,11 @@ solved with the hierarchy of its own conductances.
 
 ```python
 from jaxscape import ResistanceDistance, SpielmanApproximation
-from jaxscape.solvers import GridMultigridCGSolver
+from jaxscape.solvers import GeometricMultigridCGSolver
 
-exact = ResistanceDistance()  # GridMultigridCGSolver(rtol=1e-5)
+exact = ResistanceDistance()  # GeometricMultigridCGSolver(rtol=1e-5)
 approximate = ResistanceDistance(
-    solver=GridMultigridCGSolver(rtol=3e-4),
+    solver=GeometricMultigridCGSolver(rtol=3e-4),
     method=SpielmanApproximation(epsilon=0.15),
 )
 ```
@@ -154,14 +154,14 @@ adds iterations without improving the solution. The resistances to pixels
 behind barriers converge last: a large `rtol` first degrades the gradient of
 the distances with respect to the permeability of these pixels.
 
-In float32 on grid graphs, `GridMultigridCGSolver` computed the most accurate
+In float32 on grid graphs, `GeometricMultigridCGSolver` computed the most accurate
 resistance distances of the solvers measured in issue #35. Sparse Cholesky
 solvers in float32 compute inaccurate solutions around the ground vertex of
 large tiles (see the note on grounding of
 [`ResistanceDistance`][jaxscape.resistance_distance.ResistanceDistance]): use
 them in float64.
 
-::: jaxscape.solvers.gridmultigridcgsolver.GridMultigridCGSolver
+::: jaxscape.solvers.geometricmultigridcgsolver.GeometricMultigridCGSolver
     options:
       members: false
 
@@ -235,7 +235,7 @@ hierarchy, can cost far more than a solve. `ResistanceDistance` and
 
 - `distance.init(graph)` builds the state for the system matrix of `graph`.
   Some solvers read concrete sparse indices or run code on the CPU, so call it
-  outside `jax.jit`. With `GridMultigridCGSolver`, `distance.init` of a
+  outside `jax.jit`. With `GeometricMultigridCGSolver`, `distance.init` of a
   `GridGraph` also runs inside `jax.jit`: it reads the grid from the shape and
   contiguity of the graph.
 - `distance.reinit(graph, state)` returns the state for another graph of the
@@ -265,7 +265,7 @@ sites = jnp.array([0, 45, 99])
 true_log_conductance = jax.random.normal(jax.random.key(0), (10, 10))
 target = ResistanceDistance()(landscape(true_log_conductance), nodes=sites)
 
-distance = ResistanceDistance()  # GridMultigridCGSolver
+distance = ResistanceDistance()  # GeometricMultigridCGSolver
 log_conductance = jnp.zeros((10, 10))
 state = distance.init(landscape(log_conductance))
 
@@ -293,7 +293,7 @@ What the state of each solver keeps from one graph to the next:
 
 | Solver | Kept by the state |
 |---|---|
-| `GridMultigridCGSolver` | The grid; each solve builds the multigrid hierarchy of the new values |
+| `GeometricMultigridCGSolver` | The grid; each solve builds the multigrid hierarchy of the new values |
 | `AMJaxCGSolver` | The algebraic multigrid hierarchy |
 | `CuDSSSolver` | The symbolic analysis, and the factorization while the values stay the same |
 | `CholmodSolver` | Its last factorization, while the values stay the same |

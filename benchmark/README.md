@@ -7,16 +7,17 @@ sensitivity analysis. The last two are moving-window analyses. Its results make
 the [Benchmark page](https://vboussange.github.io/jaxscape/benchmark/) of the
 docs.
 
-This directory is a uv project of its own, outside the root project, pinned to a
-JAXScape release from PyPI (`jaxscape==0.0.16` in `pyproject.toml`). Run every
-command from this directory:
+This directory is a uv project of its own, outside the root project, pinned to
+the commit of a JAXScape release (`jaxscape @ git+...@<commit>` in
+`pyproject.toml`, the commit of 0.0.18). Run every command from this
+directory:
 
 ```bash
 uv sync
 ./install.sh                                  # the pinned toolchains and the Maryland raster
 uv run python run.py "$(mktemp -d)" --smoke   # every cell once, on 32 x 32 rasters, small windows
-nohup uv run python run.py results/v0.0.16 > run.log 2>&1 &   # the full run
-uv run python report.py results/v0.0.16      # the figures and the page
+nohup uv run python run.py results/v0.0.18 > run.log 2>&1 &   # the full run
+uv run python report.py results/v0.0.18      # the figures and the page
 uv run pytest                                 # tests of the runner and the report
 ```
 
@@ -135,8 +136,8 @@ of the view:
 
 ```toml
 [solver_view.solvers]
-GridMultigridSolver = {}
-"GridMultigridSolver(rtol=1e-3)" = { dtypes = ["float32"] }
+GeometricMultigridCGSolver = {}
+"GeometricMultigridCGSolver(rtol=1e-3)" = { dtypes = ["float32"] }
 ```
 
 ## Publish a run
@@ -148,5 +149,5 @@ link at it, and commit both: the link, and the run's `records.csv`,
 references and `run.log` stay out of the repository.
 
 ```bash
-uv run python report.py results/v0.0.16 --publish
+uv run python report.py results/v0.0.18 --publish
 ```
