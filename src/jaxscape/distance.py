@@ -363,9 +363,9 @@ class AbstractSolverDistance(AbstractDistance):
         """Build the solver state for `graph`.
 
         Some solvers read concrete sparse indices or build a preconditioner on
-        the host, such as `GridMultigridCGSolver` and `AMJaxCGSolver`, so call it
+        the host, such as `GeometricMultigridCGSolver` and `AMJaxCGSolver`, so call it
         outside `jax.jit`. `ResistanceDistance` also builds the
-        `GridMultigridCGSolver` state of a `GridGraph` inside `jax.jit`.
+        `GeometricMultigridCGSolver` state of a `GridGraph` inside `jax.jit`.
 
         **Arguments:**
 
@@ -402,8 +402,11 @@ def _has_tracers(tree: Any) -> bool:
 _CONTIGUITIES = {4: ROOK_CONTIGUITY, 8: QUEEN_CONTIGUITY}
 
 
-def _grid_multigrid_state(distance: AbstractSolverDistance, graph: GridGraph) -> Any:
-    """The `GridMultigridCGSolver` state of `distance` for `graph`, also in a trace.
+def _geometric_multigrid_state(
+    distance: AbstractSolverDistance, graph: GridGraph
+) -> Any:
+    """The `GeometricMultigridCGSolver` state of `distance` for `graph`, also in a
+    trace.
 
     The solver reads the grid of the state from concrete sparse indices, outside
     the trace, with the exact distance (see `AbstractDistance.exact`), whose

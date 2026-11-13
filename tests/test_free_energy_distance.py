@@ -472,13 +472,13 @@ def test_removed_rsp_distance_import_names_replacement():
 
 
 @pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
-def test_grid_multigrid_solver_matches_dense_solves(dtype):
+def test_geometric_multigrid_cg_solver_matches_dense_solves(dtype):
     # The free-energy operator of a grid graph has the grid's stencil, which
-    # GridMultigridCGSolver solves. Its state once failed to build: the state of
+    # GeometricMultigridCGSolver solves. Its state once failed to build: the state of
     # ResistanceDistance's default builds under `jax.ensure_compile_time_eval`,
     # where every `eqx.error_if` raises, and the free-energy operator checks its
     # conductances with them.
-    from jaxscape.solvers import GridMultigridCGSolver
+    from jaxscape.solvers import GeometricMultigridCGSolver
 
     rng = np.random.default_rng(0)
     grid = GridGraph(
@@ -488,7 +488,7 @@ def test_grid_multigrid_solver_matches_dense_solves(dtype):
     sources = jnp.array([0, 50])
 
     expected = FreeEnergyDistance(theta=0.3)(grid, sources=sources)
-    multigrid = FreeEnergyDistance(theta=0.3, solver=GridMultigridCGSolver())
+    multigrid = FreeEnergyDistance(theta=0.3, solver=GeometricMultigridCGSolver())
     actual = multigrid(grid, sources=sources)
 
     rtol = 1e-5 if dtype == jnp.float32 else 1e-10

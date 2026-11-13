@@ -58,9 +58,9 @@ def test_imports_and_defaults_load_no_cuda_library():
 import sys
 import jaxscape
 from jaxscape import ResistanceDistance
-from jaxscape.solvers import CuDSSSolver, GridMultigridCGSolver
+from jaxscape.solvers import CuDSSSolver, GeometricMultigridCGSolver
 from jaxscape.solvers.cudsssolver import CUDSS_AVAILABLE
-assert isinstance(ResistanceDistance().solver, GridMultigridCGSolver)
+assert isinstance(ResistanceDistance().solver, GeometricMultigridCGSolver)
 assert not any(name.startswith("spineax") for name in sys.modules)
 print(CUDSS_AVAILABLE)
 """

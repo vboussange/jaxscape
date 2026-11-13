@@ -1,4 +1,4 @@
-"""`GridMultigridCGSolver`, the default solver of `ResistanceDistance`, against
+"""`GeometricMultigridCGSolver`, the default solver of `ResistanceDistance`, against
 direct solves, on the CPU."""
 
 import equinox as eqx
@@ -13,9 +13,9 @@ from jaxscape import Graph, GridGraph, ResistanceDistance
 from jaxscape.graph import QUEEN_CONTIGUITY, ROOK_CONTIGUITY
 from jaxscape.solvers import (
     BCOOLinearOperator,
-    GridMultigridCGSolver,
-    gridmultigridcgsolver,
-    GridMultigridCGState,
+    GeometricMultigridCGSolver,
+    geometricmultigridcgsolver,
+    GeometricMultigridCGState,
 )
 from jaxscape.solvers.operator import _batched_linear_solve, _linear_solve
 
@@ -63,7 +63,7 @@ def sparse_solve(matrix: BCOO, b) -> np.ndarray:
 def test_solves_match_direct_solves(shape, neighbors):
     # Two coarse grids, and one for the grid of two rows.
     matrix = system_matrix(landscape(shape), neighbors)
-    solver = GridMultigridCGSolver(rtol=1e-12, max_steps=200)
+    solver = GeometricMultigridCGSolver(rtol=1e-12, max_steps=200)
     state = solver.init(BCOOLinearOperator(matrix), {})
     rng = np.random.default_rng(1)
     b = jnp.asarray(rng.standard_normal((matrix.shape[0], 3)))
@@ -86,9 +86,9 @@ def grids_one_after_another(state):
     As, Ps = [A], []
     while A[0].size > 1024:
         coarse = ((A[0].shape[0] + 1) // 2, (A[0].shape[1] + 1) // 2)
-        P = gridmultigridcgsolver._interpolation(offsets, A)
-        A = gridmultigridcgsolver._galerkin(offsets, A, P, coarse)
-        offsets = gridmultigridcgsolver._QUEEN
+        P = geometricmultigridcgsolver._interpolation(offsets, A)
+        A = geometricmultigridcgsolver._galerkin(offsets, A, P, coarse)
+        offsets = geometricmultigridcgsolver._QUEEN
         As.append(A)
         Ps.append(P)
     return As, Ps
@@ -100,9 +100,9 @@ def test_hierarchies_of_four_grids_match_grids_built_one_after_another():
     # arrays of the shape of the first.
     matrix = system_matrix(landscape((129, 131)))
     # Measured: 41 iterations.
-    solver = GridMultigridCGSolver(rtol=1e-12, max_steps=60)
+    solver = GeometricMultigridCGSolver(rtol=1e-12, max_steps=60)
     state = solver.init(BCOOLinearOperator(matrix), {})
-    ml = gridmultigridcgsolver._multilevel_solver(state)
+    ml = geometricmultigridcgsolver._multilevel_solver(state)
 
     shapes = [level.A[0].shape for level in ml.levels]
     assert shapes == [(129, 131), (65, 66), (33, 33), (17, 17)]
@@ -128,7 +128,7 @@ def test_float32_solves_converge_in_few_iterations():
     # Float32 solves converge to `rtol` in at most 20 iterations, or raise, and
     # their error against float64 stays small. Measured: 16 to 18 iterations.
     matrix = system_matrix(landscape((101, 120)))
-    solver = GridMultigridCGSolver(rtol=1e-5, max_steps=20)
+    solver = GeometricMultigridCGSolver(rtol=1e-5, max_steps=20)
     matrix32 = BCOO(
         (matrix.data.astype(jnp.float32), matrix.indices), shape=matrix.shape
     )
@@ -152,7 +152,7 @@ def test_float32_solves_keep_their_precision_for_tiny_right_hand_sides():
     b = rng.choice([-1, 1], (420, 3)) * rng.uniform(0.5, 1, (420, 3))
     expected = sparse_solve(matrix, b)
     matrix = BCOO((matrix.data.astype(jnp.float32), matrix.indices), shape=matrix.shape)
-    solver = GridMultigridCGSolver(rtol=1e-6)
+    solver = GeometricMultigridCGSolver(rtol=1e-6)
     state = solver.init(BCOOLinearOperator(matrix), {})
 
     def solve(b):
@@ -166,7 +166,7 @@ def test_float32_solves_keep_their_precision_for_tiny_right_hand_sides():
 
 
 def test_right_hand_sides_with_their_own_matrices_solve_one_by_one():
-    solver = GridMultigridCGSolver(rtol=1e-12, max_steps=200)
+    solver = GeometricMultigridCGSolver(rtol=1e-12, max_steps=200)
     matrices = [system_matrix(landscape((9, 10), seed)) for seed in (0, 1)]
     states = [solver.init(BCOOLinearOperator(m), {}) for m in matrices]
     state = jax.tree.map(lambda *leaves: jnp.stack(leaves), *states)
@@ -186,7 +186,7 @@ def test_right_hand_sides_with_their_own_matrices_solve_one_by_one():
 def test_unconverged_solves_raise():
     # Grids of up to 1024 pixels are solved exactly, in one step.
     matrix = system_matrix(landscape((64, 65)))
-    solver = GridMultigridCGSolver(rtol=1e-12, max_steps=1)
+    solver = GeometricMultigridCGSolver(rtol=1e-12, max_steps=1)
     state = solver.init(BCOOLinearOperator(matrix), {})
     b = jnp.ones(matrix.shape[0])
     with pytest.raises(Exception, match="maximum number of solver steps"):
@@ -196,17 +196,17 @@ def test_unconverged_solves_raise():
 def test_the_state_of_another_graph_initializes_outside_jit():
     # That of a `GridGraph` builds from its shape and contiguity, also inside
     # `jax.jit`.
-    distance = ResistanceDistance(solver=GridMultigridCGSolver())
+    distance = ResistanceDistance(solver=GeometricMultigridCGSolver())
     grid = GridGraph(landscape((6, 7)), fun=avg)
     graph = Graph(grid.get_adjacency_matrix())
     with pytest.raises(ValueError, match="outside `jax.jit`"):
         eqx.filter_jit(distance.init)(graph)
-    assert isinstance(eqx.filter_jit(distance.init)(grid), GridMultigridCGState)
+    assert isinstance(eqx.filter_jit(distance.init)(grid), GeometricMultigridCGState)
 
 
 def test_a_state_rejects_graphs_of_another_grid():
     # Grids of 6 x 8 and 8 x 6 pixels store as many entries, at other indices.
-    distance = ResistanceDistance(solver=GridMultigridCGSolver())
+    distance = ResistanceDistance(solver=GeometricMultigridCGSolver())
     state = distance.init(GridGraph(jnp.ones((6, 8)), fun=avg))
     for shape in [(8, 6), (6, 9)]:
         with pytest.raises(Exception, match="sparse indices differ"):
@@ -215,7 +215,7 @@ def test_a_state_rejects_graphs_of_another_grid():
 
 
 def test_reinit_takes_new_values_inside_jit():
-    distance = ResistanceDistance(solver=GridMultigridCGSolver(rtol=1e-12))
+    distance = ResistanceDistance(solver=GeometricMultigridCGSolver(rtol=1e-12))
     state = distance.init(GridGraph(jnp.ones((16, 18)), fun=avg))
     conductance = landscape((16, 18))
     nodes = jnp.array([0, 100, 287])
@@ -234,7 +234,7 @@ def test_reinit_takes_new_values_inside_jit():
     assert jax.tree.structure(new_state) == jax.tree.structure(state)
 
 
-# `ResistanceDistance()` solves with `GridMultigridCGSolver()`. Grids of up to
+# `ResistanceDistance()` solves with `GeometricMultigridCGSolver()`. Grids of up to
 # 1024 pixels are the coarsest grid of its hierarchy, which a Cholesky
 # factorization solves.
 def small_landscape(dtype, shape=(24, 40)):
@@ -257,7 +257,7 @@ def test_the_default_solves_small_float32_grids_as_the_dense_float64_solve(query
     # Measured: relative errors of the weighted sums of at most 1.5e-6 and of
     # their gradients 3.5e-6. Those of the pseudo-inverse of the all-pairs and
     # nodes-to-nodes queries were 35 % and 42 %.
-    assert ResistanceDistance().solver == GridMultigridCGSolver(
+    assert ResistanceDistance().solver == GeometricMultigridCGSolver(
         rtol=1e-5, max_steps=200
     )
     weights = np.random.default_rng(4).uniform(size=(960, 960))
@@ -334,7 +334,7 @@ def test_the_default_raises_on_disconnected_graphs():
 
 
 @pytest.mark.parametrize(
-    "solver", [GridMultigridCGSolver(), None], ids=["default", "dense"]
+    "solver", [GeometricMultigridCGSolver(), None], ids=["default", "dense"]
 )
 def test_a_grid_of_one_pixel_has_zero_resistance_and_gradient(solver):
     # The pixel has no neighbours: its ground has degree zero.

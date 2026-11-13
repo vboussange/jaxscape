@@ -11,13 +11,16 @@ from jax.experimental.sparse import BCOO
 from jax.numpy.linalg import pinv
 
 from jaxscape.distance import (
-    _grid_multigrid_state,
+    _geometric_multigrid_state,
     _inside_windows,
     _windows,
     AbstractSolverDistance,
 )
 from jaxscape.graph import AbstractGraph, GridGraph
-from jaxscape.solvers.gridmultigridcgsolver import _grid_width, GridMultigridCGSolver
+from jaxscape.solvers.geometricmultigridcgsolver import (
+    _grid_width,
+    GeometricMultigridCGSolver,
+)
 from jaxscape.solvers.operator import _batched_linear_solve_impl, _solver_state
 from jaxscape.utils import _matmul, _VALUES_PER_STEP, bcoo_diag, graph_laplacian
 
@@ -43,7 +46,7 @@ class ResistanceDistance(AbstractSolverDistance):
 
     - `solver`: Lineax solver of linear systems in the grounded Laplacian, for
       `BCOO` sparse matrices, or `None` for dense linear algebra. Defaults to
-      `jaxscape.solvers.GridMultigridCGSolver()`, conjugate gradients with a
+      `jaxscape.solvers.GeometricMultigridCGSolver()`, conjugate gradients with a
       geometric multigrid preconditioner, which solves the grounded
       Laplacians of grid graphs, such as those of a `GridGraph`, on any
       device without an optional dependency, also in float32 and inside
@@ -74,7 +77,7 @@ class ResistanceDistance(AbstractSolverDistance):
         permeability = jnp.ones((3, 3))
         grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
 
-        # Default: GridMultigridCGSolver, for grid graphs
+        # Default: GeometricMultigridCGSolver, for grid graphs
         distance = ResistanceDistance()
         dist = distance(grid)
 
@@ -121,7 +124,7 @@ class ResistanceDistance(AbstractSolverDistance):
 
         On large tiles, the float32 solutions of sparse direct solvers are
         inaccurate around the ground vertex. For the sensitivity of
-        connectivity to permeability on large tiles, use `GridMultigridCGSolver`,
+        connectivity to permeability on large tiles, use `GeometricMultigridCGSolver`,
         the default, in float32, or a direct solver in float64.
 
         Exact sources-to-targets queries on `n` vertices, from `m` sources to
@@ -136,7 +139,7 @@ class ResistanceDistance(AbstractSolverDistance):
         The graph must be undirected for resistance distance to be well-defined.
         With a solver, it must also be connected: the grounded Laplacian of a
         disconnected graph is singular, and queries raise an error.
-        `GridMultigridCGSolver`
+        `GeometricMultigridCGSolver`
         then reports a non-finite solution, or a solve that did not converge
         within `max_steps`. A grid graph is disconnected when edges of zero
         conductance cut it, as `fun` gives between pixels of zero permeability.
@@ -147,7 +150,7 @@ class ResistanceDistance(AbstractSolverDistance):
     """
 
     solver: lx.AbstractLinearSolver | None = eqx.field(
-        default_factory=GridMultigridCGSolver
+        default_factory=GeometricMultigridCGSolver
     )
     method: "AbstractResistanceMethod" = eqx.field(
         default_factory=lambda: ExactResistance()
@@ -240,7 +243,7 @@ class ResistanceDistance(AbstractSolverDistance):
     def init(self, graph: AbstractGraph) -> Any:
         """Build the solver state for `graph`.
 
-        With `GridMultigridCGSolver`, the default, the state of a `GridGraph`
+        With `GeometricMultigridCGSolver`, the default, the state of a `GridGraph`
         builds inside `jax.jit` too: the solver reads its grid from concrete
         sparse indices, which the shape and contiguity of the graph set. Other
         solvers and graphs build their state as `AbstractSolverDistance.init`
@@ -254,10 +257,10 @@ class ResistanceDistance(AbstractSolverDistance):
 
         State to pass to queries and to `reinit`, or `None` without a solver.
         """
-        if isinstance(self.solver, GridMultigridCGSolver) and isinstance(
+        if isinstance(self.solver, GeometricMultigridCGSolver) and isinstance(
             graph, GridGraph
         ):
-            return _grid_multigrid_state(self, graph)
+            return _geometric_multigrid_state(self, graph)
         return super().init(graph)
 
     @eqx.filter_jit
@@ -604,7 +607,7 @@ def _grounded_laplacian(A: BCOO) -> tuple[BCOO, Array]:
     largest, the nearest to the middle vertex in Manhattan distance on a grid of
     `n // w` rows and `w` columns, with the lowest index among the nearest. The
     middle vertex is the pixel of row `n // w // 2` and column `w // 2`. The
-    width `w` is that which `GridMultigridCGSolver` reads (`_grid_width`): the
+    width `w` is that which `GeometricMultigridCGSolver` reads (`_grid_width`): the
     largest index difference between neighbours, or one less for queen
     contiguity. On a grid graph of `h` rows and `w` columns, the middle vertex
     is thus its centre pixel, of row `h // 2` and column `w // 2`, and the

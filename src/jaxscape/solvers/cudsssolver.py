@@ -60,7 +60,7 @@ class CuDSSSolver(AbstractSparseDirectSolver[Any]):
 
         In float32, solutions on large grids are inaccurate around the ground
         vertex of `ResistanceDistance`. For permeability sensitivity on large
-        tiles, use float64, or `GridMultigridCGSolver` in float32.
+        tiles, use float64, or `GeometricMultigridCGSolver` in float32.
     """
 
     def __check_init__(self):
