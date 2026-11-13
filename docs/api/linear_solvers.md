@@ -176,8 +176,10 @@ by conjugate gradients, preconditioned by V-cycles of the hierarchy, in JAX on
 CPU or GPU, inside `jax.jit` and `jax.grad`. `reinit` keeps the prolongation
 and restriction operators of the hierarchy, and each solve computes the
 matrices of its coarser levels from the current values, as Galerkin products
-with these operators. The hierarchy has the dtype of the matrix. For
-ill-conditioned graph Laplacians, enable 64-bit floats with
+with these operators. The state also holds, for each level but the coarsest,
+the map from the values of the level to those of the next: sparse matrices
+several times the size of the hierarchy. The hierarchy has the dtype of the
+matrix. For ill-conditioned graph Laplacians, enable 64-bit floats with
 `JAX_ENABLE_X64=true` and build the matrix and the right-hand sides in
 float64: enabling 64-bit floats does not convert existing float32 arrays. A
 matrix whose hierarchy has a single level, as that of a small graph, is solved
