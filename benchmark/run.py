@@ -475,12 +475,14 @@ def fails_by_design(view, combination):
     """Return whether a combination of the solver view fails by design.
 
     It does when it matches an entry of the view's `fails_by_design`: each
-    field of the entry holds the combination's value, or a list that holds it.
+    field of the entry but `reason` holds the combination's value, or a list
+    that holds it.
     """
     return any(
         all(
             combination[field] in (wanted if isinstance(wanted, list) else [wanted])
             for field, wanted in entry.items()
+            if field != "reason"
         )
         for entry in view.get("fails_by_design", [])
     )

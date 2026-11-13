@@ -297,19 +297,19 @@ reference_solver = "CuDSSSolver"
 # take 4 hours.
 timeout = 900
 # The combinations that fail by design, which the solver view leaves out; an
-# entry matches each combination whose fields hold its values. Free energy in
-# float32 resolves no distance across the raster (see the distance
+# entry, but its `reason`, matches each combination whose fields hold its
+# values, and the page gives the `reason` after the combinations left out.
+# Free energy in float32 resolves no distance across the raster (see the distance
 # calculation), and the iterative solvers, GeometricMultigridCGSolver and
 # AMJaxCGSolver, resolve no free energy in either dtype: as the docstring of
 # FreeEnergyDistance states, they need tolerances far below their defaults to
 # resolve the small entries of Z between distant vertices. In the windowed
-# analyses, AMJaxCGSolver builds its hierarchy on a graph of uniform
-# conductance, as its docstring states, and reaches its `max_steps` on the
-# windows of the smoke run in either dtype.
+# analyses, AMJaxCGSolver reaches its `max_steps` on the tiles of the smoke run
+# in either dtype, for the reason of its entry (#96).
 fails_by_design = [
   { distance = "free_energy", dtype = "float32" },
   { distance = "free_energy", solver = ["GeometricMultigridCGSolver", "AMJaxCGSolver"] },
-  { solver = "AMJaxCGSolver", question = ["connectivity", "sensitivity"] },
+  { solver = "AMJaxCGSolver", question = ["connectivity", "sensitivity"], reason = "In the windowed analyses, JAXScape builds the state of `AMJaxCGSolver` once, from a graph of uniform conductance, and `reinit` keeps its multigrid hierarchy for every tile, so that on tiles of high conductance contrast the solver stops at `max_steps`." },
 ]
 
 # The distances of each question, with the settings that every solver shares;

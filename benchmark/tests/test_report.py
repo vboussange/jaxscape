@@ -400,7 +400,11 @@ def test_solver_section_names_the_fastest_solver_and_lists_every_solver(report):
 def test_solver_section_states_the_combinations_that_no_record_ran(report):
     def leave_out_cudss(config):
         config["solver_view"]["fails_by_design"].append(
-            {"distance": "free_energy", "solver": ["CuDSSSolver", "CholmodSolver"]}
+            {
+                "distance": "free_energy",
+                "solver": ["CuDSSSolver", "CholmodSolver"],
+                "reason": "The reason of the entry.",
+            }
         )
 
     text = section(page(report(edit=leave_out_cudss)), "## Linear solvers of JAXScape")
@@ -413,6 +417,8 @@ def test_solver_section_states_the_combinations_that_no_record_ran(report):
         "float32 in the connectivity analysis or sensitivity analysis; "
         "free-energy distance with `CholmodSolver`." in text
     )
+    # The reason of an entry follows the combinations left out.
+    assert "with `CholmodSolver`. The reason of the entry.\n" in text
 
 
 def test_report_reads_the_configuration_of_a_run_of_jaxscape_0_0_16(report):

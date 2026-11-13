@@ -975,11 +975,13 @@ def not_run(entry, records, view):
     An entry without a question matches each question of the solver view
     `view` that computes one of its distances, or every question without a
     distance; it names them when they are several. The entry is split into its
-    combinations, which take one value of each of its fields, and a record ran
-    a combination when it holds each of its values. The combinations that no
-    record ran, but those of a solver of `REMOVED`, are joined back into
-    entries, one per value of the fields but the last that holds a list.
+    combinations, which take one value of each of its fields but `reason`, and
+    a record ran a combination when it holds each of its values. The
+    combinations that no record ran, but those of a solver of `REMOVED`, are
+    joined back into entries, one per value of the fields but the last that
+    holds a list.
     """
+    entry = {field: value for field, value in entry.items() if field != "reason"}
     distances = entry.get("distance", [])
     distances = distances if isinstance(distances, list) else [distances]
     questions = [
@@ -1436,11 +1438,13 @@ def solver_section(records, config, run_dir):
     elif windows:
         under = (f"{found} under {what}" for found, what in windows)
         rasters += f"; in the windowed analyses, {either(under, 'and')}"
-    left_out = "; ".join(
-        combination(part)
+    parts = [
+        (part, entry.get("reason"))
         for entry in view.get("fails_by_design", [])
         for part in not_run(entry, records, view)
-    )
+    ]
+    left_out = "; ".join(combination(part) for part, _ in parts)
+    reasons = dict.fromkeys(reason for _, reason in parts if reason)
     limit = f"**Time limit**: a call stops after {duration(view['timeout'])}"
     longer = used[0].get("timeout", view["timeout"]) if used else view["timeout"]
     if longer != view["timeout"]:
@@ -1465,7 +1469,7 @@ def solver_section(records, config, run_dir):
         + f". In the figure of error, errors below {exponent} are drawn at "
         f"{exponent}.",
         limit + ".",
-        f"**Not run**: {left_out}." if left_out else "",
+        " ".join([f"**Not run**: {left_out}.", *reasons]) if left_out else "",
     ]
     fastest, approximations = fastest_solvers(records, approximate)
     return [
