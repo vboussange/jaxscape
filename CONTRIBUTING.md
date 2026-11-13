@@ -51,6 +51,10 @@ logic of `AbstractSparseDirectSolver` with a dense Cholesky factorization in
 place of cuDSS, and the `CuDSSSolver` tests, marked `gpu`, run only on a
 machine with an NVIDIA GPU, spineax and cuDSS.
 
+The continuous integration leaves out the tests of the benchmark, a uv project
+of its own in `benchmark/`; run them from that directory with `uv sync` and
+`uv run pytest`, as `benchmark/README.md` describes.
+
 Before opening a pull request, run every hook on every file, as the
 continuous integration does:
 

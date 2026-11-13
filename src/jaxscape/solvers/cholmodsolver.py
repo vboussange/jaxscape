@@ -77,7 +77,9 @@ class CholmodSolver(AbstractReusableStateSolver):
 
     Solves symmetric positive definite matrices through a host callback. Solves
     reuse the last factorization while the values of the matrix stay the same,
-    and factorize the matrix again when they change.
+    and factorize the matrix again when they change. The solver keeps one
+    factorization, so under `jax.vmap` over the values of the matrix, each
+    solve factorizes every distinct matrix of the batch.
 
     **Attributes:**
 
