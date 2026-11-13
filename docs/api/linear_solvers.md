@@ -311,7 +311,9 @@ the matrix, read once from concrete sparse indices, the values, which `reinit`
 replaces inside `jax.jit`, and a factorization or a preconditioner. It scales
 right-hand sides, checks the sparse indices of each new matrix, and reports
 failed solves. A new solver subclasses one of its two families, with a final
-class.
+class. The methods that it implements take the sparsity pattern as a
+[`CSRPattern`][jaxscape.solvers.sparsesolver.CSRPattern], whose properties `n`
+and `nnz` are the number of rows and the number of CSR values.
 
 `AbstractSparseDirectSolver` turns the phases of a sparse factorization library
 into a solver, and checks each factorization and solve; `CuDSSSolver`
@@ -380,6 +382,11 @@ class JacobiCGSolver(AbstractSparseIterativeSolver):
 ```
 
 ::: jaxscape.solvers.operator.BCOOLinearOperator
+    options:
+      heading_level: 3
+      members: false
+
+::: jaxscape.solvers.sparsesolver.CSRPattern
     options:
       heading_level: 3
       members: false
