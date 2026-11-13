@@ -54,9 +54,9 @@ class AMJaxCGSolver(AbstractSparseIterativeSolver[_Hierarchy]):
     in JAX, inside `jax.jit` and `jax.grad`. `reinit` keeps the hierarchy for
     the values of another matrix of the same sparsity pattern, whose solves
     then take more iterations the further their values are from those of the
-    hierarchy. The hierarchy keeps the dtype of the matrix. A hierarchy of a
-    single level, as that of a tiny graph, leaves conjugate gradients without
-    a preconditioner.
+    hierarchy. The hierarchy keeps the dtype of the matrix. With a hierarchy of
+    a single level, as that of a tiny graph, conjugate gradients run without a
+    preconditioner.
 
     !!! example
 
@@ -91,7 +91,7 @@ class AMJaxCGSolver(AbstractSparseIterativeSolver[_Hierarchy]):
     !!! warning
 
         `amjax` and `pyamg` must be installed to use this solver, with
-        `pip install 'jaxscape[amjax]'`. Conjugate gradients need a symmetric
+        `uv add jaxscape --extra amjax`. Conjugate gradients need a symmetric
         V-cycle, as AMJax's `symmetric_smoothing` flag reports for the default
         smoothers.
     """

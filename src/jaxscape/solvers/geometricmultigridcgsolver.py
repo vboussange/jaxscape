@@ -92,22 +92,22 @@ class GeometricMultigridCGSolver(AbstractSparseIterativeSolver[_Grid]):
     holds one hierarchy for each place where it solves, whatever the states it
     reinitializes.
 
-    Each V-cycle relaxes with one iteration of damped Jacobi before and after
-    the coarse correction. Coarse grids keep every other point along each axis,
-    and interpolate the others from the matrix coefficients, as black-box
-    multigrid does
-    ([Dendy, 1982](https://doi.org/10.1016/0021-9991(82)90057-2)), which keeps
-    convergence fast across jumps of conductance. Their matrices are the
-    Galerkin products of the interpolation. The first grid of at most 1024
-    points is solved with a Cholesky factorization.
+    Each V-cycle has one iteration of damped Jacobi relaxation before and after
+    the coarse correction. The coarse grids hold every other point along each
+    axis. The values at the other points are interpolated from the matrix
+    coefficients, as in black-box multigrid
+    ([Dendy, 1982](https://doi.org/10.1016/0021-9991(82)90057-2)), so that
+    convergence stays fast across jumps of conductance. The matrices of the
+    coarse grids are the Galerkin products of the interpolation. The first grid
+    of at most 1024 points is solved with a Cholesky factorization.
 
-    A larger `rtol` takes fewer iterations, at the cost of the accuracy of the
-    resistances to pixels behind barriers, which converge last. On large grids
-    in float32, its solutions stay accurate around the ground vertex of
-    `ResistanceDistance`, where those of sparse direct solvers lose accuracy.
-    It factorizes only the matrix of the coarsest grid, which suits
-    conductances that change at every step, as in optimization loops. In
-    float64, sparse direct solvers can be faster.
+    With a larger `rtol`, the solves take fewer iterations, at the cost of the
+    accuracy of the resistances to pixels behind barriers, which converge
+    last. On large grids in float32, the solutions of this solver stay accurate
+    around the ground vertex of `ResistanceDistance`, where those of sparse
+    direct solvers lose accuracy. It factorizes only the matrix of the coarsest
+    grid, which suits conductances that change at every step, as in
+    optimization loops. In float64, sparse direct solvers can be faster.
 
     **Attributes:**
 

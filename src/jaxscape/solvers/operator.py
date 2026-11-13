@@ -11,10 +11,10 @@ from jax.experimental.sparse import BCOO
 class BCOOLinearOperator(lx.MatrixLinearOperator):
     """Lineax linear operator of a `jax.experimental.sparse.BCOO` matrix.
 
-    Its products with vectors use the sparse matrix, so that Lineax solvers that
-    only multiply by the operator, such as `lineax.CG`, never form a dense
-    matrix. Lineax treats every `BCOOLinearOperator` as positive semidefinite,
-    as `lineax.CG` requires.
+    Its products with vectors are computed with the sparse matrix, so that
+    Lineax solvers that only multiply by the operator, such as `lineax.CG`,
+    never form a dense matrix. Every `BCOOLinearOperator` is registered with
+    Lineax as positive semidefinite, so that `lineax.CG` accepts it.
     """
 
     def __init__(self, matrix: BCOO, tags: object | frozenset[object] = ()):
@@ -45,7 +45,7 @@ class AbstractReusableStateSolver(lx.AbstractLinearSolver):
     subclasses `AbstractSparseDirectSolver` or `AbstractSparseIterativeSolver`.
     Distance queries call `reinit` on the state they receive before solving. Other
     Lineax solvers run `init` for each query, which suits Lineax's iterative
-    solvers, such as `lineax.CG`, whose `init` only records the operator.
+    solvers, such as `lineax.CG`.
     """
 
     @abc.abstractmethod

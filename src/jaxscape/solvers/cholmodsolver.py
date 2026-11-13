@@ -75,10 +75,9 @@ type _CholmodSolverState = tuple[BCOO, PackedStructures, _FactorCache | None]
 class CholmodSolver(AbstractReusableStateSolver):
     """Sparse Cholesky factorization with CHOLMOD, through cholespy, on the CPU.
 
-    Solves symmetric positive definite matrices through a host callback. The
-    states of one sparsity pattern share a factorization, which solves reuse
-    while the matrix values stay the same, and which is computed again when they
-    change.
+    Solves symmetric positive definite matrices through a host callback. Solves
+    reuse the last factorization while the values of the matrix stay the same,
+    and factorize the matrix again when they change.
 
     **Attributes:**
 

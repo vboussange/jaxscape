@@ -348,8 +348,8 @@ class ConnectivityAnalysis(WindowedAnalysis):
           0.50, 1.28 and 1.89 at 1, 10 and 20 pixels from the centre. A kernel
           `exp(-d / c)` of the resistance therefore decays as a power law in
           pixels, and the window edge sets its range.
-        - `FreeEnergyDistance`: from the least-cost distance (large `theta`)
-          to a multiple of the resistance (small `theta`).
+        - `FreeEnergyDistance`: from the least-cost path distance (large
+          `theta`) to a multiple of the resistance (small `theta`).
 
         When the analysis is created, the default `proximity` reads equivalent
         pixels off one window of permeability 1: the distances from its centre

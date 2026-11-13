@@ -28,7 +28,7 @@ dependencies = [
   "numpy>2.4.0",
   "lineax>=0.1.0"
 ]
-description = 'A JAX library for connectivity modelling at scale'
+description = 'A minimal JAX library for connectivity modelling at scale'
 keywords = ["jax", "graph", "machine-learning", "network"]
 license = {file = "LICENSE"}
 name = "jaxscape"

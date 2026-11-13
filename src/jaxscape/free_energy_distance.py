@@ -44,10 +44,10 @@ class FreeEnergyDistance(AbstractSolverDistance):
     The graph must be connected and symmetric, with positive finite
     conductances on present edges. Conductance enters both the edge costs and
     the transition probabilities. As `theta` grows, the distance approaches the
-    least-cost distance with edge costs $c_{ij}$. On a graph without self-loops
-    and with `m` undirected edges, the small-`theta` limit is `m` times the
-    effective resistance. Solver state depends on the conductances and on
-    `theta`; pass it through `reinit` when either changes.
+    least-cost path distance with edge costs $c_{ij}$. On a graph without
+    self-loops and with `m` undirected edges, the small-`theta` limit is `m`
+    times the effective resistance. Solver state depends on the conductances
+    and on `theta`; pass it through `reinit` when either changes.
 
     **Precision and errors:** float32 and float64 inputs are supported. Entries
     of $Z$ decay exponentially with path cost, and float64 resolves smaller

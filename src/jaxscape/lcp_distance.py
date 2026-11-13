@@ -141,7 +141,7 @@ class LCPDistance(AbstractDistance):
         - `sources`: Source vertex indices with shape `(m,)`.
         - `size`: Odd number of pixels along a side of the windows.
         - `state`: Ignored.
-        - `source_weights`: Raises if given: least-cost distances do not
+        - `source_weights`: Raises if given: least-cost path distances do not
           average sources.
 
         **Returns:**
