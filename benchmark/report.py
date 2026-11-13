@@ -49,6 +49,9 @@ NAMES = {
     "free_energy": "free energy",
     "resistance, K = -R, normalized": "normalized sensitivity (K = −R)",
 }
+# The solvers of JAXScape 0.0.16 that JAXScape 0.0.18 renamed, under their names
+# in 0.0.18, which the page gives.
+RENAMED = {"GridMultigridSolver": "GeometricMultigridCGSolver"}
 # The names of distances in prose.
 PROSE = {
     "resistance": "resistance distance",
@@ -159,8 +162,12 @@ def solver_view(records):
 
 
 def name(value):
-    """Return the name in tables and figures of a distance, label or solver."""
-    return NAMES.get(value, value or "")
+    """Return the name in tables and figures of a distance, label or solver.
+
+    A solver that JAXScape 0.0.18 renamed takes its name in 0.0.18.
+    """
+    value = NAMES.get(value, value or "")
+    return re.sub(r"\w+", lambda word: RENAMED.get(word[0], word[0]), value)
 
 
 def prose(distance):
@@ -1056,6 +1063,7 @@ def setup_section(records, config, environment):
         bullets(hardware),
         "### Tools",
         table(["Tool", "Version", "Questions"], versions),
+        renaming(records, environment),
         collapsed("Parameter mapping of each tool", table(["Tool", "Mapping"], mappings)),
         "### Landscapes",
         bullets(landscapes),
@@ -1067,6 +1075,22 @@ def setup_section(records, config, environment):
         "### Figures and tables",
         bullets(reading),
     ]
+
+
+def renaming(records, environment):
+    """Return the sentence that states the solvers of the run that `RENAMED` renames.
+
+    It is empty when the records name none of them.
+    """
+    words = set(re.findall(r"\w+", " ".join(r["solver"] or "" for r in records)))
+    renamed = [solver for solver in RENAMED if solver in words]
+    if not renamed:
+        return ""
+    pairs = (f"`{solver}` as {code(solver)}" for solver in renamed)
+    return (
+        f"The run used JAXScape {environment['tools']['JAXScape']}, whose solvers "
+        f"the page names as JAXScape 0.0.18 does: {either(pairs, 'and')}."
+    )
 
 
 def mapping(adapter):

@@ -25,6 +25,8 @@ This page compares JAXScape with the software that ecologists use for connectivi
 | Graphab | 3.0.8 | connectivity analysis |
 | Omniscape.jl | 0.6.4 | sensitivity analysis |
 
+The run used JAXScape 0.0.16, whose solvers the page names as JAXScape 0.0.18 does: `GridMultigridSolver` as `GeometricMultigridCGSolver`.
+
 ??? note "Parameter mapping of each tool"
 
     | Tool | Mapping |
@@ -90,8 +92,8 @@ On the largest synthetic raster that JAXScape on the GPU and the other tool both
 
     | Tool | Distance | Setting | 256² | 1024² | 4096² | 8192² |
     | --- | --- | --- | --- | --- | --- | --- |
-    | JAXScape | resistance | GPU, float32, GridMultigridSolver | 0.0249 s, error 6.8e-05 | 0.351 s, error 3.7e-04 | 5.48 s, error 3.2e-03 | oom |
-    | JAXScape | resistance | CPU, float32, GridMultigridSolver | 0.437 s, error 7.5e-05 | 5.1 s, error 3.7e-04 | 87.4 s, error 1.2e-03 | 308 s |
+    | JAXScape | resistance | GPU, float32, GeometricMultigridCGSolver | 0.0249 s, error 6.8e-05 | 0.351 s, error 3.7e-04 | 5.48 s, error 3.2e-03 | oom |
+    | JAXScape | resistance | CPU, float32, GeometricMultigridCGSolver | 0.437 s, error 7.5e-05 | 5.1 s, error 3.7e-04 | 87.4 s, error 1.2e-03 | 308 s |
     | JAXScape | least-cost path | GPU, float32 | 0.209 s, error 5.9e-07 | 10.4 s, error 1.5e-06 | oom | skipped |
     | JAXScape | least-cost path | CPU, float32 | 13.6 s, error 5.9e-07 | 506 s, error 1.5e-06 | timeout | skipped |
     | JAXScape | free energy | GPU, float64, CuDSSSolver | 0.304 s, error 1.6e-15 | 6.1 s, error 1.3e-15 |  |  |
@@ -107,7 +109,7 @@ On the largest synthetic raster that JAXScape on the GPU and the other tool both
 
 | Tool | Distance | Setting | Raster | Status | Recorded reason |
 | --- | --- | --- | --- | --- | --- |
-| JAXScape | resistance | GPU, float32, GridMultigridSolver | 8192² | `oom` | allocation of 44.98 GiB failed |
+| JAXScape | resistance | GPU, float32, GeometricMultigridCGSolver | 8192² | `oom` | allocation of 44.98 GiB failed |
 | JAXScape | least-cost path | GPU, float32 | 4096² | `oom` | allocation of 14.00 GiB failed |
 | JAXScape | least-cost path | CPU, float32 | 4096² | `timeout` | `a call exceeded 3600 s` |
 | gdistance | resistance | CPU, float64 | 8192² | `failed` | `Error in h(simpleError(msg, call)) :` |
@@ -141,8 +143,8 @@ On the largest synthetic raster that JAXScape on the GPU and the other tool both
 
     | Tool | Distance | Setting | 256² | Maryland | 1024² | 4096² | 8192² |
     | --- | --- | --- | --- | --- | --- | --- | --- |
-    | JAXScape | resistance | GPU, float32, GridMultigridSolver(rtol=3e-4) | 0.506 s | 3.3 s | 3.71 s | 45.7 s | 176 s |
-    | JAXScape | resistance | CPU, float32, GridMultigridSolver(rtol=3e-4) | 36.6 s | 254 s | 295 s | timeout | skipped |
+    | JAXScape | resistance | GPU, float32, GeometricMultigridCGSolver(rtol=3e-4) | 0.506 s | 3.3 s | 3.71 s | 45.7 s | 176 s |
+    | JAXScape | resistance | CPU, float32, GeometricMultigridCGSolver(rtol=3e-4) | 36.6 s | 254 s | 295 s | timeout | skipped |
     | JAXScape | least-cost path | GPU, float32 | 0.179 s | 1.93 s | 2.11 s | 35.5 s | 141 s |
     | JAXScape | least-cost path | CPU, float32 | 9.18 s | 67.3 s | 119 s | 1790 s | timeout |
     | ConScape.jl | free energy | CPU, float64 | 1.07 s, ρ = 0.93 | 52.5 s, ρ = 0.81 | 199 s, ρ = 0.91 |  |  |
@@ -153,7 +155,7 @@ On the largest synthetic raster that JAXScape on the GPU and the other tool both
 
 | Tool | Distance | Setting | Raster | Status | Recorded reason |
 | --- | --- | --- | --- | --- | --- |
-| JAXScape | resistance | CPU, float32, GridMultigridSolver(rtol=3e-4) | 4096² | `timeout` | `a call exceeded 3600 s` |
+| JAXScape | resistance | CPU, float32, GeometricMultigridCGSolver(rtol=3e-4) | 4096² | `timeout` | `a call exceeded 3600 s` |
 | JAXScape | least-cost path | CPU, float32 | 8192² | `timeout` | `a call exceeded 3600 s` |
 
 ### Method
@@ -162,7 +164,7 @@ On the largest synthetic raster that JAXScape on the GPU and the other tool both
 - **JAXScape**: in each call, `SensitivityAnalysis` computes the map of $\partial C / \partial q_i$, equal to $2 S_i$ for a symmetric distance, and `ConnectivityAnalysis` computes $C$.
 - **Windows**: windowed analyses with `dependency_range` 100 pixels and `coarsening_factor` 0.2, that is, blocks of 21 × 21 pixels, under the proximity $K(d) = e^{-d/25}$, with $d$ in equivalent pixels.
 - **Graph**: rook contiguity, with the mean permeability of two pixels as the conductance of their edge.
-- **Resistance distance**: `SpielmanApproximation(epsilon=0.15)` with `GridMultigridSolver(rtol=3e-4)`, the setting of the [connectivity example](../examples/connectivity_analysis/connectivity_analysis.ipynb), on tiles of up to 2,601 block centres.
+- **Resistance distance**: `SpielmanApproximation(epsilon=0.15)` with `GeometricMultigridCGSolver(rtol=3e-4)`, the setting of the [connectivity example](../examples/connectivity_analysis/connectivity_analysis.ipynb), on tiles of up to 2,601 block centres.
 - **Agreement**: Spearman's ρ between the map of a tool and the map of JAXScape on the GPU under the distance or label of the column "Compared with JAXScape under", over the pixels where both maps are defined.
 
 ## Sensitivity analysis
@@ -186,12 +188,12 @@ On the largest synthetic raster that JAXScape on the GPU and the other tool both
 
     | Tool | Distance or label | Setting | 256² | Maryland | 1024² | 4096² | 8192² |
     | --- | --- | --- | --- | --- | --- | --- | --- |
-    | JAXScape | resistance | GPU, float32, GridMultigridSolver(rtol=3e-4) | 0.544 s | 5.33 s | 4.62 s | 67.3 s | 264 s |
-    | JAXScape | resistance | CPU, float32, GridMultigridSolver(rtol=3e-4) | 42 s | 353 s | 319 s | timeout | skipped |
+    | JAXScape | resistance | GPU, float32, GeometricMultigridCGSolver(rtol=3e-4) | 0.544 s | 5.33 s | 4.62 s | 67.3 s | 264 s |
+    | JAXScape | resistance | CPU, float32, GeometricMultigridCGSolver(rtol=3e-4) | 42 s | 353 s | 319 s | timeout | skipped |
     | JAXScape | least-cost path | GPU, float32 | 0.154 s | 1.82 s | 1.99 s | 32.1 s | 126 s |
     | JAXScape | least-cost path | CPU, float32 | 7.36 s | 67.9 s | 102 s | 1510 s | timeout |
-    | JAXScape | normalized sensitivity (K = −R) | GPU, float32, GridMultigridSolver(rtol=3e-4) | 1.06 s | 9.15 s | 9.16 s | 133 s | 532 s |
-    | JAXScape | normalized sensitivity (K = −R) | CPU, float32, GridMultigridSolver(rtol=3e-4) | 78.9 s | 631 s | 629 s | timeout | skipped |
+    | JAXScape | normalized sensitivity (K = −R) | GPU, float32, GeometricMultigridCGSolver(rtol=3e-4) | 1.06 s | 9.15 s | 9.16 s | 133 s | 532 s |
+    | JAXScape | normalized sensitivity (K = −R) | CPU, float32, GeometricMultigridCGSolver(rtol=3e-4) | 78.9 s | 631 s | 629 s | timeout | skipped |
     | ConScape.jl | free energy | CPU, float64 | 1.75 s, ρ = 0.84 | 102 s | 414 s, ρ = 0.78 |  |  |
     | EcoScape | least-cost path | GPU, float32 | 7.78 s, ρ = 0.76 | 13.7 s, ρ = 0.93 | 42.7 s, ρ = 0.75 | 439 s, ρ = 0.76 | 1610 s, ρ = 0.75 |
     | samc | resistance | CPU, float64, direct | 2.5 s, ρ = 0.74 | 11.9 s, ρ = 0.07 | 29.9 s, ρ = 0.59 | 1010 s, ρ = 0.55 | failed |
@@ -206,9 +208,9 @@ Rank of each pixel of Maryland in JAXScape's normalized sensitivity (K = −R) a
 
 | Tool | Distance or label | Setting | Raster | Status | Recorded reason |
 | --- | --- | --- | --- | --- | --- |
-| JAXScape | resistance | CPU, float32, GridMultigridSolver(rtol=3e-4) | 4096² | `timeout` | `a call exceeded 3600 s` |
+| JAXScape | resistance | CPU, float32, GeometricMultigridCGSolver(rtol=3e-4) | 4096² | `timeout` | `a call exceeded 3600 s` |
 | JAXScape | least-cost path | CPU, float32 | 8192² | `timeout` | `a call exceeded 3600 s` |
-| JAXScape | normalized sensitivity (K = −R) | CPU, float32, GridMultigridSolver(rtol=3e-4) | 4096² | `timeout` | `a call exceeded 3600 s` |
+| JAXScape | normalized sensitivity (K = −R) | CPU, float32, GeometricMultigridCGSolver(rtol=3e-4) | 4096² | `timeout` | `a call exceeded 3600 s` |
 | samc | resistance | CPU, float64, direct | 8192² | `failed` | `Error in (function (cond)  :` |
 | Omniscape.jl | resistance | CPU, float64, cholmod | 8192² | `timeout` | `a call exceeded 3600 s` |
 
@@ -226,13 +228,13 @@ The fastest solver of each question, distance and dtype, on the largest syntheti
 
 | Question | Distance | dtype | Raster | Fastest solver | Warm runtime | Error | Next fastest solver | Speed-up over it |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| distance calculation | resistance | float32 | 4096² | GridMultigridSolver | 5.46 s | 3.2e-03 | CholmodSolver | 155 |
-| distance calculation | resistance | float64 | 1024² | GridMultigridSolver | 0.465 s | 3.0e-07 | AMJaxCGSolver | 11 |
+| distance calculation | resistance | float32 | 4096² | GeometricMultigridCGSolver | 5.46 s | 3.2e-03 | CholmodSolver | 155 |
+| distance calculation | resistance | float64 | 1024² | GeometricMultigridCGSolver | 0.465 s | 3.0e-07 | AMJaxCGSolver | 11 |
 | distance calculation | free energy | float64 | 1024² | CuDSSSolver | 6.07 s | 1.3e-15 | CholmodSolver | 7.8 |
-| connectivity analysis | resistance | float32 | 256² | SpielmanApproximation(epsilon=0.15), GridMultigridSolver(rtol=3e-4) | 0.508 s | 6.5e-02 | GridMultigridSolver | 202 |
-| connectivity analysis | resistance | float64 | 256² | CuDSSSolver | 170 s | 8.8e-15 | GridMultigridSolver | 1.6 |
-| sensitivity analysis | resistance | float32 | 256² | SpielmanApproximation(epsilon=0.15), GridMultigridSolver(rtol=3e-4) | 0.542 s | 7.7e-02 | GridMultigridSolver | 195 |
-| sensitivity analysis | resistance | float64 | 256² | CuDSSSolver | 251 s | 1.5e-13 | GridMultigridSolver | 1.4 |
+| connectivity analysis | resistance | float32 | 256² | SpielmanApproximation(epsilon=0.15), GeometricMultigridCGSolver(rtol=3e-4) | 0.508 s | 6.5e-02 | GeometricMultigridCGSolver | 202 |
+| connectivity analysis | resistance | float64 | 256² | CuDSSSolver | 170 s | 8.8e-15 | GeometricMultigridCGSolver | 1.6 |
+| sensitivity analysis | resistance | float32 | 256² | SpielmanApproximation(epsilon=0.15), GeometricMultigridCGSolver(rtol=3e-4) | 0.542 s | 7.7e-02 | GeometricMultigridCGSolver | 195 |
+| sensitivity analysis | resistance | float64 | 256² | CuDSSSolver | 251 s | 1.5e-13 | GeometricMultigridCGSolver | 1.4 |
 
 ### Results
 
@@ -246,41 +248,41 @@ The fastest solver of each question, distance and dtype, on the largest syntheti
 
     | Question | Distance | dtype | Solver | 256² | 1024² | 4096² | 8192² |
     | --- | --- | --- | --- | --- | --- | --- | --- |
-    | distance calculation | resistance | float32 | GridMultigridSolver | 0.0246 s, error 6.8e-05 | 0.352 s, error 3.7e-04 | 5.46 s, error 3.2e-03 | oom |
+    | distance calculation | resistance | float32 | GeometricMultigridCGSolver | 0.0246 s, error 6.8e-05 | 0.352 s, error 3.7e-04 | 5.46 s, error 3.2e-03 | oom |
     | distance calculation | resistance | float32 | CholmodSolver | 1.16 s, error 1.0e-05 | 25.3 s, error 1.8e-04 | 844 s, error 2.6e-04 | oom |
     | distance calculation | resistance | float32 | CuDSSSolver | 0.292 s, error 1.2e-04 | 5.81 s, error 3.9e-03 | failed | skipped |
     | distance calculation | resistance | float32 | AMJaxCGSolver | failed | skipped | skipped | skipped |
     | distance calculation | resistance | float32 | PyAMGSolver | 2.73 s, error 4.4e-05 | 59 s, error 2.4e-04 | timeout | skipped |
     | distance calculation | resistance | float32 | dense | oom | skipped | skipped | skipped |
-    | distance calculation | resistance | float64 | GridMultigridSolver | 0.051 s, error 1.1e-07 | 0.465 s, error 3.0e-07 | oom | skipped |
+    | distance calculation | resistance | float64 | GeometricMultigridCGSolver | 0.051 s, error 1.1e-07 | 0.465 s, error 3.0e-07 | oom | skipped |
     | distance calculation | resistance | float64 | CholmodSolver | 1.18 s, error 0.0e+00 | 25.3 s, error 0.0e+00 | oom | skipped |
     | distance calculation | resistance | float64 | CuDSSSolver | 0.297 s, error 2.6e-13 | 5.89 s, error 2.9e-12 | oom | skipped |
     | distance calculation | resistance | float64 | AMJaxCGSolver | 2.04 s, error 5.5e-04 | 5.18 s, error 5.4e-04 | oom | skipped |
     | distance calculation | resistance | float64 | PyAMGSolver | 2.94 s, error 1.5e-07 | 66.4 s, error 2.6e-07 | timeout | skipped |
     | distance calculation | resistance | float64 | dense | oom | skipped | skipped | skipped |
-    | distance calculation | free energy | float64 | GridMultigridSolver | failed | skipped |  |  |
+    | distance calculation | free energy | float64 | GeometricMultigridCGSolver | failed | skipped |  |  |
     | distance calculation | free energy | float64 | CholmodSolver | 3.93 s, error 4.4e-16 | 47.5 s, error 2.5e-16 |  |  |
     | distance calculation | free energy | float64 | CuDSSSolver | 0.305 s, error 1.8e-15 | 6.07 s, error 1.3e-15 |  |  |
     | distance calculation | free energy | float64 | dense | oom | skipped |  |  |
-    | connectivity analysis | resistance | float32 | GridMultigridSolver | 102 s, error 1.1e-03 |  |  |  |
+    | connectivity analysis | resistance | float32 | GeometricMultigridCGSolver | 102 s, error 1.1e-03 |  |  |  |
     | connectivity analysis | resistance | float32 | CholmodSolver | timeout |  |  |  |
     | connectivity analysis | resistance | float32 | CuDSSSolver | 108 s, error 1.6e-03 |  |  |  |
     | connectivity analysis | resistance | float32 | PyAMGSolver | timeout |  |  |  |
     | connectivity analysis | resistance | float32 | dense | failed |  |  |  |
-    | connectivity analysis | resistance | float32 | SpielmanApproximation(epsilon=0.15), GridMultigridSolver(rtol=3e-4) | 0.508 s, error 6.5e-02 |  |  |  |
-    | connectivity analysis | resistance | float64 | GridMultigridSolver | 279 s, error 5.1e-07 |  |  |  |
+    | connectivity analysis | resistance | float32 | SpielmanApproximation(epsilon=0.15), GeometricMultigridCGSolver(rtol=3e-4) | 0.508 s, error 6.5e-02 |  |  |  |
+    | connectivity analysis | resistance | float64 | GeometricMultigridCGSolver | 279 s, error 5.1e-07 |  |  |  |
     | connectivity analysis | resistance | float64 | CholmodSolver | timeout |  |  |  |
     | connectivity analysis | resistance | float64 | CuDSSSolver | 170 s, error 8.8e-15 |  |  |  |
     | connectivity analysis | resistance | float64 | AMJaxCGSolver | oom |  |  |  |
     | connectivity analysis | resistance | float64 | PyAMGSolver | timeout |  |  |  |
     | connectivity analysis | resistance | float64 | dense | failed |  |  |  |
-    | sensitivity analysis | resistance | float32 | GridMultigridSolver | 105 s, error 1.3e-03 |  |  |  |
+    | sensitivity analysis | resistance | float32 | GeometricMultigridCGSolver | 105 s, error 1.3e-03 |  |  |  |
     | sensitivity analysis | resistance | float32 | CholmodSolver | timeout |  |  |  |
     | sensitivity analysis | resistance | float32 | CuDSSSolver | 134 s, error 2.3e-03 |  |  |  |
     | sensitivity analysis | resistance | float32 | PyAMGSolver | timeout |  |  |  |
     | sensitivity analysis | resistance | float32 | dense | failed |  |  |  |
-    | sensitivity analysis | resistance | float32 | SpielmanApproximation(epsilon=0.15), GridMultigridSolver(rtol=3e-4) | 0.542 s, error 7.7e-02 |  |  |  |
-    | sensitivity analysis | resistance | float64 | GridMultigridSolver | 346 s, error 3.2e-07 |  |  |  |
+    | sensitivity analysis | resistance | float32 | SpielmanApproximation(epsilon=0.15), GeometricMultigridCGSolver(rtol=3e-4) | 0.542 s, error 7.7e-02 |  |  |  |
+    | sensitivity analysis | resistance | float64 | GeometricMultigridCGSolver | 346 s, error 3.2e-07 |  |  |  |
     | sensitivity analysis | resistance | float64 | CholmodSolver | timeout |  |  |  |
     | sensitivity analysis | resistance | float64 | CuDSSSolver | 251 s, error 1.5e-13 |  |  |  |
     | sensitivity analysis | resistance | float64 | AMJaxCGSolver | oom |  |  |  |
@@ -293,19 +295,19 @@ The fastest solver of each question, distance and dtype, on the largest syntheti
 
     | Question | Distance | dtype | Solver | Raster | Status | Recorded reason |
     | --- | --- | --- | --- | --- | --- | --- |
-    | distance calculation | resistance | float32 | GridMultigridSolver | 8192² | `oom` | allocation of 44.98 GiB failed |
+    | distance calculation | resistance | float32 | GeometricMultigridCGSolver | 8192² | `oom` | allocation of 44.98 GiB failed |
     | distance calculation | resistance | float32 | CholmodSolver | 8192² | `oom` | allocation of 2.50 GiB failed |
     | distance calculation | resistance | float32 | CuDSSSolver | 4096² | `failed` | `jax.errors.JaxRuntimeError: INTERNAL: spineax pbatch token: cuDSS call failed (status 2): cudssExecute analysis [executable_name='jit__initial_state']` |
     | distance calculation | resistance | float32 | AMJaxCGSolver | 256² | `failed` | `equinox.EquinoxRuntimeError: A linear solver returned non-finite (NaN or inf) output. This usually means that an` |
     | distance calculation | resistance | float32 | PyAMGSolver | 4096² | `timeout` | `a call exceeded 900 s` |
     | distance calculation | resistance | float32 | dense | 256² | `oom` | allocation of 16.02 GiB failed |
-    | distance calculation | resistance | float64 | GridMultigridSolver | 4096² | `oom` | allocation of 22.50 GiB failed |
+    | distance calculation | resistance | float64 | GeometricMultigridCGSolver | 4096² | `oom` | allocation of 22.50 GiB failed |
     | distance calculation | resistance | float64 | CholmodSolver | 4096² | `oom` | allocation of 9.88 GiB failed |
     | distance calculation | resistance | float64 | CuDSSSolver | 4096² | `oom` | allocation of 13.62 GiB failed |
     | distance calculation | resistance | float64 | AMJaxCGSolver | 4096² | `oom` | `jax.errors.JaxRuntimeError: RESOURCE_EXHAUSTED: Failed to get configs for: 8 out of 83 instructions. See logs for all failures. Example failure:` |
     | distance calculation | resistance | float64 | PyAMGSolver | 4096² | `timeout` | `a call exceeded 900 s` |
     | distance calculation | resistance | float64 | dense | 256² | `oom` | allocation of 32.02 GiB failed |
-    | distance calculation | free energy | float64 | GridMultigridSolver | 256² | `failed` | `equinox.EquinoxRuntimeError: FreeEnergyDistance cannot resolve the requested logarithms accurately; choose a different theta, float64 precision, or tighter solver tolerances.` |
+    | distance calculation | free energy | float64 | GeometricMultigridCGSolver | 256² | `failed` | `equinox.EquinoxRuntimeError: FreeEnergyDistance cannot resolve the requested logarithms accurately; choose a different theta, float64 precision, or tighter solver tolerances.` |
     | distance calculation | free energy | float64 | dense | 256² | `oom` | allocation of 64.01 GiB failed |
     | connectivity analysis | resistance | float32 | CholmodSolver | 256² | `timeout` | `a call exceeded 900 s` |
     | connectivity analysis | resistance | float32 | PyAMGSolver | 256² | `timeout` | `a call exceeded 900 s` |
@@ -325,7 +327,7 @@ The fastest solver of each question, distance and dtype, on the largest syntheti
 ### Method
 
 - **Solvers**: JAXScape solves the linear systems of resistance and free-energy distances with one of several solvers, on the GPU, in float32 and float64. `dense` is the dense solve, `solver=None`.
-- **Rasters**: in the distance calculation, every raster of its distance; in the windowed analyses, 256², under exact resistance distance and under `SpielmanApproximation(epsilon=0.15)` with `GridMultigridSolver(rtol=3e-4)`.
+- **Rasters**: in the distance calculation, every raster of its distance; in the windowed analyses, 256², under exact resistance distance and under `SpielmanApproximation(epsilon=0.15)` with `GeometricMultigridCGSolver(rtol=3e-4)`.
 - **Error**: in the distance calculation, the largest relative error with respect to the float64 reference of the distance calculation; in the windowed analyses, the relative L2 error $\lVert m - m_{\mathrm{ref}} \rVert_2 / \lVert m_{\mathrm{ref}} \rVert_2$ of the map $m$ with respect to the map $m_{\mathrm{ref}}$ of exact resistance distance in float64 with `CuDSSSolver` on the same tiles, measured on 256² alone. In the figure of error, errors below $10^{-16}$ are drawn at $10^{-16}$.
 - **Time limit**: a call stops after 15 min, and under `SpielmanApproximation(epsilon=0.15)` after 1 h.
 - **Not run**: free-energy distance in float32; free-energy distance with `AMJaxCGSolver` or `PyAMGSolver`.
