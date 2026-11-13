@@ -39,8 +39,8 @@ class AbstractReusableStateSolver(lx.AbstractLinearSolver):
     It is the parent of `AbstractSparseSolver` and `CholmodSolver`. A new solver
     subclasses `AbstractSparseDirectSolver` or `AbstractSparseIterativeSolver`.
     Distance queries call `reinit` on the state they receive before solving. Other
-    Lineax solvers run `init` for each query, which suits iterative solvers, whose
-    `init` only records the operator.
+    Lineax solvers run `init` for each query, which suits Lineax's iterative
+    solvers, such as `lineax.CG`, whose `init` only records the operator.
     """
 
     @abc.abstractmethod
