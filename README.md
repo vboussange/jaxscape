@@ -38,9 +38,9 @@ The table marks the quantities that each package computes.
 | [eco-connectivity](https://github.com/csiro/connectivity) |  |  |  | ✓ |  |
 | [EcoScape](https://github.com/ecoscape-earth/ecoscape-connectivity) |  |  |  |  | ✓ |
 | [samc](https://cran.r-project.org/package=samc) |  |  |  |  | ✓ |
-| **Speed-up of JAXScape over the fastest other package** | 1.2x over skimage.graph.MCP | 24x over Circuitscape.jl | 2.2x over ConScape.jl | 0.57x over Graphab (on habitat patches) | 5.2x over Omniscape.jl |
+| **Smallest speed-up of JAXScape over another package** | 1.2x over skimage.graph.MCP | 24x over Circuitscape.jl | 2.2x over ConScape.jl | 0.57x over Graphab (on habitat patches) | 5.2x over Omniscape.jl |
 
-Speed-up: the smallest speed-up of JAXScape on one GPU over another package in the benchmark of JAXScape 0.0.16, that is, the warm runtime of the package divided by that of JAXScape, each in its fastest setting on the largest synthetic raster that both completed, with JAXScape under the distance with which the benchmark compares the package. The [benchmark page](https://vboussange.github.io/jaxscape/benchmark/) of the [documentation](https://vboussange.github.io/jaxscape/) details the comparison.
+Speed-up: the smallest speed-up of JAXScape on one GPU over another package in the benchmark of JAXScape 0.0.16, that is, the warm runtime of the package divided by that of JAXScape, each in its fastest setting on the largest synthetic raster that both completed, with JAXScape under the distance or setting with which the benchmark compares the package. The [benchmark page](https://vboussange.github.io/jaxscape/benchmark/) of the [documentation](https://vboussange.github.io/jaxscape/) details the comparison.
 
 [ilg-toolkit](https://github.com/vboussange/ilg-toolkit) builds on JAXScape for **inverse landscape genetics**, the inference of landscape permeability from geolocated molecular data. It works with the JAX scientific machine learning ecosystem, including [Equinox](https://github.com/patrick-kidger/equinox) and [Flax](https://github.com/google/flax), whose layers can be used to build neural networks that map landscape features to permeability. [ResistanceGA](https://github.com/wpeterman/ResistanceGA) (genetic algorithm) and [radish](https://github.com/nspope/radish) (gradient-based optimization) address the same problem.
 

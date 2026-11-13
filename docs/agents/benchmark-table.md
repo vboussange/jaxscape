@@ -1,7 +1,7 @@
 # The "Why JAXScape?" table
 
 The "Why JAXScape?" section of `README.md` summarizes the benchmark: which
-package covers which topic, and the speed-up of JAXScape over the fastest other
+package covers which topic, and the smallest speed-up of JAXScape over another
 package on each topic. `docs_hooks.py` renders the README as the landing page of
 the documentation, so the README is the only file to edit. Update the section
 each time a benchmark run is published under `benchmark/results/<run>/` (see
