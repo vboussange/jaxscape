@@ -27,14 +27,15 @@ def test_hierarchy_preserves_matrix_dtype(amjax_dependencies, dtype):
     state = solver.init(BCOOLinearOperator(matrix), {})
 
     assert isinstance(state, SparseIterativeState)
-    assert len(state.preconditioner.multilevel_solver.levels) > 1
+    assert len(state.preconditioner.levels) > 1
     for leaf in jax.tree.leaves(state.preconditioner):
         if jnp.issubdtype(leaf.dtype, jnp.inexact):
             assert leaf.dtype == dtype
 
 
-def test_frozen_preconditioner_jitted_values_and_gradients(amjax_dependencies):
-    """Current matrix solves and resistance gradients reuse a frozen hierarchy."""
+def test_reinitialized_state_jitted_values_and_gradients(amjax_dependencies):
+    """Solves and resistance gradients with the state of other values match the
+    exact ones."""
     scipy_matrix = amjax_dependencies.gallery.poisson(
         (6, 6), format="csr", dtype=np.float64
     )
@@ -81,7 +82,7 @@ def test_single_level_hierarchy_runs_without_a_preconditioner(amjax_dependencies
     rhs = jnp.stack([jnp.ones(size), jnp.arange(size, dtype=jnp.float64)], axis=1)
     solver = AMJaxCGSolver(rtol=1e-10, max_steps=50)
     state = solver.init(BCOOLinearOperator(matrix), {})
-    assert len(state.preconditioner.multilevel_solver.levels) == 1
+    assert len(state.preconditioner.levels) == 1
 
     @jax.jit
     def solve(rhs):
@@ -104,8 +105,60 @@ def test_single_level_hierarchy_runs_without_a_preconditioner(amjax_dependencies
     np.testing.assert_allclose(gradient, expected, rtol=1e-8, atol=1e-9)
 
 
+@pytest.mark.parametrize("dtype, rtol", [(jnp.float32, 1e-4), (jnp.float64, 1e-7)])
+def test_reinit_solves_high_contrast_values_in_few_steps(
+    amjax_dependencies, dtype, rtol
+):
+    """The state of a graph of uniform conductance, as windowed analyses build
+    it, solves a graph of conductance contrast 1e4 in few iterations."""
+    rng = np.random.default_rng(0)
+    permeability = jnp.asarray(10 ** rng.uniform(-4, 0, (24, 24)))
+    nodes = jnp.array([0, 100, 300, 575])
+    distance = ResistanceDistance(solver=AMJaxCGSolver(max_steps=60))
+    state = distance.init(GridGraph(jnp.ones((24, 24), dtype), fun=avg))
+    graph = GridGraph(permeability.astype(dtype), fun=avg)
+
+    actual = distance(graph, nodes=nodes, state=distance.reinit(graph, state))
+    expected = ResistanceDistance(solver=None)(
+        GridGraph(permeability, fun=avg), nodes=nodes
+    )
+    np.testing.assert_allclose(actual, expected, rtol=rtol)
+
+
+def test_reinitialized_levels_at_high_contrast(amjax_dependencies):
+    """With the state of a graph of uniform conductance and the values of a
+    graph of conductance contrast 1e8, the matrix of each level is the Galerkin
+    product `R A P` of the level above, and the V-cycle is symmetric positive
+    definite."""
+    rng = np.random.default_rng(0)
+    permeability = jnp.asarray(10 ** rng.uniform(-8, 0, (24, 24)))
+    distance = ResistanceDistance()
+    uniform = distance.system_matrix(GridGraph(jnp.ones_like(permeability), fun=avg))
+    matrix = distance.system_matrix(GridGraph(permeability, fun=avg))
+    solver = AMJaxCGSolver()
+    state = solver.init(BCOOLinearOperator(uniform), {})
+    state = solver.reinit(BCOOLinearOperator(matrix), {}, state)
+
+    expected = np.asarray(matrix.todense())
+    for level in state.preconditioner.multilevel_solver(state.values).levels:
+        scale = np.abs(expected).max()
+        np.testing.assert_allclose(level.A.todense(), expected, atol=1e-14 * scale)
+        np.testing.assert_allclose(level.Dinv, 1 / np.diag(expected), rtol=1e-12)
+        if level.P is not None:
+            expected = level.R.todense() @ expected @ level.P.todense()
+
+    v_cycle = solver.precondition(state.preconditioner, state.pattern, state.values)
+    approximate_inverse = np.asarray(v_cycle(jnp.eye(state.pattern.n)))
+    scale = np.abs(approximate_inverse).max()
+    np.testing.assert_allclose(
+        approximate_inverse, approximate_inverse.T, atol=1e-12 * scale
+    )
+    assert np.linalg.eigvalsh(approximate_inverse).min() > 0
+
+
 def test_state_built_inside_jit_solves_the_graph(amjax_dependencies):
-    """Inside `jax.jit`, the hierarchy is that of a graph of permeability 1."""
+    """Inside `jax.jit`, the aggregation of the hierarchy is that of a graph of
+    permeability 1."""
     rng = np.random.default_rng(0)
     permeability = jnp.asarray(10 ** rng.uniform(-1, 0, (8, 9)))
     nodes = jnp.array([0, 30, 71])
@@ -119,6 +172,13 @@ def test_state_built_inside_jit_solves_the_graph(amjax_dependencies):
     )
     expected = query(permeability, ResistanceDistance(solver=None))
     np.testing.assert_allclose(actual, expected, rtol=1e-7)
+
+
+def test_smoothers_are_required(amjax_dependencies):
+    with pytest.raises(ValueError, match="smoother before and after"):
+        AMJaxCGSolver(presmoother=None)  # pyright: ignore[reportArgumentType]
+    with pytest.raises(ValueError, match="smoother before and after"):
+        AMJaxCGSolver(postsmoother=None)  # pyright: ignore[reportArgumentType]
 
 
 def test_missing_amjax_dependency_reports_extra(monkeypatch):
