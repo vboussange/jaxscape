@@ -22,7 +22,8 @@ float64 throughput.
 Memory decides first. `solver=None` holds dense matrices of the size of the
 graph squared, and so fits small graphs only. `GridMultigridSolver` holds a few
 arrays of the size of the graph per right-hand side. Direct solvers hold a
-sparse factorization; when it does not fit, use `AMJaxCGSolver`.
+sparse factorization; when it does not fit, use `GridMultigridSolver` on grid
+graphs and `AMJaxCGSolver` on other graphs.
 
 Free-energy distances decay exponentially with path cost: iterative solvers
 need tolerances far below their defaults to resolve distant entries, and
@@ -63,7 +64,7 @@ See the [Lineax documentation](https://docs.kidger.site/lineax/) for the full li
 |---|---|---|
 | `GridMultigridSolver` | JAX on CPU or GPU | Conjugate gradients with a geometric multigrid preconditioner for the matrices of `GridGraph`s. Each solve builds its hierarchy inside `jax.jit`. No host step and no extra dependency. |
 | `CholmodSolver` | CPU host callback | Direct factorization for fixed sparse systems; efficient reuse when factorization memory fits. GPU arrays cross the host-device boundary. |
-| `AMJaxCGSolver` | CPU setup; JAX solve on CPU or GPU | Conjugate gradients with an algebraic multigrid hierarchy, built once on the host, for graphs whose factorization does not fit. No per-solve host callback. |
+| `AMJaxCGSolver` | CPU setup; JAX solve on CPU or GPU | Conjugate gradients with an algebraic multigrid hierarchy, built once on the host, for graphs other than grid graphs whose factorization does not fit. No per-solve host callback. |
 | `CuDSSSolver` | NVIDIA GPU, through cuDSS and spineax | Direct factorization inside `jax.jit`, with cost and accuracy independent of conductance contrast. Linux x86-64 and Python 3.12 or newer. |
 
 **Installation:**
@@ -168,7 +169,7 @@ Solver setup can cost far more than a solve, as a sparse analysis or a multigrid
   solves the graph it is given: a state of another graph costs time and leaves the
   distances unchanged.
 
-A loop over conductances carries the state from one step to the next. The state carries no gradient, and `has_aux=True` passes it through the gradient transformation:
+A loop over conductances carries the state from one step to the next, whatever the solver: `init` returns `None` only with `solver=None`, and `reinit` builds a new state for a solver that keeps nothing from one matrix to the next, such as `lineax.CG`. The state carries no gradient, and `has_aux=True` passes it through the gradient transformation:
 
 ```python
 import equinox as eqx
@@ -287,8 +288,6 @@ class JacobiCGSolver(AbstractSparseIterativeSolver):
         return lambda residuals: residuals / diagonal[:, None]
 ```
 
-A solver of another kind whose state outlives the matrix values subclasses `AbstractReusableStateSolver` and implements `reinit`.
-
 ## Solver reference
 
 ::: jaxscape.solvers.gridmultigridsolver.GridMultigridSolver
@@ -331,11 +330,6 @@ A solver of another kind whose state outlives the matrix values subclasses `Abst
 ::: jaxscape.solvers.pyamgsolver.PyAMGSolver
     options:
       members: false
-
-::: jaxscape.solvers.operator.AbstractReusableStateSolver
-    options:
-      members:
-        - reinit
 
 ## Advanced: `BCOOLinearOperator`
 

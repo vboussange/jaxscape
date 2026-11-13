@@ -204,6 +204,10 @@ class AbstractDistance(eqx.Module):
         """Return the state for `graph`, reusing what the solver can from `state`.
 
         Queries on `graph` take the returned state, and so does the next `reinit`.
+        Carry the state whatever the solver: `reinit` returns `None` only for a
+        distance without a solver, such as one with `solver=None`, and for a
+        solver that keeps nothing from one matrix to the next, such as
+        `lineax.CG`, it ignores `state` and builds a new state.
 
         **Arguments:**
 
@@ -362,6 +366,11 @@ class AbstractSolverDistance(AbstractDistance):
         on the host, such as `AMJaxCGSolver`, so call it outside `jax.jit`.
         `ResistanceDistance` also builds the state of a `GridGraph` inside
         `jax.jit`.
+
+        With any solver, `init` returns a state, and it returns `None` only with
+        `solver=None`. Carry the state through `reinit` and the queries whatever
+        the solver: for a solver that keeps nothing from one matrix to the next,
+        such as `lineax.CG`, `reinit` builds a new state.
 
         **Arguments:**
 
