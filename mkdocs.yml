@@ -7,6 +7,13 @@ exclude_docs: |
   adr/
   agents/
 
+# docs/index.md is generated from README.md by this hook; `mkdocs serve`
+# rebuilds when README.md changes.
+hooks:
+  - docs_hooks.py
+watch:
+  - README.md
+
 repo_name: vboussange/jaxscape
 repo_url: https://github.com/vboussange/jaxscape
 
@@ -76,15 +83,15 @@ extra_css:
   - _static/custom_css.css
 
 nav:
-  - index.md
-  - Benchmark: benchmark.md
+  - Getting started: index.md
+  - Benchmark: benchmark/index.md
   - Examples:
     - Distance calculation: examples/distance_calculation/distance_calculation.ipynb
     - Connectivity analysis: examples/connectivity_analysis/connectivity_analysis.ipynb
-    - Advanced topics: examples/advanced/moving_windows.ipynb
+    - Moving-window operations: examples/advanced/moving_windows.ipynb
   - API Reference:
     - Graphs: api/graphs.md
-    - Distance metrics: api/distances.md
+    - Distances: api/distances.md
     - Linear solvers: api/linear_solvers.md
     - Connectivity analysis: api/connectivity_analysis.md
     - Window operations: api/window_operations.md

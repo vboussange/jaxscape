@@ -125,5 +125,5 @@ def test_missing_amjax_dependency_reports_extra(monkeypatch):
     from jaxscape.solvers import amjaxcgsolver
 
     monkeypatch.setattr(amjaxcgsolver, "AMJAX_AVAILABLE", False)
-    with pytest.raises(ImportError, match=r"jaxscape\[amjax\]"):
+    with pytest.raises(ImportError, match="--extra amjax"):
         AMJaxCGSolver()

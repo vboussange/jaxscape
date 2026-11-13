@@ -7,20 +7,22 @@ from jax import Array, lax, vmap
 
 
 class WindowOperation(eqx.Module):
-    """Manages window-based operations on raster data with buffering.
+    """Division of a raster into square core windows, each with a buffer.
 
-    Used for processing large rasters by dividing them into smaller windows with
-    overlapping buffer regions. Ensures each window has sufficient context for
-    operations that depend on neighboring pixels.
+    A large raster is processed one total window at a time. A total window is
+    a core window with its buffer, the band of `buffer_size` pixels around it,
+    which overlaps the neighbouring total windows: it holds the pixels that a
+    computation on the core window depends on.
 
     **Attributes:**
 
-    - `shape`: Raster dimensions `(height, width)`.
-    - `window_size`: Core window size in pixels.
-    - `buffer_size`: Buffer region size around each core window.
-    - `total_window_size`: Total window size including buffers
-      `(window_size + 2 * buffer_size)`.
-    - `x_steps`, `y_steps`: Number of windows in each dimension.
+    - `shape`: Raster shape `(height, width)`.
+    - `window_size`: Side of a core window, in pixels.
+    - `buffer_size`: Width of the buffer around each core window, in pixels.
+    - `total_window_size`: Side of a total window, a core window with its
+      buffer, `window_size + 2 * buffer_size`.
+    - `x_steps`, `y_steps`: Number of total windows along axis 0, the height,
+      and along axis 1, the width.
 
     !!! example
 
@@ -37,10 +39,10 @@ class WindowOperation(eqx.Module):
         ```
 
     !!! warning
-        You must ensure that `(shape[i] - 2 * buffer_size)` is divisible by
-        `window_size` for both dimensions `i = 0, 1`. Consider using
-        [`jaxscape.utils.padding`][jaxscape.utils.padding] to pad your raster data
-        automatically.
+        `shape[i] - 2 * buffer_size` must be divisible by `window_size` along
+        both axes `i = 0, 1`.
+        [`jaxscape.utils.padding`][jaxscape.utils.padding] pads a raster to such
+        a shape.
     """
 
     shape: tuple[int, int] = eqx.field(static=True)
@@ -77,16 +79,16 @@ class WindowOperation(eqx.Module):
         )
 
     def extract_total_window(self, xy: Array, raster: Array) -> Array:
-        """Extract a window including buffer regions from the raster.
+        """Extract a total window, a core window with its buffer, from the raster.
 
         **Arguments:**
 
-        - `xy`: Start coordinates `[x, y]` of the window.
+        - `xy`: Start coordinates `[x, y]` of the total window.
         - `raster`: 2D raster array.
 
         **Returns:**
 
-        Window of shape `(total_window_size, total_window_size)`.
+        Total window of shape `(total_window_size, total_window_size)`.
 
         !!! example
 
@@ -110,7 +112,7 @@ class WindowOperation(eqx.Module):
         return window
 
     def extract_core_window(self, xy: Array, raster: Array) -> Array:
-        """Extract the core window without buffers from the raster.
+        """Extract a core window, without its buffer, from the raster.
 
         **Arguments:**
 
@@ -157,16 +159,16 @@ class WindowOperation(eqx.Module):
             raster_window_core_window
         ),
     ) -> Array:
-        """Update raster by merging the core region of a processed window.
+        """Update a raster with the core window of a processed total window.
 
-        Extracts the core (non-buffer) region from `raster_window` and updates the
-        corresponding region in `raster` using the provided function.
+        Extracts the core window from `raster_window` and updates the
+        corresponding core window of `raster` using the provided function.
 
         **Arguments:**
 
         - `xy`: Start coordinates `[x, y]` of the total window.
         - `raster`: Full raster array to update.
-        - `raster_window`: Processed window including buffers.
+        - `raster_window`: Processed total window.
         - `fun`: Function to combine current and new values. Defaults to replacement.
 
         **Returns:**
@@ -217,13 +219,13 @@ class WindowOperation(eqx.Module):
             [Array, Array], Array
         ] = lambda current_raster_slice, raster_window: raster_window,
     ) -> Array:
-        """Update raster with the entire window including buffers.
+        """Update a raster with a whole processed total window.
 
         **Arguments:**
 
-        - `xy`: Start coordinates `[x, y]` of the window.
+        - `xy`: Start coordinates `[x, y]` of the total window.
         - `raster`: Full raster array to update.
-        - `raster_window`: Processed window to merge.
+        - `raster_window`: Processed total window to merge.
         - `fun`: Function to combine current and new values. Defaults to replacement.
 
         **Returns:**
@@ -266,7 +268,7 @@ class WindowOperation(eqx.Module):
 
     @property
     def nb_steps(self) -> int:
-        """Total number of windows in the raster.
+        """Number of total windows in the raster.
 
         !!! example
 
@@ -274,7 +276,7 @@ class WindowOperation(eqx.Module):
             window_op = WindowOperation(
                 shape=(100, 100), window_size=20, buffer_size=10
             )
-            print(window_op.nb_steps)  # 25 (5x5 grid of windows)
+            print(window_op.nb_steps)  # 16 (4x4 grid of total windows)
             ```
         """
         return (self.x_steps) * (self.y_steps)
@@ -282,10 +284,10 @@ class WindowOperation(eqx.Module):
     def lazy_iterator(
         self, raster: Array
     ) -> Generator[tuple[Array, Array], None, None]:
-        """Iterate over windows one at a time.
+        """Iterate over the total windows one at a time.
 
-        Memory-efficient iteration that yields windows sequentially without
-        pre-computing all windows.
+        Yields the total windows one after another, so that only one is
+        extracted at a time.
 
         **Arguments:**
 
@@ -294,7 +296,7 @@ class WindowOperation(eqx.Module):
         **Yields:**
 
         Tuples of `(xy, window)` where `xy` are start coordinates and `window`
-        is the extracted window with buffers.
+        is the extracted total window.
 
         !!! example
 
@@ -305,7 +307,7 @@ class WindowOperation(eqx.Module):
             raster = jnp.ones((100, 100))
 
             for xy, window in window_op.lazy_iterator(raster):
-                # Process each window sequentially
+                # Process each total window sequentially
                 result = compute(window)
                 # window.shape = (40, 40)
             ```
@@ -319,10 +321,10 @@ class WindowOperation(eqx.Module):
 
     @eqx.filter_jit
     def eager_iterator(self, matrix: Array) -> tuple[Array, Array]:
-        """Extract all windows at once for parallel processing.
+        """Extract all total windows at once, for batched processing.
 
-        Pre-computes all windows in a single operation using `vmap`, enabling
-        efficient batch processing and parallelization.
+        Extracts the total windows in one operation with
+        `jax.vmap`, so that a computation can then run on all of them at once.
 
         **Arguments:**
 
@@ -332,7 +334,7 @@ class WindowOperation(eqx.Module):
 
         Tuple `(xy, windows)` where `xy` has shape `(num_windows, 2)` containing
         start coordinates, and `windows` has shape
-        `(num_windows, window_height, window_width)`.
+        `(num_windows, total_window_size, total_window_size)`.
 
         !!! example
 
@@ -343,9 +345,9 @@ class WindowOperation(eqx.Module):
             raster = jnp.ones((100, 100))
 
             xy, windows = window_op.eager_iterator(raster)
-            # xy.shape = (25, 2), windows.shape = (25, 40, 40)
+            # xy.shape = (16, 2), windows.shape = (16, 40, 40)
 
-            # Process all windows in parallel
+            # Process all total windows in parallel
             results = jax.vmap(compute)(windows)
             ```
         """

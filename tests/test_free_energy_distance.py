@@ -186,7 +186,7 @@ def test_rejects_nonfinite_negative_or_asymmetric_conductances():
 SOLVERS = ["cg"]
 if find_spec("cholespy") is not None:
     SOLVERS.append("cholespy")
-if find_spec("amjax") is not None and find_spec("pyamg") is not None:
+if find_spec("amjax") is not None:
     SOLVERS.append("amjax")
 
 
@@ -264,7 +264,6 @@ def test_sparse_solvers_state_and_joint_gradients(solver_name, dtype):
 
 def test_amjax_state_serves_the_current_operator():
     pytest.importorskip("amjax")
-    pytest.importorskip("pyamg")
     weights = jnp.asarray(WEIGHTS)
     solver = AMJaxCGSolver(rtol=1e-12, max_steps=100)
     state = FreeEnergyDistance(0.7, solver=solver).init(graph(weights))
@@ -463,13 +462,13 @@ def test_grid_rectangular_coordinates_and_batched_gradients():
 
 
 @pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
-def test_grid_multigrid_solver_matches_dense_solves(dtype):
+def test_geometric_multigrid_cg_solver_matches_dense_solves(dtype):
     # The free-energy operator of a grid graph has the grid's stencil, which
-    # GridMultigridSolver solves. Its state once failed to build: the state of
+    # GeometricMultigridCGSolver solves. Its state once failed to build: the state of
     # ResistanceDistance's default builds under `jax.ensure_compile_time_eval`,
     # where every `eqx.error_if` raises, and the free-energy operator checks its
     # conductances with them.
-    from jaxscape.solvers import GridMultigridSolver
+    from jaxscape.solvers import GeometricMultigridCGSolver
 
     rng = np.random.default_rng(0)
     grid = GridGraph(
@@ -479,7 +478,7 @@ def test_grid_multigrid_solver_matches_dense_solves(dtype):
     sources = jnp.array([0, 50])
 
     expected = FreeEnergyDistance(theta=0.3)(grid, sources=sources)
-    multigrid = FreeEnergyDistance(theta=0.3, solver=GridMultigridSolver())
+    multigrid = FreeEnergyDistance(theta=0.3, solver=GeometricMultigridCGSolver())
     actual = multigrid(grid, sources=sources)
 
     rtol = 1e-5 if dtype == jnp.float32 else 1e-10

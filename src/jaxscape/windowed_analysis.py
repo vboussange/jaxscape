@@ -139,11 +139,12 @@ class WindowedAnalysis(eqx.Module):
     """Base class for windowed connectivity analyses on large rasters.
 
     Every pixel is the centre of a window of `2 * dependency_range + 1` pixels
-    a side, and counts the pixels of its window. The rasters are padded so
-    that windows of edge pixels fit: padding has quality 0 and the
-    permeability floor. Permeability below the floor, `1e-4` times the
-    maximum permeability, is raised to it: every window graph is connected,
-    and regions of zero permeability stay nearly impassable.
+    a side, and forms pairs with the pixels of its window only. The rasters
+    are padded so that the windows of the pixels at the raster edges fit: the
+    padding has quality 0 and the permeability floor. Permeability below the
+    floor, `1e-4` times the maximum permeability, is raised to it: the graph
+    of every window is connected, and regions of zero permeability stay
+    nearly impassable.
 
     With coarsening, only the windows of block centres are computed, every
     `b` pixels along each axis and on the first and last pixels, where `b` is
@@ -158,12 +159,14 @@ class WindowedAnalysis(eqx.Module):
     (see `AbstractDistance.sources_share_work`), compute a batch on tiles: a
     tile is the union of the windows of a grid of block centres, and one
     query on it gives each centre its distances to the pixels of its window.
-    The tile graph extends beyond each window, so its distances are lower
-    than in windows, and sensitivity maps have seams along the edges between
-    tiles. Larger tiles cost less per block centre and leave fewer seams.
-    Other distances, such as `LCPDistance`, compute each block centre on its
-    own window. Randomized distances, such as `SpielmanApproximation`, apply
-    the proximity returned by `AbstractDistance.debiased_proximity`.
+    The graph of a tile extends beyond each window, so that the distances
+    computed on it are lower than those computed on the window alone, and
+    sensitivity maps have seams along the edges between tiles. Larger tiles
+    cost less per block centre and leave fewer seams. Other distances, such
+    as `LCPDistance`, compute the distances of each block centre on its own
+    window. Randomized distances, such as `ResistanceDistance` with
+    `SpielmanApproximation`, apply the proximity returned by
+    `AbstractDistance.debiased_proximity`.
 
     An analysis builds its solver states once, and every run starts from them
     and reuses the compiled programs (see
@@ -178,14 +181,13 @@ class WindowedAnalysis(eqx.Module):
     - `permeability_raster`: Movement permeability, or function
       `quality -> permeability`. An integer or boolean permeability takes
       JAX's default floating dtype.
-    - `distance`: Distance metric (e.g., `LCPDistance()`,
-      `ResistanceDistance()`).
+    - `distance`: Distance, such as `LCPDistance()` or `ResistanceDistance()`.
     - `dependency_range`: Window half-width `D` in pixels. Pairs farther apart
       than `D` along either axis do not contribute, and the default
       `proximity` decays over `D / 4` equivalent pixels.
     - `batch_size`: Largest number of block centres per batch, which sets the
-      memory: a batch holds its windows, or the distances of its tile
-      queries. Exact `ResistanceDistance` and `FreeEnergyDistance` hold
+      memory: a batch holds its windows, or the distances that the queries on
+      its tiles return. Exact `ResistanceDistance` and `FreeEnergyDistance` hold
       `m * n` distances for `m` sources and `n` tile vertices, besides the
       memory of the solver. With `batch_size` at least the number of block
       centres, one tile covers the raster.
@@ -195,8 +197,10 @@ class WindowedAnalysis(eqx.Module):
       permeability 1 that gives the same distance. See
       [`ConnectivityAnalysis`][jaxscape.connectivity_analysis.ConnectivityAnalysis]
       for the units of each distance and the ecological rationale.
-    - `coarsening_factor`: Spatial coarsening in [0, 1]. 0 = finest resolution,
-      higher = faster.
+    - `coarsening_factor`: Coarsening, in [0, 1]. Block centres lie `b`
+      pixels apart, for `b` equal to `dependency_range * coarsening_factor`
+      rounded up to an odd integer. 0 computes the window of every pixel;
+      larger values compute fewer windows, and run faster.
 
     !!! example
 
@@ -212,7 +216,7 @@ class WindowedAnalysis(eqx.Module):
         settings = dict(
             quality_raster=quality,
             permeability_raster=permeability,
-            distance=ResistanceDistance(),  # GridMultigridSolver
+            distance=ResistanceDistance(),  # GeometricMultigridCGSolver
             dependency_range=20,
             batch_size=100,
             coarsening_factor=0.25,  # blocks of 5 x 5 pixels

@@ -94,6 +94,24 @@ def test_adjoint_solves_give_the_gradient_of_the_dense_solve():
     np.testing.assert_allclose(actual, expected, rtol=1e-8, atol=1e-12)
 
 
+@pytest.mark.parametrize("with_state", [False, True], ids=["no-state", "state"])
+@pytest.mark.parametrize("nodes_axis", [0, None], ids=["own-nodes", "shared-nodes"])
+def test_vmapped_matrices_each_solve_with_their_own_values(nodes_axis, with_state):
+    values = jnp.stack([VALUES, 2 * VALUES[::-1]])
+    nodes = jnp.stack([NODES, NODES[::-1]]) if nodes_axis == 0 else NODES
+    distance = ResistanceDistance(solver=CholmodSolver())
+    state = distance.init(grid_of(VALUES)) if with_state else None
+
+    def query(distance, state):
+        return jax.vmap(
+            lambda v, n: distance(grid_of(v), nodes=n, state=state),
+            in_axes=(0, nodes_axis),
+        )(values, nodes)
+
+    expected = query(ResistanceDistance(solver=None), None)
+    np.testing.assert_allclose(query(distance, state), expected, rtol=1e-10, atol=1e-12)
+
+
 def test_a_deferred_factorization_runs_with_the_first_solve(factorizations):
     distance = ResistanceDistance(solver=CholmodSolver(factorize_in_init=False))
     state = distance.init(grid_of(VALUES))

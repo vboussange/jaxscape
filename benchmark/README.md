@@ -1,111 +1,155 @@
-## Benchmark workspace
+# Benchmark
 
-This workspace owns the cross-tool benchmarks that feed the documentation site.
-The default full-suite entrypoint writes structured results to
-`benchmark/results/benchmark_results.json` and
-`benchmark/results/benchmark_results.csv`, then renders one scorecard per
-feature into `docs/assets/`. Long GPU launches can also be run through the
-run-scoped wrapper at `benchmark/results/runs/<timestamp>/`, and the smoke
-pipeline writes isolated artifacts under `benchmark/results/smoke/`. Every
-automated feature is benchmarked on deterministic synthetic size tiers; the
-sensitivity suite uses a smaller `large` case than the distance tasks.
+The benchmark compares JAXScape with the software that ecologists use for
+connectivity analysis, on three questions: `distance`, the distance
+calculation; `connectivity`, the connectivity analysis; and `sensitivity`, the
+sensitivity analysis. The last two are windowed analyses. Its results make
+the [Benchmark page](https://vboussange.github.io/jaxscape/benchmark/) of the
+docs.
 
-## Compatibility summary
-
-| Feature | Automated profiles | Optional local profiles | Notes |
-| --- | --- | --- | --- |
-| Free-energy distance | `JAXScape / CG / f64 (CPU/GPU)` | none | Same grid sizes, seeds, conductances and selected sites as resistance distance; fixed inverse temperature 0.1. |
-| Resistance distance | `gdistance / commuteDistance`, `Circuitscape.jl / cg+amg / f64`, `Circuitscape.jl / cholmod / f64` | `JAXScape / CholmodSolver / f32`, `JAXScape / CholmodSolver / f64`, `JAXScape / CuDSSSolver / f32 (GPU)`, `JAXScape / CuDSSSolver / f64 (GPU)`, `JAXScape / AMJaxCGSolver / f32 (CPU/GPU)`, `JAXScape / AMJaxCGSolver / f64 (CPU/GPU)`, `JAXScape / approx AMJaxCGSolver / f32 (CPU/GPU)`, `JAXScape / approx AMJaxCGSolver / f64 (CPU/GPU)`, `JAXScape / approx CholmodSolver / f32`, `JAXScape / approx CholmodSolver / f64`, `Conefor` adapters | The dense `pinv` family is intentionally excluded from the full resistance suite because the large resistance case is not a useful dense-pseudoinverse benchmark target. |
-| Least-cost path | `JAXScape (CPU/GPU)`, `gdistance / costDistance` | `Conefor` adapter | Conefor remains a manual external integration. |
-| Sensitivity analysis | `JAXScape / shortest-path gradient (CPU/GPU)`, `gdistance / shortestPath`, `JAXScape / resistance gradient (CPU/GPU)`, `gdistance / passage` | none | This scorecard compares JAX gradients to the matching `gdistance` centrality surfaces. |
-| Inverse landscape genetics | `JAXScape / CholmodSolver / f32`, `JAXScape / AMJaxCGSolver / f32 (CPU/GPU)`, `JAXScape / AMJaxCGSolver / f64 (CPU/GPU)`, `JAXScape / approx pinv / f32 (CPU/GPU)`, `JAXScape / approx pinv / f64 (CPU/GPU)`, `ResistanceGA` | `JAXScape / CuDSSSolver / f32 (GPU)`, `JAXScape / CuDSSSolver / f64 (GPU)` | JAXScape runs the fixed-budget synthetic inverse problem through Optimistix LBFGS and reports final fit quality on a shared commute-distance evaluation metric. |
-
-## Tasks
-
-The exact mathematical setup of the raster generator, point sets, and objective
-functions is documented on `docs/benchmark.md` and mirrored into the generated
-`benchmark_results.json` case metadata.
-
-Every run also records the normalized thread configuration in the JSON artifact,
-including `BENCHMARK_THREADS`, the propagated BLAS/OpenMP and R/Julia thread
-variables, and the `XLA_FLAGS` used to pin CPU-side JAX execution. The workspace
-default, and the published CI default, is `BENCHMARK_THREADS=4`.
-
-## Workspace layout
-
-- `benchmark/benchmark_distances.py`: full-suite orchestration, shared synthetic cases, cross-software adapters, and JSON/CSV artifact writing.
-- `benchmark/jaxscape/`: JAXScape-only task entry points plus `utils.py`, which owns the shared standalone runner, worker subprocess plumbing, and task-level benchmark helpers.
-- `benchmark/render_scorecard.py`, `benchmark/generate_benchmark_docs.py`, and `benchmark/run_benchmarks.sh`: scorecard rendering, docs generation, and end-to-end reruns into the canonical published paths.
-- `benchmark/run_smoke_checks.sh`: representative smoke pipeline that writes isolated JSON/CSV, scorecards, and a generated benchmark markdown page under `benchmark/results/smoke/`.
-- `benchmark/launch_full_benchmark.sh`: asynchronous run-scoped launcher that writes logs, scorecards, generated docs, and run status under `benchmark/results/runs/<timestamp>/`.
-- `benchmark/publish_benchmark_artifacts.py`: promote a validated run-scoped artifact set back into the canonical `benchmark/results/` and `docs/assets/` paths.
-- `benchmark/install_external_tools.sh`, `benchmark/julia/`, `benchmark/.julia/`, and `benchmark/.r-lib/`: local Julia and R benchmark toolchain setup.
-- `benchmark/external/`: adapter scripts for Circuitscape, `gdistance`, Conefor, and `ResistanceGA`.
-
-## Regenerating the artifacts
+This directory is a uv project of its own, outside the root project, pinned to
+a commit of JAXScape (`jaxscape @ git+...@<commit>` in `pyproject.toml`). Run
+every command from this directory:
 
 ```bash
-uv sync --extra benchmark --extra amjax --extra cholespy
-./benchmark/install_external_tools.sh
-./benchmark/run_benchmarks.sh --device cpu --require-complete
+uv sync
+./install.sh                                  # the pinned toolchains and the Maryland raster
+uv run python run.py "$(mktemp -d)" --smoke   # every cell once, on 32 x 32 rasters, small windows
+nohup uv run python run.py results/v0.0.18 > run.log 2>&1 &   # the full run
+uv run python report.py results/v0.0.18      # the figures and the page
+uv run pytest                                 # tests of the runner and the report
 ```
 
-For local GPU profiling, install CUDA support and switch the device flag:
+Smoke mode runs in a new run directory, such as a scratch directory, and exits
+with an error unless every cell is `ok` with its agreement and every Tier 1
+error is at most `smoke_tolerance`, which catches a tool whose graph departs
+from the shared edge rule. A full run appends one record per cell to
+`records.csv` as each cell finishes; when it restarts, it skips the cells
+recorded there. It resumes only with the configuration and environment
+snapshot of the run, and otherwise exits with their differences. To benchmark
+a later release, change the pin, run, and report.
+
+## Layout
+
+- `config.toml`: how cells run (timeout, repeats, cores, GPU, smoke mode), the
+  landscape, the raster sides and shared parameters of each distance, the
+  windows of the windowed analyses, the Maryland case, one entry per tool and
+  question, and the solver view, which runs JAXScape with each solver in
+  float32 and float64 on the GPU: the distance calculation on every raster of
+  its distance, the windowed analyses on exact resistance distance at 256²
+  alone, and Spielman's approximation of resistance distance on every case.
+- `landscape.py`: the synthetic landscape, the Maryland case of the windowed
+  analyses, the sites of the distance calculation and the conductance of its
+  edges, which every tool of the distance calculation shares, and the
+  resistance raster of the adapters. Smoke mode takes the top-left 32 x 32
+  pixels of Maryland.
+- `install.sh`: installs the toolchains of the external tools and the data,
+  each pinned: Julia and the packages of `julia/Manifest.toml`, through
+  juliaup, the R packages of `renv.lock` in the renv library of this
+  directory, which `Rscript` loads here through `.Rprofile`, the Graphab jar
+  and the Java runtime that it needs in `java/`, and the land cover of
+  Maryland in `data/`. The Python tools are dependencies of this project.
+- `run.py`: the runner. Each cell runs in its own process, pinned with
+  `taskset` to the cores of the configuration, with the OpenMP, BLAS, Julia
+  and R thread variables matched to them; XLA sizes its thread pools to the
+  same cores. GPU cells run on the configured GPU, numbered as `nvidia-smi`
+  numbers it, once no other process computes on it; the run stops when one
+  still does after a minute. The work files of each cell, in `/dev/shm` where
+  it exists, are deleted when the cell ends.
+- `report.py`: the report, from a run directory.
+- `adapters/`: one script per tool. `protocol.py` states the protocol between
+  the runner and an adapter, `protocol.jl` and `protocol.R` implement it for
+  Julia and R adapters, and `reference.py` computes the float64 reference of
+  the distance calculation.
+- `results/<run>/`: `records.csv`, the configuration of the run `config.json`,
+  smoke settings applied, the environment snapshot `environment.json`, the
+  references of each question, the logs of the cells and the maps of the
+  windowed analyses (neither committed): those of JAXScape's GPU cells, and
+  the other tools' maps of Maryland. The report writes one figure per
+  question, `distance.png`, `connectivity.png` and `sensitivity.png`, the
+  Maryland figure `maryland.png`, which it draws when the run directory holds
+  its maps, the figures of the solver view, `solvers.png` and
+  `solver-errors.png`, and the page `index.md`, whose settings come from
+  `config.json`.
+
+## The cell record
+
+A record, one row of `records.csv`, is the one contract between the runner and
+the report. `FIELDS` in `run.py` fixes the header; the times of the timed calls
+make one value, joined by `;`, and a missing value is empty.
+
+| Field | Value |
+| --- | --- |
+| `view`, `question`, `tool`, `distance`, `device`, `dtype`, `solver`, `case` | The cell, in the `comparison` or the `solver` view; `cells` is its number of raster cells. The `distance` of a configuration whose table is keyed by a label is the label. |
+| `status`, `reason` | `ok`, `failed`, `timeout`, `oom` or `skipped`, and why. A cell whose output is not finite is `failed`: an output of the distance calculation or of JAXScape with a NaN or infinite value, or the map of another tool without a finite pixel. |
+| `warmup_s`, `times_s`, `median_s` | The warm-up call, the timed calls and their median, in seconds. |
+| `measure`, `agreement`, `tier`, `compared_with` | The agreement measure of the tier, or of the solver view, and its value, or missing when the reference is unavailable or the measure undefined. At Tier 1, the measure is the largest relative error with respect to the float64 reference of the distance calculation, and at Tiers 2 and 3, Spearman's ρ between the map of the tool and the map of JAXScape's GPU cell of the same question and case, under the distance, or the label, `compared_with`. In the solver view, the measure is the largest relative error with respect to the reference of the distance calculation, and in the windowed analyses the relative L2 error with respect to the map of exact resistance distance in float64, on the cases of the question's distance alone: elsewhere, `measure` is missing. |
+| `version`, `files`, `adapter` | The tool's version, from the environment snapshot, whether its calls read or write files, and its adapter. |
+
+## Add a tool
+
+A tool takes one adapter script and one configuration entry.
+
+1. Write `adapters/<tool>.py`, `.jl` or `.R`. Start it with a comment that
+   states how it maps the shared parameters onto the tool; the report copies
+   this comment into the table of parameter mappings. The adapter follows the
+   protocol of `adapters/protocol.py`: it reads the cell file named by its
+   argument, touches `progress` at the start of each call, saves the output
+   of its last call to `output` (for the distance calculation, the distances
+   among the sites, and for the windowed analyses, the map, NaN on pixels off
+   the tool's graph), and writes `result`. Julia adapters include
+   `adapters/protocol.jl` and run with `julia --project=julia`. R adapters
+   source `adapters/protocol.R` and run with `Rscript` in this directory. To
+   add an R package, load it in the adapter, and run
+   `Rscript -e 'renv::install("samc"); renv::snapshot()'` here.
+2. Add an entry to `config.toml`, with the tool's settings for each distance.
+   A setting given per device is a table keyed by device, and a list of
+   solvers runs each. A table keyed by a label of its own computes under the
+   distance of its `distance` setting, and its records carry the label in
+   place of the distance, as JAXScape's `resistance, K = -R, normalized` of
+   the sensitivity analysis. A tool of a windowed analysis is compared with
+   the map of JAXScape's GPU cell under the distance, or the label,
+   `compared_with`, by default its own distance, which the adapter justifies.
+   `package` names the tool in the pins of its toolchain, which give the
+   version of its records, when it differs from the tool's name without
+   `.jl`:
+
+   ```toml
+   [[tools]]
+   tool = "Circuitscape.jl"
+   question = "distance"
+   adapter = "adapters/circuitscape.jl"
+   devices = ["cpu"]
+   tier = 1
+
+   [tools.distances.resistance]
+   solver = ["cg+amg", "cholmod"]
+   ```
+
+## Add a solver
+
+A solver of the solver view takes one entry in `[solver_view.solvers]` of
+`config.toml`: its label, which its records carry as `solver`, and the
+settings that it adds or replaces, such as a `method` of resistance. It runs
+in each dtype on each distance of each question of the solver view, unless its
+`questions` and `dtypes` restrict it, or an entry of `fails_by_design` matches
+it. `cases` restricts the cases on which it runs, and `timeout` replaces that
+of the view:
+
+```toml
+[solver_view.solvers]
+GeometricMultigridCGSolver = {}
+"GeometricMultigridCGSolver(rtol=1e-3)" = { dtypes = ["float32"] }
+```
+
+## Publish a run
+
+`docs/benchmark` links to the published run directory, whose `index.md` is the
+Benchmark page. To publish a run, report it with `--publish`, which points the
+link at it, and commit both: the link, and the run's `records.csv`,
+`config.json`, `environment.json`, figures and page. Its logs, maps,
+references and `run.log` stay out of the repository.
 
 ```bash
-uv sync --extra benchmark --extra amjax --extra cholespy --extra cuda
-./benchmark/run_benchmarks.sh --device gpu
+uv run python report.py results/v0.0.18 --publish
 ```
-
-To include the optional direct JAXScape solvers locally, install the extras once:
-
-```bash
-uv sync --extra benchmark --extra cholespy
-```
-
-To benchmark `AMJaxCGSolver`, also enable the `amjax` extra:
-
-```bash
-uv sync --extra benchmark --extra amjax
-```
-
-To benchmark `CuDSSSolver`, on an NVIDIA GPU, also enable the `cudss` extra:
-
-```bash
-uv sync --extra benchmark --extra cholespy --extra cudss
-```
-
-To run the representative smoke benchmark and render isolated smoke artifacts:
-
-```bash
-./benchmark/run_smoke_checks.sh --require-complete
-```
-
-To launch the full benchmark asynchronously into a run-scoped directory:
-
-```bash
-CUDA_DEVICE=3 BENCHMARK_THREADS=4 bash benchmark/launch_full_benchmark.sh
-```
-
-After validating a run-scoped artifact set, publish it back into the canonical
-`benchmark/results/` and `docs/assets/` paths with:
-
-```bash
-uv run python benchmark/publish_benchmark_artifacts.py \
-	--results-json benchmark/results/runs/<run>/benchmark_results.json \
-	--results-csv benchmark/results/runs/<run>/benchmark_results.csv \
-	--scorecard-dir benchmark/results/runs/<run>/assets
-```
-
-The modules under `benchmark/jaxscape/` can be executed directly without CLI
-flags. For example:
-
-```bash
-uv run --extra benchmark python benchmark/jaxscape/resistance_distance.py
-```
-
-Those lightweight entry points use the default benchmark configuration and keep
-JAXScape-specific benchmark code separate from the cross-software orchestration.
-Benchmark entry points set `XLA_PYTHON_CLIENT_PREALLOCATE=false` by default,
-unless the environment already defines a different value, so the coordinator
-does not reserve most GPU memory before the worker subprocesses start.

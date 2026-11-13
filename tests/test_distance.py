@@ -23,7 +23,7 @@ from jaxscape.solvers import (
     AMJaxCGSolver,
     CholmodSolver,
     CuDSSSolver,
-    GridMultigridSolver,
+    GeometricMultigridCGSolver,
 )
 
 
@@ -120,8 +120,7 @@ def make_solver(name):
         pytest.importorskip("cholespy")
         return CholmodSolver()
     if name == "multigrid":
-        return GridMultigridSolver(rtol=1e-13)
-    pytest.importorskip("pyamg")
+        return GeometricMultigridCGSolver(rtol=1e-13)
     pytest.importorskip("amjax")
     return AMJaxCGSolver(rtol=1e-13, max_steps=500)
 

@@ -20,9 +20,8 @@ from jaxscape.solvers.operator import (
 
 
 # Check availability of optional solvers
-PYAMG_AVAILABLE = find_spec("pyamg") is not None
 CHOLMOD_AVAILABLE = find_spec("cholespy") is not None
-AMJAX_AVAILABLE = PYAMG_AVAILABLE and find_spec("amjax") is not None
+AMJAX_AVAILABLE = find_spec("amjax") is not None
 
 # Build list of available solvers
 available_solvers = []

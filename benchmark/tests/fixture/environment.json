@@ -1,0 +1,33 @@
+{
+  "date": "2026-11-10T12:00:00+00:00",
+  "gpu": {
+    "name": "NVIDIA GeForce RTX 3090",
+    "driver": "580.178.04",
+    "memory": "24576 MiB",
+    "cuda": "13.0"
+  },
+  "cpu": "AMD EPYC 7742 64-Core Processor",
+  "cores": 16,
+  "threads": {
+    "OMP_NUM_THREADS": "16",
+    "OPENBLAS_NUM_THREADS": "16"
+  },
+  "os": "Ubuntu 22.04.5 LTS",
+  "runtimes": {
+    "Python": "3.13.5",
+    "JAX": "0.12.0.1",
+    "Julia": "1.13.3"
+  },
+  "tools": {
+    "JAXScape": "0.0.18",
+    "Circuitscape.jl": "6.1.0",
+    "ConScape.jl": "0.3.0",
+    "gdistance": "1.6.5",
+    "skimage.graph.MCP": "0.26.0",
+    "EcoScape": "0.2.5",
+    "samc": "4.2.1",
+    "eco-connectivity": "2.5.0",
+    "Graphab": "3.0.8",
+    "Omniscape.jl": "0.6.4"
+  }
+}

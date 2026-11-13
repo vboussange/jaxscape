@@ -44,8 +44,8 @@ class AbstractSparseDirectSolver[Factorization](
     Subclass it with the phases of a sparse factorization library: `factorize`,
     `solve`, `residual_tolerance` and, when the library can reuse an analysis,
     `refactorize`. The base class provides the Lineax solver, as
-    `AbstractSparseSolver` describes: it refactorizes when the values change,
-    and checks results.
+    `AbstractSparseSolver` describes: it factorizes the matrix again when its
+    values change, and checks the results.
 
     `reinit` returns its state itself when the state passed its check and the
     values are those it factorizes, up to the rounding of assembling the

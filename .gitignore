@@ -11,9 +11,13 @@ docs/examples/data
 .vscode/*
 .env
 uv.lock
+!benchmark/uv.lock
 .python-version
-benchmark/.julia/
-benchmark/.r-lib/
-benchmark/r-lib/
-benchmark/results/
+benchmark/results/*/logs/
+benchmark/results/*/maps/
+benchmark/results/*/references/
+benchmark/run.log
+benchmark/data/
+benchmark/java/
 .agents/*
+benchmark/results/smoke/

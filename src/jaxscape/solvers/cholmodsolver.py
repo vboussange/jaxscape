@@ -55,9 +55,8 @@ class _FactorCache:
         return hash(_FactorCache)
 
     def factor_of(self, A_bcoo: BCOO, solve_dtype: np.dtype) -> _CholespyFactor:
-        # The first slice of any callback batch, in NumPy: this runs on every solve.
+        # In NumPy, since this runs on every solve.
         data = np.asarray(A_bcoo.data)
-        data = data.reshape(-1, data.shape[-1])[0]
         entry = self._entry
         if (
             entry is not None
@@ -65,7 +64,7 @@ class _FactorCache:
             and np.array_equal(entry[0], data)
         ):
             return entry[1]
-        factor = _factorize_host(_unbatched_bcoo(A_bcoo), solve_dtype)
+        factor = _factorize_host(A_bcoo, solve_dtype)
         self._entry = (np.array(data), factor)
         return factor
 
@@ -74,12 +73,19 @@ type _CholmodSolverState = tuple[BCOO, PackedStructures, _FactorCache | None]
 
 
 class CholmodSolver(AbstractReusableStateSolver):
-    """
-    A linear solver that uses CHOLMOD (via cholespy) to solve a sparse linear system.
-    Uses direct Cholesky factorization for symmetric positive definite matrices.
-    States of one sparsity pattern share a factorization, which solves reuse while
-    the matrix values stay the same and which is factorized again when they change.
+    """Sparse Cholesky factorization with CHOLMOD, through cholespy, on the CPU.
 
+    Solves symmetric positive definite matrices through a host callback. Solves
+    reuse the last factorization while the values of the matrix stay the same,
+    and factorize the matrix again when they change. The solver keeps one
+    factorization, so under `jax.vmap` over the values of the matrix, each
+    solve factorizes every distinct matrix of the batch.
+
+    **Attributes:**
+
+    - `factorize_in_init`: Whether `init`, called outside `jax.jit`, factorizes
+      the matrix. Otherwise, or when `init` runs inside `jax.jit`, the first
+      solve factorizes it. Defaults to `True`.
 
     !!! example
 
@@ -88,19 +94,20 @@ class CholmodSolver(AbstractReusableStateSolver):
 
         solver = CholmodSolver()
         distance = ResistanceDistance(solver=solver)
-        state = distance.init(grid)  # pre-factorizes the grounded Laplacian
+        state = distance.init(grid)  # factorizes the grounded Laplacian
         dist = distance(grid, state=state)
         ```
 
     !!! warning
-        `cholespy` must be installed to use this solver.
+        `cholespy` must be installed to use this solver, with
+        `uv add jaxscape --extra cholespy`.
 
     !!! warning
-        Float64 callback-backed solves require process-wide x64 support to be
-        enabled before JAX work starts, e.g. via `JAX_ENABLE_X64=1` or
-        `jax.config.update("jax_enable_x64", True)`. A thread-local
-        `with jax.enable_x64()` block is not sufficient for host callback
-        threads, and can surface as a callback dtype mismatch such as
+        Float64 solves run through a host callback, and require 64-bit floats
+        enabled for the whole process before JAX computes anything, with
+        `JAX_ENABLE_X64=1` or `jax.config.update("jax_enable_x64", True)`. A
+        `with jax.enable_x64()` block enables them in its own thread only, and
+        the host callback then fails with a dtype mismatch such as
         `Expected: float64, Actual: float32`.
     """
 
@@ -109,8 +116,8 @@ class CholmodSolver(AbstractReusableStateSolver):
     def __check_init__(self):
         if not CHOLESPY_AVAILABLE:
             raise ImportError(
-                "cholespy is required for CholmodSolver. "
-                "Install it with: pip install cholespy"
+                "CholmodSolver requires cholespy. "
+                "Install it with `uv add jaxscape --extra cholespy`."
             )
 
     def init(
@@ -158,13 +165,36 @@ class CholmodSolver(AbstractReusableStateSolver):
 
         def solve_host(A_bcoo: BCOO, b_jax: JaxArray) -> np.ndarray:
             solve_dtype = _solve_dtype_from_rhs(b_jax)
-            if cache is None:
-                factor = _factorize_host(_unbatched_bcoo(A_bcoo), solve_dtype)
-            else:
-                factor = cache.factor_of(A_bcoo, solve_dtype)
-            return _solve_with_factor_host(factor, b_jax)
+            # Under `jax.vmap`, every argument has the same leading batch axes, of
+            # size 1 along the axes it is not batched on. Each matrix of the batch
+            # solves all its right-hand sides at once.
+            b = np.asarray(b_jax)
+            batch_ndim = b.ndim - 1
+            matrix_batch_shape = np.broadcast_shapes(
+                A_bcoo.data.shape[:batch_ndim], A_bcoo.indices.shape[:batch_ndim]
+            )
+            batch_shape = np.broadcast_shapes(matrix_batch_shape, b.shape[:-1])
+            solution = np.empty(batch_shape + b.shape[-1:], solve_dtype)
+            b = np.broadcast_to(b, solution.shape)
+            for member in np.ndindex(matrix_batch_shape):
+                matrix = BCOO(
+                    (_member(A_bcoo.data, member), _member(A_bcoo.indices, member)),
+                    shape=A_bcoo.shape[-2:],
+                )
+                if cache is None:
+                    factor = _factorize_host(matrix, solve_dtype)
+                else:
+                    factor = cache.factor_of(matrix, solve_dtype)
+                # The right-hand sides of this matrix, along every axis it is not
+                # batched on.
+                rhs = tuple(
+                    i if size > 1 else slice(None)
+                    for i, size in zip(member, matrix_batch_shape)
+                )
+                solution[rhs] = _solve_with_factor_host(factor, b[rhs])
+            return solution
 
-        # `expand_dims` coalesces vmapped RHS solves into one batched host callback.
+        # `expand_dims` coalesces vmapped solves into one batched host callback.
         solution = eqx.filter_pure_callback(
             solve_host,
             A_bcoo,
@@ -239,7 +269,7 @@ def _solve_dtype_from_rhs(rhs: JaxArray) -> np.dtype:
 def _factorize_host(A_bcoo: BCOO, solve_dtype: np.dtype) -> _CholespyFactor:
     # CHOLMOD expects canonical sparse input. Duplicate BCOO entries can arise
     # from sparse arithmetic and may trigger native cholespy aborts.
-    A_bcoo = _unbatched_bcoo(A_bcoo).sum_duplicates()
+    A_bcoo = A_bcoo.sum_duplicates()
     if A_bcoo.shape[0] != A_bcoo.shape[1]:
         raise ValueError("CholmodSolver requires a square operator.")
 
@@ -265,13 +295,13 @@ def _factorize_host(A_bcoo: BCOO, solve_dtype: np.dtype) -> _CholespyFactor:
     return _CholespyFactor(solver, solve_dtype, A_bcoo.shape[0])
 
 
-def _solve_with_factor_host(factor: _CholespyFactor, b_jax: JaxArray) -> np.ndarray:
-    if b_jax.ndim == 0:
+def _solve_with_factor_host(factor: _CholespyFactor, b: np.ndarray) -> np.ndarray:
+    if b.ndim == 0:
         raise ValueError("Right-hand side must have at least one dimension.")
 
     # The cholespy solve API is in-place and has no implicit casting: RHS and
     # output buffers must exactly match CholeskySolverF/D precision.
-    rhs = _writable_c_array(b_jax, dtype=factor.solve_dtype)
+    rhs = _writable_c_array(b, dtype=factor.solve_dtype)
     if rhs.shape[-1] != factor.size:
         raise ValueError("The last dimension of b must match the operator dimension.")
 
@@ -301,17 +331,7 @@ def _writable_c_array(array: Any, dtype: Any | None = None) -> np.ndarray:
     return np.require(array_np, dtype=dtype, requirements=["C", "W"])
 
 
-def _unbatched_bcoo(matrix: BCOO) -> BCOO:
-    if matrix.n_batch == 0:
-        return matrix
-
-    # `pure_callback(..., vmap_method="expand_dims")` can wrap the shared matrix
-    # in a batch dimension while batching only RHS values. The first slice is the
-    # matrix to factor; RHS batching is handled separately in `_solve_with_factor_host`.
-    batch_index = (0,) * matrix.n_batch
-    return BCOO(
-        (matrix.data[batch_index], matrix.indices[batch_index]),
-        shape=matrix.shape[-2:],
-        indices_sorted=matrix.indices_sorted,
-        unique_indices=matrix.unique_indices,
-    )
+def _member(array: JaxArray, member: tuple[int, ...]) -> JaxArray:
+    """The slice of `array` that a member of a callback batch reads, with index 0
+    along the batch axes `array` is not batched on."""
+    return array[tuple(i if size > 1 else 0 for i, size in zip(member, array.shape))]

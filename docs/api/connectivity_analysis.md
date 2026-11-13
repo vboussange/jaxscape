@@ -1,13 +1,39 @@
-JAXScape provides connectivity and sensitivity analysis utilities, based on the opiniated definition of ecological connectivity as the sum of ecological proximity, which can process large rasters efficiently using windowed operations. Users who want to obtain a finer control over the definition of ecological connectivity can use the lower-level window operations directly (see [Window operations](window_operations.md)).
+# Connectivity analysis
+
+`ConnectivityAnalysis` computes the connectivity of a landscape raster: the sum
+of the proximities of its pairs of pixels, weighted by their habitat quality,
+where the proximity of two pixels is a decreasing function of their distance.
+`SensitivityAnalysis` computes the derivatives of this connectivity with
+respect to the quality and the permeability of each pixel. Both compute
+distances window by window: the memory of their distance computations is set
+by `dependency_range` and `batch_size`, independent of the raster size. The window operations serve to build other definitions of
+connectivity (see [Window operations](window_operations.md)).
+
+## Windowed analyses
+
+`ConnectivityAnalysis` and `SensitivityAnalysis` subclass `WindowedAnalysis`:
+they share its arguments, and its windows, coarsening, tiles, padding and
+permeability floor.
+
+::: jaxscape.windowed_analysis.WindowedAnalysis
+    options:
+      heading_level: 3
+      members: false
+
+## Connectivity
 
 ::: jaxscape.connectivity_analysis.ConnectivityAnalysis
     options:
+      heading_level: 3
       members:
         - run
       show_bases: false
 
+## Sensitivity
+
 ::: jaxscape.connectivity_analysis.SensitivityAnalysis
     options:
+      heading_level: 3
       members:
         - run
       show_bases: false

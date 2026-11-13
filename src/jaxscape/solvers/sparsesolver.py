@@ -35,6 +35,8 @@ class CSRPattern(eqx.Module):
       `(n, width)`, or `None` when they would hold more than twice as many
       entries as the CSR values, or rows longer than products unroll. Products
       of the matrix with vectors add up one term per column of them.
+    - `n`: Number of rows, and of columns, of the matrix.
+    - `nnz`: Number of CSR values.
     """
 
     offsets: Array

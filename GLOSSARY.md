@@ -1,13 +1,17 @@
 # JAXScape
 
-JAXScape computes differentiable landscape connectivity distances on graphs. This glossary covers how those distances reuse linear-solver work across queries and graphs.
+JAXScape computes differentiable distances on the graphs of landscapes. This glossary covers how those distances reuse linear-solver work across queries and graphs, and the windows of the analyses that compute them on rasters.
 
 ## Language
 
 ### Queries and solver state
 
+**Distance on a graph**:
+A distance between the vertices of a graph computed from its edge weights, read as conductances: the least-cost path, resistance and free-energy distances (`LCPDistance`, `ResistanceDistance`, `FreeEnergyDistance`).
+_Avoid_: Graph distance metric
+
 **Query**:
-One distance computation on a graph: between all vertices, among selected nodes, or from sources to targets.
+One distance computation on a graph: between all vertices, among selected vertices (`nodes`), or from sources to targets.
 
 **System matrix**:
 The sparse symmetric positive definite matrix whose linear systems the queries on a graph solve, such as its grounded Laplacian.
@@ -53,17 +57,17 @@ A solver state whose factorization a refactorization has consumed. Solving with 
 ### Sparse iterative solvers
 
 **Preconditioner**:
-What the state of an iterative solver keeps across values, from which each solve applies an approximate inverse of the current system matrix: the grid of `GridMultigridSolver`, on which each solve builds a multigrid hierarchy, or the hierarchy of `AMJaxCGSolver`. Values other than those it was built from change the number of iterations, and a solve that then exceeds `max_steps` fails.
+What the state of an iterative solver keeps across values, from which each solve applies an approximate inverse of the current system matrix: the grid of `GeometricMultigridCGSolver`, on which each solve builds a multigrid hierarchy, or the hierarchy of `AMJaxCGSolver`. Values other than those it was built from change the number of iterations, and a solve that then exceeds `max_steps` fails.
 _Avoid_: Hierarchy (one kind of preconditioner), setup
 
 ### Windowed analyses
 
 **Window**:
-The pixels within `dependency_range` of a pixel along both axes. A pixel counts the pixels of its window.
+The pixels within a range of a pixel along both axes: `dependency_range` in windowed analyses, `(size - 1) / 2` in `sources_to_windows_distance`. Windowed analyses count the pairs of each pixel with the pixels of its window only.
 _Avoid_: Neighbourhood
 
 **Block centre**:
-A pixel whose window an analysis computes. Without coarsening every pixel is one; with coarsening, values interpolate between them.
+A pixel whose window an analysis computes. Without coarsening every pixel is one; with coarsening, values are interpolated between them.
 
 **Block source**:
 The pixels that a block centre stands for, weighted by their interpolation weights times their quality, and summing to 1. A resistance window query from it gives the mean of the resistances from these pixels to each pixel of the window (`source_weights`).
@@ -81,3 +85,12 @@ One of the random sign vectors from which the gradient of a Spielman window quer
 
 **Sources that share work**:
 A distance whose query from several sources costs much less than one query per source, such as resistance, whose solves on a graph serve every source with one solver state, a factorization or a multigrid hierarchy. Windowed analyses run it on tiles, and other distances on windows.
+
+### Moving-window operations
+
+**Core window**:
+One of the squares of `window_size` pixels a side that tile a raster in a moving-window operation (`WindowOperation`). A computation on its total window gives the values of its pixels.
+
+**Total window**:
+A core window with the buffer of `buffer_size` pixels on every side (`total_window_size`), which holds the pixels that the computation on the core window depends on.
+_Avoid_: Window (the pixels around one pixel)

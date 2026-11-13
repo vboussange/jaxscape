@@ -17,7 +17,10 @@ from jaxscape.distance import (
     AbstractSolverDistance,
 )
 from jaxscape.graph import AbstractGraph, GridGraph
-from jaxscape.solvers.gridmultigridsolver import _grid_width, GridMultigridSolver
+from jaxscape.solvers.geometricmultigridcgsolver import (
+    _grid_width,
+    GeometricMultigridCGSolver,
+)
 from jaxscape.solvers.operator import _batched_linear_solve_impl, _solver_state
 from jaxscape.solvers.sparsesolver import AbstractSparseSolver
 from jaxscape.utils import _matmul, _VALUES_PER_STEP, bcoo_diag, graph_laplacian
@@ -34,28 +37,33 @@ _TARGET_CHUNK_SIZE = 1024
 
 
 class ResistanceDistance(AbstractSolverDistance):
-    """
-    Compute the resistance distances.
+    """Resistance distance: the effective resistance between two vertices of a
+    graph whose edge weights are conductances.
+
+    Queries compute it by solving linear systems in the Laplacian of the graph
+    grounded at one vertex, or from the pseudo-inverse of the Laplacian.
 
     **Attributes:**
 
-    - `solver`: Lineax solver of the grounded Laplacian, compatible with BCOO
-      matrices, or `None` for dense solves. Defaults to
-      `jaxscape.solvers.GridMultigridSolver()`, conjugate gradients with a
-      geometric multigrid preconditioner, which solves grid graphs, such as
-      those of a `GridGraph`, on any device without an optional dependency,
-      also in float32 and inside `jax.jit`. Other graphs raise with the
-      default: pass `jaxscape.solvers.CholmodSolver`, `AMJaxCGSolver` or
-      `CuDSSSolver`, or `solver=None`. The solver guide
-      gives the solver of each device and query
-      ([Choosing a solver](linear_solvers.md#choosing-a-solver)). Without a
-      solver, exact all-pairs and nodes-to-nodes queries take the
-      pseudo-inverse of the dense Laplacian, and other queries a dense
-      Cholesky factorization of the grounded Laplacian: their memory grows
-      with the square of the number of vertices, which suits small graphs.
-      Exact windowed analyses, which solve for every vertex of a tile, can
-      run faster on a CPU without a solver. In float32, the pseudo-inverse
-      loses accuracy when conductances span orders of magnitude.
+    - `solver`: Lineax solver of linear systems in the grounded Laplacian, for
+      `BCOO` sparse matrices, or `None` for dense linear algebra. Defaults to
+      `jaxscape.solvers.GeometricMultigridCGSolver()`, conjugate gradients with a
+      geometric multigrid preconditioner, which solves the grounded
+      Laplacians of grid graphs, such as those of a `GridGraph`, on any
+      device without an optional dependency, also in float32 and inside
+      `jax.jit`. With the default, queries on other graphs raise an error:
+      pass `jaxscape.solvers.CholmodSolver`, `AMJaxCGSolver` or
+      `CuDSSSolver`, or `solver=None`.
+      [Choosing a solver](linear_solvers.md#choosing-a-solver) gives the
+      solver for each device and query. Without a solver, exact all-pairs
+      and nodes-to-nodes queries compute the pseudo-inverse of the dense
+      Laplacian, and other queries a dense Cholesky factorization of the
+      grounded Laplacian: their memory grows with the square of the number
+      of vertices, which suits small graphs. Windowed analyses with exact
+      resistances, which solve a linear system for every vertex of a tile,
+      can run faster on a CPU without a solver. In float32, the
+      pseudo-inverse loses accuracy when conductances span orders of
+      magnitude.
     - `method`: A resistance distance method. Defaults to `ExactResistance()`.
       Use `SpielmanApproximation(epsilon=..., seed=...)` for the randomized
       Spielman-Srivastava approximation.
@@ -70,7 +78,7 @@ class ResistanceDistance(AbstractSolverDistance):
         permeability = jnp.ones((3, 3))
         grid = GridGraph(permeability, fun=lambda x, y: (x + y) / 2)
 
-        # Default: GridMultigridSolver, for grid graphs
+        # Default: GeometricMultigridCGSolver, for grid graphs
         distance = ResistanceDistance()
         dist = distance(grid)
 
@@ -101,8 +109,9 @@ class ResistanceDistance(AbstractSolverDistance):
 
     !!! note "Grounding, float32 and memory"
 
-        Apart from the pseudo-inverse of dense all-pairs and nodes-to-nodes
-        queries, queries solve the Laplacian grounded at one vertex: among the
+        Except dense all-pairs and nodes-to-nodes queries, which compute the
+        pseudo-inverse, queries solve linear systems in the Laplacian grounded
+        at one vertex: among the
         vertices whose weighted degree is at least half the largest, the
         nearest to the middle vertex. On a grid graph of `h` rows and `w`
         columns, with rook or queen contiguity, the middle vertex is its centre
@@ -112,22 +121,24 @@ class ResistanceDistance(AbstractSolverDistance):
         free of cancellation. A ground on a barrier would make the float32
         system too ill-conditioned to solve.
 
-        On large tiles, float32 solves of sparse direct solvers are inaccurate
-        around the ground. For permeability sensitivity on large tiles in
-        float32, use `GridMultigridSolver`, the default, or a direct solver in
-        float64.
+        On large tiles, the float32 solutions of sparse direct solvers are
+        inaccurate around the ground vertex. For the sensitivity of
+        connectivity to permeability on large tiles, use `GeometricMultigridCGSolver`,
+        the default, in float32, or a direct solver in float64.
 
         Exact sources-to-targets queries on `n` vertices, from `m` sources to
         `k` targets, hold the potentials of all targets when they are a few
         million values, as in small windows. Beyond, they solve the targets in
         chunks of `c`, about a thousand, and hold at most `n * (m + c)`
-        potentials, and their gradient solves each target once more.
+        potentials. Computing their gradient solves the system of each target
+        once more.
 
     !!! warning
 
         The graph must be undirected for resistance distance to be well-defined.
         With a solver, it must also be connected: the grounded Laplacian of a
-        disconnected graph is singular, and queries raise. `GridMultigridSolver`
+        disconnected graph is singular, and queries raise an error.
+        `GeometricMultigridCGSolver`
         then reports a non-finite solution, or a solve that did not converge
         within `max_steps`. A grid graph is disconnected when edges of zero
         conductance cut it, as `fun` gives between pixels of zero permeability.
@@ -138,7 +149,7 @@ class ResistanceDistance(AbstractSolverDistance):
     """
 
     solver: lx.AbstractLinearSolver | None = eqx.field(
-        default_factory=GridMultigridSolver
+        default_factory=GeometricMultigridCGSolver
     )
     method: "AbstractResistanceMethod" = eqx.field(
         default_factory=lambda: ExactResistance()
@@ -410,12 +421,14 @@ class AbstractResistanceMethod(eqx.Module):
 
 
 class ExactResistance(AbstractResistanceMethod):
-    """Exact resistance distance via pseudoinverse or grounded linear solves."""
+    """Exact resistance distances, from the pseudo-inverse of the Laplacian or
+    from linear systems in the grounded Laplacian."""
 
 
 class SpielmanApproximation(AbstractResistanceMethod):
     """
-    Spielman-Srivastava randomized resistance distance approximation.
+    Randomized approximation of resistance distances by the random projections
+    of Spielman and Srivastava.
 
     **Attributes:**
 
@@ -601,7 +614,7 @@ def _grounded_laplacian(A: BCOO) -> tuple[BCOO, Array]:
     largest, the nearest to the middle vertex in Manhattan distance on a grid of
     `n // w` rows and `w` columns, with the lowest index among the nearest. The
     middle vertex is the pixel of row `n // w // 2` and column `w // 2`. The
-    width `w` is that which `GridMultigridSolver` reads (`_grid_width`): the
+    width `w` is that which `GeometricMultigridCGSolver` reads (`_grid_width`): the
     largest index difference between neighbours, or one less for queen
     contiguity. On a grid graph of `h` rows and `w` columns, the middle vertex
     is thus its centre pixel, of row `h // 2` and column `w // 2`, and the

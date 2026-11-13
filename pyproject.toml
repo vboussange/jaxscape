@@ -28,22 +28,18 @@ dependencies = [
   "numpy>2.4.0",
   "lineax>=0.1.0"
 ]
-description = 'A JAX library for connectivity modelling at scale'
+description = 'A minimal JAX library for connectivity modelling at scale'
 keywords = ["jax", "graph", "machine-learning", "network"]
 license = {file = "LICENSE"}
 name = "jaxscape"
 readme = "README.md"
 requires-python = ">=3.12"
-version = "0.0.17"
+version = "0.0.18"
 
 [project.optional-dependencies]
 amjax = [
   "amjax>=0.0.3,<0.1",
   "pyamg>=5.1.0"
-]
-benchmark = [
-  "matplotlib>=3.9",
-  "optimistix>=0.0.10"
 ]
 cholespy = [
   "cholespy>=2.2.0"
@@ -94,8 +90,6 @@ Issues = "https://github.com/vboussange/jaxscape/issues"
 Source = "https://github.com/vboussange/jaxscape"
 
 [tool.pyright]
-# The benchmark is a project of its own (#74), outside the hooks' scope.
-exclude = ["tests/test_benchmark.py"]
 include = ["src", "tests"]
 # CI runs on Linux: check every platform as Linux, to get the same result.
 pythonPlatform = "Linux"
@@ -109,8 +103,8 @@ markers = [
   "gpu: needs an NVIDIA GPU with spineax and cuDSS",
   "slow: slow tests, which CI runs"
 ]
-# Benchmark correctness tests import the repository-local benchmark package.
-pythonpath = ["."]
+# The benchmark directory holds a project of its own, with its own tests.
+testpaths = ["tests"]
 
 [tool.ruff]
 extend-include = ["*.ipynb"]

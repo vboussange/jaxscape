@@ -46,6 +46,15 @@ uv run pytest -m gpu tests                # GPU tests only
 uv run pytest -n auto -m "" tests         # every test
 ```
 
+The machines of the continuous integration have no NVIDIA GPU. They test the
+logic of `AbstractSparseDirectSolver` with a dense Cholesky factorization in
+place of cuDSS, and the `CuDSSSolver` tests, marked `gpu`, run only on a
+machine with an NVIDIA GPU, spineax and cuDSS.
+
+The continuous integration leaves out the tests of the benchmark, a uv project
+of its own in `benchmark/`; run them from that directory with `uv sync` and
+`uv run pytest`, as `benchmark/README.md` describes.
+
 Before opening a pull request, run every hook on every file, as the
 continuous integration does:
 
@@ -109,3 +118,17 @@ pull request. Run the same strict build as CI; warnings fail the build:
 ```bash
 uv run mkdocs build --strict
 ```
+
+The build renders the outputs stored in the example notebooks without
+executing them. After changing a notebook, execute it and commit it with its
+outputs. Set `TQDM_DISABLE=1`, otherwise every update of a progress bar is
+stored, and rendered, as a separate output:
+
+```bash
+TQDM_DISABLE=1 uv run --with nbconvert --with ipykernel --with matplotlib \
+  --with rasterio jupyter nbconvert --to notebook --execute --inplace \
+  docs/examples/<name>/<name>.ipynb
+```
+
+`README.md` is also the landing page of the documentation: `docs_hooks.py`
+renders it in place of `docs/index.md`, so edit the README only.

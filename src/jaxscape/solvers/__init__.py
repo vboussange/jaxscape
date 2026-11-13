@@ -3,7 +3,9 @@
 from .amjaxcgsolver import AMJaxCGSolver as AMJaxCGSolver
 from .cholmodsolver import CholmodSolver as CholmodSolver
 from .cudsssolver import CuDSSSolver as CuDSSSolver
-from .gridmultigridsolver import GridMultigridSolver as GridMultigridSolver
+from .geometricmultigridcgsolver import (
+    GeometricMultigridCGSolver as GeometricMultigridCGSolver,
+)
 from .operator import (
     AbstractReusableStateSolver as AbstractReusableStateSolver,
     BCOOLinearOperator as BCOOLinearOperator,

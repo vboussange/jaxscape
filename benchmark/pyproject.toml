@@ -1,0 +1,30 @@
+[project]
+name = "jaxscape-benchmark"
+version = "0"
+description = "Benchmark of JAXScape against connectivity software, pinned to a JAXScape release"
+requires-python = ">=3.12"
+dependencies = [
+  "jaxscape[amjax,cholespy,cudss] @ git+https://github.com/vboussange/jaxscape@99cba66b0026b277a44f9b91e113dc3bbe9a703a",
+  "jax[cuda13]",
+  "ecoscape-connectivity==0.2.5",
+  # EcoScape imports GDAL, whose bindings build against the GDAL of the node
+  # (`gdal-config --version`, with its development headers).
+  "gdal==3.4.1",
+  "matplotlib>=3.9",
+  "numpy>=2",
+  "scikit-image>=0.26",
+  "scipy>=1.14",
+  "torch",
+  "eco-connectivity==2.5.0",
+  "rasterio>=1.4",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.3"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

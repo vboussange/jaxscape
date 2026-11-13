@@ -1,0 +1,363 @@
+# The configuration of the benchmark: how cells run, the cases, the shared
+# parameters of each distance, and one entry per tool and question.
+
+[run]
+timeout = 3600           # seconds that a call may take
+repeats = 5              # timed calls after the warm-up call
+single_call_after = 300  # seconds of warm-up after which one timed call follows
+cores = "48-63"          # 16 physical cores, on the NUMA node of the GPU
+gpu = "0"                # the GPU of GPU cells, numbered as nvidia-smi numbers it
+smoke_side = 32
+smoke_dependency_range = 10  # windows of the windowed analyses in smoke mode
+# The largest Tier 1 error that smoke mode passes. The smoke run's errors reach
+# 1.1e-5, with JAXScape's float32 resistance, and a tool that takes the
+# arithmetic mean of the permeabilities as the conductance of an edge errs by
+# 2e-2 to 3e-2.
+smoke_tolerance = 1e-4
+
+# The synthetic landscape (see landscape.py).
+[landscape]
+correlation_length = 25
+habitat_threshold = 0.7
+seed = 74
+
+# The distance calculation: its sites, and the adapter of its float64
+# reference.
+[distance]
+sites = 32
+seed = 75
+reference = "adapters/reference.py"
+
+# The raster sides of each distance, and its shared parameters.
+[distances.resistance]
+sides = [256, 1024, 4096, 8192]
+
+[distances.lcp]
+sides = [256, 1024, 4096, 8192]
+
+[distances.free_energy]
+sides = [256, 1024]
+# The distance calculation resolves in float64 up to 0.011, and not at 0.0115,
+# on 1024^2 (#78).
+theta = 0.01
+
+# The windows of the connectivity and sensitivity analyses: Omniscape's
+# `radius` and `block_size` in its Maryland example, blocks of 21 pixels.
+[windows]
+dependency_range = 100
+coarsening_factor = 0.2
+
+# The Maryland case of the connectivity and sensitivity analyses (see
+# landscape.py), which install.sh downloads: the resistance of each NLCD class from Omniscape's example, whose
+# classes 23 and 24, medium- and high-intensity development, are barriers.
+[maryland]
+raster = "data/nlcd_2016_frederick_md.tif"
+questions = ["connectivity", "sensitivity"]
+resistance = { 11 = 100, 21 = 500, 22 = 1000, 31 = 100, 41 = 1, 42 = 1, 43 = 1, 52 = 20, 71 = 30, 81 = 200, 82 = 300, 90 = 20, 95 = 30 }
+
+# One entry per tool and question. `adapter` runs a cell, and the table of a
+# distance holds the tool's settings for it, `dtype` and `solver` included. A
+# setting given per device is a table keyed by device. A table keyed by a label
+# of its own computes under the distance of its `distance` setting, and its
+# records carry the label in place of the distance. A tool of the connectivity
+# or sensitivity analysis is compared with the map of JAXScape's GPU cell under
+# the distance, or the label, `compared_with`, by default its own distance. `package` names the tool
+# in the pins of its toolchain, which give its version, by default the tool's
+# name without `.jl`.
+[[tools]]
+tool = "JAXScape"
+question = "distance"
+adapter = "adapters/jaxscape.py"
+devices = ["gpu", "cpu"]
+tier = 1
+
+# The reference settings: the defaults of JAXScape 0.0.18, in float32.
+[tools.distances.resistance]
+dtype = "float32"
+solver = "GeometricMultigridCGSolver"
+
+[tools.distances.lcp]
+dtype = "float32"
+
+# Across the whole raster, float32 resolves no free-energy distance at any
+# theta, and the default dense solve does not fit: the distance calculation
+# takes float64 and the direct solver that the docs give for each device.
+[tools.distances.free_energy]
+dtype = "float64"
+solver = { gpu = "CuDSSSolver", cpu = "CholmodSolver" }
+
+# The connectivity and sensitivity analyses take the reference settings of the
+# distance calculation, with the `batch_size` of the tuning run (#78), except
+# for resistance, which takes the setting of the connectivity example of the
+# docs: exact resistance took 24 min a call of the sensitivity analysis at
+# 1024^2, and would take 32 h at 8192^2. Its `batch_size`, 51^2, gives the
+# sensitivity analysis at 8192^2 the fewest tiles at which it runs fastest, 64,
+# with a peak of 6.3 GiB on an RTX 3090, and keeps 1024^2 in one tile.
+# Least-cost computes each window on its own, and its `batch_size` is the
+# fastest at 8192^2. They leave free energy out: its window query holds the
+# dense inverse of the 40401 pixels of a window,
+# and in float64, the only precision that resolves its windows, one window
+# ran out of the 24 GB of the GPU, and out of memory on the CPU after taking
+# 300 GB.
+[[tools]]
+tool = "JAXScape"
+question = "connectivity"
+adapter = "adapters/jaxscape.py"
+devices = ["gpu", "cpu"]
+
+[tools.distances.resistance]
+dtype = "float32"
+solver = "GeometricMultigridCGSolver(rtol=3e-4)"
+method = "SpielmanApproximation(epsilon=0.15)"
+batch_size = 2601
+
+[tools.distances.lcp]
+dtype = "float32"
+batch_size = 512
+
+[[tools]]
+tool = "JAXScape"
+question = "sensitivity"
+adapter = "adapters/jaxscape.py"
+devices = ["gpu", "cpu"]
+
+[tools.distances.resistance]
+dtype = "float32"
+solver = "GeometricMultigridCGSolver(rtol=3e-4)"
+method = "SpielmanApproximation(epsilon=0.15)"
+batch_size = 2601
+
+[tools.distances.lcp]
+dtype = "float32"
+batch_size = 512
+
+# The normalized sensitivity to resistance of the connectivity example, in its
+# section "Comparison with Omniscape's normalized current", with which Omniscape.jl
+# is compared: resistance with the setting above and the proximity K(R) = -R,
+# which weighs every pair of habitat pixels equally. Its map is p^2 dC/dp, the
+# sensitivity to the resistance of each pixel with its sign changed, divided by
+# dC/dp on a flat landscape of permeability 1 and the same quality, and 0 where
+# the latter is not positive; each call runs both sensitivity analyses.
+[tools.distances."resistance, K = -R, normalized"]
+distance = "resistance"
+dtype = "float32"
+solver = "GeometricMultigridCGSolver(rtol=3e-4)"
+method = "SpielmanApproximation(epsilon=0.15)"
+batch_size = 2601
+proximity = "lambda d: -d"
+normalized = true
+
+[[tools]]
+tool = "Circuitscape.jl"
+question = "distance"
+adapter = "adapters/circuitscape.jl"
+devices = ["cpu"]
+tier = 1
+
+[tools.distances.resistance]
+solver = ["cg+amg", "cholmod"]
+
+[[tools]]
+tool = "ConScape.jl"
+question = "distance"
+adapter = "adapters/conscape.jl"
+devices = ["cpu"]
+tier = 1
+
+[tools.distances.free_energy]
+
+# ConScape.jl's maps, under free energy, are compared with JAXScape's under
+# least-cost distance: JAXScape has no free-energy map, and least-cost distance
+# ranks pairs of sites most like free energy at its theta (see the adapter).
+[[tools]]
+tool = "ConScape.jl"
+question = "connectivity"
+adapter = "adapters/conscape.jl"
+devices = ["cpu"]
+tier = 3
+compared_with = "lcp"
+
+[tools.distances.free_energy]
+
+[[tools]]
+tool = "ConScape.jl"
+question = "sensitivity"
+adapter = "adapters/conscape.jl"
+devices = ["cpu"]
+tier = 3
+compared_with = "lcp"
+
+[tools.distances.free_energy]
+
+[[tools]]
+tool = "gdistance"
+question = "distance"
+adapter = "adapters/gdistance.R"
+devices = ["cpu"]
+tier = 1
+
+[tools.distances.resistance]
+
+[tools.distances.lcp]
+
+[[tools]]
+tool = "skimage.graph.MCP"
+package = "scikit-image"
+question = "distance"
+adapter = "adapters/skimage.py"
+devices = ["cpu"]
+tier = 1
+
+[tools.distances.lcp]
+
+# EcoScape and samc map flows under no distance of their own: the distance of
+# each is the JAXScape distance its map is compared with, which its adapter
+# justifies.
+[[tools]]
+tool = "EcoScape"
+package = "ecoscape-connectivity"
+question = "sensitivity"
+adapter = "adapters/ecoscape.py"
+devices = ["gpu"]
+tier = 3
+
+# The largest batch of simulations whose tiles fit in the 24 GB of an RTX 3090
+# (8 runs out).
+[tools.distances.lcp]
+dtype = "float32"
+batch_size = 4
+
+[[tools]]
+tool = "samc"
+question = "sensitivity"
+adapter = "adapters/samc.R"
+devices = ["cpu"]
+tier = 3
+
+[tools.distances.resistance]
+solver = "direct"
+
+# The connectivity analysis against eco-connectivity and Graphab, both under
+# least-cost distances.
+[[tools]]
+tool = "eco-connectivity"
+question = "connectivity"
+adapter = "adapters/eco_connectivity.py"
+devices = ["cpu"]
+tier = 2
+
+[tools.distances.lcp]
+dtype = "float32"
+
+[[tools]]
+tool = "Graphab"
+package = "graphab"  # the jar of install.sh, java/graphab-<version>.jar
+question = "connectivity"
+adapter = "adapters/graphab.py"
+devices = ["cpu"]
+tier = 3
+
+[tools.distances.lcp]
+
+[[tools]]
+tool = "Omniscape.jl"
+question = "sensitivity"
+adapter = "adapters/omniscape.jl"
+devices = ["cpu"]
+tier = 3
+compared_with = "resistance, K = -R, normalized"
+
+[tools.distances.resistance]
+solver = ["cg+amg", "cholmod"]
+
+# The solver view (#83): JAXScape with each solver, in float32 and float64 on
+# the GPU. The distance calculation runs every solver on every raster of its
+# distance, as in the comparison, and the connectivity and sensitivity analyses
+# run every solver on exact resistance at 256^2 alone (`cases`): exact windowed
+# resistance takes about 23 minutes a call at 1024^2 with
+# GeometricMultigridCGSolver in float32 (#78), against 2 at 256^2. Spielman's
+# approximation runs with GeometricMultigridCGSolver and CuDSSSolver on every
+# raster and on Maryland. The
+# error of a record is measured against the reference of the distance
+# calculation, and for the windowed analyses against the map of exact
+# resistance in float64 with `reference_solver`, on the same tiles, which runs
+# on the cases of the question's distance below alone. Free energy does not
+# run on windows (see the connectivity analysis), so that the windowed analyses
+# take resistance alone.
+[solver_view]
+tool = "JAXScape"
+adapter = "adapters/jaxscape.py"
+device = "gpu"
+dtypes = ["float32", "float64"]
+reference_solver = "CuDSSSolver"
+# A call of the solver view stops after 15 minutes. At 256^2, one call of the
+# connectivity or sensitivity analysis took 2 to 5 minutes with
+# GeometricMultigridCGSolver and CuDSSSolver in float32, and more than 10 with
+# CholmodSolver, which solves on the CPU: at an hour, its timeouts alone would
+# take 4 hours.
+timeout = 900
+# The combinations that fail by design, which the solver view leaves out; an
+# entry, but its `reason`, matches each combination whose fields hold its
+# values, and the page gives the `reason` after the combinations left out.
+# Free energy in float32 resolves no distance across the raster (see the distance
+# calculation), and the iterative solvers, GeometricMultigridCGSolver and
+# AMJaxCGSolver, resolve no free energy in either dtype: as the docstring of
+# FreeEnergyDistance states, they need tolerances far below their defaults to
+# resolve the small entries of Z between distant vertices. In the windowed
+# analyses, AMJaxCGSolver reaches its `max_steps` on the tiles of the smoke run
+# in either dtype, for the reason of its entry (#96).
+fails_by_design = [
+  { distance = "free_energy", dtype = "float32" },
+  { distance = "free_energy", solver = ["GeometricMultigridCGSolver", "AMJaxCGSolver"] },
+  { solver = "AMJaxCGSolver", question = ["connectivity", "sensitivity"], reason = "In the windowed analyses, JAXScape builds the state of `AMJaxCGSolver` once, from a graph of uniform conductance, and `reinit` keeps its multigrid hierarchy for every tile, so that on tiles of high conductance contrast the solver stops at `max_steps`." },
+]
+
+# The distances of each question, with the settings that every solver shares;
+# `cases` restricts the cases on which they run.
+[solver_view.questions.distance]
+resistance = {}
+free_energy = {}
+
+[solver_view.questions.connectivity]
+resistance = { batch_size = 256, cases = ["synthetic-256"] }
+
+[solver_view.questions.sensitivity]
+resistance = { batch_size = 256, cases = ["synthetic-256"] }
+
+# One entry per solver: the label of its records, and the settings that it
+# adds or replaces; `questions` and `dtypes` restrict where it runs. `dense` is
+# the dense solve, `solver=None`.
+[solver_view.solvers]
+GeometricMultigridCGSolver = {}
+CholmodSolver = {}
+CuDSSSolver = {}
+AMJaxCGSolver = {}
+dense = {}
+
+# Spielman's approximation of resistance, with the two solvers that the docs
+# give for it, on every case of the comparison, with an hour a call: in
+# float64, a call of the sensitivity analysis at 8192^2 with CuDSSSolver takes
+# about 30 minutes. GeometricMultigridCGSolver takes the setting of the
+# comparison.
+# CuDSSSolver takes the `batch_size` of the tuning run of #85. On tiles of the
+# shape of those of 8192^2, a call of the sensitivity analysis in float64
+# takes about 1900 s at 8192^2 with 256, 576 or 1024 centres a tile, and in
+# float32 1000, 920, 850 and 780 s with 256, 576, 1024 and 1600. At 8192^2 in float64, 576 runs at
+# 5.8 s a tile, 28 minutes a call, with 9.3 GiB for the process, and 1024
+# fails to allocate 3.7 GiB on its first tile; on the tiles of 8192^2, 1600
+# in float64, and 2601 and 4096 in either dtype, fail to allocate.
+[solver_view.solvers."SpielmanApproximation(epsilon=0.15), GeometricMultigridCGSolver(rtol=3e-4)"]
+solver = "GeometricMultigridCGSolver(rtol=3e-4)"
+method = "SpielmanApproximation(epsilon=0.15)"
+batch_size = 2601
+questions = ["connectivity", "sensitivity"]
+cases = ["synthetic-256", "synthetic-1024", "synthetic-4096", "synthetic-8192", "maryland"]
+timeout = 3600
+
+[solver_view.solvers."SpielmanApproximation(epsilon=0.15), CuDSSSolver"]
+solver = "CuDSSSolver"
+method = "SpielmanApproximation(epsilon=0.15)"
+batch_size = 576
+questions = ["connectivity", "sensitivity"]
+cases = ["synthetic-256", "synthetic-1024", "synthetic-4096", "synthetic-8192", "maryland"]
+timeout = 3600

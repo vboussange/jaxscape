@@ -18,7 +18,7 @@
 # `uv run pre-commit run --all-files`, as CI does.
 
 # The benchmark is a project of its own (#74), outside the hooks' scope.
-exclude: ^benchmark/|^tests/test_benchmark\.py$
+exclude: ^benchmark/
 
 repos:
   - repo: local

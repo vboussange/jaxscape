@@ -58,9 +58,9 @@ def test_imports_and_defaults_load_no_cuda_library():
 import sys
 import jaxscape
 from jaxscape import ResistanceDistance
-from jaxscape.solvers import CuDSSSolver, GridMultigridSolver
+from jaxscape.solvers import CuDSSSolver, GeometricMultigridCGSolver
 from jaxscape.solvers.cudsssolver import CUDSS_AVAILABLE
-assert isinstance(ResistanceDistance().solver, GridMultigridSolver)
+assert isinstance(ResistanceDistance().solver, GeometricMultigridCGSolver)
 assert not any(name.startswith("spineax") for name in sys.modules)
 print(CUDSS_AVAILABLE)
 """
@@ -91,7 +91,7 @@ def jax_backend(monkeypatch, backend, platform_version):
 
 def test_missing_spineax_is_reported(monkeypatch):
     monkeypatch.setattr(cudsssolver, "CUDSS_AVAILABLE", False)
-    with pytest.raises(ImportError, match=r"spineax.*jaxscape\[cudss\]"):
+    with pytest.raises(ImportError, match="spineax.*--extra cudss"):
         CuDSSSolver()
 
 
