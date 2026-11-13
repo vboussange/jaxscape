@@ -4,6 +4,8 @@ import shutil
 from pathlib import Path
 
 import pytest
+from report import plot_runtimes, solver_view
+from run import read_records
 
 
 FIXTURE = Path(__file__).parent / "fixture"
@@ -122,6 +124,23 @@ def test_figures_are_shown_at_one_scale_and_the_solver_figures_widest(report):
     widths = dict(re.findall(r'<img src="([\w-]+)\.png" alt="[^"]+" width="(\d+)">', text))
     assert all(int(width) <= 760 for width in widths.values())
     assert int(widths["solvers"]) > int(widths["distance"])
+
+
+def test_a_panel_on_one_raster_has_a_row_per_solver_and_names_the_raster(monkeypatch):
+    figures = []
+    monkeypatch.setattr("report.save", lambda figure, *rest: figures.append(figure))
+    records = solver_view(read_records(FIXTURE / "records.csv"))
+
+    plot_runtimes(records, ("question", "distance"), ("solver", "dtype"), None)
+
+    panels = {axes.get_title(): axes for axes in figures[0].axes if axes.get_visible()}
+    one_raster = panels["Sensitivity analysis, resistance"]
+    assert one_raster.get_xlabel() == "Warm runtime on the 256² raster (s)"
+    labels = [text.get_text() for text in one_raster.texts]
+    assert labels == ["GeometricMultigridCGSolver"]
+    several = panels["Connectivity analysis, resistance"]
+    assert several.get_xlabel() == "Raster (pixels)"
+    assert not several.texts
 
 
 def test_each_table_of_every_setting_is_collapsed_and_states_its_quantities(report):

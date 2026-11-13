@@ -270,6 +270,32 @@ def raster_axis(axes, records):
     axes.set_xlim(min(cells) / 2, max(cells) * 2)
 
 
+def runtime_axis(axes, labels, records):
+    """Put a panel of one raster on a log runtime axis, with a row per label.
+
+    The first label is the top row. Each label stands above its row, inside the
+    panel, and breaks after each comma, and the runtime axis names the raster
+    of `records`.
+    """
+    axes.set_xscale("log")
+    runtimes = [record["median_s"] for record in records]
+    axes.set_xlim(min(runtimes) / 2, max(runtimes) * 2)
+    raster = case_label(records[0]["case"])
+    axes.set_xlabel(f"Warm runtime on the {raster} raster (s)")
+    axes.set_yticks([])
+    axes.set_ylim(len(labels) - 0.5, -1)
+    for row, label in enumerate(labels):
+        axes.axhline(row, color="0.9", linewidth=0.8, zorder=0)
+        axes.annotate(
+            label.replace(", ", ",\n"),
+            (0, row),
+            xycoords=axes.get_yaxis_transform(),
+            xytext=(4, 5),
+            textcoords="offset points",
+            va="bottom",
+        )
+
+
 def save(figure, colors, styles, path, count):
     """Save a figure with the legends of its colours and styles.
 
@@ -307,8 +333,11 @@ def plot_runtimes(records, panel, line, path):
     """Plot the warm runtime of each line against the raster.
 
     At each raster, a line takes the fastest of its records that succeed, and
-    joins the synthetic rasters; Maryland is a star. A figure of one panel has
-    no title: the section of the page that shows it names its question.
+    joins the synthetic rasters; Maryland is a star. A panel whose records that
+    succeed are all on one raster has a row per line instead, in the order of
+    the legend, with a dot at the warm runtime of the line, and its runtime
+    axis names the raster. A figure of one panel has no title: the section of
+    the page that shows it names its question.
 
     **Arguments:**
 
@@ -326,11 +355,19 @@ def plot_runtimes(records, panel, line, path):
     tiers = {tuple(r[f] for f in line[:-1]): r["tier"] for r in records}
     figure, grid = panels_figure(len(panels))
     for axes, (values, group) in zip(grid, panels):
-        for of_line, records_of_line in group_by(group, line):
-            color = f"C{keys.index(tuple(of_line.values())[:-1]) % 10}"
-            style = style_of(of_line[line[-1]], color)
-            ok = succeeded(records_of_line)
-            best = [fastest(ok, case) for case in dict.fromkeys(r["case"] for r in ok)]
+        ok = succeeded(group)
+        one_raster = len({record["case"] for record in ok}) == 1
+        on_panel = {tuple(r[f] for f in line[:-1]) for r in ok}
+        rows = [key for key in keys if key in on_panel]
+        for of_line, records_of_line in group_by(ok, line):
+            key = tuple(of_line.values())[:-1]
+            style = style_of(of_line[line[-1]], f"C{keys.index(key) % 10}")
+            cases = dict.fromkeys(record["case"] for record in records_of_line)
+            best = [fastest(records_of_line, case) for case in cases]
+            if one_raster:
+                dot = style | {"linestyle": ""}
+                axes.plot(best[0]["median_s"], rows.index(key), "o", ms=6, **dot)
+                continue
             synthetic = [record for record in best if side(record["case"])]
             axes.plot(
                 [record["cells"] for record in synthetic],
@@ -343,8 +380,11 @@ def plot_runtimes(records, panel, line, path):
                 if not side(record["case"]):
                     star = style | {"linestyle": ""}
                     axes.plot(record["cells"], record["median_s"], "*", ms=9, **star)
-        log_axes(axes, "Raster (pixels)")
-        raster_axis(axes, group)
+        if one_raster:
+            runtime_axis(axes, [", ".join(map(name, key)) for key in rows], ok)
+        else:
+            log_axes(axes, "Raster (pixels)")
+            raster_axis(axes, group)
         if len(panels) > 1:
             axes.set_title(panel_title(values))
     drawn = {tuple(r[f] for f in line[:-1]) for r in succeeded(records)}
