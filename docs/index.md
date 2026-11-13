@@ -138,3 +138,8 @@ If you use JAXScape in your research, please cite:
   url = {https://github.com/vboussange/jaxscape}
 }
 ```
+
+## Acknowledgements
+
+Development of JAXScape was supported by the Swiss National Science Foundation
+(SNSF), grant 237783.

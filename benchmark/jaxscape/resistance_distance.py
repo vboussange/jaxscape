@@ -57,7 +57,6 @@ from benchmark.jaxscape.resistance_profile_support import (
     CUDSS_RESISTANCE_PROFILES,
     make_amjaxcg_solver,
     make_cholmod_solver,
-    make_pyamg_solver,
     make_spielman_method,
     profile_metadata,
     profile_tool_label,
@@ -72,7 +71,6 @@ JAXSCAPE_RESISTANCE_PROFILES = (
     # Resistance pinv profiles are intentionally excluded from the full
     # benchmark suite because the large resistance case is structurally
     # infeasible for dense pseudoinverse evaluation.
-    ResistanceProfile("pyamg", "JAXScape / PyAMG", solver_factory=make_pyamg_solver),
     ResistanceProfile(
         "cholmod_f32",
         "JAXScape / CholmodSolver / f32",

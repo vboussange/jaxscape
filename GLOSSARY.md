@@ -13,7 +13,7 @@ One distance computation on a graph: between all vertices, among selected nodes,
 The sparse symmetric positive definite matrix whose linear systems the queries on a graph solve, such as its grounded Laplacian.
 
 **Solver state**:
-What a linear solver has prepared for a system matrix, so that solves with that matrix skip the preparation.
+What a linear solver has prepared for a system matrix, so that solves with that matrix skip the preparation. For a JAXScape sparse solver, the sparsity pattern and values of the system matrix, with a factorization or a preconditioner.
 _Avoid_: Setup data, cache
 
 **Reinitialization**:
@@ -24,7 +24,7 @@ _Avoid_: Refresh, materialization, update
 A solver state prepared for other values than the system matrix of the current graph.
 _Avoid_: Stale state
 
-### Sparse direct solvers
+### Sparse solvers
 
 **Sparsity pattern**:
 The positions of the stored entries of a system matrix. On a grid, the raster shape and contiguity determine it.
@@ -33,6 +33,8 @@ _Avoid_: Geometry, structure
 **Grid topology**:
 The edges of the grid graphs of one raster shape and contiguity, without their weights (`GridTopology`): their underlying graph. The conductance surfaces of one raster share it, so it is built once rather than with each graph, and it fixes the sparsity pattern of their system matrices.
 _Avoid_: Grid geometry
+
+### Sparse direct solvers
 
 **Analysis**:
 The costly phase of a sparse direct solver, which depends on the sparsity pattern alone.
@@ -47,6 +49,12 @@ _Avoid_: Update, refresh
 
 **Used-up state**:
 A solver state whose factorization a refactorization has consumed. Solving with it repeats the analysis and stays correct.
+
+### Sparse iterative solvers
+
+**Preconditioner**:
+What the state of an iterative solver keeps across values, from which each solve applies an approximate inverse of the current system matrix: the grid of `GridMultigridSolver`, on which each solve builds a multigrid hierarchy, or the hierarchy of `AMJaxCGSolver`. Values other than those it was built from change the number of iterations, and a solve that then exceeds `max_steps` fails.
+_Avoid_: Hierarchy (one kind of preconditioner), setup
 
 ### Windowed analyses
 

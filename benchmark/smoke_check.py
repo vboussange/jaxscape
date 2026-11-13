@@ -80,7 +80,7 @@ def collect_resistance_smoke_records(case, config):
     records = resistance_distance.collect_jaxscape_resistance_results(
         case,
         config,
-        profile_keys=["pyamg"],
+        profile_keys=["amjaxcg_f32"],
     )
     gdistance_payload = run_gdistance_payload(case, config, "resistance_distance")
     graph_volume = float(jax.device_get(benchmark_graph_volume(as_array(case.raster))))

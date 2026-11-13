@@ -8,12 +8,9 @@ import numpy as np
 import pytest
 from jax.experimental.sparse import BCOO
 from jaxscape.solvers import (
-    amjax_preconditioner_operator,
     AMJaxCGSolver,
     BCOOLinearOperator,
-    build_amjax_solver,
     CholmodSolver,
-    PyAMGSolver,
 )
 from jaxscape.solvers.operator import (
     _batched_linear_solve,
@@ -29,14 +26,11 @@ AMJAX_AVAILABLE = PYAMG_AVAILABLE and find_spec("amjax") is not None
 
 # Build list of available solvers
 available_solvers = []
-if PYAMG_AVAILABLE:
-    solver = PyAMGSolver()
-    available_solvers.append(solver)
 if CHOLMOD_AVAILABLE:
     solver = CholmodSolver()
     available_solvers.append(solver)
 if AMJAX_AVAILABLE:
-    solver = AMJaxCGSolver(rtol=1e-5, atol=1e-5, max_steps=500)
+    solver = AMJaxCGSolver(rtol=1e-6, max_steps=500)
     available_solvers.append(solver)
 
 
@@ -103,15 +97,9 @@ def test_solver_state_carries_no_gradient():
 
 
 def poisson_matrix(shape: tuple[int, int]) -> BCOO:
-    """The float32 Poisson matrix of PyAMG's gallery on a grid of `shape`."""
+    """The float32 Poisson matrix on a grid of `shape`."""
     gallery = pytest.importorskip("pyamg.gallery")
     return BCOO.from_scipy_sparse(gallery.poisson(shape, format="coo", dtype="float32"))
-
-
-def solver_state(solver, A):
-    if isinstance(solver, AMJaxCGSolver):
-        return solver.init(BCOOLinearOperator(A), {})
-    return None
 
 
 @pytest.mark.skipif(len(available_solvers) == 0, reason="No solvers available")
@@ -119,7 +107,7 @@ def solver_state(solver, A):
 def test_solver(solver):
     A_jax = poisson_matrix((10, 10))
     b = jnp.ones(A_jax.shape[0], dtype=A_jax.dtype)
-    state = solver_state(solver, A_jax)
+    state = solver.init(BCOOLinearOperator(A_jax), {})
     x = _linear_solve(A_jax, b, solver, state=state)
     residual = A_jax @ x - b
     assert jnp.linalg.norm(residual) < 1e-4, (
@@ -147,26 +135,10 @@ def test_amjax_state_uses_current_operator():
         unique_indices=A_jax.unique_indices,
     )
     b = jnp.ones(A_jax.shape[0], dtype=A_jax.data.dtype)
-    solver = AMJaxCGSolver(rtol=1e-5, atol=1e-5, max_steps=500)
+    solver = AMJaxCGSolver(rtol=1e-5, max_steps=500)
 
     state = solver.init(BCOOLinearOperator(A_jax), {})
 
     x = _linear_solve(A_scaled, b, solver, state=state)
     residual = A_scaled @ x - b
     assert jnp.linalg.norm(residual) < 1e-4
-
-
-@pytest.mark.skipif(not AMJAX_AVAILABLE, reason="AMJax not available")
-def test_amjax_preconditioner_operator():
-    A_jax = poisson_matrix((5, 5))
-    b = jnp.ones(A_jax.shape[0], dtype=A_jax.data.dtype)
-
-    amjax_solver = build_amjax_solver(A_jax)
-    preconditioner = amjax_preconditioner_operator(
-        amjax_solver,
-        jax.eval_shape(lambda: b),
-    )
-
-    assert preconditioner.in_structure().shape == b.shape
-    assert preconditioner.out_structure().shape == b.shape
-    assert jnp.all(jnp.isfinite(preconditioner.mv(b)))

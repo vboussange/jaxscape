@@ -1,4 +1,3 @@
-import warnings
 from abc import abstractmethod
 from collections.abc import Callable
 from typing import Any, ClassVar
@@ -204,6 +203,12 @@ class AbstractDistance(eqx.Module):
         """Return the state for `graph`, reusing what the solver can from `state`.
 
         Queries on `graph` take the returned state, and so does the next `reinit`.
+        Carry the returned state into the next queries and `reinit`, whatever the
+        distance and solver. The state is `None` for a distance without a solver,
+        such as one with `solver=None`. With Lineax's and JAXScape's solvers, it
+        is never `None`. For a solver that keeps nothing from one matrix to the
+        next, such as `lineax.CG`, `reinit` ignores `state` and returns
+        `init(graph)`.
 
         **Arguments:**
 
@@ -358,10 +363,17 @@ class AbstractSolverDistance(AbstractDistance):
     def init(self, graph: AbstractGraph) -> Any:
         """Build the solver state for `graph`.
 
-        Some solvers read concrete sparse indices or build a preconditioner on
-        the host, such as `GridMultigridSolver` and `AMJaxCGSolver`, so call it
-        outside `jax.jit`. `ResistanceDistance` also builds the
-        `GridMultigridSolver` state of a `GridGraph` inside `jax.jit`.
+        JAXScape's sparse solvers, except `CholmodSolver`, read concrete sparse
+        indices, and `AMJaxCGSolver` builds its preconditioner on the host, so
+        call it outside `jax.jit`. `ResistanceDistance` also builds the state
+        of a `GridGraph` inside `jax.jit`.
+
+        `init` returns the state that `solver.init` builds for the system
+        matrix: a state for Lineax's and JAXScape's solvers, and `None` only
+        with `solver=None`. Carry the state through `reinit` and the queries
+        whatever the solver. For a solver that keeps nothing from one matrix to
+        the next, such as `lineax.CG`, `reinit` ignores `state` and returns
+        `init(graph)`.
 
         **Arguments:**
 
@@ -378,15 +390,6 @@ class AbstractSolverDistance(AbstractDistance):
             return None
         return _solver_state(self.system_matrix(graph), self.solver, None, state)
 
-    def init_preconditioner(self, graph: AbstractGraph) -> Any:
-        """Deprecated alias of `init`, which queries now reinitialize for any graph."""
-        warnings.warn(
-            "`init_preconditioner` is deprecated; use `init`.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.init(graph)
-
 
 def _has_tracers(tree: Any) -> bool:
     """Whether a leaf of `tree` is a tracer, as inside `jax.jit` or `jax.grad`."""
@@ -398,16 +401,16 @@ def _has_tracers(tree: Any) -> bool:
 _CONTIGUITIES = {4: ROOK_CONTIGUITY, 8: QUEEN_CONTIGUITY}
 
 
-def _grid_multigrid_state(distance: AbstractSolverDistance, graph: GridGraph) -> Any:
-    """The `GridMultigridSolver` state of `distance` for `graph`, also in a trace.
+def _grid_state(distance: AbstractSolverDistance, graph: GridGraph) -> Any:
+    """The solver state of `distance` for `graph`, also in a trace.
 
-    The solver reads the grid of the state from concrete sparse indices, outside
-    the trace, with the exact distance (see `AbstractDistance.exact`), whose
-    states serve `distance` and which holds no traced seed. Those of a traced
-    graph are those of a graph of its shape and contiguity, of permeability 1:
-    traced neighbours are those of rook or queen contiguity, by their number.
-    The state of that graph is then reinitialized for `graph`, whose sparse
-    indices the solver checks.
+    The solver reads the sparsity pattern of the state from concrete sparse
+    indices, outside the trace, with the exact distance (see
+    `AbstractDistance.exact`), whose states serve `distance` and which holds no
+    traced seed. Those of a traced graph are those of a graph of its shape and
+    contiguity, of permeability 1: traced neighbours are those of rook or queen
+    contiguity, by their number. The state of that graph is then reinitialized
+    for `graph`, whose sparse indices the solver checks.
     """
     concrete = graph
     # A traced graph may lack concrete sparse indices.

@@ -11,7 +11,7 @@ import pytest
 from jax import Array
 from jax.experimental.sparse import BCOO
 from jaxscape import FreeEnergyDistance, Graph, GridGraph
-from jaxscape.solvers import AMJaxCGSolver, CholmodSolver, PyAMGSolver
+from jaxscape.solvers import AMJaxCGSolver, CholmodSolver
 
 
 EDGES = np.array([[0, 1], [0, 2], [1, 2], [1, 3], [2, 3]])
@@ -184,8 +184,6 @@ def test_rejects_nonfinite_negative_or_asymmetric_conductances():
 
 
 SOLVERS = ["cg"]
-if find_spec("pyamg") is not None:
-    SOLVERS.append("pyamg")
 if find_spec("cholespy") is not None:
     SOLVERS.append("cholespy")
 if find_spec("amjax") is not None and find_spec("pyamg") is not None:
@@ -199,12 +197,10 @@ def test_sparse_solvers_state_and_joint_gradients(solver_name, dtype):
     solver: lx.AbstractLinearSolver
     if solver_name == "cg":
         solver = lx.CG(rtol=rtol, atol=atol, max_steps=100)
-    elif solver_name == "pyamg":
-        solver = PyAMGSolver(rtol=rtol, atol=atol, maxiter=100)
     elif solver_name == "cholespy":
         solver = CholmodSolver()
     else:
-        solver = AMJaxCGSolver(rtol=rtol, atol=atol, max_steps=100)
+        solver = AMJaxCGSolver(rtol=rtol, max_steps=100)
     tolerance = 3e-4 if dtype == jnp.float32 else 1e-10
     weights = jnp.asarray(WEIGHTS, dtype=dtype)
     theta_value = jnp.asarray(0.7, dtype=dtype)
@@ -270,7 +266,7 @@ def test_amjax_state_serves_the_current_operator():
     pytest.importorskip("amjax")
     pytest.importorskip("pyamg")
     weights = jnp.asarray(WEIGHTS)
-    solver = AMJaxCGSolver(rtol=1e-12, atol=1e-12, max_steps=100)
+    solver = AMJaxCGSolver(rtol=1e-12, max_steps=100)
     state = FreeEnergyDistance(0.7, solver=solver).init(graph(weights))
     current_weights = weights * 1.15
     nodes = jnp.array([0, 3])
@@ -464,11 +460,6 @@ def test_grid_rectangular_coordinates_and_batched_gradients():
     expected = jax.vmap(jax.value_and_grad(oracle))(batch)
     np.testing.assert_allclose(actual[0], expected[0], rtol=1e-11)
     np.testing.assert_allclose(actual[1], expected[1], rtol=1e-10, atol=1e-11)
-
-
-def test_removed_rsp_distance_import_names_replacement():
-    with pytest.raises(ImportError, match="FreeEnergyDistance"):
-        from jaxscape import RSPDistance  # noqa: F401
 
 
 @pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])

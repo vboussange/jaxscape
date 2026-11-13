@@ -1,17 +1,17 @@
 """Conjugate gradients with a geometric multigrid preconditioner, for grid graphs."""
 
-from typing import Any, final
+from collections.abc import Callable
+from typing import final
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jax import errors as jax_errors, lax
-from jax.experimental.sparse import BCOO
+from jax import lax
 from jaxtyping import Array
-from lineax import AbstractLinearOperator, RESULTS
 
-from .operator import AbstractReusableStateSolver
+from .sparseiterativesolver import _ratio, AbstractSparseIterativeSolver
+from .sparsesolver import CSRPattern
 
 
 # Stencil offsets (row, column) of rook and queen contiguity, and of the coarse
@@ -19,35 +19,34 @@ from .operator import AbstractReusableStateSolver
 _ROOK = ((-1, 0), (0, -1), (0, 0), (0, 1), (1, 0))
 _QUEEN = tuple((i, j) for i in (-1, 0, 1) for j in (-1, 0, 1))
 # The largest number of points of the coarsest level, which a Cholesky
-# factorization solves (pyamg's `max_coarse`).
+# factorization solves.
 _MAX_COARSE = 1024
-# Damped Jacobi relaxation, as pyamg's `jacobi`: iterations before and after the
-# coarse correction, and weight.
+# Damped Jacobi relaxation: iterations before and after the coarse correction,
+# and weight.
 _ITERATIONS = 1
 _OMEGA = 2 / 3
 
 
 @final
-class GridMultigridState(eqx.Module):
-    """State of a `GridMultigridSolver`: the stencil of one matrix on its grid.
+class _Grid(eqx.Module):
+    """The preconditioner of a `GridMultigridSolver` state: the grid, on which
+    each solve builds the multigrid hierarchy of the current values.
 
     **Attributes:**
 
-    - `slots`: For each stored entry of the BCOO matrix, the index of its
-      coefficient in the flattened stencil, or the size of the stencil for
-      padding entries.
-    - `stencil`: The stencil coefficients of the matrix: for each offset, an
-      array of the grid's shape.
+    - `slots`: For each CSR value, the index of its coefficient in the
+      flattened stencil.
+    - `shape`: The shape `(rows, columns)` of the grid.
     - `offsets`: The offsets (row, column) of the stencil.
     """
 
     slots: Array
-    stencil: tuple[Array, ...]
+    shape: tuple[int, int] = eqx.field(static=True)
     offsets: tuple[tuple[int, int], ...] = eqx.field(static=True)
 
 
 class _Level(eqx.Module):
-    """One level of a `_MultilevelSolver`: a grid, as pyamg's levels.
+    """One level of a `_MultilevelSolver`, on a grid.
 
     **Attributes:**
 
@@ -64,7 +63,7 @@ class _Level(eqx.Module):
 
 
 class _MultilevelSolver(eqx.Module):
-    """The multigrid hierarchy of a matrix, as pyamg's `MultilevelSolver`.
+    """The multigrid hierarchy of a matrix.
 
     Each solve builds it.
 
@@ -79,19 +78,18 @@ class _MultilevelSolver(eqx.Module):
 
 
 @final
-class GridMultigridSolver(AbstractReusableStateSolver):
+class GridMultigridSolver(AbstractSparseIterativeSolver[_Grid]):
     """Conjugate gradients preconditioned by geometric multigrid, for grid graphs.
 
     Solves the symmetric positive definite matrices whose sparsity pattern is a
     grid stencil, such as the grounded Laplacians of a `GridGraph`, with rook or
     queen contiguity, that `ResistanceDistance` solves. It is the default solver
     of `ResistanceDistance`. It runs in JAX, on any device, in float32 and
-    float64, and needs no optional dependency. The state holds the matrix
-    coefficients on the grid: only `init` reads the grid from concrete sparse
-    indices, and `reinit` takes new values inside `jax.jit`. Each solve builds
-    the multigrid hierarchy of the state, at a small fraction of the cost of
-    the solve. A compiled program then holds one hierarchy for each place
-    where it solves, whatever the states it reinitializes.
+    float64, and needs no optional dependency. Its preconditioner is the grid,
+    which `init` reads from concrete sparse indices. Each solve builds the
+    multigrid hierarchy of the current values on it, at a small fraction of the
+    cost of the solve. A compiled program then holds one hierarchy for each
+    place where it solves, whatever the states it reinitializes.
 
     Each V-cycle relaxes with one iteration of damped Jacobi before and after
     the coarse correction. Coarse grids keep every other point along each axis,
@@ -100,9 +98,7 @@ class GridMultigridSolver(AbstractReusableStateSolver):
     ([Dendy, 1982](https://doi.org/10.1016/0021-9991(82)90057-2)), which keeps
     convergence fast across jumps of conductance. Their matrices are the
     Galerkin products of the interpolation. The first grid of at most 1024
-    points is solved with a Cholesky factorization. A batch of right-hand
-    sides, as `jax.vmap` makes, runs as one solve with the right-hand sides
-    contiguous in memory, until all have converged.
+    points is solved with a Cholesky factorization.
 
     A larger `rtol` takes fewer iterations, at the cost of the resistances to
     pixels behind barriers, which converge last. On large grids in float32,
@@ -113,96 +109,46 @@ class GridMultigridSolver(AbstractReusableStateSolver):
 
     **Attributes:**
 
-    - `rtol`: Largest Euclidean norm, relative to that of the right-hand side,
-      of the residual that conjugate gradients update at each iteration. In
-      exact arithmetic it equals the residual `b - A x` of the solution `x`.
-      In float32, rounding stops the decrease of `b - A x`, so that solves
-      can converge with a residual `b - A x` above `rtol`.
-    - `max_steps`: Largest number of iterations. A solve that has not converged
-      then fails with `lineax.RESULTS.max_steps_reached`.
+    - `rtol`: Largest Euclidean norm of the residual, relative to that of the
+      right-hand side (see `AbstractSparseIterativeSolver`).
+    - `max_steps`: Largest number of iterations.
 
     !!! warning
 
-        `init` reads concrete sparse indices: `distance.init(graph)` builds the
-        state of a `GridGraph` from its shape and contiguity, also inside
-        `jax.jit`, and that of another graph outside `jax.jit`. A state belongs
-        to one grid: a raster shape and contiguity, with any conductances. The
-        matrix must be positive definite: a grounded Laplacian of a connected
-        graph. The solves of a singular matrix fail with
-        `lineax.RESULTS.singular` when their solution is not finite, and with
-        `lineax.RESULTS.max_steps_reached` otherwise.
+        A state belongs to one grid: a raster shape and contiguity, with any
+        conductances. The matrix must be positive definite: a grounded
+        Laplacian of a connected graph. The solves of a singular matrix fail
+        with `lineax.RESULTS.singular` when their solution is not finite, and
+        with `lineax.RESULTS.max_steps_reached` otherwise.
     """
 
     rtol: float = 1e-5
     max_steps: int = 200
 
-    def __check_init__(self):
-        if self.rtol < 0:
-            raise ValueError("`rtol` must be non-negative.")
-        if self.max_steps < 1:
-            raise ValueError("`max_steps` must be positive.")
+    def preconditioner(self, pattern: CSRPattern, values: Array) -> _Grid:
+        del values
+        return _grid(pattern)
 
-    def init(
-        self, operator: AbstractLinearOperator, options: dict[str, Any]
-    ) -> GridMultigridState:
-        del options
-        matrix = _matrix(operator)
-        slots, shape, offsets = _grid(matrix)
-        return _initial_state(slots, shape, offsets, matrix.data)
+    def precondition(
+        self, preconditioner: _Grid, pattern: CSRPattern, values: Array
+    ) -> Callable[[Array], Array]:
+        del pattern
+        stencil = _stencil(preconditioner, values)
+        ml = _multilevel_solver(preconditioner.offsets, stencil)
+        return lambda residuals: _v_cycle(ml, residuals)
 
-    def reinit(
-        self,
-        operator: AbstractLinearOperator,
-        options: dict[str, Any],
-        state: GridMultigridState,
-    ) -> GridMultigridState:
-        """Return the state of the values of `operator`.
+    def matvec(
+        self, preconditioner: _Grid, pattern: CSRPattern, values: Array
+    ) -> Callable[[Array], Array]:
+        del pattern
+        stencil = _stencil(preconditioner, values)
+        return lambda x: _matvec(preconditioner.offsets, stencil, x)
 
-        **Arguments:**
-
-        - `operator`: BCOO-backed operator with the sparse indices `state` was
-          initialized for.
-        - `options`: Unused.
-        - `state`: State from `init` or an earlier call.
-
-        **Returns:**
-
-        The state of the values of `operator`, with the grid of `state`.
-        """
-        del options
-        data = _checked_data(_matrix(operator), state)
-        shape = state.stencil[0].shape
-        return _stencil(state.slots, (shape[0], shape[1]), state.offsets, data)
-
-    def compute(
-        self, state: GridMultigridState, vector: Array, options: dict[str, Any]
-    ) -> tuple[Array, RESULTS, dict[str, Any]]:
-        del options
-        solution, solved = _solve(state, vector, self.rtol, self.max_steps)
-        # Singular matrices, such as the grounded Laplacians of disconnected
-        # graphs, give non-finite solutions, or solves that do not converge.
-        failed = RESULTS.where(
-            jnp.all(jnp.isfinite(solution)),
-            RESULTS.max_steps_reached,
-            RESULTS.singular,
-        )
-        return solution, RESULTS.where(solved, RESULTS.successful, failed), {}
-
-    def transpose(self, state: GridMultigridState, options: dict[str, Any]):
-        return state, options
-
-    def conj(self, state: GridMultigridState, options: dict[str, Any]):
-        return state, options
-
-    def assume_full_rank(self):
-        return True
-
-
-def _matrix(operator: AbstractLinearOperator) -> BCOO:
-    matrix = operator.as_matrix()
-    if not isinstance(matrix, BCOO):
-        raise TypeError("GridMultigridSolver requires a BCOO-backed operator.")
-    return lax.stop_gradient(matrix)
+    def vector_shape(
+        self, preconditioner: _Grid, pattern: CSRPattern
+    ) -> tuple[int, int]:
+        del pattern
+        return preconditioner.shape
 
 
 def _grid_width(gaps: Array | np.ndarray) -> Array | np.integer:
@@ -220,28 +166,15 @@ def _grid_width(gaps: Array | np.ndarray) -> Array | np.integer:
     return width - queen
 
 
-def _grid(
-    matrix: BCOO,
-) -> tuple[Array, tuple[int, int], tuple[tuple[int, int], ...]]:
-    """The stencil slot of each stored entry, the grid shape and the offsets.
+def _grid(pattern: CSRPattern) -> _Grid:
+    """The grid of a matrix of CSR `pattern`.
 
     The vertex `i * width + j` is the point `(i, j)` of the grid, of the width
     of `_grid_width`.
     """
-    try:
-        indices = np.asarray(matrix.indices, dtype=np.int64)
-    except jax_errors.TracerArrayConversionError:
-        raise ValueError(
-            "GridMultigridSolver reads its grid from concrete sparse indices, so it "
-            "initializes outside `jax.jit`, except for the state of a `GridGraph`, "
-            "which `distance.init(graph)` builds from its shape and contiguity. "
-            "Create the state with `distance.init(graph)` (or "
-            "`solver.init(operator, {})`) before compiling, and pass it as `state`."
-        ) from None
-    n = matrix.shape[0]
-    rows, columns = indices[:, 0], indices[:, 1]
-    stored = (rows >= 0) & (rows < n) & (columns >= 0) & (columns < n)
-    rows, columns = rows[stored], columns[stored]
+    n = pattern.n
+    rows = np.asarray(pattern.rows, np.int64)
+    columns = np.asarray(pattern.columns, np.int64)
     width = int(_grid_width(np.abs(columns - rows)))
     steps = np.stack(
         [columns // width - rows // width, columns % width - rows % width], axis=1
@@ -255,86 +188,40 @@ def _grid(
             "`CholmodSolver` or `CuDSSSolver`, or `solver=None` for the dense solve "
             "of a small graph, as in `ResistanceDistance(solver=None)`."
         )
-    # The index of each stored entry's offset in a stencil of all nine offsets.
+    # The index of each CSR value's offset in a stencil of all nine offsets.
     position = (steps[:, 0] + 1) * 3 + steps[:, 1] + 1
     present = np.zeros(9, bool)
     present[position] = True
     offsets = _ROOK if not np.any(present[[0, 2, 6, 8]]) else _QUEEN
     index = np.zeros(9, np.int64)
     index[[(i + 1) * 3 + j + 1 for i, j in offsets]] = np.arange(len(offsets))
-    slots = np.full(indices.shape[0], len(offsets) * n)
-    slots[stored] = index[position] * n + rows
-    return jnp.asarray(slots, jnp.int32), (n // width, width), offsets
+    slots = jnp.asarray(index[position] * n + rows, jnp.int32)
+    return _Grid(slots, (n // width, width), offsets)
 
 
-def _checked_data(matrix: BCOO, state: GridMultigridState) -> Array:
-    """Return the stored values of `matrix` after checking its sparse indices.
-
-    It raises, at trace time for another number of stored entries and at run
-    time for other indices.
-    """
-    mismatch = (
-        "GridMultigridSolver: the operator's sparse indices differ from those the "
-        "state was initialized for. A state belongs to one grid; initialize a new "
-        "one, e.g. with `distance.init(graph)`, for this graph geometry."
-    )
-    if matrix.indices.shape != (state.slots.shape[0], 2):
-        raise ValueError(mismatch)
-    height, width = state.stencil[0].shape
-    n = height * width
-    stored = state.slots < len(state.offsets) * n
-    slot = jnp.where(stored, state.slots, 0)
-    step = jnp.array([i * width + j for i, j in state.offsets], slot.dtype)
-    row = slot % n
-    rows, columns = matrix.indices[:, 0], matrix.indices[:, 1]
-    in_bounds = (rows >= 0) & (rows < n) & (columns >= 0) & (columns < n)
-    same_entry = (rows == row) & (columns == row + step[slot // n])
-    matches = jnp.all(jnp.where(stored, in_bounds & same_entry, ~in_bounds))
-    return eqx.error_if(matrix.data, ~matches, mismatch)
+def _stencil(grid: _Grid, values: Array) -> tuple[Array, ...]:
+    """The stencil coefficients of the matrix of CSR `values` on `grid`: for
+    each offset, an array of the grid's shape."""
+    height, width = grid.shape
+    stencil = jnp.zeros(len(grid.offsets) * height * width, values.dtype)
+    stencil = stencil.at[grid.slots].add(values)
+    return tuple(stencil.reshape(len(grid.offsets), height, width))
 
 
-@eqx.filter_jit
-def _initial_state(
-    slots: Array,
-    shape: tuple[int, int],
-    offsets: tuple[tuple[int, int], ...],
-    data: Array,
-) -> GridMultigridState:
-    """`_stencil` in one compiled program."""
-    return _stencil(slots, shape, offsets, data)
-
-
-def _stencil(
-    slots: Array,
-    shape: tuple[int, int],
-    offsets: tuple[tuple[int, int], ...],
-    data: Array,
-) -> GridMultigridState:
-    """The state of the matrix that stores `data` at `slots`."""
-    height, width = shape
-    stencil = jnp.zeros(len(offsets) * height * width, data.dtype)
-    stencil = stencil.at[slots].add(data, mode="drop")
-    return GridMultigridState(
-        slots, tuple(stencil.reshape(len(offsets), height, width)), offsets
-    )
-
-
-# Each solve traces it, and Lineax traces a solve up to three times: a jitted
-# function is traced once for its shapes.
-@eqx.filter_jit
-def _multilevel_solver(state: GridMultigridState) -> _MultilevelSolver:
-    """The multigrid hierarchy of the matrix of `state`."""
-    A = state.stencil
+def _multilevel_solver(
+    offsets: tuple[tuple[int, int], ...], A: tuple[Array, ...]
+) -> _MultilevelSolver:
+    """The multigrid hierarchy of the matrix of stencil `A` with `offsets`."""
     height, width = A[0].shape
     shapes = [(height, width)]
     while shapes[-1][0] * shapes[-1][1] > _MAX_COARSE:
         height, width = shapes[-1]
         shapes.append(((height + 1) // 2, (width + 1) // 2))
-    offsets = [state.offsets] + [_QUEEN] * (len(shapes) - 1)
+    level_offsets = [offsets] + [_QUEEN] * (len(shapes) - 1)
     As, Ps = [A], []
     if len(shapes) > 1:
-        P = _interpolation(offsets[0], A)
-        As.append(_galerkin(offsets[0], A, P, shapes[1]))
+        P = _interpolation(level_offsets[0], A)
+        As.append(_galerkin(level_offsets[0], A, P, shapes[1]))
         Ps.append(P)
     if len(shapes) > 2:
         coarser_As, coarser_Ps = _coarser_grids(As[-1], shapes[1:])
@@ -343,10 +230,10 @@ def _multilevel_solver(state: GridMultigridState) -> _MultilevelSolver:
     height, width = shapes[-1]
     n = height * width
     eye = jnp.eye(n, dtype=A[0].dtype)
-    matrix = _matvec(offsets[-1], As[-1], eye.reshape(height, width, n))
+    matrix = _matvec(level_offsets[-1], As[-1], eye.reshape(height, width, n))
     matrix = matrix.reshape(n, n)
     factor = jnp.linalg.cholesky((matrix + matrix.T) / 2)
-    levels = map(_Level, As, [*Ps, None], offsets)
+    levels = map(_Level, As, [*Ps, None], level_offsets)
     return _MultilevelSolver(tuple(levels), factor)
 
 
@@ -397,11 +284,6 @@ def _matvec(offsets: tuple, A: tuple[Array, ...], x: Array) -> Array:
     """The product of the stencil matrix `A` and `x`, of shape `(height, width, m)`."""
     terms = [a[:, :, None] * _shift(x, *o) for a, o in zip(A, offsets)]
     return sum(terms[1:], terms[0])
-
-
-def _ratio(numerator: Array, denominator: Array) -> Array:
-    nonzero = denominator != 0
-    return jnp.where(nonzero, numerator / jnp.where(nonzero, denominator, 1), 0)
 
 
 def _interpolation(offsets: tuple, A: tuple[Array, ...]) -> tuple[Array, ...]:
@@ -558,89 +440,3 @@ def _v_cycle(ml: _MultilevelSolver, b: Array, lvl: int = 0) -> Array:
     coarse_x = _v_cycle(ml, coarse_b, lvl + 1)
     x = x + _prolong(P, coarse_x, b.shape[:2])
     return _jacobi(offsets, A, x, b)
-
-
-def _dot(x: Array, y: Array) -> Array:
-    return jnp.sum(x * y, axis=(0, 1))
-
-
-# Traced once for its shapes, as `_multilevel_solver`.
-@eqx.filter_jit
-def _cg(
-    ml: _MultilevelSolver, b: Array, rtol: float, max_steps: int
-) -> tuple[Array, Array]:
-    """Solve for the columns of `b`, of shape `(height, width, m)`.
-
-    Each column is scaled exactly, by a power of two, to a largest magnitude in
-    [0.5, 1), so that float32 right-hand sides of about 1e-37 keep their
-    precision; those below the smallest normal number solve to 0. All columns
-    iterate until the last one converges, which costs no time.
-
-    **Returns:**
-
-    The solutions, and whether each column converged.
-    """
-    largest = jnp.max(jnp.abs(b), axis=(0, 1))
-    exponent = jnp.frexp(largest)[1]
-    b = jnp.where(largest >= jnp.finfo(b.dtype).tiny, jnp.ldexp(b, -exponent), 0)
-    offsets, A = ml.levels[0].offsets, ml.levels[0].A
-    tolerance = (rtol**2) * _dot(b, b)
-
-    def step(carry):
-        x, r, p, rz, squared_residual, steps = carry
-        z = _v_cycle(ml, r)
-        rz_new = _dot(r, z)
-        # The first step starts from p = 0.
-        p = z + _ratio(rz_new, rz) * p
-        q = _matvec(offsets, A, p)
-        alpha = _ratio(rz_new, _dot(p, q))
-        r = r - alpha * q
-        return x + alpha * p, r, p, rz_new, _dot(r, r), steps + 1
-
-    def unconverged(carry):
-        return jnp.any(carry[4] > tolerance) & (carry[5] < max_steps)
-
-    # One V-cycle in the program, inside the loop, halves its compilation.
-    zeros = jnp.zeros_like(b)
-    carry = (zeros, b, zeros, jnp.ones_like(tolerance), _dot(b, b), 0)
-    x, _, _, _, squared_residual, _ = lax.while_loop(unconverged, step, carry)
-    # A NaN residual compares false.
-    solved = squared_residual <= tolerance
-    return jnp.ldexp(x, exponent), solved
-
-
-def _solve(
-    state: GridMultigridState, vector: Array, rtol: float, max_steps: int
-) -> tuple[Array, Array]:
-    """The solution of one right-hand side, and whether it converged. Under
-    `jax.vmap`, the right-hand sides of a batch solve together."""
-    height, width = state.stencil[0].shape
-
-    def solve(state, vectors):
-        # Right-hand sides as columns.
-        b = vectors.reshape(height, width, -1)
-        x, solved = _cg(_multilevel_solver(state), b, rtol, max_steps)
-        return x.reshape(height * width, -1), solved
-
-    @jax.custom_batching.custom_vmap
-    def solve_one(state, vector):
-        x, solved = solve(state, vector[:, None])
-        return x[:, 0], solved[0]
-
-    @solve_one.def_vmap
-    def solve_batch(axis_size, in_batched, state, vectors):
-        state_batched, vectors_batched = in_batched
-        if any(jax.tree.leaves(state_batched)):
-            # Other matrices for the right-hand sides: one solve each.
-            axes = jax.tree.map(lambda batched: 0 if batched else None, state_batched)
-            one = jax.vmap(
-                lambda state, vector: solve_one.fun(state, vector),
-                in_axes=(axes, 0 if vectors_batched else None),
-            )
-            return one(state, vectors), (True, True)
-        if not vectors_batched:
-            vectors = jnp.broadcast_to(vectors, (axis_size,) + vectors.shape)
-        x, solved = solve(state, vectors.T)
-        return (x.T, solved), (True, True)
-
-    return solve_one(state, vector)

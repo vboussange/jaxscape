@@ -15,7 +15,7 @@ from jaxscape.solvers import (
     BCOOLinearOperator,
     GridMultigridSolver,
     gridmultigridsolver,
-    GridMultigridState,
+    SparseIterativeState,
 )
 from jaxscape.solvers.operator import _batched_linear_solve, _linear_solve
 
@@ -82,7 +82,8 @@ def grids_one_after_another(state):
     """The matrices `As` of the grids of the multigrid hierarchy of `state`, and
     the interpolations `Ps` from each coarse grid, each built from the grid
     before it in arrays of its own shape."""
-    offsets, A = state.offsets, state.stencil
+    offsets = state.preconditioner.offsets
+    A = gridmultigridsolver._stencil(state.preconditioner, state.values)
     As, Ps = [A], []
     while A[0].size > 1024:
         coarse = ((A[0].shape[0] + 1) // 2, (A[0].shape[1] + 1) // 2)
@@ -102,7 +103,9 @@ def test_hierarchies_of_four_grids_match_grids_built_one_after_another():
     # Measured: 41 iterations.
     solver = GridMultigridSolver(rtol=1e-12, max_steps=60)
     state = solver.init(BCOOLinearOperator(matrix), {})
-    ml = gridmultigridsolver._multilevel_solver(state)
+    grid = state.preconditioner
+    stencil = gridmultigridsolver._stencil(grid, state.values)
+    ml = gridmultigridsolver._multilevel_solver(grid.offsets, stencil)
 
     shapes = [level.A[0].shape for level in ml.levels]
     assert shapes == [(129, 131), (65, 66), (33, 33), (17, 17)]
@@ -201,7 +204,7 @@ def test_the_state_of_another_graph_initializes_outside_jit():
     graph = Graph(grid.get_adjacency_matrix())
     with pytest.raises(ValueError, match="outside `jax.jit`"):
         eqx.filter_jit(distance.init)(graph)
-    assert isinstance(eqx.filter_jit(distance.init)(grid), GridMultigridState)
+    assert isinstance(eqx.filter_jit(distance.init)(grid), SparseIterativeState)
 
 
 def test_a_state_rejects_graphs_of_another_grid():
