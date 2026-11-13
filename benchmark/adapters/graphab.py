@@ -7,15 +7,13 @@
 # where the proximity falls to exp(-4). `d=25` and `p=exp(-1)` give the
 # proximity exp(-d/25) on the cost of the shortest path in the graph, which
 # adds the costs of crossing patches. The capacity a_I of a patch is its area
-# in pixels. Each call computes the equivalent connectivity EC of the graph,
-# whose square, the sum over patches I and J of a_I a_J exp(-d_IJ/25), is the
-# landscape total, and the flux F_I = sum over patches J != I of a_J
+# in pixels. Each call computes the flux F_I = sum over patches J != I of a_J
 # exp(-d_IJ/25) (`beta=1`). The map is F_I + a_I, the patch analogue of
 # Hanski's S_i, which adds the patch's own term that F leaves out, on the
 # pixels of each patch, and NaN elsewhere. `-proc` is the number of cores of
 # the cell. Graphab reads and writes files: each call writes the land and
 # resistance rasters to /dev/shm, creates a new project from them, and reads
-# the patches and EC back.
+# the patches back.
 import math
 import os
 import shutil
@@ -85,7 +83,6 @@ def call():
         *("--linkset", "distance=cost", "name=links", "topo=complete"),
         *(f"maxcost={cost}", f"extcost={work / 'resistance.tif'}"),
         *("--graph", "name=graph", f"threshold={cost}"),
-        *("--gmetric", "EC", *KERNEL),
         *("--lmetric", "F", *KERNEL, "beta=1"),
     )
     patches = work / "project" / "habitat"
@@ -101,12 +98,7 @@ def call():
     output = np.full(ids.shape, np.nan)
     habitat = ids > 0
     output[habitat] = [values[int(i)] for i in ids[habitat]]
-    # EC.txt holds a header line and a line of values, whose last is EC.
-    equivalent_connectivity = float(
-        (work / "project" / "EC.txt").read_text().splitlines()[1].split("\t")[-1]
-    )
-    return output, equivalent_connectivity**2
+    return output
 
 
-(output, total), warmup, times = time_calls(cell, call)
-write_result(cell, output, warmup, times, files=True, total=total)
+write_result(cell, *time_calls(cell, call), files=True)

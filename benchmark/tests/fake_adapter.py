@@ -3,8 +3,8 @@
 # quality, as a map, or minus the quality with `reversed`, both times 1 +
 # `error`; with `off_graph`, its map is the exponential of the quality, NaN on
 # the first pixel, as on a pixel off a tool's graph, and with `nan`, its output
-# is NaN. It reports the `total` of its settings, raises on the cases of
-# `fail_on`, and outlasts the timeout on the cases of `sleep_on`.
+# is NaN. It raises on the cases of `fail_on`, and outlasts the timeout on the
+# cases of `sleep_on`.
 import time
 from pathlib import Path
 
@@ -34,4 +34,4 @@ def call():
     return output * scale
 
 
-write_result(cell, *time_calls(cell, call), total=settings.get("total"))
+write_result(cell, *time_calls(cell, call))

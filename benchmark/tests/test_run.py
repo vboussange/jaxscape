@@ -94,7 +94,6 @@ devices = ["cpu"]
 
 [tools.distances.resistance]
 dtype = "float32"
-total = 42.0
 
 [[tools]]
 tool = "Fake map"
@@ -324,17 +323,6 @@ def test_runner_runs_the_maryland_case_for_its_questions(run_dir):
     }
 
     assert cells == {"synthetic-8": 64, "maryland": 480}
-
-
-def test_runner_records_the_landscape_total_that_a_tool_reports(run_dir):
-    totals = {
-        case: r["total"]
-        for (_, case), r in records(run_dir, "Fake connectivity").items()
-    }
-    others = records(run_dir, "Fake map").values()
-
-    assert totals == {"synthetic-8": 42.0, "maryland": 42.0}
-    assert {record["total"] for record in others} == {None}
 
 
 def test_maryland_runs_after_a_failure_and_its_failure_skips_nothing(run_dir):
@@ -573,7 +561,7 @@ def test_runner_appends_one_csv_row_per_cell_with_its_timed_calls_in_one_cell(
     assert len(times) == 3
     assert float(row["median_s"]) == sorted(map(float, times))[1]
     # Missing values are empty.
-    assert (row["solver"], row["reason"], row["total"]) == ("", "", "")
+    assert (row["solver"], row["reason"]) == ("", "")
     assert not (run_dir / "records.jsonl").exists()
 
 

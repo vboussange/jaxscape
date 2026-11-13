@@ -47,13 +47,14 @@ from scipy.stats import spearmanr
 HERE = Path(__file__).resolve().parent
 # The fields of a cell record, the contract between the runner and the report,
 # and the type of their values; the first ones, up to `case`, are the key of
-# the cell. `times_s` holds the times of the timed calls.
+# the cell. `times_s` holds the times of the timed calls. Records of earlier
+# runs may hold other fields, which `read_records` leaves out.
 KEY = ("view", "question", "tool", "distance", "device", "dtype", "solver", "case")
 FIELDS = {
     **dict.fromkeys(KEY, str),
     **{"cells": int, "status": str, "reason": str, "warmup_s": float},
     **{"times_s": list, "median_s": float, "measure": str, "agreement": float},
-    **{"tier": int, "compared_with": str, "total": float, "version": str},
+    **{"tier": int, "compared_with": str, "version": str},
     **{"files": bool, "adapter": str},
 }
 INTERPRETERS = {".jl": ["julia", f"--project={HERE / 'julia'}"], ".R": ["Rscript"]}
@@ -283,7 +284,10 @@ def append_record(path, record):
 
 
 def read_records(path):
-    """Return the records of a records file (see `append_record`)."""
+    """Return the records of a records file (see `append_record`).
+
+    A record holds the fields of `FIELDS` that the file has.
+    """
 
     def parse(kind, text):
         if text == "":
@@ -294,7 +298,11 @@ def read_records(path):
 
     with open(path, newline="") as file:
         return [
-            {field: parse(FIELDS[field], text) for field, text in row.items()}
+            {
+                field: parse(FIELDS[field], text)
+                for field, text in row.items()
+                if field in FIELDS
+            }
             for row in csv.DictReader(file)
         ]
 
@@ -576,7 +584,6 @@ def measured(config, cell, work, case_dir, run_dir):
         times_s=result["times_s"],
         median_s=statistics.median(result["times_s"]),
         files=result["files"],
-        total=result.get("total"),
     )
     jaxscape_gpu = cell["tool"] == "JAXScape" and cell["device"] == "gpu"
     windowed = cell["question"] != "distance"

@@ -1234,7 +1234,7 @@ def connectivity_section(records, config, run_dir):
         "square of the equivalent connected area.",
         "**JAXScape**: in each call, `SensitivityAnalysis` computes the map of "
         "$\\partial C / \\partial q_i$, equal to $2 S_i$ for a symmetric "
-        "distance, and `ConnectivityAnalysis` computes $C$.",
+        "distance.",
         "**Windows**: windowed analyses with `dependency_range` "
         f"{windows['dependency_range']} pixels and `coarsening_factor` "
         f"{windows['coarsening_factor']}, that is, blocks of {block} × "

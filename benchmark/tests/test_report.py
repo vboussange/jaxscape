@@ -89,12 +89,11 @@ def test_page_states_the_release_once_in_the_setup(report):
     assert table_row(tools, "JAXScape", "0.0.18")
 
 
-def test_page_joins_names_without_dots_and_drops_the_landscape_total(report):
+def test_page_joins_names_without_dots(report):
     text = page(report())
 
     assert "·" not in text
     assert "effective distance" not in text.lower()
-    assert not re.search(r"C = \d", text)
 
 
 def test_report_reads_the_records_and_writes_no_other_table_of_them(report):

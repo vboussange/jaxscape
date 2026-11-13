@@ -15,9 +15,8 @@ The runner calls an adapter with the path of a cell file, a JSON object with:
 
 The adapter touches `progress` at the start of each call, saves the output of
 its last call in `output` (`.npy`) and writes `result`, a JSON object with
-`files` (whether its calls read or write files), `warmup_s`, `times_s` and, for
-a tool of the connectivity analysis that computes one, `total`, the landscape
-total of its last call. The runner takes the tool's version from the environment snapshot. Adapters in
+`files` (whether its calls read or write files), `warmup_s` and `times_s`. The
+runner takes the tool's version from the environment snapshot. Adapters in
 other languages follow the same protocol.
 """
 
@@ -66,7 +65,7 @@ def time_calls(cell, call):
     return output, warmup, times
 
 
-def write_result(cell, output, warmup, times, files=False, total=None):
+def write_result(cell, output, warmup, times, files=False):
     """Save the output of the last call, and write the result of the cell.
 
     **Arguments:**
@@ -76,10 +75,7 @@ def write_result(cell, output, warmup, times, files=False, total=None):
     - `warmup`, `times`: The warm-up time and the times of the timed calls, in
       seconds.
     - `files`: Whether the calls read or write files.
-    - `total`: The landscape total of the last call, for a tool of the
-      connectivity analysis that computes one.
     """
     np.save(cell["output"], np.asarray(output))
-    total = None if total is None else float(total)
-    result = {"files": files, "warmup_s": warmup, "times_s": times, "total": total}
+    result = {"files": files, "warmup_s": warmup, "times_s": times}
     Path(cell["result"]).write_text(json.dumps(result))

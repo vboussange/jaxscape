@@ -6,9 +6,8 @@
 # the shared `theta`. The distance calculation is a nodes-to-nodes query among
 # the sites.
 # The connectivity analysis runs `SensitivityAnalysis(...).run("quality")` for
-# the map and `ConnectivityAnalysis` for the landscape total, sum_i q_i S_i, and
-# the sensitivity analysis runs `SensitivityAnalysis(...).run("permeability")`,
-# with the shared `dependency_range` and `coarsening_factor`, the default
+# its map, and the sensitivity analysis runs
+# `SensitivityAnalysis(...).run("permeability")`, with the shared `dependency_range` and `coarsening_factor`, the default
 # proximity and the `batch_size` of the settings; these windowed analyses build
 # their graphs with JAXScape's own edge rule, the mean permeability of the two
 # pixels. A `proximity` setting, a function of the distance in Python such as
@@ -35,7 +34,6 @@ if settings["dtype"] == "float64":
 import jax.numpy as jnp
 import jaxscape
 from jaxscape import (
-    ConnectivityAnalysis,
     FreeEnergyDistance,
     GridGraph,
     LCPDistance,
@@ -95,9 +93,7 @@ def distances():
 
 
 def connectivity():
-    total = ConnectivityAnalysis(**windows).run()
-    habitat = SensitivityAnalysis(**windows).run("quality")
-    return jax.block_until_ready((habitat, total))
+    return SensitivityAnalysis(**windows).run("quality").block_until_ready()
 
 
 def sensitivity():
@@ -122,6 +118,4 @@ calls = {
 }
 if settings.get("normalized"):
     calls["sensitivity"] = normalized_sensitivity
-output, warmup, times = time_calls(cell, calls[cell["question"]])
-output, total = output if cell["question"] == "connectivity" else (output, None)
-write_result(cell, output, warmup, times, total=total)
+write_result(cell, *time_calls(cell, calls[cell["question"]]))
