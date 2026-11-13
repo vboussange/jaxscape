@@ -1,4 +1,5 @@
-"""The landscapes of the benchmark, and the sites and graph of E1."""
+"""The landscapes of the benchmark, and the sites and graph of the distance
+calculation."""
 
 import numpy as np
 from PIL import Image
@@ -91,9 +92,9 @@ def conductance(x, y):
 
     The resistance of an edge is the mean resistance of its two pixels, so that
     its conductance is the harmonic mean of their permeabilities. Every tool of
-    E1 builds its graph with this conductance and rook contiguity, which
-    Circuitscape.jl, ConScape.jl, `gdistance` and `skimage.graph.MCP_Geometric`
-    all offer. JAXScape's windowed analyses take the arithmetic mean of the
+    the distance calculation builds its graph with this conductance and rook
+    contiguity, which Circuitscape.jl, ConScape.jl, `gdistance` and
+    `skimage.graph.MCP_Geometric` all offer. JAXScape's windowed analyses take the arithmetic mean of the
     permeabilities, which ConScape.jl and `MCP_Geometric` do not offer.
     """
     return 2 / (1 / x + 1 / y)

@@ -8,9 +8,9 @@ from conftest import BENCHMARK
 
 
 def run_adapter(tmp_path, permeability, settings):
-    """Run JAXScape's adapter on E3 under resistance on the CPU; return its map.
+    """Run JAXScape's adapter on a sensitivity analysis on the CPU; return its map.
 
-    The case has habitat of quality 1 on 30 % of its 32 x 32 pixels, drawn at
+    The analysis runs under resistance. The case has habitat of quality 1 on 30 % of its 32 x 32 pixels, drawn at
     random, the permeability given, and windows of `dependency_range` 10 in
     blocks.
     """
@@ -20,7 +20,7 @@ def run_adapter(tmp_path, permeability, settings):
     np.save(case / "quality.npy", quality)
     np.save(case / "permeability.npy", np.broadcast_to(permeability, quality.shape))
     cell = {
-        "question": "E3",
+        "question": "sensitivity",
         "distance": "resistance",
         "device": "cpu",
         "settings": settings,

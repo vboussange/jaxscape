@@ -1,25 +1,25 @@
-# Omniscape.jl computes the normalized current of E3 with the configuration of
-# its Maryland example: `radius` is the shared `dependency_range`, and
-# `block_size` the side of JAXScape's blocks, `dependency_range *
-# coarsening_factor` rounded up to an odd integer, 21 pixels. Resistance is
-# 1 / permeability, with the barriers, of permeability 0, as NoData, and the
-# source strength of a pixel is its quality; on Maryland, these are the
-# resistances of the example's reclassification table and the forest sources
-# of its `source_from_resistance` with `r_cutoff` 1. The map is the cumulative
-# current divided by the flow potential (`calc_normalized_current`,
-# `calc_flow_potential`), compared with JAXScape's normalized sensitivity to
-# resistance, `resistance, K = -R, normalized`, which the connectivity example
-# relates to it: resistance is the distance of Omniscape's circuits, the
-# proximity K(R) = -R weighs every pair of habitat pixels equally, as Omniscape
-# injects the current of every source of a window, and the flat landscape
-# normalizes it, as the flow potential normalizes the current. Omniscape keeps
-# its other defaults: eight neighbours, the conductance of an edge being the mean
-# permeability of its two pixels, divided by √2 on diagonals; artifact
-# correction; double precision; the solver of the settings, with the windows
-# solved in parallel on the Julia threads of the cell. Each call runs
-# `run_omniscape` on arrays in memory, which redoes the sources, the targets
-# and every window solve; it reads and writes no file, and only creates an
-# empty project directory in /dev/shm.
+# Omniscape.jl computes the normalized current of the sensitivity analysis with
+# the configuration of its Maryland example: `radius` is the shared
+# `dependency_range`, and `block_size` the side of JAXScape's blocks,
+# `dependency_range * coarsening_factor` rounded up to an odd integer, 21
+# pixels. Resistance is 1 / permeability, with the barriers, of permeability 0,
+# as NoData, and the source strength of a pixel is its quality; on Maryland,
+# these are the resistances of the example's reclassification table and the
+# forest sources of its `source_from_resistance` with `r_cutoff` 1. The map is
+# the cumulative current divided by the flow potential
+# (`calc_normalized_current`, `calc_flow_potential`), compared with JAXScape's
+# normalized sensitivity to resistance, `resistance, K = -R, normalized`, which
+# the connectivity example relates to it: resistance is the distance of
+# Omniscape's circuits, the proximity K(R) = -R weighs every pair of habitat
+# pixels equally, as Omniscape injects the current of every source of a window,
+# and the flat landscape normalizes it, as the flow potential normalizes the
+# current. Omniscape keeps its other defaults: eight neighbours, the
+# conductance of an edge being the mean permeability of its two pixels, divided
+# by √2 on diagonals; artifact correction; double precision; the solver of the
+# settings, with the windows solved in parallel on the Julia threads of the
+# cell. Each call runs `run_omniscape` on arrays in memory, which redoes the
+# sources, the targets and every window solve; it reads and writes no file, and
+# only creates an empty project directory in /dev/shm.
 include("protocol.jl")
 using Omniscape
 

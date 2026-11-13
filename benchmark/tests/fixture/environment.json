@@ -1,19 +1,18 @@
 {
   "date": "2026-11-10T12:00:00+00:00",
-  "host": "gpunode05",
   "gpu": {
-    "index": "5",
-    "uuid": "GPU-b8590203-5a3b-fdba-68c9-0142ee891fb0",
     "name": "NVIDIA GeForce RTX 3090",
     "driver": "580.178.04",
-    "memory": "24576 MiB"
+    "memory": "24576 MiB",
+    "cuda": "13.0"
   },
   "cpu": "AMD EPYC 7742 64-Core Processor",
-  "cores": "80-95",
+  "cores": 16,
   "threads": {
     "OMP_NUM_THREADS": "16",
     "OPENBLAS_NUM_THREADS": "16"
   },
+  "os": "Ubuntu 22.04.5 LTS",
   "runtimes": {
     "Python": "3.13.5",
     "JAX": "0.12.0.1",

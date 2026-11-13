@@ -1,16 +1,20 @@
+import csv
 import json
 import os
+import platform
 from importlib.metadata import version
 
 import numpy as np
 import pytest
 from PIL import Image
+from run import FIELDS, read_records
 
 
 CORES = ",".join(str(core) for core in sorted(os.sched_getaffinity(0))[:2])
-# The configuration of the tests. Its E1 reference is the fake tool, so that a
-# fake tool's error is its `error`. Its tools of E2 come before JAXScape, whose
-# CPU device comes before its GPU, and whose GPU map is the one compared.
+# The configuration of the tests. Its reference of the distance calculation is
+# the fake tool, so that a fake tool's error is its `error`. Its tools of the
+# connectivity analysis come before JAXScape, whose CPU device comes before its
+# GPU, and whose GPU map is the one compared.
 CONFIG = f"""
 [run]
 timeout = 10
@@ -27,7 +31,7 @@ correlation_length = 4
 habitat_threshold = 0.7
 seed = 1
 
-[E1]
+[distance]
 sites = 4
 seed = 2
 reference = "tests/fake_adapter.py"
@@ -48,13 +52,13 @@ coarsening_factor = 0.5
 
 [maryland]
 raster = "LAND_COVER"
-questions = ["E2"]
+questions = ["connectivity"]
 resistance = {{ 1 = 1, 2 = 10 }}
 
 [[tools]]
 tool = "Fake"
 package = "numpy"
-question = "E1"
+question = "distance"
 adapter = "tests/fake_adapter.py"
 devices = ["cpu"]
 tier = 1
@@ -74,7 +78,7 @@ sleep_on = ["synthetic-16"]
 [[tools]]
 tool = "Fake per device"
 package = "numpy"
-question = "E1"
+question = "distance"
 adapter = "tests/fake_adapter.py"
 devices = ["gpu", "cpu"]
 
@@ -82,9 +86,9 @@ devices = ["gpu", "cpu"]
 solver = {{ gpu = ["Iterative", "Direct"], cpu = "Direct" }}
 
 [[tools]]
-tool = "Fake E2"
+tool = "Fake connectivity"
 package = "numpy"
-question = "E2"
+question = "connectivity"
 adapter = "tests/fake_adapter.py"
 devices = ["cpu"]
 
@@ -95,7 +99,7 @@ total = 42.0
 [[tools]]
 tool = "Fake map"
 package = "numpy"
-question = "E2"
+question = "connectivity"
 adapter = "tests/fake_adapter.py"
 devices = ["cpu"]
 tier = 3
@@ -107,7 +111,7 @@ off_graph = true
 [[tools]]
 tool = "Fake map of a failed JAXScape cell"
 package = "numpy"
-question = "E2"
+question = "connectivity"
 adapter = "tests/fake_adapter.py"
 devices = ["cpu"]
 tier = 3
@@ -117,7 +121,7 @@ tier = 3
 [[tools]]
 tool = "Fake chain"
 package = "numpy"
-question = "E2"
+question = "connectivity"
 adapter = "tests/fake_adapter.py"
 devices = ["cpu"]
 
@@ -127,7 +131,7 @@ fail_on = ["synthetic-16"]
 [[tools]]
 tool = "Fake Maryland failure"
 package = "numpy"
-question = "E2"
+question = "connectivity"
 adapter = "tests/fake_adapter.py"
 devices = ["cpu"]
 
@@ -137,7 +141,7 @@ fail_on = ["maryland"]
 [[tools]]
 tool = "Fake map paired with a label"
 package = "numpy"
-question = "E2"
+question = "connectivity"
 adapter = "tests/fake_adapter.py"
 devices = ["cpu"]
 tier = 3
@@ -148,7 +152,7 @@ compared_with = "lcp, reversed"
 [[tools]]
 tool = "JAXScape"
 package = "numpy"
-question = "E2"
+question = "connectivity"
 adapter = "tests/fake_adapter.py"
 devices = ["cpu", "gpu"]
 
@@ -172,21 +176,22 @@ reference_solver = "Direct"
 timeout = 2
 fails_by_design = [
   {{ distance = "free_energy", dtype = "float32" }},
-  {{ solver = "Iterative", question = ["E2"], dtype = "float64" }},
+  {{ solver = "Iterative", question = ["connectivity"], dtype = "float64" }},
 ]
 
-[solver_view.questions.E1]
+[solver_view.questions.distance]
 resistance = {{}}
 free_energy = {{}}
 
-[solver_view.questions.E2]
-resistance = {{ batch_size = 4, sides = [8] }}
+[solver_view.questions.connectivity]
+resistance = {{ batch_size = 4, cases = ["synthetic-8"] }}
 
 [solver_view.solvers]
 Direct = {{}}
 Iterative = {{ error = 0.5 }}
-Approximate = {{ error = 0.1, questions = ["E2"], dtypes = ["float32"] }}
-Slow = {{ sleep_on = ["synthetic-8"], questions = ["E2"], dtypes = ["float64"] }}
+Approximate = {{ error = 0.1, questions = ["connectivity"], dtypes = ["float32"], cases = ["synthetic-8", "maryland"] }}
+Slow = {{ sleep_on = ["synthetic-8"], questions = ["connectivity"], dtypes = ["float64"] }}
+Slower = {{ sleep_on = ["synthetic-8"], questions = ["connectivity"], dtypes = ["float64"], timeout = 3 }}
 """
 # A land cover of 20 x 24 pixels, of classes 1 (resistance 1), 2 (resistance 10)
 # and 3 (a barrier).
@@ -198,7 +203,7 @@ PASSING = (
 [[tools]]
 tool = "Fake"
 package = "numpy"
-question = "E1"
+question = "distance"
 adapter = "tests/fake_adapter.py"
 devices = ["cpu"]
 tier = 1
@@ -209,7 +214,7 @@ error = ERROR
 [[tools]]
 tool = "JAXScape"
 package = "numpy"
-question = "E2"
+question = "connectivity"
 adapter = "tests/fake_adapter.py"
 devices = ["gpu"]
 
@@ -218,13 +223,27 @@ devices = ["gpu"]
 [[tools]]
 tool = "Fake map"
 package = "numpy"
-question = "E2"
+question = "connectivity"
 adapter = "tests/fake_adapter.py"
 devices = ["cpu"]
 tier = 3
 
 [tools.distances.lcp]
 nan = NAN
+
+[solver_view]
+tool = "Fake solvers"
+package = "scipy"
+adapter = "tests/fake_adapter.py"
+device = "gpu"
+dtypes = ["float32"]
+reference_solver = "Direct"
+
+[solver_view.questions.connectivity]
+resistance = { cases = ["synthetic-8"] }
+
+[solver_view.solvers]
+Approximate = { error = 0.1, cases = ["synthetic-8", "maryland"] }
 """
 )
 
@@ -244,10 +263,9 @@ def run(script):
 
 
 def records(run_dir, tool="Fake"):
-    lines = (run_dir / "records.jsonl").read_text().splitlines()
     return {
         (r["distance"], r["case"]): r
-        for r in map(json.loads, lines)
+        for r in read_records(run_dir / "records.csv")
         if r["tool"] == tool and r["view"] == "comparison"
     }
 
@@ -290,10 +308,9 @@ def test_runner_records_timings_version_and_agreement_of_a_cell(run_dir):
 
 
 def test_runner_resolves_settings_per_device_and_runs_each_solver_of_a_list(run_dir):
-    lines = (run_dir / "records.jsonl").read_text().splitlines()
     solvers = {
         (r["device"], r["solver"])
-        for r in map(json.loads, lines)
+        for r in read_records(run_dir / "records.csv")
         if r["tool"] == "Fake per device"
     }
 
@@ -303,14 +320,17 @@ def test_runner_resolves_settings_per_device_and_runs_each_solver_of_a_list(run_
 def test_runner_runs_the_maryland_case_for_its_questions(run_dir):
     cells = {
         case: record["cells"]
-        for (_, case), record in records(run_dir, "Fake E2").items()
+        for (_, case), record in records(run_dir, "Fake connectivity").items()
     }
 
     assert cells == {"synthetic-8": 64, "maryland": 480}
 
 
 def test_runner_records_the_landscape_total_that_a_tool_reports(run_dir):
-    totals = {case: r["total"] for (_, case), r in records(run_dir, "Fake E2").items()}
+    totals = {
+        case: r["total"]
+        for (_, case), r in records(run_dir, "Fake connectivity").items()
+    }
     others = records(run_dir, "Fake map").values()
 
     assert totals == {"synthetic-8": 42.0, "maryland": 42.0}
@@ -341,10 +361,9 @@ def test_maryland_runs_after_a_failure_and_its_failure_skips_nothing(run_dir):
 
 
 def solver_records(run_dir):
-    lines = (run_dir / "records.jsonl").read_text().splitlines()
     return {
         (r["question"], r["distance"], r["dtype"], r["solver"], r["case"]): r
-        for r in map(json.loads, lines)
+        for r in read_records(run_dir / "records.csv")
         if r["view"] == "solver"
     }
 
@@ -360,15 +379,23 @@ def test_solver_view_runs_each_solver_in_each_dtype_on_the_gpu(run_dir):
             for solver in solvers
         }
 
-    # E1 runs on every raster of its distance, E2 on the sides of its entry,
-    # and the combinations that fail by design are left out.
+    # The distance calculation runs on every raster of its distance, the
+    # connectivity analysis on the cases of its entry, or of its solver, and
+    # the combinations that fail by design are left out.
     assert set(cells) == (
-        each("E1", "resistance", ["synthetic-8"], ["float32", "float64"])
-        | each("E1", "free_energy", ["synthetic-8", "synthetic-16"], ["float64"])
-        | each("E2", "resistance", ["synthetic-8"], ["float32"])
-        | {("E2", "resistance", "float32", "Approximate", "synthetic-8")}
-        | {("E2", "resistance", "float64", "Direct", "synthetic-8")}
-        | {("E2", "resistance", "float64", "Slow", "synthetic-8")}
+        each("distance", "resistance", ["synthetic-8"], ["float32", "float64"])
+        | each("distance", "free_energy", ["synthetic-8", "synthetic-16"], ["float64"])
+        | each("connectivity", "resistance", ["synthetic-8"], ["float32"])
+        | each(
+            "connectivity",
+            "resistance",
+            ["synthetic-8", "maryland"],
+            ["float32"],
+            ["Approximate"],
+        )
+        | {("connectivity", "resistance", "float64", "Direct", "synthetic-8")}
+        | {("connectivity", "resistance", "float64", "Slow", "synthetic-8")}
+        | {("connectivity", "resistance", "float64", "Slower", "synthetic-8")}
     )
     assert {(r["tool"], r["device"]) for r in cells.values()} == {
         ("Fake solvers", "gpu")
@@ -379,7 +406,7 @@ def test_solver_view_runs_each_solver_in_each_dtype_on_the_gpu(run_dir):
 def test_solver_view_records_the_error_against_the_float64_reference(run_dir):
     cells = solver_records(run_dir)
     e2 = {
-        solver: cells[("E2", "resistance", "float32", solver, "synthetic-8")]
+        solver: cells[("connectivity", "resistance", "float32", solver, "synthetic-8")]
         for solver in ("Direct", "Iterative", "Approximate")
     }
 
@@ -387,21 +414,38 @@ def test_solver_view_records_the_error_against_the_float64_reference(run_dir):
     assert e2["Direct"]["agreement"] == 0
     assert e2["Iterative"]["agreement"] == pytest.approx(0.5)
     assert e2["Approximate"]["agreement"] == pytest.approx(0.1)
-    e1 = cells[("E1", "resistance", "float64", "Iterative", "synthetic-8")]
+    e1 = cells[("distance", "resistance", "float64", "Iterative", "synthetic-8")]
     assert e1["measure"] == "largest relative error"
     assert e1["agreement"] == pytest.approx(0.5)
 
 
-def test_solver_view_stops_a_call_after_its_own_timeout(run_dir):
+def test_solver_view_measures_no_error_where_its_reference_does_not_run(
+    run_dir,
+):
+    # The reference of the connectivity analysis runs on the cases of its
+    # entry, which leave Maryland out.
+    maryland = solver_records(run_dir)[
+        ("connectivity", "resistance", "float32", "Approximate", "maryland")
+    ]
+
+    assert maryland["status"] == "ok"
+    assert (maryland["measure"], maryland["agreement"]) == (None, None)
+
+
+def test_solver_view_stops_a_call_after_its_own_timeout_or_its_solver_s(run_dir):
     cells = solver_records(run_dir)
-    slow = cells.pop(("E2", "resistance", "float64", "Slow", "synthetic-8"))
+    slow, slower = (
+        cells.pop(("connectivity", "resistance", "float64", solver, "synthetic-8"))
+        for solver in ("Slow", "Slower")
+    )
 
     assert (slow["status"], slow["reason"]) == ("timeout", "a call exceeded 2 s")
+    assert (slower["status"], slower["reason"]) == ("timeout", "a call exceeded 3 s")
     assert {r["status"] for r in cells.values()} == {"ok"}
 
 
 def test_runner_records_no_agreement_for_a_tool_without_tier(run_dir):
-    record = records(run_dir, "Fake E2")[("resistance", "maryland")]
+    record = records(run_dir, "Fake connectivity")[("resistance", "maryland")]
 
     assert record["status"] == "ok"
     assert record["tier"] is None
@@ -431,10 +475,9 @@ def test_runner_compares_a_map_with_the_jaxscape_gpu_map_of_its_paired_distance(
 def test_a_table_labelled_with_its_distance_runs_as_a_configuration_of_its_own(
     run_dir,
 ):
-    lines = (run_dir / "records.jsonl").read_text().splitlines()
     labelled = {
         (r["device"], r["case"]): r["status"]
-        for r in map(json.loads, lines)
+        for r in read_records(run_dir / "records.csv")
         if (r["tool"], r["distance"]) == ("JAXScape", "lcp, reversed")
     }
 
@@ -490,7 +533,9 @@ def test_runner_snapshots_the_environment(run_dir):
     environment = json.loads((run_dir / "environment.json").read_text())
 
     assert environment["gpu"] is None
-    assert environment["cores"] == CORES
+    assert "host" not in environment
+    assert environment["cores"] == 2
+    assert environment["os"] == platform.freedesktop_os_release()["PRETTY_NAME"]
     assert environment["threads"]["OMP_NUM_THREADS"] == "2"
     assert environment["runtimes"]["Julia"] == "1.13.3"
     assert environment["runtimes"]["R"] == "4.1.2"
@@ -510,12 +555,34 @@ def test_runner_records_the_configuration_of_its_run(run_dir):
     }
 
 
+def test_runner_appends_one_csv_row_per_cell_with_its_timed_calls_in_one_cell(
+    run_dir,
+):
+    with open(run_dir / "records.csv", newline="") as file:
+        reader = csv.DictReader(file)
+        rows = list(reader)
+
+    assert reader.fieldnames == list(FIELDS)
+    [row] = [
+        row
+        for row in rows
+        if (row["tool"], row["distance"], row["case"])
+        == ("Fake", "resistance", "synthetic-8")
+    ]
+    times = row["times_s"].split(";")
+    assert len(times) == 3
+    assert float(row["median_s"]) == sorted(map(float, times))[1]
+    # Missing values are empty.
+    assert (row["solver"], row["reason"], row["total"]) == ("", "", "")
+    assert not (run_dir / "records.jsonl").exists()
+
+
 def test_restart_skips_the_recorded_cells(run, run_dir, tmp_path):
-    before = (run_dir / "records.jsonl").read_text()
+    before = (run_dir / "records.csv").read_text()
 
     run(tmp_path, run_dir)
 
-    assert (run_dir / "records.jsonl").read_text() == before
+    assert (run_dir / "records.csv").read_text() == before
 
 
 def test_smoke_mode_exits_with_an_error_when_a_cell_fails(run, tmp_path):
@@ -525,7 +592,9 @@ def test_smoke_mode_exits_with_an_error_when_a_cell_fails(run, tmp_path):
     assert {case for _, case in records(tmp_path / "smoke")} == {"synthetic-16"}
     cells = {
         case: record["cells"]
-        for (_, case), record in records(tmp_path / "smoke", "Fake E2").items()
+        for (_, case), record in records(
+            tmp_path / "smoke", "Fake connectivity"
+        ).items()
     }
     assert cells == {"synthetic-16": 256, "maryland": 256}
 
@@ -543,13 +612,16 @@ def test_smoke_mode_records_the_smoke_settings_as_the_configuration_of_its_run(
         "lcp": [16],
         "free_energy": [16],
     }
-    assert config["solver_view"]["questions"]["E2"]["resistance"]["sides"] == [16]
+    view = config["solver_view"]
+    assert view["questions"]["connectivity"]["resistance"]["cases"] == ["synthetic-16"]
+    assert view["solvers"]["Approximate"]["cases"] == ["synthetic-16", "maryland"]
 
 
 def passing(error="1e-4", nan="false"):
-    """Return the passing configuration with an E1 error and a NaN flag.
+    """Return the passing configuration with an error and a NaN flag.
 
-    `error` is the error of its E1 tool, and `nan` whether its map is NaN.
+    `error` is the error of its tool of the distance calculation, and `nan`
+    whether its map is NaN.
     """
     return PASSING.replace("ERROR", error).replace("NAN", nan)
 
@@ -566,7 +638,7 @@ def test_smoke_mode_exits_with_an_error_when_a_tier_1_error_exceeds_its_toleranc
     result = run(tmp_path, tmp_path / "smoke", "--smoke", config_text=passing("1e-2"))
 
     assert result.returncode != 0
-    assert "E1" in result.stdout
+    assert "distance" in result.stdout
     assert "tolerance 0.001" in result.stdout
 
 
