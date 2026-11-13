@@ -54,7 +54,12 @@ class AMJaxCGSolver(AbstractSparseIterativeSolver[_Hierarchy]):
     in JAX, inside `jax.jit` and `jax.grad`. `reinit` keeps the hierarchy for
     the values of another matrix of the same sparsity pattern, whose solves
     then take more iterations the further their values are from those of the
-    hierarchy. The hierarchy keeps the dtype of the matrix. With a hierarchy of
+    hierarchy. In windowed analyses, JAXScape builds the state once, from a
+    graph of uniform conductance, and `reinit` keeps its hierarchy for every
+    tile: on tiles of high conductance contrast, the solver then needs many
+    iterations and can stop at `max_steps`
+    ([issue #96](https://github.com/vboussange/jaxscape/issues/96)). The
+    hierarchy keeps the dtype of the matrix. With a hierarchy of
     a single level, as that of a tiny graph, conjugate gradients run without a
     preconditioner.
 
@@ -73,10 +78,10 @@ class AMJaxCGSolver(AbstractSparseIterativeSolver[_Hierarchy]):
 
     - `rtol`: Largest Euclidean norm of the residual, relative to that of the
       right-hand side (see `AbstractSparseIterativeSolver`).
-    - `max_steps`: Largest number of iterations. A hierarchy built on a graph
-      of uniform conductance, as windowed analyses and `distance.init(graph)`
-      inside `jax.jit` build it, also for queries without a state, takes more
-      iterations on graphs of high conductance contrast than one built on
+    - `max_steps`: Largest number of iterations. With a hierarchy built on a
+      graph of uniform conductance, as `distance.init(graph)` builds it inside
+      `jax.jit`, also for queries without a state, the solver takes more
+      iterations on graphs of high conductance contrast than with one built on
       their own values. When their solves exceed `max_steps`, build the state
       outside `jax.jit` with `distance.init(graph)` and pass it as `state`,
       so that the hierarchy is that of the values of the graph.
