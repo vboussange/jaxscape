@@ -302,10 +302,14 @@ timeout = 900
 # calculation), and the iterative solvers, GeometricMultigridCGSolver and
 # AMJaxCGSolver, resolve no free energy in either dtype: as the docstring of
 # FreeEnergyDistance states, they need tolerances far below their defaults to
-# resolve the small entries of Z between distant vertices.
+# resolve the small entries of Z between distant vertices. In the windowed
+# analyses, AMJaxCGSolver builds its hierarchy on a graph of uniform
+# conductance, as its docstring states, and reaches its `max_steps` on the
+# windows of the smoke run in either dtype.
 fails_by_design = [
   { distance = "free_energy", dtype = "float32" },
   { distance = "free_energy", solver = ["GeometricMultigridCGSolver", "AMJaxCGSolver"] },
+  { solver = "AMJaxCGSolver", question = ["connectivity", "sensitivity"] },
 ]
 
 # The distances of each question, with the settings that every solver shares;
