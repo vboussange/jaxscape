@@ -14,10 +14,10 @@ from .sparsedirectsolver import (
 )
 from .sparseiterativesolver import (
     AbstractSparseIterativeSolver as AbstractSparseIterativeSolver,
+    csr_matvec as csr_matvec,
     SparseIterativeState as SparseIterativeState,
 )
 from .sparsesolver import (
     AbstractSparseSolver as AbstractSparseSolver,
-    AbstractSparseState as AbstractSparseState,
     CSRPattern as CSRPattern,
 )

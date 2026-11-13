@@ -228,21 +228,24 @@ Windowed analyses build their own states and carry them from tile to tile. See
 
 ## Writing a sparse solver
 
-`AbstractSparseSolver` is the Lineax solver of the symmetric positive definite
-system matrices of every distance. Its state holds the CSR sparsity pattern of
-the matrix, read once from concrete sparse indices, the values, which `reinit`
+`AbstractSparseSolver` is the parent of JAXScape's sparse solvers of symmetric
+positive definite matrices. Its state holds the CSR sparsity pattern of the
+matrix, read once from concrete sparse indices, the values, which `reinit`
 replaces inside `jax.jit`, and a factorization or a preconditioner. It scales
 right-hand sides, checks the sparse indices of each new matrix, and reports
-failed solves. Subclass one of its two families.
+failed solves. Subclass one of its two families, with a final class.
 
 `AbstractSparseDirectSolver` turns the phases of a sparse factorization library
 into a solver, and checks each factorization and solve:
 
 ```python
+from typing import final
+
 import jax.numpy as jnp
 from jaxscape.solvers import AbstractSparseDirectSolver
 
 
+@final
 class MySolver(AbstractSparseDirectSolver):
     def factorize(self, pattern, values):
         return my_library.factorize(pattern.offsets, pattern.columns, values)
@@ -263,15 +266,20 @@ library leaves on valid matrices of your workload.
 `AbstractSparseIterativeSolver` runs conjugate gradients with a preconditioner.
 `preconditioner` builds what the state keeps across values, in `init`, and
 `precondition` returns the preconditioner of the current values at each solve,
-as a function of residuals with shape `(n, m)`. `matvec` and `vector_shape`
-are optional: `GridMultigridSolver` multiplies with its stencil, and takes
-vectors as rasters. Jacobi preconditioning keeps nothing:
+as a function of residuals. `matvec` returns the product of the current matrix
+with vectors, and `vector_shape` the shape in which both take vectors:
+`csr_matvec` multiplies vectors of shape `(n,)` with the CSR values, and
+`GridMultigridSolver` multiplies rasters with its stencil. Jacobi
+preconditioning keeps nothing:
 
 ```python
+from typing import final
+
 import jax.numpy as jnp
-from jaxscape.solvers import AbstractSparseIterativeSolver
+from jaxscape.solvers import AbstractSparseIterativeSolver, csr_matvec
 
 
+@final
 class JacobiCGSolver(AbstractSparseIterativeSolver):
     rtol: float = 1e-5
     max_steps: int = 1_000
@@ -283,6 +291,12 @@ class JacobiCGSolver(AbstractSparseIterativeSolver):
         on_diagonal = jnp.where(pattern.rows == pattern.columns, values, 0)
         diagonal = jnp.zeros(pattern.n, values.dtype).at[pattern.rows].add(on_diagonal)
         return lambda residuals: residuals / diagonal[:, None]
+
+    def matvec(self, preconditioner, pattern, values):
+        return csr_matvec(pattern, values)
+
+    def vector_shape(self, preconditioner, pattern):
+        return (pattern.n,)
 ```
 
 ## Solver reference
@@ -323,6 +337,8 @@ class JacobiCGSolver(AbstractSparseIterativeSolver):
         - precondition
         - matvec
         - vector_shape
+
+::: jaxscape.solvers.sparseiterativesolver.csr_matvec
 
 ## Advanced: `BCOOLinearOperator`
 

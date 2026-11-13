@@ -42,12 +42,15 @@ class AbstractSparseIterativeSolver[Preconditioner](
     """Conjugate gradients on sparse symmetric positive definite matrices, with a
     preconditioner.
 
-    Subclass it with `preconditioner`, which `init` builds once, and
-    `precondition`, which applies it to the current values at each solve, and
-    optionally `matvec` and `vector_shape`. The base class provides the Lineax
-    solver, as `AbstractSparseSolver` describes: `reinit` keeps the
-    preconditioner and replaces the values. Values other than those the
-    preconditioner was built from change the number of iterations only.
+    Subclass it with `preconditioner`, which `init` builds once, `precondition`,
+    which applies it to the current values at each solve, `matvec`, the product
+    of the current matrix with vectors, and `vector_shape`, the shape of those
+    vectors. `csr_matvec` gives the product of the CSR values, with vectors of
+    shape `(n,)`. The base class provides the Lineax solver, as
+    `AbstractSparseSolver` describes: `reinit` keeps the preconditioner and
+    replaces the values. Values other than those the preconditioner was built
+    from change the number of iterations, and a solve that then exceeds
+    `max_steps` fails.
 
     A batch of right-hand sides, as `jax.vmap` makes, runs as one solve with the
     right-hand sides contiguous in memory, until all have converged. A solve
@@ -112,11 +115,13 @@ class AbstractSparseIterativeSolver[Preconditioner](
         shape `vector_shape(...) + (m,)`.
         """
 
+    @abc.abstractmethod
     def matvec(
         self, preconditioner: Preconditioner, pattern: CSRPattern, values: Array
     ) -> Callable[[Array], Array]:
         """Return the product of the matrix with vectors. Each solve calls it
-        once, inside `jax.jit`. Defaults to the CSR product.
+        once, inside `jax.jit`. `csr_matvec(pattern, values)` gives the product
+        of the CSR values.
 
         **Arguments:**
 
@@ -129,20 +134,13 @@ class AbstractSparseIterativeSolver[Preconditioner](
         A function that multiplies the matrix with `m` vectors, with shape
         `vector_shape(...) + (m,)`.
         """
-        del preconditioner
 
-        def product(x: Array) -> Array:
-            return jax.vmap(
-                lambda vector: _product(pattern, values, vector), in_axes=1, out_axes=1
-            )(x)
-
-        return product
-
+    @abc.abstractmethod
     def vector_shape(
         self, preconditioner: Preconditioner, pattern: CSRPattern
     ) -> tuple[int, ...]:
-        """Return the shape in which `matvec` and `precondition` take vectors.
-        Defaults to `(n,)`.
+        """Return the shape in which `matvec` and `precondition` take vectors:
+        `(pattern.n,)`, or another shape of `n` entries.
 
         Conjugate gradients carry their vectors in this shape, with a last axis
         of right-hand sides: a solver of rasters takes them as rasters, which
@@ -157,8 +155,6 @@ class AbstractSparseIterativeSolver[Preconditioner](
 
         A shape of `n` entries.
         """
-        del preconditioner
-        return (pattern.n,)
 
     def _init(
         self, pattern: CSRPattern, values: Array
@@ -187,6 +183,25 @@ class AbstractSparseIterativeSolver[Preconditioner](
             RESULTS.singular,
         )
         return solution, RESULTS.where(solved, RESULTS.successful, failed)
+
+
+def csr_matvec(pattern: CSRPattern, values: Array) -> Callable[[Array], Array]:
+    """Return the product of the matrix of CSR `pattern` and `values` with
+    vectors, as `AbstractSparseIterativeSolver.matvec` returns it for a
+    `vector_shape` of `(pattern.n,)`.
+
+    **Arguments:**
+
+    - `pattern`: The CSR pattern of the matrix.
+    - `values`: The CSR values of the matrix.
+
+    **Returns:**
+
+    A function that multiplies the matrix with `m` vectors, with shape `(n, m)`.
+    """
+    return jax.vmap(
+        lambda vector: _product(pattern, values, vector), in_axes=1, out_axes=1
+    )
 
 
 def _ratio(numerator: Array, denominator: Array) -> Array:

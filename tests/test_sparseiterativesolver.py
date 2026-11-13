@@ -9,7 +9,11 @@ import lineax as lx
 import numpy as np
 import pytest
 from jaxscape import GridGraph, ResistanceDistance
-from jaxscape.solvers import AbstractSparseIterativeSolver, BCOOLinearOperator
+from jaxscape.solvers import (
+    AbstractSparseIterativeSolver,
+    BCOOLinearOperator,
+    csr_matvec,
+)
 
 
 @final
@@ -24,6 +28,12 @@ class JacobiCGSolver(AbstractSparseIterativeSolver):
         on_diagonal = jnp.where(pattern.rows == pattern.columns, values, 0)
         diagonal = jnp.zeros(pattern.n, values.dtype).at[pattern.rows].add(on_diagonal)
         return lambda residuals: residuals / diagonal[:, None]
+
+    def matvec(self, preconditioner, pattern, values):
+        return csr_matvec(pattern, values)
+
+    def vector_shape(self, preconditioner, pattern):
+        return (pattern.n,)
 
 
 def grid_of(conductance):

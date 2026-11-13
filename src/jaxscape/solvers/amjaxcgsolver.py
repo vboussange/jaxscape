@@ -10,7 +10,7 @@ import scipy.sparse
 from jax import errors as jax_errors
 from jaxtyping import Array
 
-from .sparseiterativesolver import AbstractSparseIterativeSolver
+from .sparseiterativesolver import AbstractSparseIterativeSolver, csr_matvec
 from .sparsesolver import CSRPattern
 
 
@@ -152,3 +152,15 @@ class AMJaxCGSolver(AbstractSparseIterativeSolver[_Hierarchy]):
             return lambda residuals: residuals
         v_cycle = multilevel_solver.aspreconditioner(cycle="V")
         return jax.vmap(v_cycle, in_axes=1, out_axes=1)
+
+    def matvec(
+        self, preconditioner: _Hierarchy, pattern: CSRPattern, values: Array
+    ) -> Callable[[Array], Array]:
+        del preconditioner
+        return csr_matvec(pattern, values)
+
+    def vector_shape(
+        self, preconditioner: _Hierarchy, pattern: CSRPattern
+    ) -> tuple[int]:
+        del preconditioner
+        return (pattern.n,)

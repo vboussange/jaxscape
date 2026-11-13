@@ -53,7 +53,7 @@ A solver state whose factorization a refactorization has consumed. Solving with 
 ### Sparse iterative solvers
 
 **Preconditioner**:
-What the state of an iterative solver keeps across values, from which each solve applies an approximate inverse of the current system matrix: the grid of `GridMultigridSolver`, on which each solve builds a multigrid hierarchy, or the hierarchy of `AMJaxCGSolver`. Values other than those it was built from change the number of iterations only.
+What the state of an iterative solver keeps across values, from which each solve applies an approximate inverse of the current system matrix: the grid of `GridMultigridSolver`, on which each solve builds a multigrid hierarchy, or the hierarchy of `AMJaxCGSolver`. Values other than those it was built from change the number of iterations, and a solve that then exceeds `max_steps` fails.
 _Avoid_: Hierarchy (one kind of preconditioner), setup
 
 ### Windowed analyses
