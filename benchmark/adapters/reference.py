@@ -1,9 +1,10 @@
-# The float64 reference of the distance calculation, against which the runner
-# measures every record of the distance calculation: the distances among the
-# sites on the graph of `adapters/jaxscape.py`, in float64 on the CPU.
-# Resistance and free-energy distances solve with `CholmodSolver`, a sparse
-# direct solver; least-cost distances come from Dijkstra's algorithm in SciPy,
-# with the edge cost 1 / conductance.
+# The float64 reference of the distance calculation, with respect to which the
+# runner measures the error of every record of the distance calculation: the
+# distances among the sites on the graph of `adapters/jaxscape.py`, in float64
+# on the CPU. The linear systems of resistance and free-energy distances are
+# solved with `CholmodSolver`, a sparse direct solver; least-cost path
+# distances are computed with Dijkstra's algorithm in SciPy, with the edge cost
+# 1 / conductance.
 import jax
 
 

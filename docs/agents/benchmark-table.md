@@ -9,10 +9,11 @@ each time a benchmark run is published under `benchmark/results/<run>/` (see
 
 ## Steps
 
-1. **Read the run.** Its page, `benchmark/results/<run>/index.md`, has one table
-   per benchmark question, with the status of each cell (`ok`, `failed`,
+1. **Read the run.** Its page, `benchmark/results/<run>/index.md`, gives for
+   each benchmark question the speed-up of JAXScape on the GPU over each tool
+   and, in a collapsed table, the status of each cell (`ok`, `failed`,
    `timeout`, `oom`, `skipped`) or its warm runtime. Map questions to columns:
-   the distance calculation, by distance, to the three "Effective distance"
+   the distance calculation, by distance, to the three "Distance on a graph"
    columns; the connectivity analysis to "Connected habitat"; the sensitivity
    analysis to "Movement corridors and pinch points". Use the synthetic
    rasters only, not the Maryland case.

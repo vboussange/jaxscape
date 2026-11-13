@@ -1,9 +1,10 @@
 # JAXScape builds a `GridGraph` of the permeability raster with rook
 # contiguity, the conductance of an edge being the harmonic mean of the
 # permeabilities of its two pixels (`landscape.conductance`), so that its
-# resistance is their mean resistance. Least-cost and free-energy distances
-# take 1 / conductance as the edge cost, and the free energy takes the shared
-# `theta`. The distance calculation is a nodes-to-nodes query among the sites.
+# resistance is their mean resistance. The edge cost of least-cost path and
+# free-energy distances is 1 / conductance, and the free-energy distance has
+# the shared `theta`. The distance calculation is a nodes-to-nodes query among
+# the sites.
 # The connectivity analysis runs `SensitivityAnalysis(var="quality")` for the
 # map and `ConnectivityAnalysis` for the landscape total, sum_i q_i S_i, and
 # the sensitivity analysis runs `SensitivityAnalysis(var="permeability")`, with
@@ -13,7 +14,7 @@
 # pixels. A `proximity` setting, a function of the distance in Python such as
 # `lambda d: -d`, replaces the default proximity. With `normalized`, the map of
 # the sensitivity analysis is the normalized sensitivity to resistance of the
-# connectivity example: p^2 dC/dp divided by dC/dp on a flat landscape of
+# connectivity example: p^2 dC/dp divided by dC/dp on a landscape of
 # permeability 1 and the same quality, and 0 where the latter is not positive,
 # both computed in each call. The distance runs with the solver, the resistance
 # `method` and the dtype of its settings, such as

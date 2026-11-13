@@ -8,11 +8,11 @@ import pytest
 
 FIXTURE = Path(__file__).parent / "fixture"
 SECTIONS = (
+    "## Setup",
     "## Distance calculation",
     "## Connectivity analysis",
     "## Sensitivity analysis",
-    "## Solvers",
-    "## Setup",
+    "## Linear solvers of JAXScape",
 )
 
 
@@ -63,19 +63,36 @@ def table_row(text, *cells):
     return [cell.strip() for cell in rows[0].strip("|").split("|")]
 
 
-def test_page_has_a_section_per_task_then_the_solvers_and_the_setup(report):
+def full_table(text):
+    """Return the collapsed table of every setting of a section."""
+    [table] = [body for title, body in collapsed(text) if "every" in title]
+    return table
+
+
+GMG = "GPU, float32, GeometricMultigridCGSolver"
+
+
+def test_page_has_the_setup_then_a_section_per_question_and_the_solvers(report):
     text = page(report())
 
     headings = [line for line in text.splitlines() if line.startswith("## ")]
     assert headings == list(SECTIONS)
 
 
-def test_introduction_names_no_release_and_setup_takes_it_from_the_snapshot(report):
+def test_page_states_the_release_once_in_the_setup(report):
     text = page(report())
 
-    assert "0.0.18" not in text.split(SECTIONS[0])[0]
-    [(_, tools)] = collapsed(section(text, "## Setup"))
+    assert text.count("0.0.18") == 1
+    tools = section(text, "## Setup")
     assert table_row(tools, "JAXScape", "0.0.18")
+
+
+def test_page_joins_names_without_dots_and_drops_the_landscape_total(report):
+    text = page(report())
+
+    assert "·" not in text
+    assert "effective distance" not in text.lower()
+    assert not re.search(r"C = \d", text)
 
 
 def test_report_reads_the_records_and_writes_no_other_table_of_them(report):
@@ -85,120 +102,163 @@ def test_report_reads_the_records_and_writes_no_other_table_of_them(report):
     assert not (run_dir / "results.csv").exists()
 
 
-def test_report_writes_a_figure_per_task_and_two_of_the_solvers(report):
+def test_report_writes_a_figure_per_question_and_two_of_the_solvers(report):
     run_dir = report()
     text = page(run_dir)
 
     for heading, figure in zip(
-        SECTIONS,
+        SECTIONS[1:],
         ("distance.png", "connectivity.png", "sensitivity.png", "solvers.png"),
     ):
-        assert f"]({figure})" in section(text, heading)
+        assert re.search(rf'<img src="{figure}" alt="[^"]+" width="\d+">', section(text, heading))
         assert (run_dir / figure).read_bytes().startswith(b"\x89PNG")
-    assert "](solver-errors.png)" in section(text, "## Solvers")
+    assert '<img src="solver-errors.png"' in section(text, SECTIONS[4])
     assert (run_dir / "solver-errors.png").read_bytes().startswith(b"\x89PNG")
 
 
-def test_each_table_is_collapsed_and_states_its_quantities_and_units(report):
+def test_figures_are_shown_at_one_scale_and_the_solver_figures_widest(report):
+    text = page(report())
+
+    widths = dict(re.findall(r'<img src="([\w-]+)\.png" alt="[^"]+" width="(\d+)">', text))
+    assert all(int(width) <= 760 for width in widths.values())
+    assert int(widths["solvers"]) > int(widths["distance"])
+
+
+def test_each_table_of_every_setting_is_collapsed_and_states_its_quantities(report):
     text = page(report())
 
     titles = {
         heading: [title for title, _ in collapsed(section(text, heading))]
-        for heading in SECTIONS[:4]
+        for heading in SECTIONS[1:]
     }
     assert titles == {
         "## Distance calculation": [
-            "Warm runtime (s) · largest relative error against the float64 reference"
+            "Warm runtime and error of every setting on every raster"
         ],
         "## Connectivity analysis": [
-            "Warm runtime (s) · Spearman ρ with JAXScape's map · landscape total C"
+            "Warm runtime and Spearman's ρ of every setting on every raster"
         ],
         "## Sensitivity analysis": [
-            "Warm runtime (s) · Spearman ρ with JAXScape's map"
+            "Warm runtime and Spearman's ρ of every setting on every raster"
         ],
-        "## Solvers": ["Warm runtime (s) · error against the float64 reference"],
+        "## Linear solvers of JAXScape": [
+            "Warm runtime and error of every solver on every raster"
+        ],
     }
-    # Every table is in a collapsed note.
-    assert not [line for line in text.splitlines() if line.startswith("|")]
+
+
+def test_distance_section_states_the_speed_up_errors_and_limits_first(report):
+    text = section(page(report()), "## Distance calculation")
+    finding = text.split("\n### ")[0]
+
+    assert (
+        "JAXScape is faster than every other tool, by a factor of 4.7 "
+        "(ConScape.jl, free-energy distance) to 15 (Circuitscape.jl, resistance "
+        "distance)." in finding
+    )
+    assert "at most 3.4e-06 for JAXScape" in finding
+    assert (
+        "On the GPU, JAXScape ran out of memory under resistance distance on "
+        "4096² and failed under least-cost path distance on 256²." in finding
+    )
+    # The fastest setting of Circuitscape.jl on 1024², the largest raster that
+    # it shares with JAXScape on the GPU, is cg+amg.
+    assert table_row(text, "Circuitscape.jl", "resistance", "1024²") == [
+        "Circuitscape.jl",
+        "resistance",
+        "1024²",
+        "6 s",
+        "0.41 s",
+        "15",
+        "5.1e-07",
+        "3.4e-06",
+    ]
 
 
 def test_distance_table_lists_each_setting_with_its_runtime_and_error(report):
-    [(_, table)] = collapsed(section(page(report()), "## Distance calculation"))
+    table = full_table(section(page(report()), "## Distance calculation"))
 
-    gpu = table_row(
-        table, "JAXScape", "resistance", "GPU", "float32", "GeometricMultigridCGSolver"
-    )
-    assert gpu[-4:][:2] == ["0.061 s · 2.1e-06", "0.41 s · 3.4e-06"]
-    cpu = table_row(
-        table, "JAXScape", "resistance", "CPU", "float32", "GeometricMultigridCGSolver"
-    )
-    assert cpu[-4:][:2] == ["0.39 s · missing", "timeout (3)"]
-    free_energy = table_row(
-        table, "JAXScape", "free energy", "GPU", "float64", "CuDSSSolver"
-    )
-    assert free_energy[-4:] == ["0.53 s · 1.0e-09", "", "", ""]
-    amg = table_row(table, "Circuitscape.jl", "resistance", "CPU", "float64", "cg+amg")
-    assert amg[-4:] == ["0.9 s · 4.2e-07", "6 s · 5.1e-07", "", ""]
-    conscape = table_row(table, "ConScape.jl", "free energy", "CPU", "float64", "")
-    assert conscape[-4:] == ["2.5 s · 2.0e-14", "", "", ""]
+    gpu = table_row(table, "JAXScape", "resistance", GMG)
+    assert gpu[3:] == ["0.061 s, error 2.1e-06", "0.41 s, error 3.4e-06", "oom", "skipped"]
+    cpu = table_row(table, "JAXScape", "resistance", "CPU, float32, GeometricMultigridCGSolver")
+    assert cpu[3:5] == ["0.39 s", "timeout"]
+    free_energy = table_row(table, "JAXScape", "free energy", "GPU, float64, CuDSSSolver")
+    assert free_energy[3:] == ["0.53 s, error 1.0e-09", "", "", ""]
+    amg = table_row(table, "Circuitscape.jl", "resistance", "CPU, float64, cg+amg")
+    assert amg[3:] == ["0.9 s, error 4.2e-07", "6 s, error 5.1e-07", "", ""]
+    conscape = table_row(table, "ConScape.jl", "free energy", "CPU, float64")
+    assert conscape[3:] == ["2.5 s, error 2.0e-14", "", "", ""]
 
 
-def test_a_cell_that_did_not_succeed_shows_its_status_and_recorded_reason(report):
-    [(_, table)] = collapsed(section(page(report()), "## Distance calculation"))
+def test_each_setting_that_stopped_shows_its_status_and_recorded_reason(report):
+    text = section(page(report()), "## Distance calculation")
+    stopped = text.split("### Settings that did not complete\n", 1)[1]
 
-    gpu = table_row(
-        table, "JAXScape", "resistance", "GPU", "float32", "GeometricMultigridCGSolver"
-    )
-    oom, skipped = gpu[-2:]
-    assert re.fullmatch(r"oom \(\d+\)", oom)
-    assert re.fullmatch(r"skipped \(\d+\)", skipped)
-    reasons = dict(re.findall(r"^(\d+)\. `(.*)`$", table, re.M))
-    assert reasons[oom[5:-1]] == (
-        "jaxlib.XlaRuntimeError: RESOURCE_EXHAUSTED: Out of memory while trying "
-        "to allocate 9.1GiB."
-    )
-    assert reasons[skipped[9:-1]] == "after oom at synthetic-4096"
-    lcp = table_row(table, "JAXScape", "least-cost path", "GPU", "float32", "")
-    assert lcp[-4:-2] == ["failed (5)", "skipped (6)"]
-    assert reasons["3"] == "a call exceeded 3600 s"
-    assert reasons["5"] == "ValueError: shapes do not match"
+    assert table_row(stopped, "JAXScape", "resistance", GMG)[3:] == [
+        "4096²",
+        "`oom`",
+        "allocation of 9.1 GiB failed",
+    ]
+    assert table_row(stopped, "JAXScape", "least-cost path", "GPU, float32")[3:] == [
+        "256²",
+        "`failed`",
+        "`ValueError: shapes do not match`",
+    ]
+    cpu = "CPU, float32, GeometricMultigridCGSolver"
+    assert table_row(stopped, "JAXScape", "resistance", cpu)[3:] == [
+        "1024²",
+        "`timeout`",
+        "`a call exceeded 3600 s`",
+    ]
+    # Skipped cells follow from the protocol, and are not listed.
+    assert "`skipped`" not in stopped
 
 
-def test_connectivity_table_lists_the_rank_correlation_and_the_landscape_total(
-    report,
-):
-    [(_, table)] = collapsed(section(page(report()), "## Connectivity analysis"))
+def test_connectivity_table_lists_the_rank_correlation_of_each_tool(report):
+    table = full_table(section(page(report()), "## Connectivity analysis"))
 
-    assert table_row(table, "Tool")[-5:] == [
-        "Tier",
+    assert table_row(table, "Tool") == [
+        "Tool",
+        "Distance",
+        "Setting",
         "256²",
         "Maryland",
         "1024²",
         "4096²",
     ]
-    resistance = table_row(table, "JAXScape", "resistance", "GPU", "float32")
-    assert resistance[-4:-2] == ["50 s · C = 1.2e+05", "200 s · C = 4.1e+05"]
-    eco = table_row(table, "eco-connectivity", "least-cost path", "CPU", "float32")
-    assert eco[-5:-1] == ["2", "0.2 s · ρ = 0.98", "1 s · ρ = 0.81", "timeout (1)"]
-    graphab = table_row(table, "Graphab", "least-cost path", "CPU", "float64", "")
-    assert graphab[-5:-2] == [
-        "3",
-        "4 s · ρ = -0.06 · C = 7.3e+04",
-        "9.5 s · ρ missing · C = 2.6e+05",
-    ]
+    resistance = table_row(table, "JAXScape", "resistance", GMG)
+    assert resistance[3:5] == ["50 s", "200 s"]
+    eco = table_row(table, "eco-connectivity", "least-cost path", "CPU, float32")
+    assert eco[3:6] == ["0.2 s, ρ = 0.98", "1 s, ρ = 0.81", "timeout"]
+    graphab = table_row(table, "Graphab", "least-cost path", "CPU, float64")
+    assert graphab[3:5] == ["4 s, ρ = -0.06", "9.5 s"]
 
 
-def test_sensitivity_section_labels_the_normalized_map_and_links_its_example(
-    report,
-):
+def test_sensitivity_section_gives_the_speed_up_tier_and_rank_correlation(report):
     text = section(page(report()), "## Sensitivity analysis")
-    [(_, table)] = collapsed(text)
     label = "normalized sensitivity (K = −R)"
 
-    gpu = table_row(table, "JAXScape", label, "GPU", "float32")
-    assert gpu[-2:] == ["70 s", "300 s"]
-    amg = table_row(table, "Omniscape.jl", "resistance", "CPU", "float64", "cg+amg")
-    assert amg[-3:] == ["3", "10 s · ρ = 0.41", "37 s · ρ = 0.62"]
+    assert (
+        "JAXScape is slower than every other tool, by a factor of 8.8 "
+        "(Omniscape.jl) to 22 (samc)." in text
+    )
+    # Omniscape.jl is compared with JAXScape's normalized map, in its fastest
+    # setting on 256², cholmod.
+    assert table_row(text, "Omniscape.jl", "3") == [
+        "Omniscape.jl",
+        "3",
+        label,
+        "256²",
+        "8 s",
+        "70 s",
+        "0.11",
+        "0.43",
+    ]
+    table = full_table(text)
+    gpu = table_row(table, "JAXScape", label, GMG)
+    assert gpu[3:5] == ["70 s", "300 s"]
+    amg = table_row(table, "Omniscape.jl", "resistance", "CPU, float64, cg+amg")
+    assert amg[3:5] == ["10 s, ρ = 0.41", "37 s, ρ = 0.62"]
     assert "K = -R" not in text
     assert re.search(
         r"\[[^]]*\]\(\.\./examples/connectivity_analysis/"
@@ -212,14 +272,14 @@ def test_report_draws_the_maryland_figure_and_states_its_correlation(report):
     text = section(page(run_dir), "## Sensitivity analysis")
 
     assert (run_dir / "maryland.png").read_bytes().startswith(b"\x89PNG")
-    assert "](maryland.png)" in text
+    assert '<img src="maryland.png"' in text
     # The fastest Omniscape setting that succeeds on Maryland is cg+amg, and
     # JAXScape's map is that of the GPU cell that Omniscape is compared with.
     assert (
-        "On Maryland, JAXScape's normalized sensitivity (K = −R) (GPU, 300 s) "
-        "and Omniscape.jl's normalized current (CPU, `cg+amg`, 37 s)" in text
+        "Rank of each pixel of Maryland in JAXScape's normalized sensitivity "
+        "(K = −R) and in Omniscape.jl's normalized current (`cg+amg`), with "
+        "barriers in gray. Spearman's ρ between the two maps is 0.62." in text
     )
-    assert "ρ = 0.62" in text
 
 
 def test_report_without_the_maps_keeps_the_maryland_figure(report):
@@ -230,14 +290,34 @@ def test_report_without_the_maps_keeps_the_maryland_figure(report):
     report()
 
     assert (run_dir / "maryland.png").read_bytes() == figure
-    assert "](maryland.png)" in page(run_dir)
+    assert '<img src="maryland.png"' in page(run_dir)
 
 
-def test_solver_table_names_the_solvers_of_the_current_api(report):
-    [(_, table)] = collapsed(section(page(report()), "## Solvers"))
+def test_solver_section_names_the_fastest_solver_and_lists_every_solver(report):
+    text = section(page(report()), "## Linear solvers of JAXScape")
+    fastest = text.split("\n### ")[0]
 
-    assert table_row(table, "Task") == [
-        "Task",
+    assert table_row(fastest, "distance calculation", "resistance", "float32") == [
+        "distance calculation",
+        "resistance",
+        "float32",
+        "4096²",
+        "GeometricMultigridCGSolver",
+        "5.1 s",
+        "4.0e-06",
+        "",
+        "",
+    ]
+    assert table_row(fastest, "distance calculation", "resistance", "float64")[4:] == [
+        "CuDSSSolver",
+        "0.3 s",
+        "1.0e-12",
+        "",
+        "",
+    ]
+    table = full_table(text)
+    assert table_row(table, "Question") == [
+        "Question",
         "Distance",
         "dtype",
         "Solver",
@@ -246,29 +326,29 @@ def test_solver_table_names_the_solvers_of_the_current_api(report):
         "4096²",
     ]
     rows = {
-        ("distance", "resistance", "float32", "GeometricMultigridCGSolver"): [
-            "0.03 s · 2.0e-06",
-            "0.35 s · 3.0e-06",
-            "5.1 s · 4.0e-06",
+        ("distance calculation", "resistance", "float32", "GeometricMultigridCGSolver"): [
+            "0.03 s, error 2.0e-06",
+            "0.35 s, error 3.0e-06",
+            "5.1 s, error 4.0e-06",
         ],
-        ("distance", "free energy", "float64", "CuDSSSolver"): [
-            "0.35 s · 4.7e-14",
+        ("distance calculation", "free energy", "float64", "CuDSSSolver"): [
+            "0.35 s, error 4.7e-14",
             "",
             "",
         ],
-        ("connectivity", "resistance", "float32", "GeometricMultigridCGSolver"): [
-            "91 s · 3.1e-04 · C = 1.2e+05",
+        ("connectivity analysis", "resistance", "float32", "GeometricMultigridCGSolver"): [
+            "91 s, error 3.1e-04",
             "",
             "",
         ],
         (
-            "connectivity",
+            "connectivity analysis",
             "resistance",
             "float64",
             "SpielmanApproximation(epsilon=0.15), CuDSSSolver",
-        ): ["1.5 s · 4.0e-02 · C = 1.2e+05", "12 s · C = 4.6e+05", ""],
-        ("sensitivity", "resistance", "float64", "PyAMGCGSolver"): [
-            "timeout (1)",
+        ): ["1.5 s, error 4.0e-02", "12 s", ""],
+        ("sensitivity analysis", "resistance", "float64", "PyAMGCGSolver"): [
+            "timeout",
             "",
             "",
         ],
@@ -278,10 +358,10 @@ def test_solver_table_names_the_solvers_of_the_current_api(report):
 
 
 def test_solver_section_states_the_combinations_that_do_not_run(report):
-    text = section(page(report()), "## Solvers")
+    text = section(page(report()), "## Linear solvers of JAXScape")
 
     assert (
-        "These combinations are not run: free energy in float32; free energy with "
+        "**Not run**: free-energy distance in float32; free-energy distance with "
         "`GeometricMultigridCGSolver`, `AMJaxCGSolver` or `PyAMGCGSolver`; "
         "`AMJaxCGSolver` in float32." in text
     )
@@ -292,21 +372,21 @@ def test_setup_states_the_hardware_protocol_and_versions_of_the_run(report):
     setup = section(text, "## Setup")
 
     assert (
-        "NVIDIA GeForce RTX 3090 with 24576 MiB, driver 580.178.04 and CUDA 13.0"
+        "NVIDIA GeForce RTX 3090 with 24576 MiB, driver 580.178.04, CUDA 13.0"
         in setup
     )
     assert "16 cores of an AMD EPYC 7742 64-Core Processor" in setup
     assert "Ubuntu 22.04.5 LTS" in setup
-    assert "the timed calls that follow it, 5 per cell" in setup
-    assert "when the warm-up takes more than 5 min" in setup
-    assert "A call stops after 1 h" in setup
+    assert "the median time of the 5 timed calls of a cell" in setup
+    assert "when the warm-up call takes more than 5 min" in setup
+    assert "`timeout` when a call exceeds 1 h" in setup
     assert "Python 3.13.5, JAX 0.12.0.1, Julia 1.13.3" in setup
-    [(title, tools)] = collapsed(setup)
-    assert title == "Tools: version, tasks and parameter mapping"
-    jaxscape = table_row(tools, "JAXScape", "0.0.18")
-    assert jaxscape[2] == "distance, connectivity, sensitivity"
-    assert "rook contiguity" in jaxscape[3]
-    assert table_row(tools, "Omniscape.jl", "0.6.4", "sensitivity")
+    jaxscape = table_row(setup, "JAXScape", "0.0.18")
+    assert jaxscape[2] == "distance calculation, connectivity analysis, sensitivity analysis"
+    assert table_row(setup, "Omniscape.jl", "0.6.4", "sensitivity analysis")
+    [(title, mappings)] = collapsed(setup)
+    assert title == "Parameter mapping of each tool"
+    assert "rook contiguity" in table_row(mappings, "JAXScape")[1]
     # The page names no host and no GPU of a cluster.
     for detail in ("gpunode", "GPU-b8590203", "GPU 5", "80-95"):
         assert detail not in text
@@ -315,10 +395,10 @@ def test_setup_states_the_hardware_protocol_and_versions_of_the_run(report):
 def test_page_states_the_settings_of_the_run(report):
     text = page(report())
 
-    assert "`dependency_range` 100 pixels with `coarsening_factor` 0.2" in text
-    assert "blocks of 21 pixels" in text
+    assert "`dependency_range` 100 pixels and `coarsening_factor` 0.2" in text
+    assert "blocks of 21 × 21 pixels" in text
     assert (
-        "A call stops after 15 min, and under "
+        "**Time limit**: a call stops after 15 min, and under "
         "`SpielmanApproximation(epsilon=0.15)` after 1 h." in text
     )
 
@@ -331,11 +411,24 @@ def test_page_of_a_smoke_run_states_the_smoke_settings(report):
 
     text = page(report(edit=smoke))
 
-    assert "the timed calls that follow it, 1 per cell" in text
-    assert "A call stops after 10 min" in text
-    assert "`dependency_range` 10 pixels with `coarsening_factor` 0.2" in text
-    assert "blocks of 3 pixels" in text
-    assert "A call stops after 2 min, and under" in text
+    assert "the median time of the 1 timed call of a cell" in text
+    assert "`timeout` when a call exceeds 10 min" in text
+    assert "`dependency_range` 10 pixels and `coarsening_factor` 0.2" in text
+    assert "blocks of 3 × 3 pixels" in text
+    assert "a call stops after 2 min, and under" in text
+
+
+def test_report_of_rasters_of_any_side_draws_every_figure(report, tmp_path):
+    # Smoke runs take 32² rasters, a side that the published runs do not have.
+    run_dir = tmp_path / "run"
+    shutil.copytree(FIXTURE, run_dir)
+    records = run_dir / "records.csv"
+    records.write_text(records.read_text().replace("synthetic-256,65536", "synthetic-32,1024"))
+
+    report()
+
+    assert (run_dir / "solver-errors.png").read_bytes().startswith(b"\x89PNG")
+    assert "32²" in page(run_dir)
 
 
 def test_report_points_the_docs_link_at_the_run_only_when_asked(report, tmp_path):

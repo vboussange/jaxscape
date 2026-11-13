@@ -28,7 +28,7 @@ JAXScape runs on CPUs, GPUs and TPUs through JAX. Its computations are different
 
 JAXScape unifies the main connectivity analysis frameworks in one minimal stack, with best-in-class performance.
 
-| Package | Effective distance: least-cost path | Effective distance: resistance | Effective distance: free energy | Connected habitat | Movement corridors and pinch points |
+| Package | Distance on a graph: least-cost path | Distance on a graph: resistance | Distance on a graph: free energy | Connected habitat | Movement corridors and pinch points |
 | --- | :-: | :-: | :-: | :-: | :-: |
 | **JAXScape** | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [Circuitscape.jl](https://github.com/Circuitscape/Circuitscape.jl) |  | ✓ |  |  | ✓ |
@@ -147,7 +147,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 JAXScape includes a benchmark workspace that profiles JAXScape's own
 implementations and compares them with other landscape connectivity software.
 The [benchmark page](https://vboussange.github.io/jaxscape/benchmark/) of the
-documentation describes the tasks and publishes the results. To reproduce the
+documentation describes the questions and publishes the results. To reproduce the
 benchmark or run it on your own CPU or GPU, follow the instructions in
 [`benchmark/README.md`](benchmark/README.md).
 

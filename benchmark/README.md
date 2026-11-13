@@ -3,7 +3,7 @@
 The benchmark compares JAXScape with the software that ecologists use for
 connectivity analysis, on three questions: `distance`, the distance
 calculation; `connectivity`, the connectivity analysis; and `sensitivity`, the
-sensitivity analysis. The last two are moving-window analyses. Its results make
+sensitivity analysis. The last two are windowed analyses. Its results make
 the [Benchmark page](https://vboussange.github.io/jaxscape/benchmark/) of the
 docs.
 
@@ -35,8 +35,8 @@ recorded there. To benchmark a later release, change the pin, run, and report.
   windows of the windowed analyses, the Maryland case, one entry per tool and
   question, and the solver view, which runs JAXScape with each solver in
   float32 and float64 on the GPU: the distance calculation on every raster of
-  its distance, the windowed analyses on exact resistance at 256² alone, and
-  Spielman's approximation of resistance on every case.
+  its distance, the windowed analyses on exact resistance distance at 256²
+  alone, and Spielman's approximation of resistance distance on every case.
 - `landscape.py`: the synthetic landscape, the Maryland case of the windowed
   analyses, the sites of the distance calculation and the conductance of its
   edges, which every tool of the distance calculation shares, and the
@@ -80,7 +80,7 @@ make one value, joined by `;`, and a missing value is empty.
 | `view`, `question`, `tool`, `distance`, `device`, `dtype`, `solver`, `case` | The cell, in the `comparison` or the `solver` view; `cells` is its number of raster cells. The `distance` of a configuration whose table is keyed by a label is the label. |
 | `status`, `reason` | `ok`, `failed`, `timeout`, `oom` or `skipped`, and why. |
 | `warmup_s`, `times_s`, `median_s` | The warm-up call, the timed calls and their median, in seconds. |
-| `measure`, `agreement`, `tier`, `compared_with` | The agreement measure of the tier, or of the solver view, and its value, or missing when the reference is unavailable or the measure undefined. Tier 1 measures the largest relative error against the float64 reference of the distance calculation, and Tiers 2 and 3 Spearman's ρ against the map of JAXScape's GPU cell of the same question and case, under the distance, or the label, `compared_with`. The solver view measures the largest relative error against the reference of the distance calculation, and in the windowed analyses the relative L2 error against the map of exact resistance in float64, on the cases of the question's distance alone: elsewhere, `measure` is missing. |
+| `measure`, `agreement`, `tier`, `compared_with` | The agreement measure of the tier, or of the solver view, and its value, or missing when the reference is unavailable or the measure undefined. At Tier 1, the measure is the largest relative error with respect to the float64 reference of the distance calculation, and at Tiers 2 and 3, Spearman's ρ between the map of the tool and the map of JAXScape's GPU cell of the same question and case, under the distance, or the label, `compared_with`. In the solver view, the measure is the largest relative error with respect to the reference of the distance calculation, and in the windowed analyses the relative L2 error with respect to the map of exact resistance distance in float64, on the cases of the question's distance alone: elsewhere, `measure` is missing. The page does not show `total`. |
 | `total` | The landscape total of the connectivity analysis, $\sum_i q_i S_i$, of a tool that computes one: JAXScape's `ConnectivityAnalysis`, and the square of Graphab's equivalent connectivity. |
 | `version`, `files`, `adapter` | The tool's version, from the environment snapshot, whether its calls read or write files, and its adapter. |
 

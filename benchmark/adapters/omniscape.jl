@@ -10,16 +10,17 @@
 # (`calc_normalized_current`, `calc_flow_potential`), compared with JAXScape's
 # normalized sensitivity to resistance, `resistance, K = -R, normalized`, which
 # the connectivity example relates to it: resistance is the distance of
-# Omniscape's circuits, the proximity K(R) = -R weighs every pair of habitat
-# pixels equally, as Omniscape injects the current of every source of a window,
-# and the flat landscape normalizes it, as the flow potential normalizes the
-# current. Omniscape keeps its other defaults: eight neighbours, the
-# conductance of an edge being the mean permeability of its two pixels, divided
-# by √2 on diagonals; artifact correction; double precision; the solver of the
-# settings, with the windows solved in parallel on the Julia threads of the
-# cell. Each call runs `run_omniscape` on arrays in memory, which redoes the
-# sources, the targets and every window solve; it reads and writes no file, and
-# only creates an empty project directory in /dev/shm.
+# Omniscape's circuits, every pair of habitat pixels has the same weight under
+# the proximity K(R) = -R, as Omniscape injects the current of every source of
+# a window, and the sensitivity is divided by its value on a landscape of
+# permeability 1, as the current is divided by the flow potential. Omniscape
+# keeps its other defaults: eight neighbours, the conductance of an edge being
+# the mean permeability of its two pixels, divided by √2 on diagonals; artifact
+# correction; double precision; the solver of the settings, with the windows
+# solved in parallel on the Julia threads of the cell. Each call runs
+# `run_omniscape` on arrays in memory, which redoes the sources, the targets
+# and every window solve; it reads and writes no file, and only creates an
+# empty project directory in /dev/shm.
 include("protocol.jl")
 using Omniscape
 

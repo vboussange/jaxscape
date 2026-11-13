@@ -1,18 +1,18 @@
-# eco-connectivity computes the connectedness of each pixel i, with
-# `option=1`: the sum over pixels j != i of exp(-d(i, j) / 25) q_j, divided by
-# the same sum with quality 1 and every weight 1. Its numerator is Hanski's S_i;
-# its denominator, the reach of an intact landscape, is constant away from the
-# raster's edges. d is a least-cost distance over 8 neighbours, in which a step
-# costs its length times the weight of the pixel it enters, here its resistance,
-# 1 / permeability: the resistance raster is (r - 1) / (r_max - 1), and
-# `max_cost` is r_max, the largest resistance. Quality is the condition
+# eco-connectivity computes the connectedness of each pixel i, with `option=1`:
+# the sum over pixels j != i of exp(-d(i, j) / 25) q_j, divided by the same sum
+# with quality 1 and every weight 1. Its numerator is Hanski's S_i; its
+# denominator, the reach of an intact landscape, is constant away from the
+# raster's edges. d is a least-cost path distance over 8 neighbours, in which a
+# step costs its length times the weight of the pixel it enters, here its
+# resistance, 1 / permeability: the resistance raster is (r - 1) / (r_max - 1),
+# and `max_cost` is r_max, the largest resistance. Quality is the condition
 # raster. Barriers, of permeability 0, are masked, and the map is NaN there.
-# Pixels are 1 km, so `lambdas=[25]` gives the kernel exp(-d/25) in pixels.
+# Pixels are 1 km, so `lambdas=[25]` gives the proximity exp(-d/25) in pixels.
 # The multi-resolution graph keeps the default `window_size`, `outer_window`
 # and `window_mode`, and the default `levels` up to the first whose reach,
 # `outer_window` times the level in pixels, covers `dependency_range`.
-# `n_threads` is the number of cores of the cell. The tool reads GeoTIFFs:
-# each call writes the two rasters to /dev/shm and computes the map from them.
+# `n_threads` is the number of cores of the cell. The tool reads GeoTIFFs: each
+# call writes the two rasters to /dev/shm and computes the map from them.
 import os
 from pathlib import Path
 

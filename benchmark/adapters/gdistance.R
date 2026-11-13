@@ -3,7 +3,7 @@
 # 1 / mean(x): the conductance between two pixels is the reciprocal of their
 # mean resistance, `landscape.conductance`. Resistance distances are
 # `commuteDistance` divided by the volume of the graph, the sum of its
-# conductances in both directions, and least-cost distances are
+# conductances in both directions, and least-cost path distances are
 # `costDistance`, whose edge cost is 1 / conductance. Pixels have side 1, so
 # `geoCorrection` leaves the layer unchanged and is left out. Every call builds
 # the transition layer, whose conductances depend on the resistance.

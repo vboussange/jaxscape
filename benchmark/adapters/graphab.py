@@ -1,16 +1,16 @@
 # Graphab builds a graph of habitat patches, the clusters of habitat pixels
 # (quality > 0) connected through 4 neighbours. Its links are least-cost paths
-# between patches over 8 neighbours, in which a step costs its length times
-# the mean resistance, 1 / permeability, of its two pixels (`extcost`), and
+# between patches over 8 neighbours, in which a step costs its length times the
+# mean resistance, 1 / permeability, of its two pixels (`extcost`), and
 # barriers, of permeability 0, are no data. Links and graph keep the paths of
 # cost up to `dependency_range` (`maxcost`, `threshold`, `topo=complete`),
-# where the kernel falls to exp(-4). `d=25` and `p=exp(-1)` give the kernel
-# exp(-d/25) on the cost of the shortest path in the graph, which adds the
-# costs of crossing patches. The capacity a_I of a patch is its area in
-# pixels. Each call computes the equivalent connectivity EC of the graph,
+# where the proximity falls to exp(-4). `d=25` and `p=exp(-1)` give the
+# proximity exp(-d/25) on the cost of the shortest path in the graph, which
+# adds the costs of crossing patches. The capacity a_I of a patch is its area
+# in pixels. Each call computes the equivalent connectivity EC of the graph,
 # whose square, the sum over patches I and J of a_I a_J exp(-d_IJ/25), is the
-# landscape total, and the flux F_I = sum over patches J != I of
-# a_J exp(-d_IJ/25) (`beta=1`). The map is F_I + a_I, the patch analogue of
+# landscape total, and the flux F_I = sum over patches J != I of a_J
+# exp(-d_IJ/25) (`beta=1`). The map is F_I + a_I, the patch analogue of
 # Hanski's S_i, which adds the patch's own term that F leaves out, on the
 # pixels of each patch, and NaN elsewhere. `-proc` is the number of cores of
 # the cell. Graphab reads and writes files: each call writes the land and

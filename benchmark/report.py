@@ -15,6 +15,7 @@ RUN_DIR.
 import argparse
 import json
 import os
+import re
 import textwrap
 from itertools import groupby
 from pathlib import Path
@@ -29,7 +30,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.lines import Line2D
-from matplotlib.ticker import NullFormatter
+from matplotlib.ticker import NullFormatter, NullLocator
 
 
 HERE = Path(__file__).resolve().parent
@@ -42,30 +43,25 @@ TASKS = {
     "connectivity": "Connectivity analysis",
     "sensitivity": "Sensitivity analysis",
 }
-# The names of distances and labels on the page, where they differ.
+# The names of distances and labels in tables and figures, where they differ.
 NAMES = {
     "lcp": "least-cost path",
     "free_energy": "free energy",
     "resistance, K = -R, normalized": "normalized sensitivity (K = −R)",
 }
-
-# The fields of a setting in the tables of the comparison and of the solver
-# view, and their headers.
-COMPARISON = ("tool", "distance", "device", "dtype", "solver", "tier")
-SOLVER_VIEW = ("question", "distance", "dtype", "solver")
-HEADERS = {
-    "question": "Task",
-    "tool": "Tool",
-    "distance": "Distance",
-    "device": "Device",
-    "dtype": "dtype",
-    "solver": "Solver",
-    "tier": "Tier",
+# The names of distances in prose.
+PROSE = {
+    "resistance": "resistance distance",
+    "lcp": "least-cost path distance",
+    "free_energy": "free-energy distance",
 }
+FAILURES = ("failed", "oom", "timeout")  # the statuses of a cell that stopped
+# What JAXScape did on a raster where it stopped, by status, in prose.
+STOPPED = {"oom": "ran out of memory", "timeout": "exceeded the time limit"}
+
 LINE = ("tool", "distance", "device")  # a line of a figure of the comparison
 SOLID = {"gpu", "float32"}  # the lines of the figures drawn solid, others dashed
-# The marker of each raster side in the figure of runtime against error.
-SHAPES = {256: "o", 1024: "s", 4096: "^", 8192: "D", None: "*"}
+MARKERS = "osD^vP*"  # the marker of each raster, from the smallest
 SMALLEST_ERROR = 1e-16  # errors below it are drawn at it, on a log scale
 # The Maryland figure: JAXScape's map of a question next to a tool's map.
 MARYLAND = {
@@ -74,9 +70,16 @@ MARYLAND = {
     "map": "normalized current",
 }
 BLUES = "#cde2fb #9ec5f4 #6da7ec #3987e5 #256abf #184f95 #0d366b".split()
-# Figures 8 inches wide, at 200 dpi, keep their text legible at the width of
-# the docs page.
-plt.rcParams.update({"font.size": 10, "legend.fontsize": 9})
+# Figures are saved at DPI and shown at PIXELS_PER_INCH CSS pixels per inch of
+# figure, so that their 9 pt text is 12.5 px high on the page, whatever their
+# size. A figure of one panel is about 600 px wide, and the figures of the
+# solver view, of four panels, about 720 px, the width of the docs page.
+DPI = 200
+PIXELS_PER_INCH = 100
+ONE_PANEL = (6.0, 3.0)
+PANEL_HEIGHT = 2.5
+FOUR_PANELS_WIDTH = 7.2
+plt.rcParams.update({"font.size": 9, "legend.fontsize": 8})
 
 
 def main():
@@ -123,11 +126,12 @@ def report(run_dir):
         panel, line = ("question", "distance"), ("solver", "dtype")
         plot_runtimes(solvers, panel, line, run_dir / "solvers.png")
         plot_errors(solvers, run_dir / "solver-errors.png")
-    pair = maryland_pair(comparison)
+    pair = maryland_pair(comparison, config)
     if pair and all(map_path(run_dir, record).exists() for record in pair):
         plot_maryland(run_dir, *pair, run_dir / "maryland.png")
-    figure = pair if (run_dir / "maryland.png").exists() else None
-    (run_dir / "index.md").write_text(page(records, config, environment, figure))
+    maryland = pair if (run_dir / "maryland.png").exists() else None
+    text = page(records, config, environment, maryland, run_dir)
+    (run_dir / "index.md").write_text(text)
 
 
 def publish(run_dir, link):
@@ -155,8 +159,13 @@ def solver_view(records):
 
 
 def name(value):
-    """Return the name on the page of a distance, label or solver of the records."""
+    """Return the name in tables and figures of a distance, label or solver."""
     return NAMES.get(value, value or "")
+
+
+def prose(distance):
+    """Return the name in prose of a distance or label, such as `resistance distance`."""
+    return PROSE.get(distance, name(distance))
 
 
 def side(case):
@@ -195,22 +204,35 @@ def group_by(records, fields):
         yield {field: group[0][field] for field in fields}, group
 
 
+def fastest(records, case):
+    """Return the fastest of the records on a case."""
+    on_case = [record for record in records if record["case"] == case]
+    return min(on_case, key=lambda record: record["median_s"])
+
+
+def succeeded(records):
+    """Return the records that succeeded."""
+    return [record for record in records if record["status"] == "ok"]
+
+
 def panel_title(values):
-    """Return the title of a panel, such as `Distance calculation · resistance`."""
-    return " · ".join(
+    """Return the title of a panel, such as `Distance calculation, resistance`."""
+    return ", ".join(
         TASKS[value] if field == "question" else name(value)
         for field, value in values.items()
     )
 
 
 def panels_figure(count):
-    """Return a figure 8 inches wide with `count` panels, two per row."""
-    columns = min(2, count)
-    rows = -(-count // columns)
+    """Return a figure with `count` panels: one, or two per row."""
+    if count == 1:
+        figure, axes = plt.subplots(figsize=ONE_PANEL, layout="constrained")
+        return figure, [axes]
+    rows = -(-count // 2)
     figure, grid = plt.subplots(
         rows,
-        columns,
-        figsize=(8, 5.5 if rows == 1 else 3.6 * rows),
+        2,
+        figsize=(FOUR_PANELS_WIDTH, PANEL_HEIGHT * rows),
         squeeze=False,
         layout="constrained",
     )
@@ -219,22 +241,41 @@ def panels_figure(count):
     return figure, grid.flat
 
 
-def log_axes(axes, values, xlabel):
-    """Label a panel of `values` on log axes, without labels on minor ticks."""
+def log_axes(axes, xlabel):
+    """Put a panel on log axes, without labels on minor ticks."""
     axes.set_xscale("log")
     axes.set_yscale("log")
     axes.xaxis.set_minor_formatter(NullFormatter())
     axes.yaxis.set_minor_formatter(NullFormatter())
     axes.set_xlabel(xlabel)
     axes.set_ylabel("Warm runtime (s)")
-    axes.set_title(panel_title(values))
 
 
-def save(figure, colors, styles, path):
-    """Save a figure with the legends of its colours and styles below its panels."""
-    for handles, corner, x in ((colors, "upper left", 0), (styles, "upper right", 1)):
-        figure.legend(handles=handles, loc=corner, bbox_to_anchor=(x, 0), frameon=False)
-    figure.savefig(path, dpi=200, bbox_inches="tight")
+def raster_axis(axes, records):
+    """Mark the synthetic rasters of `records` on the x axis, by their side."""
+    sides = sorted({side(record["case"]) for record in records} - {None})
+    axes.xaxis.set_minor_locator(NullLocator())
+    axes.set_xticks([s * s for s in sides], [f"{s}²" for s in sides])
+    cells = [record["cells"] for record in records]
+    axes.set_xlim(min(cells) / 2, max(cells) * 2)
+
+
+def save(figure, colors, styles, path, count):
+    """Save a figure with the legends of its colours and styles.
+
+    The legends stand right of a figure of one panel, one above the other, and
+    below the panels of a larger figure, side by side.
+    """
+    if count == 1:
+        gap = Line2D([], [], linestyle="", label=" ")
+        handles = colors + [gap] + styles
+        figure.legend(handles=handles, loc="outside right upper", frameon=False)
+    else:
+        for handles, corner, x in ((colors, "upper left", 0), (styles, "upper right", 1)):
+            figure.legend(
+                handles=handles, loc=corner, bbox_to_anchor=(x, 0), frameon=False
+            )
+    figure.savefig(path, dpi=DPI, bbox_inches="tight")
     plt.close(figure)
 
 
@@ -253,11 +294,11 @@ def style_of(value, color):
 
 
 def plot_runtimes(records, panel, line, path):
-    """Plot the warm runtime of each line against the raster cells.
+    """Plot the warm runtime of each line against the raster.
 
     At each raster, a line takes the fastest of its records that succeed, and
-    joins the synthetic rasters; Maryland is a star. The tables give the
-    records that did not succeed.
+    joins the synthetic rasters; Maryland is a star. A figure of one panel has
+    no title: the section of the page that shows it names its question.
 
     **Arguments:**
 
@@ -267,46 +308,46 @@ def plot_runtimes(records, panel, line, path):
       dtype, sets its style: GPU and float32 lines are solid with filled
       markers, and CPU and float64 lines dashed with hollow markers. The others
       set its colour, and the legend gives their values, with the tier of a
-      tool.
+      tool when the tools of the figure differ in tier.
     - `path`: Where to save the figure.
     """
     panels = list(group_by(records, panel))
-    colors = list(dict.fromkeys(tuple(r[f] for f in line[:-1]) for r in records))
+    keys = list(dict.fromkeys(tuple(r[f] for f in line[:-1]) for r in records))
     tiers = {tuple(r[f] for f in line[:-1]): r["tier"] for r in records}
     figure, grid = panels_figure(len(panels))
     for axes, (values, group) in zip(grid, panels):
         for of_line, records_of_line in group_by(group, line):
-            color = f"C{colors.index(tuple(of_line.values())[:-1]) % 10}"
+            color = f"C{keys.index(tuple(of_line.values())[:-1]) % 10}"
             style = style_of(of_line[line[-1]], color)
-            ok = [record for record in records_of_line if record["status"] == "ok"]
-            best = [
-                min(of_raster, key=lambda record: record["median_s"])
-                for _, of_raster in groupby(ok, key=lambda record: record["case"])
-            ]
+            ok = succeeded(records_of_line)
+            best = [fastest(ok, case) for case in dict.fromkeys(r["case"] for r in ok)]
             synthetic = [record for record in best if side(record["case"])]
             axes.plot(
                 [record["cells"] for record in synthetic],
                 [record["median_s"] for record in synthetic],
                 marker="o",
+                ms=4,
                 **style,
             )
             for record in best:
                 if not side(record["case"]):
                     star = style | {"linestyle": ""}
-                    axes.plot(record["cells"], record["median_s"], "*", ms=12, **star)
-        cells = [record["cells"] for record in group]
-        axes.set_xlim(min(cells) / 2, max(cells) * 2)
-        log_axes(axes, values, "Raster cells")
-    drawn = {tuple(r[f] for f in line[:-1]) for r in records if r["status"] == "ok"}
+                    axes.plot(record["cells"], record["median_s"], "*", ms=9, **star)
+        log_axes(axes, "Raster (pixels)")
+        raster_axis(axes, group)
+        if len(panels) > 1:
+            axes.set_title(panel_title(values))
+    drawn = {tuple(r[f] for f in line[:-1]) for r in succeeded(records)}
+    tiered = len({tiers[key] for key in drawn} - {None}) > 1
     handles = [
         Line2D(
             [],
             [],
             color=f"C{index % 10}",
-            label=" · ".join(map(name, key))
-            + (f" · Tier {tiers[key]}" if tiers[key] else ""),
+            label=", ".join(map(name, key))
+            + (f", Tier {tiers[key]}" if tiered and tiers[key] else ""),
         )
-        for index, key in enumerate(colors)
+        for index, key in enumerate(keys)
         if key in drawn
     ]
     styles = sorted({r[line[-1]] for r in records}, key=lambda v: v not in SOLID)
@@ -315,15 +356,16 @@ def plot_runtimes(records, panel, line, path):
             [],
             [],
             marker="o",
+            ms=4,
             label=style.upper() if line[-1] == "device" else style,
             **style_of(style, "gray"),
         )
         for style in styles
     ]
     if not all(side(record["case"]) for record in records):
-        star = dict(linestyle="", marker="*", ms=12, color="gray", label="Maryland")
+        star = dict(linestyle="", marker="*", ms=9, color="gray", label="Maryland")
         styled.append(Line2D([], [], **star))
-    save(figure, handles, styled, path)
+    save(figure, handles, styled, path, len(panels))
 
 
 def plot_errors(records, path):
@@ -335,10 +377,10 @@ def plot_errors(records, path):
     """
     solvers = list(dict.fromkeys(record["solver"] for record in records))
     measured = [
-        record
-        for record in records
-        if record["status"] == "ok" and record["agreement"] is not None
+        record for record in succeeded(records) if record["agreement"] is not None
     ]
+    sides = sorted({side(r["case"]) for r in measured}, key=lambda s: s or np.inf)
+    shapes = {s: MARKERS[index % len(MARKERS)] for index, s in enumerate(sides)}
     panels = list(group_by(measured, ("question", "distance")))
     figure, grid = panels_figure(len(panels))
     for axes, (values, group) in zip(grid, panels):
@@ -347,13 +389,15 @@ def plot_errors(records, path):
             axes.plot(
                 max(record["agreement"], SMALLEST_ERROR),
                 record["median_s"],
-                SHAPES[side(record["case"])],
-                ms=7,
+                shapes[side(record["case"])],
+                ms=6,
                 color=color,
                 markerfacecolor=color if record["dtype"] == "float32" else "none",
             )
         measure = group[0]["measure"]
-        log_axes(axes, values, measure[0].upper() + measure[1:])
+        log_axes(axes, measure[0].upper() + measure[1:])
+        if len(panels) > 1:
+            axes.set_title(panel_title(values))
     handles = [
         Line2D(
             [],
@@ -370,15 +414,29 @@ def plot_errors(records, path):
         Line2D([], [], **gray, marker="o", label="float32"),
         Line2D([], [], **gray, marker="o", markerfacecolor="none", label="float64"),
     ]
-    sides = sorted({side(r["case"]) for r in measured}, key=lambda s: s or np.inf)
     styled += [
-        Line2D([], [], **gray, marker=SHAPES[s], label=f"{s}²" if s else "Maryland")
+        Line2D([], [], **gray, marker=shapes[s], label=f"{s}²" if s else "Maryland")
         for s in sides
     ]
-    save(figure, handles, styled, path)
+    save(figure, handles, styled, path, len(panels))
 
 
-def maryland_pair(records):
+def compared_with(record, config):
+    """Return the distance, or label, of JAXScape that a record is compared with.
+
+    It is the `compared_with` of the record or, when the record leaves it out,
+    of the tool's entry in the configuration, and by default the distance of
+    the record.
+    """
+    if record["compared_with"]:
+        return record["compared_with"]
+    for entry in config["tools"]:
+        if (entry["tool"], entry["question"]) == (record["tool"], record["question"]):
+            return entry.get("compared_with") or record["distance"]
+    return record["distance"]
+
+
+def maryland_pair(records, config):
     """Return the records of the Maryland figure, or `None` when one is missing.
 
     They are the JAXScape GPU record under the tool's `compared_with`, whose map
@@ -387,14 +445,14 @@ def maryland_pair(records):
     """
     on_maryland = [
         record
-        for record in of_question(MARYLAND["question"], records)
-        if record["case"] == "maryland" and record["status"] == "ok"
+        for record in succeeded(of_question(MARYLAND["question"], records))
+        if record["case"] == "maryland"
     ]
     others = [record for record in on_maryland if record["tool"] == MARYLAND["tool"]]
     if not others:
         return None
-    other = min(others, key=lambda record: record["median_s"])
-    paired = ("JAXScape", "gpu", other["compared_with"])
+    other = fastest(others, "maryland")
+    paired = ("JAXScape", "gpu", compared_with(other, config))
     for record in on_maryland:
         if (record["tool"], record["device"], record["distance"]) == paired:
             return record, other
@@ -417,55 +475,81 @@ def plot_maryland(run_dir, jaxscape, other, path):
     """
     colormap = LinearSegmentedColormap.from_list("blues", BLUES)
     colormap = colormap.with_extremes(bad="#9e9e9e")
-    figure, axes = plt.subplots(1, 2, figsize=(8, 4.6), layout="constrained")
+    figure, axes = plt.subplots(1, 2, figsize=(6.0, 3.0), layout="constrained")
     labels = (name(jaxscape["distance"]), MARYLAND["map"])
     for axis, record, label in zip(axes, (jaxscape, other), labels):
         axis.set_axis_off()
-        axis.set_title(
-            f"{record['tool']}, {record['device'].upper()}, {runtime(record)}\n{label}"
-        )
+        axis.set_title(f"{record['tool']}\n{label}")
         quantile = quantiles(np.load(map_path(run_dir, record)))
         image = axis.imshow(quantile, cmap=colormap, vmin=0, vmax=1)
     figure.colorbar(image, ax=axes, shrink=0.8, label="Rank of the pixel (quantile)")
-    figure.suptitle(f"Maryland · {RHO} = {agreement(other)}")
-    figure.savefig(path, dpi=200, bbox_inches="tight")
+    figure.savefig(path, dpi=DPI, bbox_inches="tight")
     plt.close(figure)
 
 
+def seconds(value):
+    """Return a duration in seconds to three significant digits, such as `1700`."""
+    return f"{float(f'{value:.3g}'):g}"
+
+
 def runtime(record):
-    """Return the warm runtime of a record that succeeded."""
-    return f"{record['median_s']:.3g} s"
+    """Return the warm runtime of a record that succeeded, such as `5.48 s`."""
+    return f"{seconds(record['median_s'])} s"
 
 
 def agreement(record):
-    """Return the agreement of a record, Spearman's ρ or an error, or `missing`."""
-    if record["agreement"] is None:
-        return "missing"
-    if record["measure"] == RHO:
-        return f"{record['agreement']:.2f}"
-    return f"{record['agreement']:.1e}"
+    """Return the agreement of a record, such as `ρ = 0.93` or `error 3.2e-03`.
 
-
-def outcome(record):
-    """Return the text of a record that succeeded, in a table.
-
-    The text is its warm runtime, its agreement where it is measured, and its
-    landscape total C where it is computed.
+    The text is empty when the agreement is missing: without a reference, or
+    where Spearman's ρ is undefined.
     """
-    parts = [runtime(record)]
+    if record["agreement"] is None:
+        return ""
     if record["measure"] == RHO:
-        text = agreement(record)
-        parts.append("ρ missing" if text == "missing" else f"ρ = {text}")
-    elif record["measure"]:
-        parts.append(agreement(record))
-    if record["total"] is not None:
-        parts.append(f"C = {record['total']:.3g}")
-    return " · ".join(parts)
+        return f"ρ = {record['agreement']:.2f}"
+    return f"error {record['agreement']:.1e}"
+
+
+def factor(ratio):
+    """Return a ratio of runtimes, with two significant digits below 10."""
+    return f"{ratio:.2g}" if ratio < 10 else f"{ratio:.0f}"
+
+
+def entry(record):
+    """Return the entry of a record in a table.
+
+    It is the warm runtime and the agreement of a record that succeeded, and
+    the status of one that did not.
+    """
+    if record["status"] != "ok":
+        return record["status"]
+    return ", ".join(filter(None, (runtime(record), agreement(record))))
+
+
+def setting(record):
+    """Return the setting of a record, such as `GPU, float32, CuDSSSolver`."""
+    values = (record["device"].upper(), record["dtype"], name(record["solver"]))
+    return ", ".join(filter(None, values))
+
+
+# The columns that name a setting in the tables of the comparison and of the
+# solver view: the header of each, and its text for a record.
+COMPARISON = {
+    "Tool": lambda record: record["tool"],
+    "Distance": lambda record: name(record["distance"]),
+    "Setting": setting,
+}
+SOLVER_VIEW = {
+    "Question": lambda record: TASKS[record["question"]].lower(),
+    "Distance": lambda record: name(record["distance"]),
+    "dtype": lambda record: record["dtype"],
+    "Solver": lambda record: name(record["solver"]),
+}
 
 
 def row(cells):
     """Return a row of a Markdown table."""
-    return "| " + " | ".join(str(cell) for cell in cells) + " |"
+    return "| " + " | ".join(str(cell).replace("|", "\\|") for cell in cells) + " |"
 
 
 def table(header, rows):
@@ -474,66 +558,288 @@ def table(header, rows):
     return "\n".join(lines + [row(cells) for cells in rows])
 
 
+def bullets(items):
+    """Return a Markdown list of the items that are not empty."""
+    return "\n".join(f"- {item}" for item in items if item)
+
+
 def collapsed(title, *blocks):
     """Return a note collapsed by default, with its title and Markdown blocks."""
     body = "\n\n".join(block for block in blocks if block)
     return f'??? note "{title}"\n\n' + textwrap.indent(body, "    ")
 
 
-def outcome_table(records, fields):
+def picture(run_dir, path, alt):
+    """Return the HTML of a figure of the run directory, at its width on the page.
+
+    The width is `PIXELS_PER_INCH` pixels per inch of the figure, read from
+    the PNG header, so that the text of every figure has the same size.
+    """
+    pixels = int.from_bytes((run_dir / path).read_bytes()[16:20], "big")
+    width = round(pixels / DPI * PIXELS_PER_INCH)
+    return f'<img src="{path}" alt="{alt}" width="{width}">'
+
+
+def outcome_table(records, columns):
     """Return the table of the outcome of each setting on each raster.
 
     **Arguments:**
 
     - `records`: The records of the table.
-    - `fields`: The fields whose values make a setting, a row.
+    - `columns`: The columns that name a setting, as `COMPARISON`.
 
     **Returns:**
 
-    The table, in Markdown, with one column per raster, followed by the
-    numbered reasons of the cells that did not succeed. Such a cell gives its
-    status and the number of its reason; the reasons are numbered in the order
-    in which they first appear in the table.
+    The table, in Markdown, with one row per setting and one column per
+    raster, whose entries are given by `entry`.
     """
     cases = sorted({(record["cells"], record["case"]) for record in records})
-    reasons = {}  # reason -> its number
-    rows = []
-    for values, group in group_by(records, fields):
-        by_case = {}
-        for record in group:
-            text = outcome(record) if record["status"] == "ok" else record["status"]
-            if record["status"] != "ok":
-                number = reasons.setdefault(record["reason"], len(reasons) + 1)
-                text = f"{text} ({number})"
-            by_case[record["case"]] = text
-        setting = [
-            value.upper()
-            if field == "device"
-            else name(value)
-            if field in ("distance", "solver")
-            else value or ""
-            for field, value in values.items()
-        ]
-        rows.append(setting + [by_case.get(case, "") for _, case in cases])
-    header = [HEADERS[field] for field in fields]
-    header += [case_label(case) for _, case in cases]
-    listed = [
-        f"{number}. `{str(reason).replace('`', "'")}`"
-        for reason, number in reasons.items()
+    rows = {}
+    for record in sorted(records, key=lambda record: record["cells"]):
+        named = tuple(text(record) for text in columns.values())
+        rows.setdefault(named, {})[record["case"]] = entry(record)
+    order = list(dict.fromkeys(tuple(t(r) for t in columns.values()) for r in records))
+    body = [
+        [*named, *(rows[named].get(case, "") for _, case in cases)] for named in order
     ]
-    return "\n\n".join([table(header, rows), "\n".join(listed)])
+    return table([*columns, *(case_label(case) for _, case in cases)], body)
 
 
-def mapping(adapter):
-    """Return the header comment of an adapter, which states its mapping."""
-    lines = []
-    for line in (HERE / adapter).read_text().splitlines():
-        if line.startswith("#!"):
+def reason(record):
+    """Return the recorded reason of a record that did not succeed, in a table.
+
+    For an out-of-memory error, it is the size of the allocation that failed.
+    """
+    text = record["reason"] or ""
+    size = re.search(r"allocate ([\d.]+) ?([KMGT]i?B)", text)
+    if size:
+        return f"allocation of {size[1]} {size[2]} failed"
+    return f"`{text.replace('`', "'")}`" if text else ""
+
+
+def failures(records, columns, fold=10):
+    """Return the section of the settings that did not complete a raster.
+
+    **Arguments:**
+
+    - `records`: The records of a question or of the solver view.
+    - `columns`: The columns that name a setting, as `COMPARISON`.
+    - `fold`: The number of rows above which the table is collapsed.
+
+    **Returns:**
+
+    The heading and the table of the records that stopped, with their status
+    and recorded reason, or nothing when every record succeeded or was
+    skipped.
+    """
+    order = list(dict.fromkeys(tuple(t(r) for t in columns.values()) for r in records))
+    stopped = sorted(
+        (record for record in records if record["status"] in FAILURES),
+        key=lambda r: (order.index(tuple(t(r) for t in columns.values())), r["cells"]),
+    )
+    if not stopped:
+        return []
+    header = [*columns, "Raster", "Status", "Recorded reason"]
+    rows = [
+        [
+            *(text(record) for text in columns.values()),
+            case_label(record["case"]),
+            f"`{record['status']}`",
+            reason(record),
+        ]
+        for record in stopped
+    ]
+    listed = table(header, rows)
+    if len(rows) > fold:
+        listed = collapsed(f"{len(rows)} settings", listed)
+    return ["### Settings that did not complete", listed]
+
+
+def speedups(records, config):
+    """Return the records that give the speed-up of JAXScape over each tool.
+
+    For each other tool and distance of a question, on the largest synthetic
+    raster on which the tool and JAXScape on the GPU both succeed, under the
+    distance or label of JAXScape that the tool is compared with: the fastest
+    record of each there.
+
+    **Returns:**
+
+    A list of pairs of the record of the tool and that of JAXScape.
+    """
+    ok = [record for record in succeeded(records) if side(record["case"])]
+    others = [record for record in ok if record["tool"] != "JAXScape"]
+    pairs = []
+    for _, group in group_by(others, ("tool", "distance")):
+        target = ("JAXScape", "gpu", compared_with(group[0], config))
+        jaxscape = [r for r in ok if (r["tool"], r["device"], r["distance"]) == target]
+        shared = {r["case"] for r in group} & {r["case"] for r in jaxscape}
+        if shared:
+            case = max(shared, key=side)
+            pairs.append((fastest(group, case), fastest(jaxscape, case)))
+    return pairs
+
+
+def ratio(pair):
+    """Return the speed-up of JAXScape in a pair of records of `speedups`."""
+    tool, jaxscape = pair
+    return tool["median_s"] / jaxscape["median_s"]
+
+
+def speedup_finding(pairs, by_distance):
+    """Return the sentence that states the speed-ups of JAXScape over the tools.
+
+    **Arguments:**
+
+    - `pairs`: The pairs of records of `speedups`.
+    - `by_distance`: Whether to name the distance of each tool, as in the
+      distance calculation, or its tier.
+    """
+    if not pairs:
+        return ""
+
+    def named(pair):
+        tool = pair[0]
+        return f"{tool['tool']}, {prose(tool['distance'])}" if by_distance else tool["tool"]
+
+    def detail(pair):
+        tool = pair[0]
+        return prose(tool["distance"]) if by_distance else f"Tier {tool['tier']}"
+
+    clauses = []
+    for word, chosen, scale in (
+        ("faster", [p for p in pairs if ratio(p) >= 1], lambda p: ratio(p)),
+        ("slower", [p for p in pairs if ratio(p) < 1], lambda p: 1 / ratio(p)),
+    ):
+        if not chosen:
             continue
-        if not line.startswith("#"):
-            break
-        lines.append(line.lstrip("#").strip())
-    return " ".join(line for line in lines if line).replace("|", "\\|")
+        low, high = min(chosen, key=scale), max(chosen, key=scale)
+        tools = list(dict.fromkeys(pair[0]["tool"] for pair in chosen))
+        if len(chosen) == 1:
+            clause = f"{word} than {tools[0]} ({detail(low)}), by a factor of"
+            clauses.append(f"{clause} {factor(scale(low))}")
+            continue
+        who = "every other tool" if len(chosen) == len(pairs) else either(tools, "and")
+        clauses.append(
+            f"{word} than {who}, by a factor of {factor(scale(low))} "
+            f"({named(low)}) to {factor(scale(high))} ({named(high)})"
+        )
+    return (
+        "On the largest synthetic raster that JAXScape on the GPU and the other "
+        f"tool both completed, JAXScape is {', and '.join(clauses)}."
+    )
+
+
+def error_finding(records):
+    """Return the sentence that states the largest errors of the distance calculation."""
+    measured = [r for r in succeeded(records) if r["agreement"] is not None]
+    jaxscape = [r for r in measured if r["tool"] == "JAXScape"]
+    others = [r for r in measured if r["tool"] != "JAXScape"]
+    if not jaxscape:
+        return ""
+    worst = max(jaxscape, key=lambda record: record["agreement"])
+    text = (
+        "The largest relative error with respect to the float64 reference is at "
+        f"most {worst['agreement']:.1e} for JAXScape, under "
+        f"{prose(worst['distance'])} in {worst['dtype']}"
+    )
+    if others:
+        largest = max(record["agreement"] for record in others)
+        text += f", and at most {largest:.1e} for the other tools"
+    return text + "."
+
+
+def rho_finding(pairs):
+    """Return the sentence that states Spearman's ρ of the tools of `speedups`."""
+    measured = [pair for pair in pairs if pair[0]["agreement"] is not None]
+    if not measured:
+        return ""
+    low, high = (f(measured, key=lambda pair: pair[0]["agreement"]) for f in (min, max))
+    values = [f"{pair[0]['agreement']:.2f} ({pair[0]['tool']})" for pair in (low, high)]
+    span = values[0] if low is high else f"ranges from {values[0]} to {values[1]}"
+    verb = "is " if low is high else ""
+    return (
+        f"On those rasters, {RHO} between the map of a tool and that of JAXScape "
+        f"{verb}{span}."
+    )
+
+
+def limits_finding(records):
+    """Return the sentence that states where JAXScape on the GPU stopped."""
+    stopped = [
+        record
+        for record in records
+        if (record["tool"], record["device"]) == ("JAXScape", "gpu")
+        and record["status"] in FAILURES
+    ]
+    by_status = {}
+    for record in stopped:
+        where = f"under {prose(record['distance'])} on {case_label(record['case'])}"
+        by_status.setdefault(STOPPED.get(record["status"], "failed"), []).append(where)
+    if not by_status:
+        return ""
+    clauses = [f"{status} {either(where, 'and')}" for status, where in by_status.items()]
+    return f"On the GPU, JAXScape {either(clauses, 'and')}."
+
+
+def speedup_table(pairs, by_distance):
+    """Return the table of the speed-up of JAXScape over each tool, in Markdown.
+
+    **Arguments:**
+
+    - `pairs`: The pairs of records of `speedups`.
+    - `by_distance`: Whether to give the distance and the errors of each pair,
+      as in the distance calculation, or the tier of the tool, the distance or
+      label of JAXScape that it is compared with, and Spearman's ρ.
+    """
+    if not pairs:
+        return ""
+    runtimes = ["Raster", "Warm runtime of the tool", "Warm runtime of JAXScape"]
+    if by_distance:
+        header = ["Tool", "Distance", *runtimes, "Speed-up"]
+        header += ["Error of the tool", "Error of JAXScape"]
+    else:
+        header = ["Tool", "Tier", "Compared with JAXScape under", *runtimes]
+        header += ["Speed-up", RHO]
+    rows = []
+    for tool, jaxscape in pairs:
+        times = [case_label(tool["case"]), runtime(tool), runtime(jaxscape)]
+        speedup = factor(ratio((tool, jaxscape)))
+        if by_distance:
+            errors = [agreement(record).removeprefix("error ") for record in (tool, jaxscape)]
+            rows.append([tool["tool"], name(tool["distance"]), *times, speedup, *errors])
+        else:
+            rho = agreement(tool).removeprefix("ρ = ")
+            paired = name(jaxscape["distance"])
+            rows.append([tool["tool"], tool["tier"], paired, *times, speedup, rho])
+    return table(header, rows)
+
+
+def comparison_results(records, config, run_dir, by_distance):
+    """Return the finding and the results of a question of the comparison."""
+    question = records[0]["question"]
+    pairs = speedups(records, config)
+    findings = [speedup_finding(pairs, by_distance)]
+    findings += [error_finding(records) if by_distance else rho_finding(pairs)]
+    findings.append(limits_finding(records))
+    measure = "error" if by_distance else RHO
+    missing = (
+        "An entry without an error has no reference."
+        if by_distance
+        else "The maps of JAXScape are the references, and an entry of another "
+        "tool without ρ has no map of JAXScape to compare with, or ρ is undefined."
+    )
+    return [
+        " ".join(filter(None, findings)),
+        "### Results",
+        picture(run_dir, f"{question}.png", f"{TASKS[question]}: warm runtime"),
+        speedup_table(pairs, by_distance),
+        collapsed(
+            f"Warm runtime and {measure} of every setting on every raster",
+            missing,
+            outcome_table(records, COMPARISON),
+        ),
+    ]
 
 
 def duration(seconds):
@@ -566,11 +872,11 @@ def combination(entry):
     """Return the text of an entry of `fails_by_design`.
 
     For `{distance = "free_energy", dtype = "float32"}`, the text is
-    `free energy in float32`.
+    `free-energy distance in float32`.
     """
     words = []
     for field, joiner, show in (
-        ("distance", "", name),
+        ("distance", "", prose),
         ("solver", "with ", code),
         ("dtype", "in ", str),
         ("question", "in the ", lambda question: TASKS[question].lower()),
@@ -586,274 +892,379 @@ def introduction():
     return [
         "# Benchmark",
         "This page compares JAXScape with the software that ecologists use for "
-        "connectivity analysis on three tasks, distance calculation, "
-        "connectivity analysis and sensitivity analysis, and compares the "
-        "linear solvers of JAXScape. [`records.csv`](records.csv) holds the "
-        "record of every cell of the run, and [Setup](#setup) states the "
-        "hardware, the timing protocol, the settings and the version of each "
-        "tool.",
-        "Each comparison carries a tier of comparability. Tier 1 computes the "
-        "same quantity as JAXScape, and the largest relative error against a "
-        "float64 reference measures its accuracy; only at Tier 1 do two "
-        "runtimes measure the same computation. Tier 2 computes the same "
-        "quantity on another graph or with another kernel, and Tier 3 a "
-        "related quantity that answers the same question; both report "
-        "Spearman's rank correlation ρ between the map of the tool and that of "
-        "JAXScape.",
-        "In the figures of the three tasks, a line gives the warm runtime of a "
-        "tool and distance against the number of raster cells, at each raster "
-        "that of its fastest setting that succeeded: solid with filled markers "
-        "on the GPU, dashed with hollow markers on the CPU, and a star on "
-        "Maryland. The table under each figure lists "
-        "every setting, and the status and recorded reason of each cell that "
-        "did not succeed.",
-    ]
-
-
-def distance_section(records, config):
-    """Return the section of the distance calculation."""
-    sites = config["distance"]["sites"]
-    theta = config["distances"]["free_energy"]["theta"]
-    return [
-        "## Distance calculation",
-        "The effective distance $d_{ij}$ between two habitat sites accounts for "
-        "the landscape between them, and replaces Euclidean distance in "
-        "dispersal kernels and in models of isolation by distance. Each tool "
-        f"computes the distances among {sites} sites drawn at random from the "
-        f"habitat pixels, across the whole raster: {sites * (sites - 1) // 2} "
-        "pairs. Every tool builds the same graph: rook contiguity, with the "
-        "mean resistance of two pixels as the resistance of their edge. Free "
-        f"energy takes $\\theta = {theta}$. The error of a cell is the largest "
-        "relative error over the pairs against a float64 reference: a sparse "
-        "direct solve with `CholmodSolver` for resistance and free energy, and "
-        "Dijkstra's algorithm in SciPy for least-cost paths.",
-        "![Distance calculation: warm runtime against raster cells](distance.png)",
-        collapsed(
-            "Warm runtime (s) · largest relative error against the float64 reference",
-            "Each cell gives the warm runtime and the largest relative error "
-            "over the pairs of sites, `missing` without a reference.",
-            outcome_table(records, COMPARISON),
-        ),
-    ]
-
-
-def connectivity_section(records, config):
-    """Return the section of the connectivity analysis."""
-    windows = config["windows"]
-    scale = f"{windows['dependency_range'] / 4:g}"
-
-    def setting(name):
-        return jaxscape_setting(config, "connectivity", "resistance", name)
-
-    return [
-        "## Connectivity analysis",
-        "Connectivity measures how much habitat each pixel reaches through the "
-        "landscape: Hanski's connectivity $S_i = \\sum_j K(d_{ij})\\, q_j$, "
-        "with the habitat quality $q_j$ and the proximity $K$, and its "
-        "landscape total $C = \\sum_i q_i S_i$, the quantity behind the "
-        "equivalent connected area. In each call, JAXScape computes the map of "
-        "$\\partial C / \\partial q_i$, which equals $2 S_i$ for symmetric "
-        "distances, with `SensitivityAnalysis`, and the total $C$ with "
-        "`ConnectivityAnalysis`. Both are moving-window analyses, on windows of "
-        f"`dependency_range` {windows['dependency_range']} pixels with "
-        f"`coarsening_factor` {windows['coarsening_factor']}, which gives "
-        f"blocks of {windows['block_size']} pixels, with the proximity "
-        f"$e^{{-r/{scale}}}$, $r$ in equivalent pixels; they build their graphs "
-        "with rook contiguity, with the mean permeability of two pixels as the "
-        f"conductance of their edge. Resistance takes {code(setting('method'))} "
-        f"with {code(setting('solver'))}, the setting of the [connectivity "
-        f"example]({EXAMPLE}), on tiles of up to {setting('batch_size'):,} block "
-        "centres. The map of each other tool is compared with that of "
-        "JAXScape's GPU cell under the distance of its row, over the pixels "
-        "where both are defined; ConScape.jl, under free energy, is compared "
-        "with JAXScape under least-cost path. Graphab gives the square of its "
-        "equivalent connectivity, $\\sum_I \\sum_J a_I a_J "
-        f"e^{{-d_{{IJ}}/{scale}}}$ over its habitat patches, as its total $C$.",
-        "![Connectivity analysis: warm runtime against raster cells](connectivity.png)",
-        collapsed(
-            "Warm runtime (s) · Spearman ρ with JAXScape's map · landscape total C",
-            "Each cell gives the warm runtime, Spearman's ρ between the map of "
-            "the tool and that of JAXScape, `missing` without JAXScape's map or "
-            "where ρ is undefined, and the landscape total $C$ of a tool that "
-            "computes one.",
-            outcome_table(records, COMPARISON),
-        ),
-    ]
-
-
-def sensitivity_section(records, maryland):
-    """Return the section of the sensitivity analysis."""
-    normalized = NAMES["resistance, K = -R, normalized"]
-    sections = [
-        "## Sensitivity analysis",
-        "The sensitivity $\\partial C / \\partial p_k$ of connectivity to the "
-        "permeability $p_k$ of each pixel locates corridors and pinch points: "
-        "the pixels whose loss of permeability reduces connectivity the most. "
-        "JAXScape computes it with `SensitivityAnalysis`, with the windows and "
-        "settings of the connectivity analysis; the other tools map a flow, "
-        f"such as current, betweenness or visits. JAXScape's {normalized} is "
-        "the map of the section [Comparison with Omniscape's normalized "
-        f"current]({EXAMPLE}#comparison-with-omniscapes-normalized-current) of "
-        "the connectivity example: under resistance with the proximity "
-        "$K(R) = -R$, which weighs every pair of habitat pixels equally, "
-        "$p_k^2\\, \\partial C / \\partial p_k = -\\partial C / \\partial r_k$ "
-        "divided by $\\partial C / \\partial p_k$ on a landscape of "
-        "permeability 1 with the same quality, and 0 where the latter is not "
-        "positive; each call computes both sensitivities. Omniscape.jl "
-        "computes its normalized current with the configuration of its "
-        "Maryland example on the same windows, on a graph of eight neighbours, "
-        f"and is compared with the {normalized}. ConScape.jl is compared with "
-        "least-cost path, and each other tool with the distance of its row.",
-        "![Sensitivity analysis: warm runtime against raster cells](sensitivity.png)",
-        collapsed(
-            "Warm runtime (s) · Spearman ρ with JAXScape's map",
-            "Each cell gives the warm runtime and Spearman's ρ between the map "
-            "of the tool and that of JAXScape, `missing` without JAXScape's map "
-            "or where ρ is undefined.",
-            outcome_table(records, COMPARISON),
-        ),
-    ]
-    if maryland:
-        jaxscape, other = maryland
-        sections += [
-            f"![Maryland: JAXScape's {name(jaxscape['distance'])} and "
-            f"{other['tool']}'s {MARYLAND['map']}](maryland.png)",
-            f"On Maryland, JAXScape's {name(jaxscape['distance'])} "
-            f"({jaxscape['device'].upper()}, {runtime(jaxscape)}) and "
-            f"{other['tool']}'s {MARYLAND['map']} "
-            f"({other['device'].upper()}, `{other['solver']}`, "
-            f"{runtime(other)}), each coloured by the rank of its pixels, with "
-            f"barriers in gray: {RHO} = {agreement(other)}.",
-        ]
-    return sections
-
-
-def solver_section(records, config):
-    """Return the section of the solver view."""
-    view = config["solver_view"]
-    exact = {
-        case
-        for distances in view["questions"].values()
-        for settings in distances.values()
-        for case in settings.get("cases", [])
-    }
-    exact = either(case_label(case) for case in sorted(exact, key=side))
-    approximate = [entry for entry in view["solvers"].values() if "method" in entry]
-    methods = either(dict.fromkeys(code(entry["method"]) for entry in approximate))
-    solvers = either((code(entry["solver"]) for entry in approximate), "and with")
-    cases = dict.fromkeys(case for entry in approximate for case in entry["cases"])
-    left_out = "; ".join(map(combination, view.get("fails_by_design", [])))
-    exponent = f"$10^{{{np.log10(SMALLEST_ERROR):.0f}}}$"
-    return [
-        "## Solvers",
-        "JAXScape solves the linear systems of resistance and free-energy "
-        "distances with one of several solvers, in float32 or float64. Each "
-        f"runs here on the {view['device'].upper()} in "
-        f"{either(view['dtypes'], 'and')}: in the distance calculation on every "
-        "raster of its distance, and in the connectivity and sensitivity "
-        f"analyses under exact resistance at {exact}, and under {methods} with "
-        f"{solvers} on {either(map(case_label, cases), 'and')}. `dense` is the "
-        "dense solve, `solver=None`. The error of a cell is, in the distance "
-        "calculation, the largest relative error against its float64 "
-        "reference, and in the windowed analyses the relative L2 error of the "
-        "map $m$, $\\lVert m - m_{\\mathrm{ref}} \\rVert_2 / \\lVert "
-        "m_{\\mathrm{ref}} \\rVert_2$, against the map of exact resistance in "
-        f"float64 with {code(view['reference_solver'])} on the same tiles, "
-        f"measured at {exact} alone. A call stops after "
-        f"{duration(view['timeout'])}, and under {methods} after "
-        f"{duration(approximate[0].get('timeout', view['timeout']))}. These "
-        f"combinations are not run: {left_out}.",
-        "![Solvers: warm runtime against raster cells](solvers.png)",
-        "Warm runtime of each solver against the raster cells: solid with "
-        "filled markers in float32, dashed with hollow markers in float64, and "
-        "a star on Maryland.",
-        "![Solvers: warm runtime against error](solver-errors.png)",
-        "Warm runtime of each cell with a measured error against its error: "
-        "the colour gives the solver, a filled marker float32 and a hollow one "
-        f"float64, and the shape the raster. Errors below {exponent} are drawn "
-        f"at {exponent}.",
-        collapsed(
-            "Warm runtime (s) · error against the float64 reference",
-            "Each cell gives the warm runtime, the error where it is measured, "
-            "`missing` without a reference, and, in the connectivity analysis, "
-            "the landscape total $C$.",
-            outcome_table(records, SOLVER_VIEW),
-        ),
+        "connectivity analysis on three questions: the distance calculation, the "
+        "connectivity analysis and the sensitivity analysis. For each tool, it "
+        "reports the warm runtime and the agreement of the results with a "
+        "reference. The last section compares the linear solvers of JAXScape. "
+        "[`records.csv`](records.csv) holds the record of every cell of the run: "
+        "one setting of a tool on one raster.",
     ]
 
 
 def setup_section(records, config, environment):
-    """Return the section of the setup: hardware, protocol, settings, versions."""
+    """Return the section of the setup: hardware, software, protocol, measures."""
     run, landscape, maryland = config["run"], config["landscape"], config["maryland"]
     gpu, cpu, cores = environment["gpu"], environment["cpu"], environment["cores"]
-    hardware = f"{cores} cores of {'an' if cpu[0] in 'AEIOU' else 'a'} {cpu}"
+    comparison = [record for record in records if record["view"] == "comparison"]
+    hardware = []
     if gpu:
-        hardware = (
-            f"one {gpu['name']} with {gpu['memory']}, driver {gpu['driver']} and "
-            f"CUDA {gpu['cuda']}, and {hardware}"
+        hardware.append(
+            f"**GPU**: one {gpu['name']} with {gpu['memory']}, driver "
+            f"{gpu['driver']}, CUDA {gpu['cuda']}."
         )
-    habitat = (1 - landscape["habitat_threshold"]) * 100
-    tasks = either((TASKS[q].lower() for q in maryland["questions"]), "and")
-    part = ""
-    if maryland.get("side"):
-        part = f", of which the run takes the top-left {maryland['side']}² pixels"
+    article = "an" if cpu[0] in "AEIOU" else "a"
+    hardware.append(
+        f"**CPU**: {cores} cores of {article} {cpu}, under {environment['os']}. "
+        f"Each cell runs in its own process, pinned to these cores, with {cores} "
+        "threads for OpenMP, BLAS, Julia and R; XLA sizes its thread pools to "
+        "the same cores."
+    )
+    languages = ", ".join(f"{k} {v}" for k, v in environment["runtimes"].items())
+    hardware.append(f"**Languages and libraries**: {languages}.")
+
     tools = {}
-    for record in records:
-        if record["view"] == "comparison":
-            tool = tools.setdefault(record["tool"], (record["adapter"], set()))
-            tool[1].add(record["question"])
-    rows = [
+    for record in comparison:
+        tool = tools.setdefault(record["tool"], (record["adapter"], set()))
+        tool[1].add(record["question"])
+    versions = [
         [
             tool,
             environment["tools"][tool],
-            ", ".join(question for question in TASKS if question in asked),
-            mapping(adapter),
+            ", ".join(TASKS[q].lower() for q in TASKS if q in asked),
         ]
-        for tool, (adapter, asked) in tools.items()
+        for tool, (_, asked) in tools.items()
     ]
-    runtimes = ", ".join(f"{k} {v}" for k, v in environment["runtimes"].items())
+    mappings = [[tool, mapping(adapter)] for tool, (adapter, _) in tools.items()]
+
+    sides = sorted({side(r["case"]) for r in comparison} - {None})
+    habitat = (1 - landscape["habitat_threshold"]) * 100
+    part = ""
+    if maryland.get("side"):
+        part = f", of which the run takes the top-left {maryland['side']}² pixels"
+    analyses = either((TASKS[q].lower() for q in maryland["questions"]), "and")
+    landscapes = [
+        f"**Synthetic rasters** of {either((f'{s}²' for s in sides), 'and')} "
+        "pixels. The benchmark draws a Gaussian random field $f$ with a Gaussian "
+        f"covariance of correlation length {landscape['correlation_length']} "
+        "pixels, on a periodic grid with a fixed seed, and normalizes its ranks "
+        "to [0, 1]. The habitat quality is $f$ where $f \\geq "
+        f"{landscape['habitat_threshold']}$, and 0 elsewhere: {habitat:.0f} % of "
+        "the pixels are habitat. The permeability is $10^{-2(1 - f)}$, from 0.01 "
+        "to 1, and the resistance is its inverse. A larger raster covers a "
+        "larger area at the same grain.",
+        f"**Maryland**, for the {analyses}: the land cover of Omniscape's "
+        "example, the 2016 National Land Cover Database of Frederick, Maryland, "
+        f"694 × 725 pixels of 30 m{part}. The resistance of each land-cover "
+        "class is that of Omniscape's reclassification table; medium- and "
+        "high-intensity development are barriers, and forest, the classes of "
+        "resistance 1, is habitat of quality 1.",
+    ]
+    timing = [
+        f"**Warm runtime**: the median time of the {run['repeats']} timed "
+        f"call{'s' if run['repeats'] != 1 else ''} of a cell, which follow a "
+        "warm-up call that compiles the code of the tools that compile; the time "
+        "of a single timed call when the warm-up call takes more than "
+        f"{duration(run['single_call_after'])}.",
+        "**Work of a call**: every call redoes the work that depends on the "
+        "landscape: graph assembly, factorization, multigrid hierarchy and "
+        "solver state.",
+        "**Speed-up of JAXScape** over a tool: the warm runtime of the tool "
+        "divided by that of JAXScape on the GPU, each in its fastest setting, on "
+        "the largest synthetic raster that both completed.",
+        f"**Status of a cell that did not complete**: `timeout` when a call "
+        f"exceeds {duration(run['timeout'])}, `oom` when a call runs out of "
+        "memory, and `failed` on another error. A setting runs on the synthetic "
+        "rasters from the smallest up, and is `skipped` on the rasters larger "
+        "than one where it stopped; Maryland always runs.",
+    ]
+    rho = f"{RHO} between the map of the tool and that of JAXScape"
+    tiers = [
+        ["1", "the quantity of JAXScape, on the same graph"]
+        + ["largest relative error with respect to a float64 reference"],
+        ["2", "the quantity of JAXScape, on another graph or with another proximity"]
+        + [rho],
+        ["3", "a related quantity that answers the same question", rho],
+    ]
+    reading = [
+        "**Figures of runtime**: each line passes through the warm runtimes of "
+        "the fastest setting of a tool and distance that succeeded on each "
+        "synthetic raster; a star marks Maryland.",
+        "**Tables**: an entry is the warm runtime and the agreement of a cell "
+        "that succeeded, or the status of a cell that did not.",
+    ]
     return [
         "## Setup",
-        f"**Hardware.** The run takes {hardware}, under {environment['os']}. "
-        "Each cell runs in its own process, pinned to these cores, with "
-        f"{cores} threads for OpenMP, BLAS, Julia and R; XLA sizes its thread "
-        "pools to the same cores.",
-        "**Timing.** A warm-up call comes first and compiles the code of tools "
-        "that compile. The warm runtime is the median of the timed calls that "
-        f"follow it, {run['repeats']} per cell, or the time of a single call "
-        "when the warm-up takes more than "
-        f"{duration(run['single_call_after'])}. Every call redoes the work that "
-        "depends on the landscape: graph assembly, factorization, multigrid "
-        "hierarchy and solver state. A call stops after "
-        f"{duration(run['timeout'])} (`timeout`). Within a setting, synthetic "
-        "rasters run from the smallest up, and after a failure, a timeout or "
-        "running out of memory (`oom`) on one, the larger ones are `skipped`; "
-        "Maryland always runs.",
-        "**Landscapes.** Each synthetic raster draws a Gaussian random field "
-        "with a Gaussian covariance of correlation length "
-        f"{landscape['correlation_length']} pixels, on a periodic grid with a "
-        "fixed seed, and normalizes its ranks to [0, 1]. Habitat quality "
-        "equals the field where it is at least "
-        f"{landscape['habitat_threshold']}, and 0 elsewhere: {habitat:.0f} % "
-        "of the pixels are habitat. Permeability is $10^{-2(1 - f)}$ for the "
-        "field $f$, from 0.01 to 1, and resistance is its inverse. A larger "
-        f"raster covers a larger area at the same grain. The {tasks} also run "
-        "on the Maryland case of Omniscape's example: the 2016 land cover of "
-        "Frederick, Maryland, from the National Land Cover Database, 694 × 725 "
-        f"pixels of 30 m{part}. Each class takes the resistance of Omniscape's "
-        "reclassification table; medium- and high-intensity development are "
-        "barriers, and forest, the classes of resistance 1, is habitat of "
-        "quality 1.",
-        f"**Versions.** {runtimes}. The table gives the version of each tool, "
-        "its tasks, and how its adapter maps the shared parameters onto it.",
-        collapsed(
-            "Tools: version, tasks and parameter mapping",
-            table(["Tool", "Version", "Tasks", "Mapping"], rows),
-        ),
+        "### Hardware and software",
+        bullets(hardware),
+        "### Tools",
+        table(["Tool", "Version", "Questions"], versions),
+        collapsed("Parameter mapping of each tool", table(["Tool", "Mapping"], mappings)),
+        "### Landscapes",
+        bullets(landscapes),
+        "### Timing",
+        bullets(timing),
+        "### Comparability tiers",
+        table(["Tier", "The tool computes", "Agreement measure"], tiers),
+        "Only at Tier 1 do the tool and JAXScape perform the same computation.",
+        "### Figures and tables",
+        bullets(reading),
     ]
 
 
-def page(records, config, environment, maryland=None):
+def mapping(adapter):
+    """Return the header comment of an adapter, which states its mapping."""
+    lines = []
+    for line in (HERE / adapter).read_text().splitlines():
+        if line.startswith("#!"):
+            continue
+        if not line.startswith("#"):
+            break
+        lines.append(line.lstrip("#").strip())
+    return " ".join(line for line in lines if line)
+
+
+def distance_section(records, config, run_dir):
+    """Return the section of the distance calculation."""
+    sites = config["distance"]["sites"]
+    theta = config["distances"]["free_energy"]["theta"]
+    tiers = {record["tier"] for record in records} - {None}
+    sides = {d: values["sides"] for d, values in config["distances"].items()}
+    every = set().union(*sides.values())
+    fewer = [
+        f"{prose(d)} on {either((f'{s}²' for s in sorted(of_d)), 'and')} alone"
+        for d, of_d in sides.items()
+        if set(of_d) != every and any(r["distance"] == d for r in records)
+    ]
+    method = [
+        "**Quantity**: the distance $d_{ij}$ on a graph between habitat sites "
+        "$i$ and $j$: resistance distance, least-cost path distance, and "
+        f"free-energy distance with $\\theta = {theta}$. Ecologists use it in "
+        "place of Euclidean distance in dispersal kernels and in models of "
+        "isolation by distance.",
+        f"**Sites**: {sites} sites drawn at random from the habitat pixels of the "
+        f"raster, {sites * (sites - 1) // 2} pairs.",
+        "**Graph**: every tool builds the same graph: rook contiguity, with the "
+        "mean resistance of two pixels as the resistance of their edge.",
+        f"**Rasters**: {'; '.join(fewer)}." if fewer else "",
+        "**Error**: the largest relative error over the pairs of sites with "
+        "respect to a float64 reference computed on the CPU: the linear systems "
+        "of resistance and free-energy distances are solved with JAXScape's "
+        "`CholmodSolver`, and least-cost path distances are computed with "
+        "Dijkstra's algorithm in SciPy.",
+        f"**Tier**: every tool is at Tier {tiers.pop()}." if len(tiers) == 1 else "",
+    ]
+    return [
+        "## Distance calculation",
+        *comparison_results(records, config, run_dir, by_distance=True),
+        *failures(records, COMPARISON),
+        "### Method",
+        bullets(method),
+    ]
+
+
+def connectivity_section(records, config, run_dir):
+    """Return the section of the connectivity analysis."""
+    windows = config["windows"]
+    scale = f"{windows['dependency_range'] / 4:g}"
+    block = windows["block_size"]
+
+    def setting(name):
+        return jaxscape_setting(config, "connectivity", "resistance", name)
+
+    method = [
+        "**Quantity**: Hanski's connectivity $S_i = \\sum_j K(d_{ij})\\, q_j$ of "
+        "each pixel $i$, with the habitat quality $q_j$ of pixel $j$ and the "
+        "proximity $K$, and its landscape total $C = \\sum_i q_i S_i$, the "
+        "square of the equivalent connected area.",
+        "**JAXScape**: in each call, `SensitivityAnalysis` computes the map of "
+        "$\\partial C / \\partial q_i$, equal to $2 S_i$ for a symmetric "
+        "distance, and `ConnectivityAnalysis` computes $C$.",
+        "**Windows**: windowed analyses with `dependency_range` "
+        f"{windows['dependency_range']} pixels and `coarsening_factor` "
+        f"{windows['coarsening_factor']}, that is, blocks of {block} × "
+        f"{block} pixels, under the proximity $K(d) = e^{{-d/{scale}}}$, with $d$ "
+        "in equivalent pixels.",
+        "**Graph**: rook contiguity, with the mean permeability of two pixels as "
+        "the conductance of their edge.",
+        f"**Resistance distance**: {code(setting('method'))} with "
+        f"{code(setting('solver'))}, the setting of the [connectivity "
+        f"example]({EXAMPLE}), on tiles of up to {setting('batch_size'):,} block "
+        "centres.",
+        f"**Agreement**: {RHO} between the map of a tool and the map of JAXScape "
+        "on the GPU under the distance or label of the column \"Compared with "
+        "JAXScape under\", over the pixels where both maps are defined.",
+    ]
+    return [
+        "## Connectivity analysis",
+        *comparison_results(records, config, run_dir, by_distance=False),
+        *failures(records, COMPARISON),
+        "### Method",
+        bullets(method),
+    ]
+
+
+def sensitivity_section(records, config, run_dir, maryland):
+    """Return the section of the sensitivity analysis."""
+    normalized = NAMES["resistance, K = -R, normalized"]
+    results = comparison_results(records, config, run_dir, by_distance=False)
+    if maryland:
+        jaxscape, other = maryland
+        results += [
+            picture(
+                run_dir,
+                "maryland.png",
+                f"Maryland: JAXScape's {name(jaxscape['distance'])} and "
+                f"{other['tool']}'s {MARYLAND['map']}",
+            ),
+            f"Rank of each pixel of Maryland in JAXScape's "
+            f"{name(jaxscape['distance'])} and in {other['tool']}'s "
+            f"{MARYLAND['map']} (`{other['solver']}`), with barriers in gray."
+            + (
+                f" {RHO} between the two maps is {other['agreement']:.2f}."
+                if other["agreement"] is not None
+                else ""
+            ),
+        ]
+    method = [
+        "**Quantity**: the sensitivity $\\partial C / \\partial p_k$ of $C$ with "
+        "respect to the permeability $p_k$ of each pixel $k$. The pixels of "
+        "largest sensitivity are corridors and pinch points: the pixels where a "
+        "decrease in permeability gives the largest decrease in $C$.",
+        "**JAXScape**: `SensitivityAnalysis` computes the sensitivity, with the "
+        "windows and settings of the connectivity analysis. The other tools "
+        "compute a flow: a current, a betweenness or a number of visits.",
+        f"**{normalized[0].upper() + normalized[1:]}**: the map of the section "
+        "[Comparison with Omniscape's normalized current]"
+        f"({EXAMPLE}#comparison-with-omniscapes-normalized-current) of the "
+        "connectivity example. Under resistance distance with the proximity "
+        "$K(R) = -R$, under which every pair of habitat pixels has the same "
+        "weight, it is the ratio of $-\\partial C / \\partial r_k = p_k^2\\, "
+        "\\partial C / \\partial p_k$, the sensitivity of $C$ with respect to "
+        "the resistance $r_k$ of pixel $k$, to its value on a landscape of "
+        "permeability 1 with the same quality, and 0 where the latter is not "
+        "positive. Each call computes both sensitivities.",
+        "**Omniscape.jl**: computes its normalized current with the "
+        "configuration of its Maryland example, on the same windows and on a "
+        "graph of eight neighbours.",
+        "**Agreement**: as in the connectivity analysis.",
+    ]
+    return [
+        "## Sensitivity analysis",
+        *results,
+        *failures(records, COMPARISON),
+        "### Method",
+        bullets(method),
+    ]
+
+
+def fastest_solvers(records):
+    """Return the table of the fastest solver of each question, distance and dtype.
+
+    Each row is on the largest synthetic raster on which a solver succeeded,
+    and compares the fastest solver there with the next fastest.
+    """
+    rows = []
+    for values, group in group_by(records, ("question", "distance", "dtype")):
+        ok = [record for record in succeeded(group) if side(record["case"])]
+        if not ok:
+            continue
+        case = max(ok, key=lambda record: record["cells"])["case"]
+        ranked = sorted(
+            (record for record in ok if record["case"] == case),
+            key=lambda record: record["median_s"],
+        )
+        best, after = ranked[0], ranked[1:2]
+        rows.append(
+            [
+                TASKS[values["question"]].lower(),
+                name(values["distance"]),
+                values["dtype"],
+                case_label(case),
+                name(best["solver"]),
+                runtime(best),
+                agreement(best).removeprefix("error "),
+                *(
+                    [name(after[0]["solver"]), factor(ratio((after[0], best)))]
+                    if after
+                    else ["", ""]
+                ),
+            ]
+        )
+    header = ["Question", "Distance", "dtype", "Raster", "Fastest solver"]
+    header += ["Warm runtime", "Error", "Next fastest solver", "Speed-up over it"]
+    return table(header, rows)
+
+
+def solver_section(records, config, run_dir):
+    """Return the section of the solver view."""
+    view = config["solver_view"]
+    approximate = {
+        label: entry for label, entry in view["solvers"].items() if "method" in entry
+    }
+    windowed = [record for record in records if record["question"] != "distance"]
+    ran = [record for record in windowed if record["solver"] in approximate]
+    exact = [record for record in windowed if record["solver"] not in approximate]
+
+    def cases(records):
+        found = sorted({(r["cells"], r["case"]) for r in records})
+        return either((case_label(case) for _, case in found), "and")
+
+    used = [approximate[label] for label in dict.fromkeys(r["solver"] for r in ran)]
+    methods = either(dict.fromkeys(code(entry["method"]) for entry in used))
+    solvers = either((code(entry["solver"]) for entry in used), "and with")
+    rasters = "**Rasters**: in the distance calculation, every raster of its distance"
+    windows = []
+    if exact:
+        windows.append(f"{cases(exact)} under exact resistance distance")
+    if ran:
+        windows.append(f"{cases(ran)} under {methods} with {solvers}")
+    if windows:
+        rasters += f"; in the windowed analyses, {either(windows, 'and')}"
+    left_out = "; ".join(map(combination, view.get("fails_by_design", [])))
+    limit = f"**Time limit**: a call stops after {duration(view['timeout'])}"
+    if used:
+        limit += f", and under {methods} after "
+        limit += duration(used[0].get("timeout", view["timeout"]))
+    exponent = f"$10^{{{np.log10(SMALLEST_ERROR):.0f}}}$"
+    method = [
+        "**Solvers**: JAXScape solves the linear systems of resistance and "
+        "free-energy distances with one of several solvers, on the "
+        f"{view['device'].upper()}, in {either(view['dtypes'], 'and')}. `dense` "
+        "is the dense solve, `solver=None`.",
+        rasters + ".",
+        "**Error**: in the distance calculation, the largest relative error "
+        "with respect to the float64 reference of the distance calculation; in "
+        "the windowed analyses, the relative L2 error $\\lVert m - "
+        "m_{\\mathrm{ref}} \\rVert_2 / \\lVert m_{\\mathrm{ref}} \\rVert_2$ of "
+        "the map $m$ with respect to the map $m_{\\mathrm{ref}}$ of exact "
+        f"resistance distance in float64 with {code(view['reference_solver'])} "
+        "on the same tiles"
+        + (f", measured on {cases(exact)} alone" if exact else "")
+        + f". In the figure of error, errors below {exponent} are drawn at "
+        f"{exponent}.",
+        limit + ".",
+        f"**Not run**: {left_out}." if left_out else "",
+    ]
+    return [
+        "## Linear solvers of JAXScape",
+        "The fastest solver of each question, distance and dtype, on the largest "
+        "synthetic raster on which a solver succeeded:",
+        fastest_solvers(records),
+        "### Results",
+        picture(run_dir, "solvers.png", "Linear solvers: warm runtime"),
+        picture(run_dir, "solver-errors.png", "Linear solvers: warm runtime and error"),
+        collapsed(
+            "Warm runtime and error of every solver on every raster",
+            "An entry without an error has no reference.",
+            outcome_table(records, SOLVER_VIEW),
+        ),
+        *failures(records, SOLVER_VIEW),
+        "### Method",
+        bullets(method),
+    ]
+
+
+def page(records, config, environment, maryland=None, run_dir=None):
     """Return the Benchmark page of a run.
 
     **Arguments:**
@@ -864,6 +1275,8 @@ def page(records, config, environment, maryland=None):
     - `environment`: The environment snapshot of the run.
     - `maryland`: The records of the Maryland figure, when the run directory
       has it.
+    - `run_dir`: The run directory, whose figures give their width on the
+      page.
 
     **Returns:**
 
@@ -871,14 +1284,16 @@ def page(records, config, environment, maryland=None):
     """
     solvers = solver_view(records)
     comparison = [record for record in records if record["view"] == "comparison"]
-    sections = [
-        *introduction(),
-        *distance_section(of_question("distance", comparison), config),
-        *connectivity_section(of_question("connectivity", comparison), config),
-        *sensitivity_section(of_question("sensitivity", comparison), maryland),
-        *(solver_section(solvers, config) if solvers else []),
-        *setup_section(records, config, environment),
-    ]
+    sections = [*introduction(), *setup_section(records, config, environment)]
+    for question, section in (
+        ("distance", distance_section),
+        ("connectivity", connectivity_section),
+        ("sensitivity", lambda *a: sensitivity_section(*a, maryland)),
+    ):
+        if of_question(question, comparison):
+            sections += section(of_question(question, comparison), config, run_dir)
+    if solvers:
+        sections += solver_section(solvers, config, run_dir)
     return "\n\n".join(section for section in sections if section) + "\n"
 
 

@@ -1,9 +1,9 @@
-# EcoScape (`ecoscape-connectivity`) simulates the repopulation of the
-# habitat, the pixels of quality > 0, from seeds drawn at random in it, and maps
-# its flow: the gradient of the repopulation with respect to the permeability
-# of each pixel, times that permeability. Its edge rule is its own: at each
-# step, individuals spread to the 8 neighbours of a pixel, survive a coin toss,
-# and are multiplied by the permeability of their destination. The dispersal
+# EcoScape (`ecoscape-connectivity`) simulates the repopulation of the habitat,
+# the pixels of quality > 0, from seeds drawn at random in it, and maps its
+# flow: the gradient of the repopulation with respect to the permeability of
+# each pixel, times that permeability. Its edge rule is its own: at each step,
+# individuals spread to the 8 neighbours of a pixel, survive a coin toss, and
+# are multiplied by the permeability of their destination. The dispersal
 # distance is the shared `dependency_range`, in pixels, which is also the
 # border of its tiles and their padding, so that its map covers the raster.
 # Quality enters only as habitat. The other settings are EcoScape's defaults:
@@ -12,9 +12,9 @@
 # a fixed random seed. EcoScape tiles a raster through GeoTIFFs only: every
 # call writes the habitat and permeability to /dev/shm, runs on the GPU, and
 # reads back the flow, which EcoScape writes with its connectivity. Its map is
-# compared with JAXScape's under least-cost distances: repopulation follows the
-# most permeable neighbour, the maximum over neighbours, as a least-cost path
-# does.
+# compared with JAXScape's under least-cost path distances: repopulation
+# follows the most permeable neighbour, the maximum over neighbours, as a
+# least-cost path does.
 from pathlib import Path
 
 import numpy as np
