@@ -68,7 +68,14 @@ def test_page_has_a_section_per_task_then_the_solvers_and_the_setup(report):
 
     headings = [line for line in text.splitlines() if line.startswith("## ")]
     assert headings == list(SECTIONS)
-    assert "JAXScape 0.0.16" in text.split(SECTIONS[0])[0]
+
+
+def test_introduction_names_no_release_and_setup_takes_it_from_the_snapshot(report):
+    text = page(report())
+
+    assert "0.0.18" not in text.split(SECTIONS[0])[0]
+    [(_, tools)] = collapsed(section(text, "## Setup"))
+    assert table_row(tools, "JAXScape", "0.0.18")
 
 
 def test_report_reads_the_records_and_writes_no_other_table_of_them(report):
@@ -296,7 +303,7 @@ def test_setup_states_the_hardware_protocol_and_versions_of_the_run(report):
     assert "Python 3.13.5, JAX 0.12.0.1, Julia 1.13.3" in setup
     [(title, tools)] = collapsed(setup)
     assert title == "Tools: version, tasks and parameter mapping"
-    jaxscape = table_row(tools, "JAXScape", "0.0.16")
+    jaxscape = table_row(tools, "JAXScape", "0.0.18")
     assert jaxscape[2] == "distance, connectivity, sensitivity"
     assert "rook contiguity" in jaxscape[3]
     assert table_row(tools, "Omniscape.jl", "0.6.4", "sensitivity")

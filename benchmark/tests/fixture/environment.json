@@ -19,7 +19,7 @@
     "Julia": "1.13.3"
   },
   "tools": {
-    "JAXScape": "0.0.16",
+    "JAXScape": "0.0.18",
     "Circuitscape.jl": "6.1.0",
     "ConScape.jl": "0.3.0",
     "gdistance": "1.6.5",
