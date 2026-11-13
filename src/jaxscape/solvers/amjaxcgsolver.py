@@ -30,6 +30,13 @@ except ImportError:
     _MultilevelSolver = None
     AMJAX_AVAILABLE = False
 
+# The default smoother: one iteration of Jacobi of weight 2/3, as in
+# `GeometricMultigridCGSolver`. The V-cycle is positive definite while the
+# weight times the spectral radius of D^-1 A of each level stays below 2, and
+# coarser levels computed from values other than those of `init` can have
+# spectral radii above 2.
+_JACOBI = ("jacobi", {"iterations": 1, "omega": 2 / 3})
+
 
 @final
 class _Hierarchy(eqx.Module):
@@ -83,9 +90,11 @@ class AMJaxCGSolver(AbstractSparseIterativeSolver[_Hierarchy]):
     in JAX, inside `jax.jit` and `jax.grad`. `reinit` keeps the prolongation
     and restriction operators of the hierarchy, and each solve computes the
     matrices of its coarser levels from the current values, as Galerkin
-    products with these operators. The hierarchy keeps the dtype of the
-    matrix. With a hierarchy of a single level, as that of a tiny graph,
-    conjugate gradients run without a preconditioner.
+    products with these operators. The state also holds, for each level but
+    the coarsest, the map from the values of the level to those of the next:
+    sparse matrices several times the size of the hierarchy. The hierarchy
+    keeps the dtype of the matrix. With a hierarchy of a single level, as that
+    of a tiny graph, conjugate gradients run without a preconditioner.
 
     !!! example
 
@@ -107,7 +116,9 @@ class AMJaxCGSolver(AbstractSparseIterativeSolver[_Hierarchy]):
       SciPy CSR matrix. Defaults to `pyamg.smoothed_aggregation_solver`.
     - `pyamg_kwargs`: Keyword arguments of `pyamg_method`.
     - `presmoother`, `postsmoother`: AMJax smoothers, as `(name, kwargs)`.
-      Default to one iteration of Jacobi.
+      Default to one iteration of Jacobi of weight 2/3. A Jacobi smoother
+      with `withrho=True` keeps the weight that `init` computes from the
+      spectral radius of its level.
     - `coarse_solver`: AMJax solver of the coarsest level. The coarse solvers
       `"pinv"`, `"lu"` and `"qr"` keep the factorization of the coarsest
       matrix of `init`.
@@ -117,16 +128,20 @@ class AMJaxCGSolver(AbstractSparseIterativeSolver[_Hierarchy]):
 
         `amjax` and `pyamg` must be installed to use this solver, with
         `uv add jaxscape --extra amjax`. Conjugate gradients need a symmetric
-        V-cycle, as AMJax's `symmetric_smoothing` flag reports for the default
-        smoothers.
+        positive definite V-cycle. With Jacobi smoothers of weight ω and the
+        `"jacobi"` coarse solver, the V-cycle is one when ω times the spectral
+        radius of `D⁻¹A`, for the matrix `A` of a level and its diagonal `D`,
+        is below 2 on every level. With values other than those of `init`, a
+        coarser level can have a spectral radius above 2; the default weight of
+        2/3 admits spectral radii up to 3.
     """
 
     rtol: float = 1e-5
     max_steps: int = 1_000
     pyamg_method: Callable | None = None
     pyamg_kwargs: dict[str, Any] | None = None
-    presmoother: Any | None = None
-    postsmoother: Any | None = None
+    presmoother: Any = _JACOBI
+    postsmoother: Any = _JACOBI
     coarse_solver: str = "jacobi"
     coarse_solver_kwargs: dict[str, Any] | None = None
 
@@ -157,29 +172,21 @@ class AMJaxCGSolver(AbstractSparseIterativeSolver[_Hierarchy]):
         assert _pyamg is not None and _MultilevelSolver is not None
         method = self.pyamg_method or _pyamg.smoothed_aggregation_solver
         hierarchy = method(matrix, **(self.pyamg_kwargs or {}))
-        keywords = {
-            name: value
-            for name, value in [
-                ("presmoother", self.presmoother),
-                ("postsmoother", self.postsmoother),
-                ("coarse_solver_kwargs", self.coarse_solver_kwargs),
-            ]
-            if value is not None
-        }
         multilevel_solver = _MultilevelSolver.from_pyamg(
-            hierarchy, coarse_solver=self.coarse_solver, dtype=data.dtype, **keywords
+            hierarchy,
+            presmoother=self.presmoother,
+            postsmoother=self.postsmoother,
+            coarse_solver=self.coarse_solver,
+            coarse_solver_kwargs=self.coarse_solver_kwargs,
+            dtype=data.dtype,
         )
         leaves, treedef = jax.tree.flatten(multilevel_solver)
-        # The positions of the leaves of each level, found by identity.
-        position = {id(leaf): index for index, leaf in enumerate(leaves)}
+        # The hierarchy with the position of each leaf in place of the leaf.
+        positions = jax.tree.unflatten(treedef, range(len(leaves)))
         rows, columns = np.asarray(pattern.rows), np.asarray(pattern.columns)
         galerkin, levels = [], []
-        for pyamg_level, level in zip(hierarchy.levels, multilevel_solver.levels):
-            slots = (
-                position[id(level.A.data)],
-                position[id(level.A.indices)],
-                position[id(level.Dinv)],
-            )
+        for pyamg_level, level in zip(hierarchy.levels, positions.levels):
+            slots = (level.A.data, level.A.indices, level.Dinv)
             leaves[slots[0]] = leaves[slots[2]] = None
             leaves[slots[1]] = jnp.asarray(np.stack([rows, columns], 1), jnp.int32)
             levels.append(slots + (level.A.shape[0],))

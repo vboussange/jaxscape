@@ -33,8 +33,9 @@ def test_hierarchy_preserves_matrix_dtype(amjax_dependencies, dtype):
             assert leaf.dtype == dtype
 
 
-def test_frozen_preconditioner_jitted_values_and_gradients(amjax_dependencies):
-    """Current matrix solves and resistance gradients reuse a frozen hierarchy."""
+def test_reinitialized_state_jitted_values_and_gradients(amjax_dependencies):
+    """Solves and resistance gradients with the state of other values match the
+    exact ones."""
     scipy_matrix = amjax_dependencies.gallery.poisson(
         (6, 6), format="csr", dtype=np.float64
     )
@@ -124,8 +125,40 @@ def test_reinit_solves_high_contrast_values_in_few_steps(
     np.testing.assert_allclose(actual, expected, rtol=rtol)
 
 
+def test_reinitialized_levels_at_high_contrast(amjax_dependencies):
+    """With the state of a graph of uniform conductance and the values of a
+    graph of conductance contrast 1e8, the matrix of each level is the Galerkin
+    product `R A P` of the level above, and the V-cycle is symmetric positive
+    definite."""
+    rng = np.random.default_rng(0)
+    permeability = jnp.asarray(10 ** rng.uniform(-8, 0, (24, 24)))
+    distance = ResistanceDistance()
+    uniform = distance.system_matrix(GridGraph(jnp.ones_like(permeability), fun=avg))
+    matrix = distance.system_matrix(GridGraph(permeability, fun=avg))
+    solver = AMJaxCGSolver()
+    state = solver.init(BCOOLinearOperator(uniform), {})
+    state = solver.reinit(BCOOLinearOperator(matrix), {}, state)
+
+    expected = np.asarray(matrix.todense())
+    for level in state.preconditioner.multilevel_solver(state.values).levels:
+        scale = np.abs(expected).max()
+        np.testing.assert_allclose(level.A.todense(), expected, atol=1e-14 * scale)
+        np.testing.assert_allclose(level.Dinv, 1 / np.diag(expected), rtol=1e-12)
+        if level.P is not None:
+            expected = level.R.todense() @ expected @ level.P.todense()
+
+    v_cycle = solver.precondition(state.preconditioner, state.pattern, state.values)
+    approximate_inverse = np.asarray(v_cycle(jnp.eye(state.pattern.n)))
+    scale = np.abs(approximate_inverse).max()
+    np.testing.assert_allclose(
+        approximate_inverse, approximate_inverse.T, atol=1e-12 * scale
+    )
+    assert np.linalg.eigvalsh(approximate_inverse).min() > 0
+
+
 def test_state_built_inside_jit_solves_the_graph(amjax_dependencies):
-    """Inside `jax.jit`, the hierarchy is that of a graph of permeability 1."""
+    """Inside `jax.jit`, the aggregation of the hierarchy is that of a graph of
+    permeability 1."""
     rng = np.random.default_rng(0)
     permeability = jnp.asarray(10 ** rng.uniform(-1, 0, (8, 9)))
     nodes = jnp.array([0, 30, 71])
