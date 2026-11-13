@@ -27,7 +27,7 @@ def test_hierarchy_preserves_matrix_dtype(amjax_dependencies, dtype):
     state = solver.init(BCOOLinearOperator(matrix), {})
 
     assert isinstance(state, SparseIterativeState)
-    assert len(state.preconditioner.multilevel_solver.levels) > 1
+    assert len(state.preconditioner.levels) > 1
     for leaf in jax.tree.leaves(state.preconditioner):
         if jnp.issubdtype(leaf.dtype, jnp.inexact):
             assert leaf.dtype == dtype
@@ -81,7 +81,7 @@ def test_single_level_hierarchy_runs_without_a_preconditioner(amjax_dependencies
     rhs = jnp.stack([jnp.ones(size), jnp.arange(size, dtype=jnp.float64)], axis=1)
     solver = AMJaxCGSolver(rtol=1e-10, max_steps=50)
     state = solver.init(BCOOLinearOperator(matrix), {})
-    assert len(state.preconditioner.multilevel_solver.levels) == 1
+    assert len(state.preconditioner.levels) == 1
 
     @jax.jit
     def solve(rhs):
@@ -102,6 +102,26 @@ def test_single_level_hierarchy_runs_without_a_preconditioner(amjax_dependencies
     )
     expected = jax.grad(objective)(permeability, ResistanceDistance(solver=None))
     np.testing.assert_allclose(gradient, expected, rtol=1e-8, atol=1e-9)
+
+
+@pytest.mark.parametrize("dtype, rtol", [(jnp.float32, 1e-4), (jnp.float64, 1e-7)])
+def test_reinit_solves_high_contrast_values_in_few_steps(
+    amjax_dependencies, dtype, rtol
+):
+    """The state of a graph of uniform conductance, as windowed analyses build
+    it, solves a graph of conductance contrast 1e4 in few iterations."""
+    rng = np.random.default_rng(0)
+    permeability = jnp.asarray(10 ** rng.uniform(-4, 0, (24, 24)))
+    nodes = jnp.array([0, 100, 300, 575])
+    distance = ResistanceDistance(solver=AMJaxCGSolver(max_steps=60))
+    state = distance.init(GridGraph(jnp.ones((24, 24), dtype), fun=avg))
+    graph = GridGraph(permeability.astype(dtype), fun=avg)
+
+    actual = distance(graph, nodes=nodes, state=distance.reinit(graph, state))
+    expected = ResistanceDistance(solver=None)(
+        GridGraph(permeability, fun=avg), nodes=nodes
+    )
+    np.testing.assert_allclose(actual, expected, rtol=rtol)
 
 
 def test_state_built_inside_jit_solves_the_graph(amjax_dependencies):
