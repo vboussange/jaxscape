@@ -91,7 +91,7 @@ def jax_backend(monkeypatch, backend, platform_version):
 
 def test_missing_spineax_is_reported(monkeypatch):
     monkeypatch.setattr(cudsssolver, "CUDSS_AVAILABLE", False)
-    with pytest.raises(ImportError, match=r"spineax.*jaxscape\[cudss\]"):
+    with pytest.raises(ImportError, match="spineax.*--extra cudss"):
         CuDSSSolver()
 
 

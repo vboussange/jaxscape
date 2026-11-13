@@ -45,8 +45,8 @@ class AbstractDistance(eqx.Module):
     - `symmetric`: Whether the distance from `i` to `j` equals the distance
       from `j` to `i` on graphs whose adjacency matrix is symmetric, as those
       of windowed analyses are. With coarsening, `SensitivityAnalysis` then
-      computes the sensitivity of connectivity to quality without
-      differentiation. Defaults to `False`.
+      computes the sensitivity of the quality-weighted connectivity to quality
+      without differentiation. Defaults to `False`.
     - `averages_sources`: Whether window queries take `source_weights` and
       return the mean of the distances from the pixels around each source,
       with these weights, at the cost of one query (see

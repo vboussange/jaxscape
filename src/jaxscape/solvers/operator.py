@@ -14,7 +14,9 @@ class BCOOLinearOperator(lx.MatrixLinearOperator):
     Its products with vectors are computed with the sparse matrix, so that
     Lineax solvers that only multiply by the operator, such as `lineax.CG`,
     never form a dense matrix. Every `BCOOLinearOperator` is registered with
-    Lineax as positive semidefinite, so that `lineax.CG` accepts it.
+    Lineax as positive semidefinite, whatever its tags, so that `lineax.CG`
+    accepts it: pass only symmetric positive semidefinite matrices to such
+    solvers.
     """
 
     def __init__(self, matrix: BCOO, tags: object | frozenset[object] = ()):

@@ -109,7 +109,7 @@ class AMJaxCGSolver(AbstractSparseIterativeSolver[_Hierarchy]):
         if not AMJAX_AVAILABLE:
             raise ImportError(
                 "AMJaxCGSolver requires amjax and pyamg. "
-                "Install the optional dependency with `pip install 'jaxscape[amjax]'`."
+                "Install the optional dependency with `uv add jaxscape --extra amjax`."
             )
 
     def preconditioner(self, pattern: CSRPattern, values: Array) -> _Hierarchy:

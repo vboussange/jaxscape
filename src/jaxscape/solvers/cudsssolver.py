@@ -90,7 +90,7 @@ def _load_cudss() -> ModuleType:
     if not CUDSS_AVAILABLE:
         raise ImportError(
             "CuDSSSolver requires spineax, which is not installed. Install it "
-            "with `pip install 'jaxscape[cudss]'` on Linux x86-64 with Python "
+            "with `uv add jaxscape --extra cudss` on Linux x86-64 with Python "
             "3.12 or newer."
         )
     backend = jax.default_backend()
@@ -98,7 +98,7 @@ def _load_cudss() -> ModuleType:
         raise RuntimeError(
             "CuDSSSolver requires an NVIDIA GPU and CUDA-enabled JAX; JAX's "
             f"default backend is {backend!r} ({_platform_version()!r}). Install "
-            "a JAX CUDA plugin, such as `pip install 'jax[cuda13]'`, and run on "
+            "a JAX CUDA plugin, such as `uv add 'jax[cuda13]'`, and run on "
             "an NVIDIA GPU. CuDSSSolver has no CPU fallback."
         )
     try:
@@ -108,7 +108,7 @@ def _load_cudss() -> ModuleType:
         raise ImportError(
             "CuDSSSolver could not load the cuDSS runtime through spineax: "
             f"{cause}. spineax 0.0.5 needs cuDSS below 1.0 "
-            "(`pip install 'nvidia-cudss-cu13>=0.8,<1'`) and the CUDA 13 "
+            "(`uv add 'nvidia-cudss-cu13>=0.8,<1'`) and the CUDA 13 "
             "runtime, or a spineax build against your CUDA version."
         ) from error
 

@@ -21,8 +21,8 @@ class WindowOperation(eqx.Module):
     - `buffer_size`: Width of the buffer around each core window, in pixels.
     - `total_window_size`: Side of a total window, a core window with its
       buffer, `window_size + 2 * buffer_size`.
-    - `x_steps`, `y_steps`: Number of total windows along the rows (axis 0) and
-      along the columns (axis 1).
+    - `x_steps`, `y_steps`: Number of total windows along axis 0, the height,
+      and along axis 1, the width.
 
     !!! example
 

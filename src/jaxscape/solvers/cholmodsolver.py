@@ -81,8 +81,9 @@ class CholmodSolver(AbstractReusableStateSolver):
 
     **Attributes:**
 
-    - `factorize_in_init`: Whether `init` factorizes the matrix. Otherwise, the
-      first solve factorizes it.
+    - `factorize_in_init`: Whether `init`, called outside `jax.jit`, factorizes
+      the matrix. Otherwise, or when `init` runs inside `jax.jit`, the first
+      solve factorizes it. Defaults to `True`.
 
     !!! example
 
@@ -96,7 +97,8 @@ class CholmodSolver(AbstractReusableStateSolver):
         ```
 
     !!! warning
-        `cholespy` must be installed to use this solver.
+        `cholespy` must be installed to use this solver, with
+        `uv add jaxscape --extra cholespy`.
 
     !!! warning
         Float64 solves run through a host callback, and require 64-bit floats
@@ -112,8 +114,8 @@ class CholmodSolver(AbstractReusableStateSolver):
     def __check_init__(self):
         if not CHOLESPY_AVAILABLE:
             raise ImportError(
-                "cholespy is required for CholmodSolver. "
-                "Install it with: pip install cholespy"
+                "CholmodSolver requires cholespy. "
+                "Install it with `uv add jaxscape --extra cholespy`."
             )
 
     def init(
