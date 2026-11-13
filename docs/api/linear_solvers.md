@@ -2,28 +2,34 @@
 
 Computing resistance and free-energy distances, and their gradients, requires
 solving linear systems in a sparse symmetric positive definite matrix of the
-graph, which `system_matrix` returns. For `ResistanceDistance`, this matrix is
-the graph Laplacian grounded at one vertex. For `FreeEnergyDistance`, with
+graph, which
+[`AbstractSolverDistance.system_matrix`][jaxscape.distance.AbstractSolverDistance.system_matrix]
+returns. For
+[`ResistanceDistance`][jaxscape.resistance_distance.ResistanceDistance], this
+matrix is the graph Laplacian grounded at one vertex. For
+[`FreeEnergyDistance`][jaxscape.free_energy_distance.FreeEnergyDistance], with
 conductances $a_{ij}$ and inverse temperature $\theta$, it is the Laplacian of
 the edge weights $a_{ij} e^{-\theta / a_{ij}}$ plus the positive diagonal
 $\kappa_i = \sum_j a_{ij} (1 - e^{-\theta / a_{ij}})$. A linear solver, passed
-as the `solver` argument of the distance, solves these systems; `solver=None`
-computes the distances with dense linear algebra instead. The solver sets the
+as the `solver` argument of the distance, solves these systems; with
+`solver=None`, the distances are computed with dense linear algebra instead. The solver sets the
 runtime, the memory and the accuracy of the distances.
 
 ## Choosing a solver
 
 The default solver of `ResistanceDistance` is `GeometricMultigridCGSolver()`:
 conjugate gradients (CG) preconditioned by geometric multigrid, in JAX on CPU
-and GPU, for the matrices of grid graphs such as those of `GridGraph`.
-`FreeEnergyDistance` uses dense linear algebra by default, `solver=None`.
+and GPU, for the matrices of grid graphs such as those of
+[`GridGraph`][jaxscape.graph.GridGraph]. On other graphs, the default solver
+raises an error; pass `solver`. `FreeEnergyDistance` uses dense linear algebra
+by default, `solver=None`.
 
 | Distance and query | GPU | CPU |
 |---|---|---|
-| Resistance distances among a few vertices: `nodes_to_nodes_distance`, few sources and targets, gradient-based fitting of conductances to observed distances, and `SpielmanApproximation` | `GeometricMultigridCGSolver`, the default | `GeometricMultigridCGSolver`, the default |
-| Resistance distances from one or all sources to every vertex: `all_pairs_distance`, and windowed analyses with `ExactResistance` | `solver=None` for small graphs and tiles; `GeometricMultigridCGSolver` for larger ones | `solver=None` for small graphs and tiles; `CholmodSolver` for larger ones |
+| Resistance distances among a few vertices: `nodes_to_nodes_distance`, few sources and targets, gradient-based fitting of conductances to observed distances, and [`SpielmanApproximation`][jaxscape.resistance_distance.SpielmanApproximation] | `GeometricMultigridCGSolver`, the default | `GeometricMultigridCGSolver`, the default |
+| Resistance distances from one or all sources to every vertex: `all_pairs_distance`, and windowed analyses with [`ExactResistance`][jaxscape.resistance_distance.ExactResistance] | `solver=None` for small graphs and tiles; `GeometricMultigridCGSolver` for larger ones | `solver=None` for small graphs and tiles; `CholmodSolver` for larger ones |
 | Free-energy distances | `solver=None`, the default, for small graphs; `CuDSSSolver` for larger ones | `solver=None` for small graphs; `CholmodSolver` for larger ones |
-| Resistance or free-energy distances on graphs other than grid graphs | `CuDSSSolver` | `CholmodSolver` |
+| Resistance or free-energy distances on graphs other than grid graphs | `solver=None` for small graphs; `CuDSSSolver` for larger ones; `AMJaxCGSolver` when the factorization does not fit in memory | `solver=None` for small graphs; `CholmodSolver` for larger ones; `AMJaxCGSolver` when the factorization does not fit in memory |
 
 In float64, on GPUs of low float64 throughput, `CuDSSSolver` can compute
 resistance distances faster than `GeometricMultigridCGSolver`.
@@ -31,29 +37,29 @@ resistance distances faster than `GeometricMultigridCGSolver`.
 Memory restricts the choice first. Dense linear algebra stores matrices of
 $n^2$ entries for a graph of $n$ vertices, and so fits small graphs only.
 `GeometricMultigridCGSolver` stores the matrix on its grid and a few arrays of $n$
-entries per right-hand side. Sparse Cholesky solvers store a factorization of
+entries per right-hand side. Sparse direct solvers store a factorization of
 the matrix; when it does not fit in memory, use `GeometricMultigridCGSolver` on
 grid graphs and `AMJaxCGSolver` on other graphs.
 
 The entries of the inverse of the free-energy system matrix decay
 exponentially with path cost. Iterative solvers therefore need tolerances far
-below their defaults to resolve the distances between distant vertices, and
-float32 resolves a limited range of `theta` on a given landscape.
+below their defaults to resolve the distances between distant vertices, and in
+float32, the distances are accurate over a limited range of `theta` on a given
+landscape.
 
 With a solver, `ResistanceDistance` requires a connected graph: the grounded
 Laplacian of a disconnected graph is singular, and queries raise an error. A
-grid graph is disconnected when edges of zero conductance separate it, as the
-weight function `fun` of `GridGraph` gives between pixels of zero
-permeability. Windowed analyses raise permeability to a floor value, so that
+grid graph is disconnected when some of its pixels are joined to the others
+only by edges of zero conductance, such as the edges that the weight function
+`fun` of `GridGraph` gives between pixels of zero permeability. Windowed analyses raise permeability to a floor value, so that
 their graphs are connected.
 
 The tolerance at which a solver gives accurate distances depends on the query
-and on the floating-point precision. The convergence of a solver does not
-guarantee accurate distances: check the distances of your queries, for example
-against `solver=None` on a small graph. The measurements behind this guide are
-in [issue #35](https://github.com/vboussange/jaxscape/issues/35#issuecomment-6760998974).
+and on the floating-point precision. A solver can converge and still give
+inaccurate distances: check the distances of your queries, for example against
+`solver=None` on a small graph. The measurements behind this page are in [issue #35](https://github.com/vboussange/jaxscape/issues/35#issuecomment-6760998974).
 
-## `lineax` solvers
+## Lineax solvers
 
 Any [Lineax](https://docs.kidger.site/lineax/) solver of sparse symmetric
 positive definite operators can be passed as `solver`, such as conjugate
@@ -73,7 +79,7 @@ The distance passes its system matrix to the solver as a
 [Lineax documentation](https://docs.kidger.site/lineax/) lists the available
 solvers and their options.
 
-## `JAXScape` solvers
+## JAXScape solvers
 
 `jaxscape.solvers` provides four solvers. `GeometricMultigridCGSolver` needs no
 optional dependency. Each of the three others needs one, installed with an
@@ -95,14 +101,6 @@ uv add jaxscape --extra cudss      # CuDSSSolver (NVIDIA GPU, CUDA 13)
 A host callback runs Python code on the CPU from a compiled JAX program. Arrays
 on a GPU then travel to the CPU and back.
 
-!!! info "Testing"
-
-    The continuous integration tests `GeometricMultigridCGSolver`, `CholmodSolver`
-    and `AMJaxCGSolver`. Its machines have no NVIDIA GPU: they test the logic
-    of `AbstractSparseDirectSolver` with a dense Cholesky factorization in place
-    of cuDSS. The `CuDSSSolver` tests are marked `gpu` and run only on a machine
-    with an NVIDIA GPU, spineax and cuDSS.
-
 ### Geometric multigrid
 
 `GeometricMultigridCGSolver` solves the matrices of grid graphs, such as the
@@ -119,11 +117,12 @@ inside `jax.jit`, and needs no optional dependency.
     matrix at each iteration, so that fewer iterations reach the tolerance. A
     multigrid preconditioner builds this approximate inverse from a hierarchy
     of coarser grids: relaxation on a grid reduces the components of the error
-    that vary from pixel to pixel, and the coarser grids reduce the components
-    that vary smoothly, at a fraction of the cost. Geometric multigrid builds
-    the coarser grids from the raster: each keeps every other pixel along each
-    axis. The entry below details the cycle, the interpolation between grids
-    and the solve on the coarsest grid.
+    that vary from pixel to pixel, and corrections on the coarser grids reduce
+    the components that vary smoothly, at a fraction of the cost. Geometric
+    multigrid builds the coarser grids from the raster: each holds every other
+    pixel along each axis. The API entry of `GeometricMultigridCGSolver` below
+    details the cycle, the interpolation between grids and the solve on the
+    coarsest grid.
 
 The preconditioner of its state is the grid, a raster shape and contiguity.
 `init` reads the grid from the sparse indices of the matrix;
@@ -144,18 +143,18 @@ approximate = ResistanceDistance(
 )
 ```
 
-`rtol` bounds the norm of the residual that conjugate gradients update at each
-iteration, relative to the norm of the right-hand side. A larger `rtol` takes
-fewer iterations. In float32, rounding stops the decrease of the residual
-`b - A x` of the solution `x` at some level, and an `rtol` below that level
-adds iterations without improving the solution. The resistances to pixels
-behind barriers converge last: a large `rtol` first degrades the gradient of
-the distances with respect to the permeability of these pixels.
+`rtol` is the bound on the norm of the residual that conjugate gradients
+update at each iteration, relative to the norm of the right-hand side. With a
+larger `rtol`, the solves take fewer iterations. In float32, because of
+rounding, the residual `b - A x` of the solution `x` stops decreasing at some
+level; with an `rtol` below that level, the iterations continue without
+improving the solution. The resistances to pixels behind barriers converge
+last: with a large `rtol`, the gradient of the distances with respect to the
+permeability of these pixels loses accuracy first.
 
-In float32 on grid graphs, `GeometricMultigridCGSolver` computed the most accurate
-resistance distances of the solvers measured in issue #35. Sparse Cholesky
-solvers in float32 compute inaccurate solutions around the ground vertex of
-large tiles (see the note on grounding of
+In float32 on grid graphs, `GeometricMultigridCGSolver` gives the most accurate
+resistance distances of the JAXScape solvers. In float32, sparse direct solvers
+give inaccurate solutions around the ground vertex of large tiles (see the note on grounding of
 [`ResistanceDistance`][jaxscape.resistance_distance.ResistanceDistance]): use
 them in float64.
 
@@ -166,14 +165,14 @@ them in float64.
 
 ### Algebraic multigrid
 
-Algebraic multigrid builds its coarser levels from the entries of the matrix,
-without a grid, and so preconditions the matrix of any graph. `AMJaxCGSolver`
+In algebraic multigrid, the coarser levels are built from the entries of the
+matrix, without a grid, so that the matrix of any graph can be preconditioned. `AMJaxCGSolver`
 solves by conjugate gradients preconditioned by an algebraic multigrid
 hierarchy, built by smoothed aggregation by default. It suits graphs other than
 grid graphs whose sparse Cholesky factorization does not fit in memory.
 
 `AMJaxCGSolver` builds the hierarchy once, in `init`, on the CPU. It solves
-by conjugate gradients, preconditioned by AMJax multigrid V-cycles, in JAX on
+by conjugate gradients, preconditioned by V-cycles of the hierarchy, in JAX on
 CPU or GPU, inside `jax.jit` and `jax.grad`. `reinit` keeps the hierarchy for a
 matrix of the same sparsity pattern with other values, whose solves then take
 more iterations the further these values are from those of the hierarchy. The
@@ -188,27 +187,26 @@ graph, is solved by conjugate gradients without preconditioner.
       members: false
       inherited_members: false
 
-### Sparse Cholesky factorization
+### Sparse direct solvers
 
-A sparse Cholesky factorization writes the matrix as $L L^\top$, with $L$
+A sparse Cholesky factorization of the matrix is a product $L L^\top$, with $L$
 sparse and lower triangular, after a reordering of its rows and columns that
 limits the number of entries of $L$. Each solve then takes two triangular
 solves. The factorization costs far more than a solve, and many right-hand
-sides share it. Its cost depends on the sparsity pattern of the matrix only, so
-that the contrast of conductances does not change it. `CholmodSolver` and
+sides share it. Its cost depends on the sparsity pattern of the matrix only, and
+is the same whatever the contrast of conductances. `CholmodSolver` and
 `CuDSSSolver` solve the matrix of any connected graph. In float32, their
 solutions on large grids are inaccurate around the ground vertex of
 `ResistanceDistance`.
 
 `CholmodSolver` factorizes with CHOLMOD, through cholespy, on the CPU, through
-a host callback. The states of one sparsity pattern share one factorization,
-which solves reuse while the matrix values stay the same.
+a host callback. Solves reuse the last factorization while the values of the
+matrix stay the same.
 
 `CuDSSSolver` factorizes with NVIDIA cuDSS, through spineax, on the GPU, inside
-`jax.jit`. Its state keeps the symbolic analysis of the sparsity pattern, which
-orders the rows and columns and sets the structure of $L$; a matrix with new
-values is factorized on this analysis. It needs an NVIDIA GPU, Linux x86-64
-and Python 3.12 or newer.
+`jax.jit`. Its state keeps the analysis of the sparsity pattern: the ordering
+of the rows and columns and the structure of $L$. A matrix with new values is
+factorized on this analysis. It needs an NVIDIA GPU and Linux x86-64.
 
 ::: jaxscape.solvers.cholmodsolver.CholmodSolver
     options:
@@ -236,8 +234,8 @@ hierarchy, can cost far more than a solve. `ResistanceDistance` and
   same sparsity pattern, and keeps what the solver can reuse. It runs inside
   `jax.jit`.
 - Queries take the state as `state`, and the queries on one graph can share
-  it. A query always solves the system matrix of the graph it receives: a state
-  built for another graph makes the query slower and leaves its distances
+  it. A query always solves the system matrix of the graph it receives: an
+  outdated state can make the query slower, and leaves its distances
   unchanged.
 
 An optimization loop over conductances passes the state from one step to the
@@ -292,9 +290,9 @@ What the state of each solver keeps from one graph to the next:
 |---|---|
 | `GeometricMultigridCGSolver` | Its preconditioner, the grid; each solve builds the multigrid hierarchy of the new values |
 | `AMJaxCGSolver` | Its preconditioner, the algebraic multigrid hierarchy of the values of `init` |
-| `CuDSSSolver` | The symbolic analysis, and the factorization while the values stay the same |
-| `CholmodSolver` | Its last factorization, while the values stay the same |
-| Lineax's iterative solvers, such as `lineax.CG` | Nothing: each query runs `init`, which only records the matrix |
+| `CuDSSSolver` | The analysis, and the factorization while the values stay the same |
+| `CholmodSolver` | The last factorization, while the values stay the same |
+| Lineax's iterative solvers, such as `lineax.CG` | Nothing: each query runs `init` |
 
 The graphs of one raster shape and contiguity can also share a
 [`GridTopology`][jaxscape.graph.GridTopology], built once outside `jax.jit`. It
