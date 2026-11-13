@@ -247,9 +247,12 @@ class ResistanceDistance(AbstractSolverDistance):
         """
         # The state builds under `jax.ensure_compile_time_eval`, where every
         # `eqx.error_if` raises: the grounded Laplacian has none, unlike the
-        # free-energy operator, whose distance keeps the base `init`. The
-        # states of sparse solvers hold arrays alone; a compiled program would
-        # keep the host cache of `CholmodSolver` across its calls.
+        # free-energy operator, whose distance keeps the base `init`. A program
+        # compiled around it holds the state as constants. The factorization
+        # of a `CuDSSSolver` state is a spineax handle, which the first call
+        # uses up: later calls repeat the analysis, as queries without a state
+        # do. `CholmodSolver` is left out: the program would keep its host
+        # cache across its calls.
         if isinstance(self.solver, AbstractSparseSolver) and isinstance(
             graph, GridGraph
         ):

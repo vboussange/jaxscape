@@ -83,7 +83,10 @@ class AbstractSparseIterativeSolver[Preconditioner](
 
         It may read concrete arrays or run host code, as `init` runs outside
         `jax.jit`, apart from the states that `distance.init(graph)` builds from
-        the shape and contiguity of a `GridGraph`, with concrete values.
+        the shape and contiguity of a `GridGraph`, with concrete values. Those
+        build eagerly, under `jax.ensure_compile_time_eval`, where
+        `eqx.error_if` raises whatever its condition: it must not call
+        `eqx.error_if`.
 
         **Arguments:**
 
