@@ -113,16 +113,16 @@ inside `jax.jit`, and needs no optional dependency.
 
     The number of conjugate gradient iterations grows with the condition number
     of the matrix, which grows with the size of the grid and with the contrast
-    of conductances. A preconditioner applies an approximate inverse of the
-    matrix at each iteration, so that fewer iterations reach the tolerance. A
-    multigrid preconditioner builds this approximate inverse from a hierarchy
-    of coarser grids: relaxation on a grid reduces the components of the error
-    that vary from pixel to pixel, and corrections on the coarser grids reduce
-    the components that vary smoothly, at a fraction of the cost. Geometric
-    multigrid builds the coarser grids from the raster: each holds every other
-    pixel along each axis. The API entry of `GeometricMultigridCGSolver` below
-    details the cycle, the interpolation between grids and the solve on the
-    coarsest grid.
+    of conductances. A preconditioner is an approximate inverse of the matrix,
+    which the solver applies at each iteration, so that it reaches the
+    tolerance in fewer iterations. In multigrid, the solver builds the
+    preconditioner from a hierarchy of coarser grids: by relaxation on a grid,
+    it lowers the components of the error that vary from pixel to pixel, and by
+    corrections on the coarser grids, the components that vary smoothly, at a
+    fraction of the cost. In geometric multigrid, the solver builds the coarser
+    grids from the raster: each holds every other pixel along each axis. The
+    cycle, the interpolation between grids and the solve on the coarsest grid
+    are given in the API entry of `GeometricMultigridCGSolver` below.
 
 The preconditioner of its state is the grid, a raster shape and contiguity.
 `init` reads the grid from the sparse indices of the matrix;
@@ -175,7 +175,11 @@ grid graphs whose sparse Cholesky factorization does not fit in memory.
 by conjugate gradients, preconditioned by V-cycles of the hierarchy, in JAX on
 CPU or GPU, inside `jax.jit` and `jax.grad`. `reinit` keeps the hierarchy for a
 matrix of the same sparsity pattern with other values, whose solves then take
-more iterations the further these values are from those of the hierarchy. The
+more iterations the further these values are from those of the hierarchy. In
+windowed analyses, JAXScape builds the state once, from a graph of uniform
+conductance, and `reinit` keeps its hierarchy for every tile: on tiles of high
+conductance contrast, the solver then needs many iterations and can stop at
+`max_steps` ([issue #96](https://github.com/vboussange/jaxscape/issues/96)). The
 hierarchy has the dtype of the matrix. For ill-conditioned graph Laplacians,
 enable 64-bit floats with `JAX_ENABLE_X64=true` and build the matrix and the
 right-hand sides in float64: enabling 64-bit floats does not convert existing
