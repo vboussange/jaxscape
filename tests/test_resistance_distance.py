@@ -28,7 +28,6 @@ from jaxscape.solvers import (
     AMJaxCGSolver,
     CholmodSolver,
     CuDSSSolver,
-    PyAMGSolver,
 )
 
 
@@ -39,12 +38,10 @@ AMJAX_AVAILABLE = PYAMG_AVAILABLE and find_spec("amjax") is not None
 
 # Build list of available solvers
 available_solvers = []
-if PYAMG_AVAILABLE:
-    available_solvers.append(PyAMGSolver())
 if CHOLMOD_AVAILABLE:
     available_solvers.append(CholmodSolver())
 if AMJAX_AVAILABLE:
-    available_solvers.append(AMJaxCGSolver(rtol=1e-5, atol=1e-5, max_steps=500))
+    available_solvers.append(AMJaxCGSolver(rtol=1e-5, max_steps=500))
 
 # Spielman projections are randomized; this is the expected absolute error for
 # the deterministic seed and epsilon used in the test below.

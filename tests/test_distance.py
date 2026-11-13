@@ -23,7 +23,7 @@ from jaxscape.solvers import (
     AMJaxCGSolver,
     CholmodSolver,
     CuDSSSolver,
-    PyAMGSolver,
+    GridMultigridSolver,
 )
 
 
@@ -119,11 +119,11 @@ def make_solver(name):
     if name == "cholmod":
         pytest.importorskip("cholespy")
         return CholmodSolver()
+    if name == "multigrid":
+        return GridMultigridSolver(rtol=1e-13)
     pytest.importorskip("pyamg")
-    if name == "pyamg":
-        return PyAMGSolver(rtol=1e-13, atol=1e-13, maxiter=500)
     pytest.importorskip("amjax")
-    return AMJaxCGSolver(rtol=1e-13, atol=1e-13, max_steps=500)
+    return AMJaxCGSolver(rtol=1e-13, max_steps=500)
 
 
 def make_cudss():
@@ -150,7 +150,7 @@ LIFECYCLE_CASES = [
     ("free-energy", "dense-cholesky", "nodes_to_nodes"),
     on_gpu("free-energy", "all_pairs"),
     ("exact", "cholmod", "nodes_to_nodes"),
-    ("spielman", "pyamg", "all_pairs"),
+    ("spielman", "multigrid", "all_pairs"),
     ("free-energy", "cg", "sources_to_targets"),
 ]
 
@@ -207,7 +207,7 @@ def test_state_lifecycle_matches_the_dense_reference(kind, solver, query):
         ("free-energy", "amjax"),
         ("exact", "cholmod"),
         ("free-energy", "cholmod"),
-        ("spielman", "pyamg"),
+        ("spielman", "multigrid"),
         ("exact", "cg"),
     ],
 )

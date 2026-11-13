@@ -333,18 +333,20 @@ def test_a_query_on_a_new_graph_solves_it_with_an_outdated_state(solver):
         np.testing.assert_allclose(actual, expected, rtol=1e-8, atol=1e-12)
 
 
-def test_queries_without_a_state_initialize_one_outside_jit(solver):
+def test_queries_without_a_state_initialize_one_also_inside_jit_on_grids(solver):
+    # The state of a `GridGraph` builds from its shape and contiguity, that of
+    # another graph outside `jax.jit`.
     distance = ResistanceDistance(solver=solver)
     grid = grid_of(surface("smooth"))
     nodes = jnp.array([0, 9, 41])
+    expected = ResistanceDistance(solver=None)(grid, nodes=nodes)
 
-    np.testing.assert_allclose(
-        distance(grid, nodes=nodes),
-        ResistanceDistance(solver=None)(grid, nodes=nodes),
-        rtol=1e-8,
-    )
+    query = lambda graph: distance(graph, nodes=nodes)  # noqa: E731
+    for actual in (query(grid), jax.jit(query)(grid)):
+        np.testing.assert_allclose(actual, expected, rtol=1e-8)
+    graph = Graph(grid.get_adjacency_matrix())
     with pytest.raises(ValueError, match=r"outside `jax\.jit`.*distance\.init"):
-        jax.jit(lambda grid: distance(grid, nodes=nodes))(grid)
+        jax.jit(query)(graph)
 
 
 def raises_failed_solve():

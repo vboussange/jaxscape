@@ -358,10 +358,10 @@ class AbstractSolverDistance(AbstractDistance):
     def init(self, graph: AbstractGraph) -> Any:
         """Build the solver state for `graph`.
 
-        Some solvers read concrete sparse indices or build a preconditioner on
-        the host, such as `GridMultigridSolver` and `AMJaxCGSolver`, so call it
-        outside `jax.jit`. `ResistanceDistance` also builds the
-        `GridMultigridSolver` state of a `GridGraph` inside `jax.jit`.
+        Solvers read concrete sparse indices, and some build a preconditioner
+        on the host, such as `AMJaxCGSolver`, so call it outside `jax.jit`.
+        `ResistanceDistance` also builds the state of a `GridGraph` inside
+        `jax.jit`.
 
         **Arguments:**
 
@@ -398,16 +398,16 @@ def _has_tracers(tree: Any) -> bool:
 _CONTIGUITIES = {4: ROOK_CONTIGUITY, 8: QUEEN_CONTIGUITY}
 
 
-def _grid_multigrid_state(distance: AbstractSolverDistance, graph: GridGraph) -> Any:
-    """The `GridMultigridSolver` state of `distance` for `graph`, also in a trace.
+def _grid_state(distance: AbstractSolverDistance, graph: GridGraph) -> Any:
+    """The solver state of `distance` for `graph`, also in a trace.
 
-    The solver reads the grid of the state from concrete sparse indices, outside
-    the trace, with the exact distance (see `AbstractDistance.exact`), whose
-    states serve `distance` and which holds no traced seed. Those of a traced
-    graph are those of a graph of its shape and contiguity, of permeability 1:
-    traced neighbours are those of rook or queen contiguity, by their number.
-    The state of that graph is then reinitialized for `graph`, whose sparse
-    indices the solver checks.
+    The solver reads the sparsity pattern of the state from concrete sparse
+    indices, outside the trace, with the exact distance (see
+    `AbstractDistance.exact`), whose states serve `distance` and which holds no
+    traced seed. Those of a traced graph are those of a graph of its shape and
+    contiguity, of permeability 1: traced neighbours are those of rook or queen
+    contiguity, by their number. The state of that graph is then reinitialized
+    for `graph`, whose sparse indices the solver checks.
     """
     concrete = graph
     # A traced graph may lack concrete sparse indices.

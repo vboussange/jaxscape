@@ -1,3 +1,4 @@
+import warnings
 from collections.abc import Callable
 from typing import Any
 
@@ -34,6 +35,14 @@ class PyAMGSolver(AbstractLinearSolver):
     """
     A linear solver that uses PyAMG to solve a sparse linear system.
 
+    !!! warning "Deprecated"
+
+        `PyAMGSolver` is deprecated and will be removed. Use `AMJaxCGSolver`,
+        which builds the same PyAMG hierarchy once, keeps it across values,
+        and runs its cycles in JAX: `AMJaxCGSolver(rtol=rtol,
+        max_steps=maxiter, pyamg_method=pyamg_method)`, with
+        `pip install 'jaxscape[amjax]'`.
+
     !!! example
         ```python
         from jaxscape.solvers import PyAMGSolver
@@ -57,6 +66,14 @@ class PyAMGSolver(AbstractLinearSolver):
     pyamg_method: Callable | None = None
 
     def __check_init__(self):
+        warnings.warn(
+            "`PyAMGSolver` is deprecated and will be removed. Use `AMJaxCGSolver("
+            "rtol=rtol, max_steps=maxiter, pyamg_method=pyamg_method)`, which builds "
+            "the same PyAMG hierarchy once and runs its cycles in JAX; install it "
+            "with `pip install 'jaxscape[amjax]'`.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if not PYAMG_AVAILABLE:
             raise ImportError(
                 "pyamg is required for PyAMGSolver. Install it with: pip install pyamg"

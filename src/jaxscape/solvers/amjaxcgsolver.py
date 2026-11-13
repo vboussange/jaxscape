@@ -1,16 +1,17 @@
-import warnings
+"""Conjugate gradients with an AMJax algebraic multigrid preconditioner."""
+
 from collections.abc import Callable
 from typing import Any, final
 
 import equinox as eqx
-import lineax as lx
-from jax.experimental.sparse import BCOO, BCSR
-from jaxtyping import Array, PyTree
-from lineax import AbstractLinearOperator, RESULTS
+import jax
+import numpy as np
+import scipy.sparse
+from jax import errors as jax_errors
+from jaxtyping import Array
 
-from jaxscape.utils import zero_copy_jax_csr_to_scipy_csr
-
-from .operator import AbstractReusableStateSolver
+from .sparseiterativesolver import AbstractSparseIterativeSolver
+from .sparsesolver import CSRPattern
 
 
 try:
@@ -25,126 +26,74 @@ except ImportError:
 
 
 @final
-class AMJaxCGSolverState(eqx.Module):
-    """State for `AMJaxCGSolver`: CG bound to one operator, and a preconditioner
-    that `reinit` keeps for other operators of the same sparsity pattern."""
+class _Hierarchy(eqx.Module):
+    """The preconditioner of an `AMJaxCGSolver` state: an AMJax multigrid
+    hierarchy, as its leaves and tree structure.
 
-    cg_state: PyTree[Any]
-    preconditioner: AbstractLinearOperator
-
-
-def amjax_preconditioner_operator(
-    amjax_solver: Any,
-    input_structure: PyTree[Any],
-    *,
-    cycle: str = "V",
-) -> AbstractLinearOperator:
-    """Wrap an AMJax preconditioner as a Lineax linear operator.
-
-    A single-level hierarchy uses unpreconditioned CG: AMJax 0.0.3's cycle
-    requires at least two levels, and tiny systems do not need multigrid.
+    AMJax's hierarchies are pytrees whose children depend on which of their
+    leaves are `None`, so that filters such as `eqx.partition`, which replace
+    leaves with `None`, change their structure. A list of leaves keeps it.
     """
-    if len(amjax_solver.levels) == 1:
-        return lx.IdentityLinearOperator(input_structure)
-    preconditioner = amjax_solver.aspreconditioner(cycle=cycle)
-    tags = (lx.positive_semidefinite_tag,)
-    if getattr(amjax_solver, "symmetric_smoothing", False):
-        # Lineax transposes solver states during reverse-mode autodiff. If this
-        # tag is omitted, it tries to build a transpose of AMJax's V-cycle via
-        # `jax.linear_transpose`, which currently exposes JAX internal cotangent
-        # wrappers to AMJax. For symmetric smoothers, AMJax's V-cycle is safe to
-        # reuse as its own transpose, so mark that property explicitly.
-        tags = tags + (lx.symmetric_tag,)
 
-    def _matvec(rhs: Any) -> Array:
-        return preconditioner(rhs)
+    leaves: list[Array]
+    treedef: Any = eqx.field(static=True)
 
-    return lx.FunctionLinearOperator(
-        _matvec,
-        input_structure,
-        tags=tags,
-    )
+    @property
+    def multilevel_solver(self) -> Any:
+        """The AMJax `MultilevelSolver`."""
+        return jax.tree.unflatten(self.treedef, self.leaves)
 
 
-def build_amjax_solver(
-    matrix: BCOO,
-    *,
-    pyamg_method: Callable | None = None,
-    pyamg_kwargs: dict[str, Any] | None = None,
-    presmoother: Any | None = None,
-    postsmoother: Any | None = None,
-    coarse_solver: str = "jacobi",
-    coarse_solver_kwargs: dict[str, Any] | None = None,
-) -> Any:
-    """Build an AMJax multigrid hierarchy from a JAX sparse matrix."""
-    if not AMJAX_AVAILABLE:
-        raise ImportError(
-            "AMJaxCGSolver requires amjax and pyamg. "
-            "Install the optional dependency with `pip install 'jaxscape[amjax]'`."
-        )
+@final
+class AMJaxCGSolver(AbstractSparseIterativeSolver[_Hierarchy]):
+    """Conjugate gradients preconditioned by algebraic multigrid, with AMJax.
 
-    if pyamg_method is None:
-        assert _pyamg is not None
-        pyamg_method = _pyamg.smoothed_aggregation_solver
-
-    matrix = _unbatched_bcoo(matrix).sum_duplicates(nse=matrix.nse)
-    scipy_matrix = zero_copy_jax_csr_to_scipy_csr(BCSR.from_bcoo(matrix))
-    pyamg_hierarchy = pyamg_method(scipy_matrix, **(pyamg_kwargs or {}))
-
-    from_pyamg_kwargs: dict[str, Any] = {
-        "coarse_solver": coarse_solver,
-        "dtype": matrix.dtype,
-    }
-    if presmoother is not None:
-        from_pyamg_kwargs["presmoother"] = presmoother
-    if postsmoother is not None:
-        from_pyamg_kwargs["postsmoother"] = postsmoother
-    if coarse_solver_kwargs is not None:
-        from_pyamg_kwargs["coarse_solver_kwargs"] = coarse_solver_kwargs
-
-    assert _MultilevelSolver is not None
-    return _MultilevelSolver.from_pyamg(pyamg_hierarchy, **from_pyamg_kwargs)
-
-
-class AMJaxCGSolver(AbstractReusableStateSolver):
-    """
-    A Lineax CG solver with an AMJax algebraic multigrid preconditioner.
-
-    The PyAMG hierarchy setup is performed once before entering Lineax's traced
-    solve path. The resulting AMJax V-cycle is wrapped as a
-    `lineax.FunctionLinearOperator` and supplied to `lineax.CG` through the
-    `preconditioner` option.
+    Its preconditioner is a multigrid hierarchy, which `init` builds once on the
+    host with PyAMG, from the values it is given, and converts to an AMJax
+    hierarchy. Each solve applies one V-cycle of that hierarchy per iteration,
+    in JAX, inside `jax.jit` and `jax.grad`. `reinit` keeps the hierarchy for
+    the values of another matrix of the same sparsity pattern, whose solves
+    then take more iterations the further their values are from those of the
+    hierarchy. The hierarchy keeps the dtype of the matrix. A hierarchy of a
+    single level, as that of a tiny graph, leaves conjugate gradients without
+    a preconditioner.
 
     !!! example
 
         ```python
-        import lineax as lx
-        from jaxscape.solvers import AMJaxCGSolver, BCOOLinearOperator
+        from jaxscape import ResistanceDistance
+        from jaxscape.solvers import AMJaxCGSolver
 
-        solver = AMJaxCGSolver(rtol=1e-6, atol=1e-6, max_steps=1_000)
-        state = solver.init(BCOOLinearOperator(A), {})
-        x = lx.linear_solve(BCOOLinearOperator(A), b, solver, state=state).value
-
-        # Keep the hierarchy for a matrix of the same sparsity with other values.
-        state = solver.reinit(BCOOLinearOperator(A1), {}, state)
-        x = lx.linear_solve(BCOOLinearOperator(A1), b, solver, state=state).value
+        distance = ResistanceDistance(solver=AMJaxCGSolver(rtol=1e-6))
+        state = distance.init(grid)  # builds the hierarchy
+        dist = distance(grid, state=state)
         ```
 
-    !!! warning
-        `amjax` and `pyamg` must be installed to use this solver.
+    **Attributes:**
 
-        Reverse-mode gradients through solver calls require a symmetric AMJax
-        preconditioner. This holds for the default matching pre/post Jacobi
-        smoothers, but may not hold for custom non-symmetric smoother choices.
-        Such configurations can still be valid for forward solves, but Lineax
-        may need to transpose the preconditioner during autodiff.
+    - `rtol`: Largest Euclidean norm of the residual, relative to that of the
+      right-hand side (see `AbstractSparseIterativeSolver`).
+    - `max_steps`: Largest number of iterations. A hierarchy built on a graph
+      of uniform conductance, as windowed analyses and `distance.init(graph)`
+      inside `jax.jit` build it, takes more iterations on graphs of high
+      conductance contrast than one built on their own values.
+    - `pyamg_method`: The PyAMG function that builds the hierarchy from a
+      SciPy CSR matrix. Defaults to `pyamg.smoothed_aggregation_solver`.
+    - `pyamg_kwargs`: Keyword arguments of `pyamg_method`.
+    - `presmoother`, `postsmoother`: AMJax smoothers, as `(name, kwargs)`.
+      Default to one iteration of Jacobi.
+    - `coarse_solver`: AMJax solver of the coarsest level.
+    - `coarse_solver_kwargs`: Keyword arguments of `coarse_solver`.
+
+    !!! warning
+
+        `amjax` and `pyamg` must be installed to use this solver, with
+        `pip install 'jaxscape[amjax]'`. Conjugate gradients need a symmetric
+        V-cycle: matching pre- and post-smoothers, as the default ones.
     """
 
-    rtol: float = 1e-3
-    atol: float = 1e-3
-    max_steps: int | None = None
-    stabilise_every: int | None = 10
-    cycle: str = "V"
+    rtol: float = 1e-5
+    max_steps: int = 1_000
     pyamg_method: Callable | None = None
     pyamg_kwargs: dict[str, Any] | None = None
     presmoother: Any | None = None
@@ -159,179 +108,47 @@ class AMJaxCGSolver(AbstractReusableStateSolver):
                 "Install the optional dependency with `pip install 'jaxscape[amjax]'`."
             )
 
-        if isinstance(self.rtol, (int, float)) and self.rtol < 0:
-            raise ValueError("Tolerances must be non-negative.")
-        if isinstance(self.atol, (int, float)) and self.atol < 0:
-            raise ValueError("Tolerances must be non-negative.")
-        if self.max_steps is not None and self.max_steps <= 0:
-            raise ValueError("max_steps must be positive or None.")
-        if self.cycle != "V":
-            raise NotImplementedError(
-                "AMJaxCGSolver currently supports only V-cycle preconditioning."
-            )
-
-        if self.pyamg_method is None:
-            assert _pyamg is not None
-            object.__setattr__(self, "pyamg_method", _pyamg.smoothed_aggregation_solver)
-        if self.pyamg_kwargs is None:
-            object.__setattr__(self, "pyamg_kwargs", {})
-
-    def _cg_solver(self) -> lx.CG:
-        return lx.CG(
-            rtol=self.rtol,
-            atol=self.atol,
-            stabilise_every=self.stabilise_every,
-            max_steps=self.max_steps,
+    def preconditioner(self, pattern: CSRPattern, values: Array) -> _Hierarchy:
+        try:
+            data = np.asarray(values)
+        except jax_errors.TracerArrayConversionError:
+            raise ValueError(
+                "AMJaxCGSolver builds its hierarchy on the host from concrete "
+                "values, so it initializes outside `jax.jit`, except for the state "
+                "of a `GridGraph`, which `distance.init(graph)` builds from a graph "
+                "of its shape and contiguity. Create the state with "
+                "`distance.init(graph)` (or `solver.init(operator, {})`) before "
+                "compiling, and pass it as `state`."
+            ) from None
+        n = pattern.n
+        matrix = scipy.sparse.csr_matrix(
+            (data, np.asarray(pattern.columns), np.asarray(pattern.offsets)),
+            shape=(n, n),
         )
-
-    def init(
-        self, operator: AbstractLinearOperator, options: dict[str, Any]
-    ) -> AMJaxCGSolverState:
-        self._check_options(options)
-        return AMJaxCGSolverState(
-            cg_state=self._cg_solver().init(operator, options),
-            preconditioner=self._init_preconditioner(operator, options),
+        assert _pyamg is not None and _MultilevelSolver is not None
+        method = self.pyamg_method or _pyamg.smoothed_aggregation_solver
+        hierarchy = method(matrix, **(self.pyamg_kwargs or {}))
+        keywords = {
+            name: value
+            for name, value in [
+                ("presmoother", self.presmoother),
+                ("postsmoother", self.postsmoother),
+                ("coarse_solver_kwargs", self.coarse_solver_kwargs),
+            ]
+            if value is not None
+        }
+        multilevel_solver = _MultilevelSolver.from_pyamg(
+            hierarchy, coarse_solver=self.coarse_solver, dtype=data.dtype, **keywords
         )
+        return _Hierarchy(*jax.tree.flatten(multilevel_solver))
 
-    def reinit(
-        self,
-        operator: AbstractLinearOperator,
-        options: dict[str, Any],
-        state: AMJaxCGSolverState,
-    ) -> AMJaxCGSolverState:
-        """Bind CG to `operator` and keep the preconditioner of `state`."""
-        self._check_options(options)
-        return AMJaxCGSolverState(
-            cg_state=self._cg_solver().init(operator, options),
-            preconditioner=state.preconditioner,
-        )
-
-    def init_preconditioner(
-        self,
-        operator: AbstractLinearOperator,
-        options: dict[str, Any] | None = None,
-    ) -> AMJaxCGSolverState:
-        """Deprecated alias of `init`, as `reinit` serves any operator."""
-        warnings.warn(
-            "`init_preconditioner` is deprecated; use `init`.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.init(operator, {} if options is None else options)
-
-    def materialize_state(
-        self,
-        operator: AbstractLinearOperator,
-        options: dict[str, Any],
-        state: AMJaxCGSolverState,
-    ) -> AMJaxCGSolverState:
-        """Deprecated alias of `reinit`."""
-        warnings.warn(
-            "`materialize_state` is deprecated; use `reinit`.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.reinit(operator, options, state)
-
-    def _init_preconditioner(
-        self, operator: AbstractLinearOperator, options: dict[str, Any]
-    ) -> AbstractLinearOperator:
-        option_preconditioner = options.get("preconditioner")
-        if option_preconditioner is not None:
-            if not isinstance(option_preconditioner, AbstractLinearOperator):
-                raise TypeError(
-                    "`preconditioner` must be a lineax.AbstractLinearOperator."
-                )
-            return option_preconditioner
-        matrix = operator.as_matrix()
-        if not isinstance(matrix, BCOO):
-            matrix = BCOO.fromdense(matrix)
-        amjax_solver = build_amjax_solver(
-            matrix,
-            pyamg_method=self.pyamg_method,
-            pyamg_kwargs=self.pyamg_kwargs,
-            presmoother=self.presmoother,
-            postsmoother=self.postsmoother,
-            coarse_solver=self.coarse_solver,
-            coarse_solver_kwargs=self.coarse_solver_kwargs,
-        )
-        preconditioner = amjax_preconditioner_operator(
-            amjax_solver,
-            operator.in_structure(),
-            cycle=self.cycle,
-        )
-        return preconditioner
-
-    def compute(
-        self,
-        state: AMJaxCGSolverState,
-        vector: PyTree[Array],
-        options: dict[str, Any],
-    ) -> tuple[PyTree[Array], RESULTS, dict[str, Any]]:
-        self._check_options(options)
-        cg_options = dict(options)
-        cg_options["preconditioner"] = state.preconditioner
-        return self._cg_solver().compute(state.cg_state, vector, cg_options)
-
-    def transpose(
-        self, state: AMJaxCGSolverState, options: dict[str, Any]
-    ) -> tuple[AMJaxCGSolverState, dict[str, Any]]:
-        self._check_options(options)
-        cg_options = {"preconditioner": state.preconditioner}
-        transposed_cg_state, transposed_options = self._cg_solver().transpose(
-            state.cg_state,
-            cg_options,
-        )
-        transposed_preconditioner = transposed_options["preconditioner"]
-        return (
-            AMJaxCGSolverState(
-                cg_state=transposed_cg_state,
-                preconditioner=transposed_preconditioner,
-            ),
-            {},
-        )
-
-    def conj(
-        self, state: AMJaxCGSolverState, options: dict[str, Any]
-    ) -> tuple[AMJaxCGSolverState, dict[str, Any]]:
-        self._check_options(options)
-        cg_options = {"preconditioner": state.preconditioner}
-        conj_cg_state, conj_options = self._cg_solver().conj(state.cg_state, cg_options)
-        conj_preconditioner = conj_options["preconditioner"]
-        return (
-            AMJaxCGSolverState(
-                cg_state=conj_cg_state,
-                preconditioner=conj_preconditioner,
-            ),
-            {},
-        )
-
-    def assume_full_rank(self):
-        return True
-
-    @staticmethod
-    def _check_options(options: dict[str, Any]) -> None:
-        option_preconditioner = options.get("preconditioner")
-        if option_preconditioner is not None and not isinstance(
-            option_preconditioner, AbstractLinearOperator
-        ):
-            raise TypeError("`preconditioner` must be a lineax.AbstractLinearOperator.")
-
-
-def _unbatched_bcoo(matrix: BCOO) -> BCOO:
-    if matrix.n_batch == 0:
-        return matrix
-
-    batch_shape = matrix.shape[: matrix.n_batch]
-    if any(size != 1 for size in batch_shape):
-        raise ValueError("AMJaxCGSolver supports only singleton matrix batches.")
-
-    # Avoid `squeeze()`: it can accidentally remove length-one matrix axes.
-    # Explicit batch indexing drops only BCOO batch dimensions.
-    batch_index = (0,) * matrix.n_batch
-    return BCOO(
-        (matrix.data[batch_index], matrix.indices[batch_index]),
-        shape=matrix.shape[-2:],
-        indices_sorted=matrix.indices_sorted,
-        unique_indices=matrix.unique_indices,
-    )
+    def precondition(
+        self, preconditioner: _Hierarchy, pattern: CSRPattern, values: Array
+    ) -> Callable[[Array], Array]:
+        del pattern, values
+        multilevel_solver = preconditioner.multilevel_solver
+        if len(multilevel_solver.levels) == 1:
+            # AMJax cycles need two levels; tiny systems need no multigrid.
+            return lambda residuals: residuals
+        v_cycle = multilevel_solver.aspreconditioner(cycle="V")
+        return jax.vmap(v_cycle, in_axes=1, out_axes=1)

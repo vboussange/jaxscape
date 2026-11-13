@@ -38,7 +38,6 @@ class ResistanceProfile:
 
 
 RESISTANCE_SOLVER_RTOL = 1e-3
-RESISTANCE_SOLVER_ATOL = 1e-3
 RESISTANCE_SOLVER_MAX_ITERATIONS: int | None = None
 RESISTANCE_APPROXIMATION_EPSILON = 0.05
 
@@ -73,11 +72,7 @@ def make_amjaxcg_solver() -> Any:
         raise ImportError(
             "Install the amjax Python extra to enable the AMJaxCG resistance profile."
         ) from error
-    return AMJaxCGSolver(
-        rtol=RESISTANCE_SOLVER_RTOL,
-        atol=RESISTANCE_SOLVER_ATOL,
-        max_steps=RESISTANCE_SOLVER_MAX_ITERATIONS,
-    )
+    return AMJaxCGSolver(rtol=RESISTANCE_SOLVER_RTOL, max_steps=1_000)
 
 
 def make_cudss_solver() -> Any:
