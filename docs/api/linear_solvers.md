@@ -219,7 +219,7 @@ What a state keeps from one graph to the next:
 | `AMJaxCGSolver` | Its preconditioner, the multigrid hierarchy of the values of `init` |
 | `CuDSSSolver` | The sparse analysis, and the factorization while the values stay the same |
 | `CholmodSolver` | Its last factorization, while the values stay the same |
-| Lineax solvers | Nothing: each query runs `init`, which only records the matrix |
+| Lineax's iterative solvers, such as `lineax.CG` | Nothing: each query runs `init`, which only records the matrix |
 
 The graphs of one raster shape and contiguity can also share a
 [`GridTopology`][jaxscape.graph.GridTopology], built once outside `jax.jit`:
