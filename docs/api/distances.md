@@ -1,6 +1,6 @@
-# Distance metrics
+# Distances
 
-A distance takes a graph and returns the distances between some of its
+A distance object (`AbstractDistance`) takes a graph and returns the distances between some of its
 vertices. `LCPDistance`, `ResistanceDistance` and `FreeEnergyDistance` compute
 them from the edge weights, which they read as conductances;
 `EuclideanDistance` computes them from the pixel coordinates of a `GridGraph`.
@@ -33,7 +33,7 @@ linear systems.
         - system_matrix
         - init
 
-## Distances
+## Implemented distances
 
 ### Euclidean distance
 
