@@ -200,7 +200,7 @@ def test_sparse_solvers_state_and_joint_gradients(solver_name, dtype):
     elif solver_name == "cholespy":
         solver = CholmodSolver()
     else:
-        solver = AMJaxCGSolver(rtol=rtol, atol=atol, max_steps=100)
+        solver = AMJaxCGSolver(rtol=rtol, max_steps=100)
     tolerance = 3e-4 if dtype == jnp.float32 else 1e-10
     weights = jnp.asarray(WEIGHTS, dtype=dtype)
     theta_value = jnp.asarray(0.7, dtype=dtype)
@@ -265,7 +265,7 @@ def test_sparse_solvers_state_and_joint_gradients(solver_name, dtype):
 def test_amjax_state_serves_the_current_operator():
     pytest.importorskip("amjax")
     weights = jnp.asarray(WEIGHTS)
-    solver = AMJaxCGSolver(rtol=1e-12, atol=1e-12, max_steps=100)
+    solver = AMJaxCGSolver(rtol=1e-12, max_steps=100)
     state = FreeEnergyDistance(0.7, solver=solver).init(graph(weights))
     current_weights = weights * 1.15
     nodes = jnp.array([0, 3])

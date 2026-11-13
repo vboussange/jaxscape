@@ -41,11 +41,11 @@ def _(op: BCOOLinearOperator) -> bool:
 class AbstractReusableStateSolver(lx.AbstractLinearSolver):
     """Lineax solver whose state can serve another operator of the same pattern.
 
-    Subclass it when part of a state outlives the matrix values, such as a sparse
-    analysis, a factorization or a multigrid hierarchy, and implement `reinit`.
+    It is the parent of `AbstractSparseSolver` and `CholmodSolver`. A new solver
+    subclasses `AbstractSparseDirectSolver` or `AbstractSparseIterativeSolver`.
     Distance queries call `reinit` on the state they receive before solving. Other
-    Lineax solvers run `init` for each query, which suits iterative solvers, whose
-    `init` only records the operator.
+    Lineax solvers run `init` for each query, which suits Lineax's iterative
+    solvers, such as `lineax.CG`, whose `init` only records the operator.
     """
 
     @abc.abstractmethod

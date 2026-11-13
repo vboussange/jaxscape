@@ -11,7 +11,7 @@ from jax.experimental.sparse import BCOO
 from jax.numpy.linalg import pinv
 
 from jaxscape.distance import (
-    _geometric_multigrid_state,
+    _grid_state,
     _inside_windows,
     _windows,
     AbstractSolverDistance,
@@ -22,6 +22,7 @@ from jaxscape.solvers.geometricmultigridcgsolver import (
     GeometricMultigridCGSolver,
 )
 from jaxscape.solvers.operator import _batched_linear_solve_impl, _solver_state
+from jaxscape.solvers.sparsesolver import AbstractSparseSolver
 from jaxscape.utils import _matmul, _VALUES_PER_STEP, bcoo_diag, graph_laplacian
 
 
@@ -88,9 +89,7 @@ class ResistanceDistance(AbstractSolverDistance):
         distance = ResistanceDistance(solver=CholmodSolver())
 
         # With an initialized AMG-preconditioned CG solver
-        distance = ResistanceDistance(
-            solver=AMJaxCGSolver(rtol=1e-6, atol=1e-6, max_steps=1_000)
-        )
+        distance = ResistanceDistance(solver=AMJaxCGSolver(rtol=1e-6))
         state = distance.init(grid)
 
         dist = distance(grid, state=state)
@@ -243,11 +242,11 @@ class ResistanceDistance(AbstractSolverDistance):
     def init(self, graph: AbstractGraph) -> Any:
         """Build the solver state for `graph`.
 
-        With `GeometricMultigridCGSolver`, the default, the state of a `GridGraph`
-        builds inside `jax.jit` too: the solver reads its grid from concrete
-        sparse indices, which the shape and contiguity of the graph set. Other
-        solvers and graphs build their state as `AbstractSolverDistance.init`
-        does.
+        With a sparse solver of JAXScape, an `AbstractSparseSolver`, the state
+        of a `GridGraph` builds inside `jax.jit` too: that of a traced graph is
+        the state of a graph of its shape and contiguity, of permeability 1,
+        reinitialized for it. Other solvers and graphs build their state as
+        `AbstractSolverDistance.init` does.
 
         **Arguments:**
 
@@ -257,10 +256,18 @@ class ResistanceDistance(AbstractSolverDistance):
 
         State to pass to queries and to `reinit`, or `None` without a solver.
         """
-        if isinstance(self.solver, GeometricMultigridCGSolver) and isinstance(
+        # The state builds under `jax.ensure_compile_time_eval`, where every
+        # `eqx.error_if` raises: the grounded Laplacian has none, unlike the
+        # free-energy operator, whose distance keeps the base `init`. A program
+        # compiled around it holds the state as constants. The factorization
+        # of a `CuDSSSolver` state is a spineax handle, which the first call
+        # uses up: later calls repeat the analysis, as queries without a state
+        # do. `CholmodSolver` is left out: the program would keep its host
+        # cache across its calls.
+        if isinstance(self.solver, AbstractSparseSolver) and isinstance(
             graph, GridGraph
         ):
-            return _geometric_multigrid_state(self, graph)
+            return _grid_state(self, graph)
         return super().init(graph)
 
     @eqx.filter_jit

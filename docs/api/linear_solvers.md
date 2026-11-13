@@ -32,7 +32,8 @@ Memory restricts the choice first. Dense linear algebra stores matrices of
 $n^2$ entries for a graph of $n$ vertices, and so fits small graphs only.
 `GeometricMultigridCGSolver` stores the matrix on its grid and a few arrays of $n$
 entries per right-hand side. Sparse Cholesky solvers store a factorization of
-the matrix; when it does not fit in memory, use `AMJaxCGSolver`.
+the matrix; when it does not fit in memory, use `GeometricMultigridCGSolver` on
+grid graphs and `AMJaxCGSolver` on other graphs.
 
 The entries of the inverse of the free-energy system matrix decay
 exponentially with path cost. Iterative solvers therefore need tolerances far
@@ -124,11 +125,11 @@ inside `jax.jit`, and needs no optional dependency.
     axis. The entry below details the cycle, the interpolation between grids
     and the solve on the coarsest grid.
 
-The state of the solver holds the grid, a raster shape and contiguity, and the
-matrix coefficients on it. `init` reads the grid from the sparse indices of
-the matrix; `distance.init(graph)` reads it from the shape and contiguity of a
-`GridGraph`, also inside `jax.jit`. `reinit` writes the values of another
-matrix of the same grid into the state. Each solve builds the multigrid
+The preconditioner of its state is the grid, a raster shape and contiguity.
+`init` reads the grid from the sparse indices of the matrix;
+`distance.init(graph)` reads it from the shape and contiguity of a
+`GridGraph`, also inside `jax.jit`. `reinit` replaces the values of the matrix
+with those of another matrix of the same grid. Each solve builds the multigrid
 hierarchy of the matrix it solves, so that each tile of a windowed analysis is
 solved with the hierarchy of its own conductances.
 
@@ -171,9 +172,10 @@ hierarchy, built by smoothed aggregation by default. It suits graphs other than
 grid graphs whose sparse Cholesky factorization does not fit in memory.
 
 `AMJaxCGSolver` builds the hierarchy once, in `init`, on the CPU. It solves
-with Lineax conjugate gradients, preconditioned by AMJax multigrid V-cycles, in
-JAX on CPU or GPU, inside `jax.jit` and `jax.grad`. `reinit` keeps the
-hierarchy for a matrix of the same sparsity pattern with other values. The
+by conjugate gradients, preconditioned by AMJax multigrid V-cycles, in JAX on
+CPU or GPU, inside `jax.jit` and `jax.grad`. `reinit` keeps the hierarchy for a
+matrix of the same sparsity pattern with other values, whose solves then take
+more iterations the further these values are from those of the hierarchy. The
 hierarchy has the dtype of the matrix. For ill-conditioned graph Laplacians,
 enable 64-bit floats with `JAX_ENABLE_X64=true` and build the matrix and the
 right-hand sides in float64: enabling 64-bit floats does not convert existing
@@ -222,10 +224,12 @@ hierarchy, can cost far more than a solve. `ResistanceDistance` and
 `FreeEnergyDistance` share one state lifecycle:
 
 - `distance.init(graph)` builds the state for the system matrix of `graph`.
-  Some solvers read concrete sparse indices or run code on the CPU, so call it
-  outside `jax.jit`. With `GeometricMultigridCGSolver`, `distance.init` of a
-  `GridGraph` also runs inside `jax.jit`: it reads the grid from the shape and
-  contiguity of the graph.
+  JAXScape's sparse solvers, except `CholmodSolver`, read concrete sparse
+  indices, and `AMJaxCGSolver` runs code on the CPU, so call it outside
+  `jax.jit`. `ResistanceDistance` also builds the state of a `GridGraph` inside
+  `jax.jit`, from the shape and contiguity of the graph. The compiled program
+  then holds the arrays of the state as constants: on large grids, it compiles
+  faster with the state passed as an argument.
 - `distance.reinit(graph, state)` returns the state for another graph of the
   same sparsity pattern, and keeps what the solver can reuse. It runs inside
   `jax.jit`.
@@ -235,8 +239,11 @@ hierarchy, can cost far more than a solve. `ResistanceDistance` and
   unchanged.
 
 An optimization loop over conductances passes the state from one step to the
-next. The state has no gradient: with `has_aux=True`, the differentiated
-function returns it alongside the loss.
+next, whatever the solver. `distance.init` returns a state with Lineax's and
+JAXScape's solvers, and `None` only with `solver=None`. For a solver that keeps
+nothing from one matrix to the next, such as `lineax.CG`, `reinit` ignores the
+state and returns `init(graph)`. The state has no gradient: with
+`has_aux=True`, the differentiated function returns it alongside the loss.
 
 ```python
 import equinox as eqx
@@ -281,11 +288,11 @@ What the state of each solver keeps from one graph to the next:
 
 | Solver | Kept by the state |
 |---|---|
-| `GeometricMultigridCGSolver` | The grid; each solve builds the multigrid hierarchy of the new values |
-| `AMJaxCGSolver` | The algebraic multigrid hierarchy |
+| `GeometricMultigridCGSolver` | Its preconditioner, the grid; each solve builds the multigrid hierarchy of the new values |
+| `AMJaxCGSolver` | Its preconditioner, the algebraic multigrid hierarchy of the values of `init` |
 | `CuDSSSolver` | The symbolic analysis, and the factorization while the values stay the same |
 | `CholmodSolver` | Its last factorization, while the values stay the same |
-| Lineax solvers | Nothing: each query runs `init`, which only records the matrix |
+| Lineax's iterative solvers, such as `lineax.CG` | Nothing: each query runs `init`, which only records the matrix |
 
 The graphs of one raster shape and contiguity can also share a
 [`GridTopology`][jaxscape.graph.GridTopology], built once outside `jax.jit`. It
@@ -297,22 +304,91 @@ Windowed analyses build their own states and pass them from tile to tile; see
 
 ## Extending the solvers
 
-Three public classes underlie the solvers above and serve to write new ones.
-`BCOOLinearOperator` presents a sparse matrix to Lineax.
-`AbstractReusableStateSolver` is the base of the solvers whose state serves
-another matrix of the same sparsity pattern. `AbstractSparseDirectSolver`
-turns the phases of a sparse factorization library into such a solver;
-`CuDSSSolver` subclasses it.
+`BCOOLinearOperator` presents a sparse matrix to Lineax. `AbstractSparseSolver`
+is the parent of JAXScape's sparse solvers of symmetric positive definite
+matrices. Its state holds the compressed sparse row (CSR) sparsity pattern of
+the matrix, read once from concrete sparse indices, the values, which `reinit`
+replaces inside `jax.jit`, and a factorization or a preconditioner. It scales
+right-hand sides, checks the sparse indices of each new matrix, and reports
+failed solves. A new solver subclasses one of its two families, with a final
+class.
+
+`AbstractSparseDirectSolver` turns the phases of a sparse factorization library
+into a solver, and checks each factorization and solve; `CuDSSSolver`
+subclasses it:
+
+```python
+from typing import final
+
+import jax.numpy as jnp
+from jaxscape.solvers import AbstractSparseDirectSolver
+
+
+@final
+class MySolver(AbstractSparseDirectSolver):
+    def factorize(self, pattern, values):
+        return my_library.factorize(pattern.offsets, pattern.columns, values)
+
+    def refactorize(self, factorization, pattern, values):  # Optional.
+        return my_library.refactorize(factorization, values)
+
+    def solve(self, factorization, vector):
+        return my_library.solve(factorization, vector)
+
+    def residual_tolerance(self, dtype):
+        return 1e-4 if dtype == jnp.float64 else 1e-1
+```
+
+The phases run inside `jax.jit`. Set `residual_tolerance` from the residuals the
+library leaves on valid matrices of your workload.
+
+`AbstractSparseIterativeSolver` runs conjugate gradients with a preconditioner;
+`GeometricMultigridCGSolver` and `AMJaxCGSolver` subclass it. `preconditioner`
+builds what the state keeps across values, in `init`, and `precondition`
+returns the preconditioner of the current values at each solve, as a function
+of residuals. `matvec` returns the product of the current matrix with vectors,
+and `vector_shape` the shape in which both take vectors: `csr_matvec`
+multiplies vectors of shape `(n,)` with the CSR values, and
+`GeometricMultigridCGSolver` multiplies rasters with its stencil. Jacobi
+preconditioning keeps nothing:
+
+```python
+from typing import final
+
+import jax.numpy as jnp
+from jaxscape.solvers import AbstractSparseIterativeSolver, csr_matvec
+
+
+@final
+class JacobiCGSolver(AbstractSparseIterativeSolver):
+    rtol: float = 1e-5
+    max_steps: int = 1_000
+
+    def preconditioner(self, pattern, values):
+        return None
+
+    def precondition(self, preconditioner, pattern, values):
+        on_diagonal = jnp.where(pattern.rows == pattern.columns, values, 0)
+        diagonal = jnp.zeros(pattern.n, values.dtype).at[pattern.rows].add(on_diagonal)
+        return lambda residuals: residuals / diagonal[:, None]
+
+    def matvec(self, preconditioner, pattern, values):
+        return csr_matvec(pattern, values)
+
+    def vector_shape(self, preconditioner, pattern):
+        return (pattern.n,)
+```
 
 ::: jaxscape.solvers.operator.BCOOLinearOperator
     options:
       heading_level: 3
       members: false
 
-::: jaxscape.solvers.operator.AbstractReusableStateSolver
+::: jaxscape.solvers.sparsesolver.AbstractSparseSolver
     options:
       heading_level: 3
       members:
+        - init
         - reinit
 
 ::: jaxscape.solvers.sparsedirectsolver.AbstractSparseDirectSolver
@@ -323,4 +399,16 @@ turns the phases of a sparse factorization library into such a solver;
         - refactorize
         - solve
         - residual_tolerance
-        - reinit
+
+::: jaxscape.solvers.sparseiterativesolver.AbstractSparseIterativeSolver
+    options:
+      heading_level: 3
+      members:
+        - preconditioner
+        - precondition
+        - matvec
+        - vector_shape
+
+::: jaxscape.solvers.sparseiterativesolver.csr_matvec
+    options:
+      heading_level: 3

@@ -40,7 +40,7 @@ available_solvers = []
 if CHOLMOD_AVAILABLE:
     available_solvers.append(CholmodSolver())
 if AMJAX_AVAILABLE:
-    available_solvers.append(AMJaxCGSolver(rtol=1e-5, atol=1e-5, max_steps=500))
+    available_solvers.append(AMJaxCGSolver(rtol=1e-5, max_steps=500))
 
 # Spielman projections are randomized; this is the expected absolute error for
 # the deterministic seed and epsilon used in the test below.
