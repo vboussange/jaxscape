@@ -9,8 +9,13 @@ from jax.experimental.sparse import BCOO
 
 
 class BCOOLinearOperator(lx.MatrixLinearOperator):
-    """`lineax.MatrixLinearOperator` wrapper for `jax.experimental.sparse.BCOO`
-    matrices."""
+    """Lineax linear operator of a `jax.experimental.sparse.BCOO` matrix.
+
+    Its products with vectors use the sparse matrix, so that Lineax solvers that
+    only multiply by the operator, such as `lineax.CG`, never form a dense
+    matrix. Lineax treats every `BCOOLinearOperator` as positive semidefinite,
+    as `lineax.CG` requires.
+    """
 
     def __init__(self, matrix: BCOO, tags: object | frozenset[object] = ()):
         super().__init__(matrix, tags)  # type: ignore[arg-type]
@@ -34,7 +39,7 @@ def _(op: BCOOLinearOperator) -> bool:
 
 
 class AbstractReusableStateSolver(lx.AbstractLinearSolver):
-    """Lineax solver whose state can serve another operator of the same sparsity.
+    """Lineax solver whose state can serve another operator of the same pattern.
 
     Subclass it when part of a state outlives the matrix values, such as a sparse
     analysis, a factorization or a multigrid hierarchy, and implement `reinit`.

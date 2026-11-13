@@ -109,3 +109,16 @@ pull request. Run the same strict build as CI; warnings fail the build:
 ```bash
 uv run mkdocs build --strict
 ```
+
+The build renders the outputs stored in the example notebooks; it does not
+execute them. After changing a notebook, execute it and commit it with its
+outputs. Set `TQDM_DISABLE=1`, otherwise every update of a progress bar is
+stored, and rendered, as a separate output:
+
+```bash
+TQDM_DISABLE=1 uv run --with nbconvert --with ipykernel jupyter nbconvert \
+  --to notebook --execute --inplace docs/examples/<name>/<name>.ipynb
+```
+
+`README.md` is also the landing page of the documentation: `docs_hooks.py`
+renders it in place of `docs/index.md`, so edit the README only.

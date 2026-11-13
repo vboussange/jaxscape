@@ -18,18 +18,18 @@ from .solvers.operator import _solver_state
 class AbstractDistance(eqx.Module):
     """Abstract base class for distance computations on graphs.
 
-    Provides a unified interface for computing distances with automatic handling of
-    coordinate-based (for `GridGraph`) or index-based node specification.
+    A distance is called on a graph, with vertices given as vertex indices or,
+    on a `GridGraph`, as pixel coordinates.
 
     **Arguments:**
 
     - `graph`: Graph on which to compute distances.
-    - `sources`: Source nodes as vertex indices (1D array) or coordinates
-      (Nx2 array for `GridGraph`).
-    - `targets`: Target nodes as vertex indices (1D array) or coordinates
-      (Nx2 array for `GridGraph`).
-    - `nodes`: Nodes for pairwise distances as vertex indices (1D) or
-      coordinates (Nx2).
+    - `sources`: Source vertices, as vertex indices with shape `(m,)` or, for a
+      `GridGraph`, pixel coordinates with shape `(m, 2)`.
+    - `targets`: Target vertices, as vertex indices with shape `(k,)` or, for a
+      `GridGraph`, pixel coordinates with shape `(k, 2)`.
+    - `nodes`: Vertices of the pairwise distances, as vertex indices with shape
+      `(k,)` or, for a `GridGraph`, pixel coordinates with shape `(k, 2)`.
     - `state`: Optional solver state. Defaults to automatic initialization.
 
     Specify either: `nodes` alone, `sources` and/or `targets`, or neither
@@ -38,20 +38,23 @@ class AbstractDistance(eqx.Module):
     **Attributes:**
 
     - `sources_share_work`: Whether a query from several sources costs much less
-      than one query per source, as when the linear solves of a query serve
-      every source with one solver state, such as a factorization or a
-      multigrid hierarchy. Windowed analyses then compute the distances of
-      many sources on one tile graph. Defaults to `False`.
+      than one query per source, as when the linear systems that a query
+      solves serve every source with one solver state, such as a
+      factorization or a multigrid hierarchy. Windowed analyses then compute
+      the distances of many sources on the graph of one tile. Defaults to
+      `False`.
     - `symmetric`: Whether the distance from `i` to `j` equals the distance
       from `j` to `i` on graphs whose adjacency matrix is symmetric, as those
-      of windowed analyses are. Their quality sensitivity then needs no
-      gradient. Defaults to `False`.
+      of windowed analyses are. With coarsening, `SensitivityAnalysis` then
+      computes the sensitivity of connectivity to quality without
+      differentiation. Defaults to `False`.
     - `averages_sources`: Whether window queries take `source_weights` and
       return the mean of the distances from the pixels around each source,
       with these weights, at the cost of one query (see
-      `sources_to_windows_distance`). Coarsened windowed analyses then take
-      the permeability sensitivity of a block centre from its block source.
-      Defaults to `False`.
+      `sources_to_windows_distance`). With coarsening, `SensitivityAnalysis`
+      then computes the sensitivity of connectivity to the permeability of a
+      block centre from the distances of its block source, the pixels that the
+      block centre stands for. Defaults to `False`.
 
     **Returns:**
 
@@ -328,7 +331,7 @@ def _windows(distances: Array, sources: Array, size: int) -> Array:
 
 
 class AbstractSolverDistance(AbstractDistance):
-    """Distance whose queries solve linear systems with one sparse matrix per graph.
+    """Distance whose queries solve linear systems in one sparse matrix per graph.
 
     That matrix is the system matrix of the graph: sparse, symmetric and positive
     definite, such as the grounded Laplacian of `ResistanceDistance`. Subclass it
@@ -337,7 +340,8 @@ class AbstractSolverDistance(AbstractDistance):
 
     **Attributes:**
 
-    - `solver`: Lineax solver for the system matrix, or `None` for a dense solve.
+    - `solver`: Lineax solver of linear systems in the system matrix, or `None`
+      for dense linear algebra.
     """
 
     solver: eqx.AbstractVar[lx.AbstractLinearSolver | None]
@@ -359,9 +363,9 @@ class AbstractSolverDistance(AbstractDistance):
         """Build the solver state for `graph`.
 
         Some solvers read concrete sparse indices or build a preconditioner on
-        the host, such as `GridMultigridSolver` and `AMJaxCGSolver`, so call it
+        the host, such as `GridMultigridCGSolver` and `AMJaxCGSolver`, so call it
         outside `jax.jit`. `ResistanceDistance` also builds the
-        `GridMultigridSolver` state of a `GridGraph` inside `jax.jit`.
+        `GridMultigridCGSolver` state of a `GridGraph` inside `jax.jit`.
 
         **Arguments:**
 
@@ -399,7 +403,7 @@ _CONTIGUITIES = {4: ROOK_CONTIGUITY, 8: QUEEN_CONTIGUITY}
 
 
 def _grid_multigrid_state(distance: AbstractSolverDistance, graph: GridGraph) -> Any:
-    """The `GridMultigridSolver` state of `distance` for `graph`, also in a trace.
+    """The `GridMultigridCGSolver` state of `distance` for `graph`, also in a trace.
 
     The solver reads the grid of the state from concrete sparse indices, outside
     the trace, with the exact distance (see `AbstractDistance.exact`), whose

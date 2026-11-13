@@ -28,7 +28,7 @@ from jaxscape.solvers import (
     AMJaxCGSolver,
     CholmodSolver,
     CuDSSSolver,
-    PyAMGSolver,
+    PyAMGCGSolver,
 )
 
 
@@ -40,7 +40,7 @@ AMJAX_AVAILABLE = PYAMG_AVAILABLE and find_spec("amjax") is not None
 # Build list of available solvers
 available_solvers = []
 if PYAMG_AVAILABLE:
-    available_solvers.append(PyAMGSolver())
+    available_solvers.append(PyAMGCGSolver())
 if CHOLMOD_AVAILABLE:
     available_solvers.append(CholmodSolver())
 if AMJAX_AVAILABLE:
@@ -696,7 +696,7 @@ def test_reseeded_spielman_distances_draw_other_projections():
         return distance.reseeded(index)(grid, sources=sources)
 
     # Equal to rounding: on an RTX 3090, two runs of one program with the
-    # default `GridMultigridSolver` differed by up to 4e-15.
+    # default `GridMultigridCGSolver` differed by up to 4e-15.
     np.testing.assert_allclose(reseeded(1), reseeded(1), rtol=1e-12, atol=1e-12)
     assert not np.allclose(reseeded(1), reseeded(2))
     assert not np.allclose(reseeded(1), distance(grid, sources=sources))

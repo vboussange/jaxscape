@@ -39,7 +39,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from jaxscape import ResistanceDistance, SensitivityAnalysis, SpielmanApproximation
-from jaxscape.solvers import GridMultigridSolver
+from jaxscape.solvers import GridMultigridCGSolver
 from PIL import Image
 from scipy.ndimage import distance_transform_edt, gaussian_filter, map_coordinates
 
@@ -72,7 +72,7 @@ BARRIER_PERMEABILITY = 0.03
 
 # Analysis
 DISTANCE = ResistanceDistance(
-    solver=GridMultigridSolver(rtol=1e-3),
+    solver=GridMultigridCGSolver(rtol=1e-3),
     method=SpielmanApproximation(epsilon=0.2, seed=0),
 )
 DEPENDENCY_RANGE = 64  # pixels

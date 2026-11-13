@@ -25,9 +25,10 @@ except ImportError:
 
 
 @final
-class AMJaxCGSolverState(eqx.Module):
-    """State for `AMJaxCGSolver`: CG bound to one operator, and a preconditioner
-    that `reinit` keeps for other operators of the same sparsity pattern."""
+class AMJaxCGState(eqx.Module):
+    """State of an `AMJaxCGSolver`: the conjugate gradient solver bound to one
+    operator, and the preconditioner that `reinit` keeps for other operators of
+    the same sparsity pattern."""
 
     cg_state: PyTree[Any]
     preconditioner: AbstractLinearOperator
@@ -107,13 +108,13 @@ def build_amjax_solver(
 
 
 class AMJaxCGSolver(AbstractReusableStateSolver):
-    """
-    A Lineax CG solver with an AMJax algebraic multigrid preconditioner.
+    """Conjugate gradients preconditioned by algebraic multigrid, in JAX.
 
-    The PyAMG hierarchy setup is performed once before entering Lineax's traced
-    solve path. The resulting AMJax V-cycle is wrapped as a
-    `lineax.FunctionLinearOperator` and supplied to `lineax.CG` through the
-    `preconditioner` option.
+    `init` builds the multigrid hierarchy of the matrix with PyAMG, on the CPU,
+    and converts it to AMJax. Each solve runs `lineax.CG`, preconditioned by
+    one AMJax V-cycle per iteration, in JAX on CPU or GPU, inside `jax.jit`.
+    `reinit` keeps the hierarchy for a matrix of the same sparsity pattern with
+    other values.
 
     !!! example
 
@@ -133,11 +134,11 @@ class AMJaxCGSolver(AbstractReusableStateSolver):
     !!! warning
         `amjax` and `pyamg` must be installed to use this solver.
 
-        Reverse-mode gradients through solver calls require a symmetric AMJax
-        preconditioner. This holds for the default matching pre/post Jacobi
-        smoothers, but may not hold for custom non-symmetric smoother choices.
-        Such configurations can still be valid for forward solves, but Lineax
-        may need to transpose the preconditioner during autodiff.
+        Reverse-mode gradients through the solves require a symmetric
+        preconditioner. The default smoothers, the same Jacobi relaxation
+        before and after the coarse correction, give one. Other smoothers can
+        give a nonsymmetric preconditioner: solves remain valid, but Lineax may
+        transpose the preconditioner when it differentiates them.
     """
 
     rtol: float = 1e-3
@@ -186,9 +187,9 @@ class AMJaxCGSolver(AbstractReusableStateSolver):
 
     def init(
         self, operator: AbstractLinearOperator, options: dict[str, Any]
-    ) -> AMJaxCGSolverState:
+    ) -> AMJaxCGState:
         self._check_options(options)
-        return AMJaxCGSolverState(
+        return AMJaxCGState(
             cg_state=self._cg_solver().init(operator, options),
             preconditioner=self._init_preconditioner(operator, options),
         )
@@ -197,11 +198,11 @@ class AMJaxCGSolver(AbstractReusableStateSolver):
         self,
         operator: AbstractLinearOperator,
         options: dict[str, Any],
-        state: AMJaxCGSolverState,
-    ) -> AMJaxCGSolverState:
+        state: AMJaxCGState,
+    ) -> AMJaxCGState:
         """Bind CG to `operator` and keep the preconditioner of `state`."""
         self._check_options(options)
-        return AMJaxCGSolverState(
+        return AMJaxCGState(
             cg_state=self._cg_solver().init(operator, options),
             preconditioner=state.preconditioner,
         )
@@ -210,7 +211,7 @@ class AMJaxCGSolver(AbstractReusableStateSolver):
         self,
         operator: AbstractLinearOperator,
         options: dict[str, Any] | None = None,
-    ) -> AMJaxCGSolverState:
+    ) -> AMJaxCGState:
         """Deprecated alias of `init`, as `reinit` serves any operator."""
         warnings.warn(
             "`init_preconditioner` is deprecated; use `init`.",
@@ -223,8 +224,8 @@ class AMJaxCGSolver(AbstractReusableStateSolver):
         self,
         operator: AbstractLinearOperator,
         options: dict[str, Any],
-        state: AMJaxCGSolverState,
-    ) -> AMJaxCGSolverState:
+        state: AMJaxCGState,
+    ) -> AMJaxCGState:
         """Deprecated alias of `reinit`."""
         warnings.warn(
             "`materialize_state` is deprecated; use `reinit`.",
@@ -264,7 +265,7 @@ class AMJaxCGSolver(AbstractReusableStateSolver):
 
     def compute(
         self,
-        state: AMJaxCGSolverState,
+        state: AMJaxCGState,
         vector: PyTree[Array],
         options: dict[str, Any],
     ) -> tuple[PyTree[Array], RESULTS, dict[str, Any]]:
@@ -274,8 +275,8 @@ class AMJaxCGSolver(AbstractReusableStateSolver):
         return self._cg_solver().compute(state.cg_state, vector, cg_options)
 
     def transpose(
-        self, state: AMJaxCGSolverState, options: dict[str, Any]
-    ) -> tuple[AMJaxCGSolverState, dict[str, Any]]:
+        self, state: AMJaxCGState, options: dict[str, Any]
+    ) -> tuple[AMJaxCGState, dict[str, Any]]:
         self._check_options(options)
         cg_options = {"preconditioner": state.preconditioner}
         transposed_cg_state, transposed_options = self._cg_solver().transpose(
@@ -284,7 +285,7 @@ class AMJaxCGSolver(AbstractReusableStateSolver):
         )
         transposed_preconditioner = transposed_options["preconditioner"]
         return (
-            AMJaxCGSolverState(
+            AMJaxCGState(
                 cg_state=transposed_cg_state,
                 preconditioner=transposed_preconditioner,
             ),
@@ -292,14 +293,14 @@ class AMJaxCGSolver(AbstractReusableStateSolver):
         )
 
     def conj(
-        self, state: AMJaxCGSolverState, options: dict[str, Any]
-    ) -> tuple[AMJaxCGSolverState, dict[str, Any]]:
+        self, state: AMJaxCGState, options: dict[str, Any]
+    ) -> tuple[AMJaxCGState, dict[str, Any]]:
         self._check_options(options)
         cg_options = {"preconditioner": state.preconditioner}
         conj_cg_state, conj_options = self._cg_solver().conj(state.cg_state, cg_options)
         conj_preconditioner = conj_options["preconditioner"]
         return (
-            AMJaxCGSolverState(
+            AMJaxCGState(
                 cg_state=conj_cg_state,
                 preconditioner=conj_preconditioner,
             ),

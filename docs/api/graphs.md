@@ -1,6 +1,7 @@
 ::: jaxscape.graph.AbstractGraph
     options:
-      members: get_adjacency_matrix
+      members:
+        - get_adjacency_matrix
 
 ::: jaxscape.graph.Graph
     options:
@@ -8,7 +9,7 @@
         - get_adjacency_matrix
 ::: jaxscape.graph.GridGraph
     options:
-      members: 
+      members:
         - coord_to_index
         - index_to_coord
         - node_values_to_array

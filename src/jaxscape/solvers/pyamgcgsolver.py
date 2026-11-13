@@ -27,24 +27,37 @@ except ImportError:
     _pyamg = None
     PYAMG_AVAILABLE = False
 
-type _PyAMGSolverState = tuple[BCOO, PackedStructures]
+type _PyAMGCGState = tuple[BCOO, PackedStructures]
 
 
-class PyAMGSolver(AbstractLinearSolver):
-    """
-    A linear solver that uses PyAMG to solve a sparse linear system.
+class PyAMGCGSolver(AbstractLinearSolver):
+    """Conjugate gradients preconditioned by algebraic multigrid, on the CPU.
+
+    Each solve builds the multigrid hierarchy of the matrix with PyAMG, and runs
+    SciPy conjugate gradients, preconditioned by this hierarchy, on one
+    right-hand side after another, through a host callback. A solve that does
+    not converge within `maxiter` iterations raises an error.
+
+    **Attributes:**
+
+    - `rtol`, `atol`: Tolerances of SciPy conjugate gradients, which stop when
+      the norm of the residual is at most `max(rtol * norm(b), atol)` for the
+      right-hand side `b`.
+    - `maxiter`: Largest number of iterations, or `None` for SciPy's default.
+    - `pyamg_method`: Function that builds the PyAMG hierarchy from a SciPy
+      sparse matrix. Defaults to `pyamg.smoothed_aggregation_solver`.
 
     !!! example
         ```python
-        from jaxscape.solvers import PyAMGSolver
+        from jaxscape.solvers import PyAMGCGSolver
 
-        solver = PyAMGSolver(rtol=1e-6, atol=1e-6, maxiter=100_000)
+        solver = PyAMGCGSolver(rtol=1e-6, atol=1e-6, maxiter=100_000)
         distance = ResistanceDistance(solver=solver)
         dist = distance(grid)
 
-        # Custom AMG method
+        # Another construction of the algebraic multigrid hierarchy
         import pyamg
-        solver = PyAMGSolver(pyamg_method=pyamg.ruge_stuben_solver)
+        solver = PyAMGCGSolver(pyamg_method=pyamg.ruge_stuben_solver)
         ```
 
     !!! warning
@@ -59,7 +72,8 @@ class PyAMGSolver(AbstractLinearSolver):
     def __check_init__(self):
         if not PYAMG_AVAILABLE:
             raise ImportError(
-                "pyamg is required for PyAMGSolver. Install it with: pip install pyamg"
+                "PyAMGCGSolver requires pyamg. Install it with "
+                "`uv add jaxscape --extra pyamg`."
             )
 
         if isinstance(self.rtol, (int, float)) and self.rtol < 0:
@@ -75,12 +89,12 @@ class PyAMGSolver(AbstractLinearSolver):
 
     def init(
         self, operator: AbstractLinearOperator, options: dict[str, Any]
-    ) -> _PyAMGSolverState:
+    ) -> _PyAMGCGState:
         del options
 
         A_bcoo = operator.as_matrix()
         if not isinstance(A_bcoo, BCOO):
-            raise ValueError("PyAMGSolver requires a BCOO-backed operator.")
+            raise ValueError("PyAMGCGSolver requires a BCOO-backed operator.")
         packed_structures = pack_structures(operator)
         return A_bcoo, packed_structures
 
@@ -106,7 +120,7 @@ class PyAMGSolver(AbstractLinearSolver):
 
         rhs_size = b_scipy.shape[0]
         if A_scipy.shape is None:
-            raise ValueError("PyAMGSolver requires a matrix with a known shape.")
+            raise ValueError("PyAMGCGSolver requires a matrix with a known shape.")
         if rhs_size != A_scipy.shape[0]:
             raise ValueError(
                 "The first dimension of b must match the operator dimension."
@@ -127,7 +141,7 @@ class PyAMGSolver(AbstractLinearSolver):
 
     def compute(
         self,
-        state: _PyAMGSolverState,
+        state: _PyAMGCGState,
         vector: PyTree[Array],
         options: dict[str, Any],
     ) -> tuple[PyTree[Array], RESULTS, dict[str, Any]]:
@@ -147,14 +161,14 @@ class PyAMGSolver(AbstractLinearSolver):
         solution = unravel_solution(solution, packed_structures)
         return solution, RESULTS.successful, {}
 
-    def transpose(self, state: _PyAMGSolverState, options: dict[str, Any]):
+    def transpose(self, state: _PyAMGCGState, options: dict[str, Any]):
         A_bcoo, packed_structures = state
         transposed_packed_structures = transpose_packed_structures(packed_structures)
         A_bcoo_T = A_bcoo.T
         transpose_state = (A_bcoo_T, transposed_packed_structures)
         return transpose_state, {}
 
-    def conj(self, state: _PyAMGSolverState, options: dict[str, Any]):
+    def conj(self, state: _PyAMGCGState, options: dict[str, Any]):
         del options
         A_bcoo, packed_structures = state
         # BCOO stores coordinate indices, not CSR/CSC indptr data; rebuild from

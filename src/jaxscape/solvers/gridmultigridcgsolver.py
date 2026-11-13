@@ -28,8 +28,8 @@ _OMEGA = 2 / 3
 
 
 @final
-class GridMultigridState(eqx.Module):
-    """State of a `GridMultigridSolver`: the stencil of one matrix on its grid.
+class GridMultigridCGState(eqx.Module):
+    """State of a `GridMultigridCGSolver`: the stencil of one matrix on its grid.
 
     **Attributes:**
 
@@ -79,12 +79,13 @@ class _MultilevelSolver(eqx.Module):
 
 
 @final
-class GridMultigridSolver(AbstractReusableStateSolver):
+class GridMultigridCGSolver(AbstractReusableStateSolver):
     """Conjugate gradients preconditioned by geometric multigrid, for grid graphs.
 
     Solves the symmetric positive definite matrices whose sparsity pattern is a
-    grid stencil, such as the grounded Laplacians of a `GridGraph`, with rook or
-    queen contiguity, that `ResistanceDistance` solves. It is the default solver
+    grid stencil, such as the grounded Laplacians of a `GridGraph` with rook or
+    queen contiguity, in which `ResistanceDistance` solves linear systems. It
+    is the default solver
     of `ResistanceDistance`. It runs in JAX, on any device, in float32 and
     float64, and needs no optional dependency. The state holds the matrix
     coefficients on the grid: only `init` reads the grid from concrete sparse
@@ -104,12 +105,13 @@ class GridMultigridSolver(AbstractReusableStateSolver):
     sides, as `jax.vmap` makes, runs as one solve with the right-hand sides
     contiguous in memory, until all have converged.
 
-    A larger `rtol` takes fewer iterations, at the cost of the resistances to
-    pixels behind barriers, which converge last. On large grids in float32,
-    its solutions stay accurate where those of sparse direct solvers degrade
-    around the ground of `ResistanceDistance`, and it factorizes only the
-    coarsest grid, which suits conductances that change at every step, as in
-    optimization loops. In float64, sparse direct solvers can be faster.
+    A larger `rtol` takes fewer iterations, at the cost of the accuracy of the
+    resistances to pixels behind barriers, which converge last. On large grids
+    in float32, its solutions stay accurate around the ground vertex of
+    `ResistanceDistance`, where those of sparse direct solvers lose accuracy.
+    It factorizes only the matrix of the coarsest grid, which suits
+    conductances that change at every step, as in optimization loops. In
+    float64, sparse direct solvers can be faster.
 
     **Attributes:**
 
@@ -144,7 +146,7 @@ class GridMultigridSolver(AbstractReusableStateSolver):
 
     def init(
         self, operator: AbstractLinearOperator, options: dict[str, Any]
-    ) -> GridMultigridState:
+    ) -> GridMultigridCGState:
         del options
         matrix = _matrix(operator)
         slots, shape, offsets = _grid(matrix)
@@ -154,8 +156,8 @@ class GridMultigridSolver(AbstractReusableStateSolver):
         self,
         operator: AbstractLinearOperator,
         options: dict[str, Any],
-        state: GridMultigridState,
-    ) -> GridMultigridState:
+        state: GridMultigridCGState,
+    ) -> GridMultigridCGState:
         """Return the state of the values of `operator`.
 
         **Arguments:**
@@ -175,7 +177,7 @@ class GridMultigridSolver(AbstractReusableStateSolver):
         return _stencil(state.slots, (shape[0], shape[1]), state.offsets, data)
 
     def compute(
-        self, state: GridMultigridState, vector: Array, options: dict[str, Any]
+        self, state: GridMultigridCGState, vector: Array, options: dict[str, Any]
     ) -> tuple[Array, RESULTS, dict[str, Any]]:
         del options
         solution, solved = _solve(state, vector, self.rtol, self.max_steps)
@@ -188,10 +190,10 @@ class GridMultigridSolver(AbstractReusableStateSolver):
         )
         return solution, RESULTS.where(solved, RESULTS.successful, failed), {}
 
-    def transpose(self, state: GridMultigridState, options: dict[str, Any]):
+    def transpose(self, state: GridMultigridCGState, options: dict[str, Any]):
         return state, options
 
-    def conj(self, state: GridMultigridState, options: dict[str, Any]):
+    def conj(self, state: GridMultigridCGState, options: dict[str, Any]):
         return state, options
 
     def assume_full_rank(self):
@@ -201,7 +203,7 @@ class GridMultigridSolver(AbstractReusableStateSolver):
 def _matrix(operator: AbstractLinearOperator) -> BCOO:
     matrix = operator.as_matrix()
     if not isinstance(matrix, BCOO):
-        raise TypeError("GridMultigridSolver requires a BCOO-backed operator.")
+        raise TypeError("GridMultigridCGSolver requires a BCOO-backed operator.")
     return lax.stop_gradient(matrix)
 
 
@@ -232,7 +234,7 @@ def _grid(
         indices = np.asarray(matrix.indices, dtype=np.int64)
     except jax_errors.TracerArrayConversionError:
         raise ValueError(
-            "GridMultigridSolver reads its grid from concrete sparse indices, so it "
+            "GridMultigridCGSolver reads its grid from concrete sparse indices, so it "
             "initializes outside `jax.jit`, except for the state of a `GridGraph`, "
             "which `distance.init(graph)` builds from its shape and contiguity. "
             "Create the state with `distance.init(graph)` (or "
@@ -248,7 +250,7 @@ def _grid(
     )
     if n % width or np.any(np.abs(steps) > 1):
         raise ValueError(
-            "GridMultigridSolver solves the matrices of grid graphs, whose stored "
+            "GridMultigridCGSolver solves the matrices of grid graphs, whose stored "
             "entries couple each vertex `i * width + j` to its neighbours on a grid "
             "of `width` columns, such as those of a `GridGraph`. This matrix has "
             "other entries. For other graphs, pass another solver, such as "
@@ -267,14 +269,14 @@ def _grid(
     return jnp.asarray(slots, jnp.int32), (n // width, width), offsets
 
 
-def _checked_data(matrix: BCOO, state: GridMultigridState) -> Array:
+def _checked_data(matrix: BCOO, state: GridMultigridCGState) -> Array:
     """Return the stored values of `matrix` after checking its sparse indices.
 
     It raises, at trace time for another number of stored entries and at run
     time for other indices.
     """
     mismatch = (
-        "GridMultigridSolver: the operator's sparse indices differ from those the "
+        "GridMultigridCGSolver: the operator's sparse indices differ from those the "
         "state was initialized for. A state belongs to one grid; initialize a new "
         "one, e.g. with `distance.init(graph)`, for this graph geometry."
     )
@@ -299,7 +301,7 @@ def _initial_state(
     shape: tuple[int, int],
     offsets: tuple[tuple[int, int], ...],
     data: Array,
-) -> GridMultigridState:
+) -> GridMultigridCGState:
     """`_stencil` in one compiled program."""
     return _stencil(slots, shape, offsets, data)
 
@@ -309,12 +311,12 @@ def _stencil(
     shape: tuple[int, int],
     offsets: tuple[tuple[int, int], ...],
     data: Array,
-) -> GridMultigridState:
+) -> GridMultigridCGState:
     """The state of the matrix that stores `data` at `slots`."""
     height, width = shape
     stencil = jnp.zeros(len(offsets) * height * width, data.dtype)
     stencil = stencil.at[slots].add(data, mode="drop")
-    return GridMultigridState(
+    return GridMultigridCGState(
         slots, tuple(stencil.reshape(len(offsets), height, width)), offsets
     )
 
@@ -322,7 +324,7 @@ def _stencil(
 # Each solve traces it, and Lineax traces a solve up to three times: a jitted
 # function is traced once for its shapes.
 @eqx.filter_jit
-def _multilevel_solver(state: GridMultigridState) -> _MultilevelSolver:
+def _multilevel_solver(state: GridMultigridCGState) -> _MultilevelSolver:
     """The multigrid hierarchy of the matrix of `state`."""
     A = state.stencil
     height, width = A[0].shape
@@ -610,7 +612,7 @@ def _cg(
 
 
 def _solve(
-    state: GridMultigridState, vector: Array, rtol: float, max_steps: int
+    state: GridMultigridCGState, vector: Array, rtol: float, max_steps: int
 ) -> tuple[Array, Array]:
     """The solution of one right-hand side, and whether it converged. Under
     `jax.vmap`, the right-hand sides of a batch solve together."""

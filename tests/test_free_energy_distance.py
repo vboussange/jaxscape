@@ -11,7 +11,7 @@ import pytest
 from jax import Array
 from jax.experimental.sparse import BCOO
 from jaxscape import FreeEnergyDistance, Graph, GridGraph
-from jaxscape.solvers import AMJaxCGSolver, CholmodSolver, PyAMGSolver
+from jaxscape.solvers import AMJaxCGSolver, CholmodSolver, PyAMGCGSolver
 
 
 EDGES = np.array([[0, 1], [0, 2], [1, 2], [1, 3], [2, 3]])
@@ -200,7 +200,7 @@ def test_sparse_solvers_state_and_joint_gradients(solver_name, dtype):
     if solver_name == "cg":
         solver = lx.CG(rtol=rtol, atol=atol, max_steps=100)
     elif solver_name == "pyamg":
-        solver = PyAMGSolver(rtol=rtol, atol=atol, maxiter=100)
+        solver = PyAMGCGSolver(rtol=rtol, atol=atol, maxiter=100)
     elif solver_name == "cholespy":
         solver = CholmodSolver()
     else:
@@ -474,11 +474,11 @@ def test_removed_rsp_distance_import_names_replacement():
 @pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
 def test_grid_multigrid_solver_matches_dense_solves(dtype):
     # The free-energy operator of a grid graph has the grid's stencil, which
-    # GridMultigridSolver solves. Its state once failed to build: the state of
+    # GridMultigridCGSolver solves. Its state once failed to build: the state of
     # ResistanceDistance's default builds under `jax.ensure_compile_time_eval`,
     # where every `eqx.error_if` raises, and the free-energy operator checks its
     # conductances with them.
-    from jaxscape.solvers import GridMultigridSolver
+    from jaxscape.solvers import GridMultigridCGSolver
 
     rng = np.random.default_rng(0)
     grid = GridGraph(
@@ -488,7 +488,7 @@ def test_grid_multigrid_solver_matches_dense_solves(dtype):
     sources = jnp.array([0, 50])
 
     expected = FreeEnergyDistance(theta=0.3)(grid, sources=sources)
-    multigrid = FreeEnergyDistance(theta=0.3, solver=GridMultigridSolver())
+    multigrid = FreeEnergyDistance(theta=0.3, solver=GridMultigridCGSolver())
     actual = multigrid(grid, sources=sources)
 
     rtol = 1e-5 if dtype == jnp.float32 else 1e-10

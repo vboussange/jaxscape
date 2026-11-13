@@ -25,12 +25,13 @@ class FreeEnergyDistance(AbstractSolverDistance):
     - `theta`: Finite positive scalar inverse temperature. Larger values
       concentrate the path distribution on least-cost paths. Distances are
       differentiable with respect to `theta`.
-    - `solver`: Optional Lineax solver, with the same options as
-      `ResistanceDistance`. `None` uses a dense solve, suitable for small graphs.
-      Larger graphs need a direct solver, `CholmodSolver` on CPU and
-      `CuDSSSolver` on GPU: iterative solvers, `GridMultigridSolver` included,
-      need tolerances far below their defaults to resolve distant entries. See
-      [Choosing a solver](linear_solvers.md#choosing-a-solver).
+    - `solver`: Lineax solver of linear systems in the system matrix, from the
+      same choices as for `ResistanceDistance`, or `None`, the default, for
+      dense linear algebra, which suits small graphs. Larger graphs need a
+      sparse direct solver, `CholmodSolver` on CPU and `CuDSSSolver` on GPU:
+      iterative solvers, `GridMultigridCGSolver` included, need tolerances far
+      below their defaults to resolve the small entries of $Z$ between distant
+      vertices. See [Choosing a solver](linear_solvers.md#choosing-a-solver).
 
     For conductances $a_{ij}$, let $c_{ij}=1/a_{ij}$ on present edges,
     $P_{ij}=a_{ij}/\sum_k a_{ik}$, and $Z=(I-P\odot e^{-\theta C})^{-1}$.
@@ -50,15 +51,17 @@ class FreeEnergyDistance(AbstractSolverDistance):
 
     **Precision and errors:** float32 and float64 inputs are supported. Entries
     of $Z$ decay exponentially with path cost, and float64 resolves smaller
-    entries, hence larger distances and larger `theta`. Each queried logarithm
-    is checked against a residual-based error estimate; unresolved entries raise
-    an `EquinoxRuntimeError` and are never clipped or substituted. The estimate
+    entries, hence larger distances and larger `theta`. The logarithm of each
+    queried entry is checked against an error estimate computed from the
+    residual of the solve; entries that the precision does not resolve raise
+    an `EquinoxRuntimeError`, and are never clipped or substituted. The estimate
     includes heuristic rounding allowances, so accuracy should be validated for
     the intended workload. Checks use `eqx.error_if`; on GPU, a failed check may
     be reported without raising, depending on `EQX_ON_ERROR`.
 
-    **Differentiation:** first-order reverse mode reuses the forward solutions.
-    Forward-mode and higher-order derivatives are not validated.
+    **Differentiation:** first-order reverse-mode differentiation reuses the
+    solutions of the forward computation. Forward-mode and higher-order
+    derivatives are not validated.
 
     !!! example
 

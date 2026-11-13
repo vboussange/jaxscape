@@ -21,9 +21,10 @@ CUDSS_AVAILABLE = importlib.util.find_spec("spineax") is not None
 class CuDSSSolver(AbstractSparseDirectSolver[Any]):
     """Sparse Cholesky solver running NVIDIA cuDSS on the GPU through spineax.
 
-    Solves float32 and float64 systems. One query shares a factorization across
-    its right-hand sides in one multi-RHS cuDSS solve, and it is not
-    differentiated: gradients reuse the forward solutions or factorization. See
+    Solves float32 and float64 systems. A query solves all its right-hand sides
+    in one call of cuDSS, with one factorization. JAX does not differentiate
+    through the solves: gradients reuse the solutions or the factorization of
+    the query. See
     `AbstractSparseDirectSolver` for the checks of each factorization and solve,
     which spineax does not report itself.
 
@@ -31,7 +32,7 @@ class CuDSSSolver(AbstractSparseDirectSolver[Any]):
 
         It needs an NVIDIA GPU of compute capability 7.5 or newer and CUDA-enabled
         JAX, and raises an error naming what is missing elsewhere. The `cudss`
-        extra, `pip install 'jaxscape[cudss]'`, installs spineax 0.0.5 and cuDSS
+        extra, `uv add jaxscape --extra cudss`, installs spineax 0.0.5 and cuDSS
         below 1.0 for CUDA 13, on Linux x86-64 with Python 3.12 or newer. It brings
         JAX's CUDA 13 plugin, so leave out the `cuda` extra. For CUDA 12, build
         spineax from source as in
@@ -46,18 +47,20 @@ class CuDSSSolver(AbstractSparseDirectSolver[Any]):
 
     !!! note
 
-        `reinit` uses up the factorization of the state it refactorizes, because
-        cuDSS handles cannot be copied (spineax issue #27). A used-up or evicted
-        state stays correct, and spineax repeats its costly analysis, so pass each
-        new state to the next `reinit`. In float32, vertices cut off from the ground
-        vertex can pass the solve check on grids of 300 x 300 cells or more; use
-        float64 when conductances can be zero.
+        `reinit` consumes the factorization of the state it refactorizes,
+        because cuDSS handles cannot be copied (spineax issue #27). A consumed
+        state, or one evicted from spineax's cache, still gives correct
+        solutions, but spineax then repeats the symbolic analysis, which is
+        costly: pass each new state to the next `reinit`. In float32,
+        vertices cut off from the ground vertex can pass the solve check on
+        grids of 300 x 300 cells or more; use float64 when conductances can be
+        zero.
 
     !!! note
 
         In float32, solutions on large grids are inaccurate around the ground
         vertex of `ResistanceDistance`. For permeability sensitivity on large
-        tiles, use float64, or `GridMultigridSolver` in float32.
+        tiles, use float64, or `GridMultigridCGSolver` in float32.
     """
 
     def __check_init__(self):
