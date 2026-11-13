@@ -1,13 +1,17 @@
 # JAXScape
 
-JAXScape computes differentiable landscape connectivity distances on graphs. This glossary covers how those distances reuse linear-solver work across queries and graphs.
+JAXScape computes differentiable distances on the graphs of landscapes. This glossary covers how those distances reuse linear-solver work across queries and graphs, and the windows of the analyses that compute them on rasters.
 
 ## Language
 
 ### Queries and solver state
 
+**Distance on a graph**:
+A distance between the vertices of a graph computed from its edge weights, read as conductances: the least-cost path, resistance and free-energy distances (`LCPDistance`, `ResistanceDistance`, `FreeEnergyDistance`).
+_Avoid_: Graph distance metric
+
 **Query**:
-One distance computation on a graph: between all vertices, among selected nodes, or from sources to targets.
+One distance computation on a graph: between all vertices, among selected vertices (`nodes`), or from sources to targets.
 
 **System matrix**:
 The sparse symmetric positive definite matrix whose linear systems the queries on a graph solve, such as its grounded Laplacian.

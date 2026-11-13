@@ -5,8 +5,8 @@ of the proximities of its pairs of pixels, weighted by their habitat quality,
 where the proximity of two pixels is a decreasing function of their distance.
 `SensitivityAnalysis` computes the derivatives of this connectivity with
 respect to the quality and the permeability of each pixel. Both compute
-distances window by window, so that their memory does not grow with the size
-of the raster. The window operations serve to build other definitions of
+distances window by window: the memory of their distance computations is set
+by `dependency_range` and `batch_size`, independent of the raster size. The window operations serve to build other definitions of
 connectivity (see [Window operations](window_operations.md)).
 
 ## Windowed analyses
