@@ -202,9 +202,7 @@ def csr_matvec(pattern: CSRPattern, values: Array) -> Callable[[Array], Array]:
 
     A function that multiplies the matrix with `m` vectors, with shape `(n, m)`.
     """
-    return jax.vmap(
-        lambda vector: _product(pattern, values, vector), in_axes=1, out_axes=1
-    )
+    return jax.vmap(_product(pattern, values), in_axes=1, out_axes=1)
 
 
 def _ratio(numerator: Array, denominator: Array) -> Array:
