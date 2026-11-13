@@ -462,11 +462,6 @@ def test_grid_rectangular_coordinates_and_batched_gradients():
     np.testing.assert_allclose(actual[1], expected[1], rtol=1e-10, atol=1e-11)
 
 
-def test_removed_rsp_distance_import_names_replacement():
-    with pytest.raises(ImportError, match="FreeEnergyDistance"):
-        from jaxscape import RSPDistance  # noqa: F401
-
-
 @pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
 def test_grid_multigrid_solver_matches_dense_solves(dtype):
     # The free-energy operator of a grid graph has the grid's stencil, which

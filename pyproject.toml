@@ -43,8 +43,7 @@ amjax = [
 ]
 benchmark = [
   "matplotlib>=3.9",
-  "optimistix>=0.0.10",
-  "pyamg>=5.1.0"
+  "optimistix>=0.0.10"
 ]
 cholespy = [
   "cholespy>=2.2.0"
@@ -82,9 +81,6 @@ lint = [
   "pre-commit>=4.0",
   "pyright[nodejs]==1.1.414",
   "ruff==0.17.4"
-]
-pyamg = [
-  "pyamg>=5.1.0"
 ]
 tests = [
   "networkx>=3.4",

@@ -131,7 +131,6 @@ TOOL_SPECS_BY_TASK = {
         # Resistance pinv-family profiles are kept out of the full suite because
         # the large resistance case is not a scientifically useful dense-pinv
         # benchmark target.
-        ToolSpec("JAXScape / PyAMG", required=False),
         ToolSpec("JAXScape / CholmodSolver / f32", required=False, automated=False),
         ToolSpec("JAXScape / CholmodSolver / f64", required=False, automated=False),
         *CUDSS_TOOL_SPECS,
@@ -227,7 +226,6 @@ TOOL_FAMILY_COLORS = {
     "JAXScape": "#1F77B4",
     "JAXScape / pinv": "#1F77B4",
     "JAXScape / approx pinv": "#5B8FF9",
-    "JAXScape / PyAMG": "#17BECF",
     "JAXScape / CholmodSolver": "#9467BD",
     "JAXScape / CuDSSSolver": "#E45756",
     "JAXScape / AMJaxCGSolver": "#4C78A8",

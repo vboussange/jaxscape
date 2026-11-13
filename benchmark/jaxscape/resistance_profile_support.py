@@ -38,21 +38,7 @@ class ResistanceProfile:
 
 
 RESISTANCE_SOLVER_RTOL = 1e-3
-RESISTANCE_SOLVER_MAX_ITERATIONS: int | None = None
 RESISTANCE_APPROXIMATION_EPSILON = 0.05
-
-
-def make_pyamg_solver() -> Any:
-    try:
-        from jaxscape.solvers.pyamgsolver import PyAMGSolver
-    except ImportError as error:
-        raise ImportError(
-            "Install the benchmark Python extra to enable the PyAMG resistance profile."
-        ) from error
-    return PyAMGSolver(
-        rtol=RESISTANCE_SOLVER_RTOL,
-        maxiter=RESISTANCE_SOLVER_MAX_ITERATIONS,
-    )
 
 
 def make_cholmod_solver() -> Any:

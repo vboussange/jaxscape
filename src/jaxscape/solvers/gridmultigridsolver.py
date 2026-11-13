@@ -19,10 +19,10 @@ from .sparsesolver import CSRPattern
 _ROOK = ((-1, 0), (0, -1), (0, 0), (0, 1), (1, 0))
 _QUEEN = tuple((i, j) for i in (-1, 0, 1) for j in (-1, 0, 1))
 # The largest number of points of the coarsest level, which a Cholesky
-# factorization solves (pyamg's `max_coarse`).
+# factorization solves.
 _MAX_COARSE = 1024
-# Damped Jacobi relaxation, as pyamg's `jacobi`: iterations before and after the
-# coarse correction, and weight.
+# Damped Jacobi relaxation: iterations before and after the coarse correction,
+# and weight.
 _ITERATIONS = 1
 _OMEGA = 2 / 3
 
@@ -46,7 +46,7 @@ class _Grid(eqx.Module):
 
 
 class _Level(eqx.Module):
-    """One level of a `_MultilevelSolver`: a grid, as pyamg's levels.
+    """One level of a `_MultilevelSolver`, on a grid.
 
     **Attributes:**
 
@@ -63,7 +63,7 @@ class _Level(eqx.Module):
 
 
 class _MultilevelSolver(eqx.Module):
-    """The multigrid hierarchy of a matrix, as pyamg's `MultilevelSolver`.
+    """The multigrid hierarchy of a matrix.
 
     Each solve builds it.
 

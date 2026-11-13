@@ -75,9 +75,6 @@ uv add jaxscape --extra amjax      # CG with an AMJax preconditioner
 uv add jaxscape --extra cudss      # cuDSS direct solver (NVIDIA GPU, CUDA 13)
 ```
 
-`PyAMGSolver` is deprecated: `AMJaxCGSolver` builds the same PyAMG hierarchy
-once and runs its cycles in JAX.
-
 !!! info "CI/CD coverage"
     The standard CI test suite exercises `GridMultigridSolver`, `CholmodSolver`
     and `AMJaxCGSolver`. CI has no NVIDIA GPU: it runs the sparse direct solver logic
@@ -86,8 +83,8 @@ once and runs its cycles in JAX.
 
 ## Algebraic multigrid solver
 
-`AMJaxCGSolver` builds a multigrid hierarchy once, on the host, with PyAMG, and
-solves with conjugate gradients preconditioned by its V-cycles in JAX, inside
+`AMJaxCGSolver` builds a multigrid hierarchy once, on the host, and solves
+with conjugate gradients preconditioned by its V-cycles in JAX, inside
 `jax.jit` and `jax.grad`. The hierarchy keeps the dtype of the matrix. For
 ill-conditioned graph Laplacians, enable `JAX_ENABLE_X64=true` and build the
 matrix and right-hand sides in `float64`: enabling x64 does not promote
@@ -326,10 +323,6 @@ class JacobiCGSolver(AbstractSparseIterativeSolver):
         - precondition
         - matvec
         - vector_shape
-
-::: jaxscape.solvers.pyamgsolver.PyAMGSolver
-    options:
-      members: false
 
 ## Advanced: `BCOOLinearOperator`
 

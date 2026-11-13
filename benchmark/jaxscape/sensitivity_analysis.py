@@ -56,10 +56,7 @@ from benchmark.benchmark_distances import (
     measure_runtime,
     ok_record_with_metrics,
 )
-from benchmark.jaxscape.resistance_profile_support import (
-    make_amjaxcg_solver,
-    make_pyamg_solver,
-)
+from benchmark.jaxscape.resistance_profile_support import make_amjaxcg_solver
 
 
 SHORTEST_PATH_GRADIENT_NOTE = (
@@ -77,7 +74,6 @@ LOGGER = logging.getLogger(__name__)
 DEFAULT_SENSITIVITY_WALLTIME_SECONDS = 180.0
 SENSITIVITY_WALLTIME_ENV = "JAXSCAPE_BENCHMARK_SENSITIVITY_WALLTIME_SECONDS"
 SENSITIVITY_LARGE_REPEATS = 1
-AMJAX_RESISTANCE_MAX_GRID_SIZE = 100
 
 
 def sensitivity_walltime_seconds() -> float:
@@ -106,12 +102,8 @@ def sensitivity_repeats(case: BenchmarkCase, config: BenchmarkConfig) -> int:
 def _resistance_solver_candidates(
     case: BenchmarkCase,
 ) -> tuple[tuple[str, Any, bool, str], ...]:
-    if case.grid_size > AMJAX_RESISTANCE_MAX_GRID_SIZE:
-        return (("PyAMGSolver", make_pyamg_solver, False, "host_callback"),)
-    return (
-        ("AMJaxCGSolver", make_amjaxcg_solver, True, "jax_preconditioned_cg"),
-        ("PyAMGSolver", make_pyamg_solver, False, "host_callback"),
-    )
+    del case
+    return (("AMJaxCGSolver", make_amjaxcg_solver, True, "jax_preconditioned_cg"),)
 
 
 def _short_error_summary(error: Exception) -> str:

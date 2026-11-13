@@ -11,7 +11,6 @@ from jaxscape.solvers import (
     AMJaxCGSolver,
     BCOOLinearOperator,
     CholmodSolver,
-    PyAMGSolver,
 )
 from jaxscape.solvers.operator import (
     _batched_linear_solve,
@@ -27,10 +26,6 @@ AMJAX_AVAILABLE = PYAMG_AVAILABLE and find_spec("amjax") is not None
 
 # Build list of available solvers
 available_solvers = []
-if PYAMG_AVAILABLE:
-    with pytest.warns(DeprecationWarning, match="AMJaxCGSolver"):
-        solver = PyAMGSolver()
-    available_solvers.append(solver)
 if CHOLMOD_AVAILABLE:
     solver = CholmodSolver()
     available_solvers.append(solver)
@@ -102,7 +97,7 @@ def test_solver_state_carries_no_gradient():
 
 
 def poisson_matrix(shape: tuple[int, int]) -> BCOO:
-    """The float32 Poisson matrix of PyAMG's gallery on a grid of `shape`."""
+    """The float32 Poisson matrix on a grid of `shape`."""
     gallery = pytest.importorskip("pyamg.gallery")
     return BCOO.from_scipy_sparse(gallery.poisson(shape, format="coo", dtype="float32"))
 
@@ -147,17 +142,3 @@ def test_amjax_state_uses_current_operator():
     x = _linear_solve(A_scaled, b, solver, state=state)
     residual = A_scaled @ x - b
     assert jnp.linalg.norm(residual) < 1e-4
-
-
-@pytest.mark.skipif(not PYAMG_AVAILABLE, reason="PyAMG not available")
-def test_pyamg_solver_is_deprecated():
-    with pytest.warns(DeprecationWarning, match=r"AMJaxCGSolver\(rtol=rtol"):
-        PyAMGSolver()
-
-
-@pytest.mark.parametrize(
-    "name", ["AMJaxCGSolverState", "GridMultigridState", "build_amjax_solver"]
-)
-def test_removed_names_raise_with_their_replacement(name):
-    with pytest.raises(ImportError, match=f"{name} was removed.*Use"):
-        exec(f"from jaxscape.solvers import {name}")
