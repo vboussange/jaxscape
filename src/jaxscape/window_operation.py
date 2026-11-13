@@ -276,7 +276,7 @@ class WindowOperation(eqx.Module):
             window_op = WindowOperation(
                 shape=(100, 100), window_size=20, buffer_size=10
             )
-            print(window_op.nb_steps)  # 25 (5x5 grid of total windows)
+            print(window_op.nb_steps)  # 16 (4x4 grid of total windows)
             ```
         """
         return (self.x_steps) * (self.y_steps)
@@ -345,7 +345,7 @@ class WindowOperation(eqx.Module):
             raster = jnp.ones((100, 100))
 
             xy, windows = window_op.eager_iterator(raster)
-            # xy.shape = (25, 2), windows.shape = (25, 40, 40)
+            # xy.shape = (16, 2), windows.shape = (16, 40, 40)
 
             # Process all total windows in parallel
             results = jax.vmap(compute)(windows)
