@@ -315,9 +315,7 @@ class AMJaxCGSolver(AbstractReusableStateSolver):
         if option_preconditioner is not None and not isinstance(
             option_preconditioner, AbstractLinearOperator
         ):
-            raise TypeError(
-                "`preconditioner` must be a lineax.AbstractLinearOperator."
-            )
+            raise TypeError("`preconditioner` must be a lineax.AbstractLinearOperator.")
 
 
 def _unbatched_bcoo(matrix: BCOO) -> BCOO:

@@ -162,8 +162,10 @@ def test_connected_component_labels():
 #         computed_sccs_sorted = [sorted(scc.tolist()) for scc in computed_sccs]
 #         expected_sccs_sorted = [sorted(scc) for scc in expected_sccs]
 
-#         assert sorted(computed_sccs_sorted) == sorted(expected_sccs_sorted), \
-#             f"Test case {i} failed. Expected {expected_sccs_sorted}, got {computed_sccs_sorted}"
+#         assert sorted(computed_sccs_sorted) == sorted(expected_sccs_sorted), (
+#             f"Test case {i} failed. Expected {expected_sccs_sorted}, "
+#             f"got {computed_sccs_sorted}"
+#         )
 #         print(f"Test case {i} passed.")
 
 # # Run the test function

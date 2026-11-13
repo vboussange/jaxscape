@@ -18,7 +18,8 @@ class WindowOperation(eqx.Module):
     - `shape`: Raster dimensions `(height, width)`.
     - `window_size`: Core window size in pixels.
     - `buffer_size`: Buffer region size around each core window.
-    - `total_window_size`: Total window size including buffers `(window_size + 2 * buffer_size)`.
+    - `total_window_size`: Total window size including buffers
+      `(window_size + 2 * buffer_size)`.
     - `x_steps`, `y_steps`: Number of windows in each dimension.
 
     !!! example
@@ -37,8 +38,9 @@ class WindowOperation(eqx.Module):
 
     !!! warning
         You must ensure that `(shape[i] - 2 * buffer_size)` is divisible by
-        `window_size` for both dimensions `i = 0, 1`. Consider using [`jaxscape.utils.padding`][jaxscape.utils.padding]
-        to pad your raster data automatically.
+        `window_size` for both dimensions `i = 0, 1`. Consider using
+        [`jaxscape.utils.padding`][jaxscape.utils.padding] to pad your raster data
+        automatically.
     """
 
     shape: tuple[int, int] = eqx.field(static=True)
@@ -48,14 +50,17 @@ class WindowOperation(eqx.Module):
     x_steps: int = eqx.field(static=True)
     y_steps: int = eqx.field(static=True)
 
-    def __init__(self, shape: tuple[int, int], window_size: int, buffer_size: int):
-        assert isinstance(shape, tuple)
+    def __init__(self, shape: tuple[int, ...], window_size: int, buffer_size: int):
+        assert isinstance(shape, tuple) and len(shape) == 2, (
+            f"`shape` must be (height, width), got {shape}."
+        )
         assert isinstance(window_size, int)
         assert isinstance(buffer_size, int)
         for i in range(2):
-            assert (
-                (shape[i] - 2 * buffer_size) % window_size == 0
-            ), f"`(shape[{i}] - 2 * buffer_size)`  must be divisible by `window_size`, consider padding the raster data."
+            assert (shape[i] - 2 * buffer_size) % window_size == 0, (
+                f"`(shape[{i}] - 2 * buffer_size)`  must be divisible by "
+                "`window_size`, consider padding the raster data."
+            )
 
         self.shape = shape
         # TODO: window size should be an arbitrary shape
@@ -64,12 +69,12 @@ class WindowOperation(eqx.Module):
         self.total_window_size = self.window_size + 2 * self.buffer_size
         self.x_steps = int((shape[0] - 2 * buffer_size) // window_size)
         self.y_steps = int((shape[1] - 2 * buffer_size) // window_size)
-        assert (
-            self.x_steps > 0
-        ), "`window_size` or `buffer_size` are too large for the raster data."
-        assert (
-            self.y_steps > 0
-        ), "`window_size` or `buffer_size` are too large for the raster data."
+        assert self.x_steps > 0, (
+            "`window_size` or `buffer_size` are too large for the raster data."
+        )
+        assert self.y_steps > 0, (
+            "`window_size` or `buffer_size` are too large for the raster data."
+        )
 
     def extract_total_window(self, xy: Array, raster: Array) -> Array:
         """Extract a window including buffer regions from the raster.
@@ -86,7 +91,9 @@ class WindowOperation(eqx.Module):
         !!! example
 
             ```python
-            window_op = WindowOperation(shape=(100, 100), window_size=20, buffer_size=10)
+            window_op = WindowOperation(
+                shape=(100, 100), window_size=20, buffer_size=10
+            )
             raster = jnp.ones((100, 100))
             window = window_op.extract_total_window(jnp.array([0, 0]), raster)
             # window.shape = (40, 40)
@@ -117,7 +124,9 @@ class WindowOperation(eqx.Module):
         !!! example
 
             ```python
-            window_op = WindowOperation(shape=(100, 100), window_size=20, buffer_size=10)
+            window_op = WindowOperation(
+                shape=(100, 100), window_size=20, buffer_size=10
+            )
             raster = jnp.ones((100, 100))
             core = window_op.extract_core_window(jnp.array([0, 0]), raster)
             # core.shape = (20, 20)
@@ -142,8 +151,11 @@ class WindowOperation(eqx.Module):
         xy: Array,
         raster: Array,
         raster_window: Array,
-        fun: Callable[[Array, Array], Array] = lambda current_raster_core_window,
-        raster_window_core_window: raster_window_core_window,
+        fun: Callable[
+            [Array, Array], Array
+        ] = lambda current_raster_core_window, raster_window_core_window: (
+            raster_window_core_window
+        ),
     ) -> Array:
         """Update raster by merging the core region of a processed window.
 
@@ -164,7 +176,9 @@ class WindowOperation(eqx.Module):
         !!! example
 
             ```python
-            window_op = WindowOperation(shape=(100, 100), window_size=20, buffer_size=10)
+            window_op = WindowOperation(
+                shape=(100, 100), window_size=20, buffer_size=10
+            )
             raster = jnp.zeros((100, 100))
 
             for xy, window in window_op.lazy_iterator(raster):
@@ -199,8 +213,9 @@ class WindowOperation(eqx.Module):
         xy: Array,
         raster: Array,
         raster_window: Array,
-        fun: Callable[[Array, Array], Array] = lambda current_raster_slice,
-        raster_window: raster_window,
+        fun: Callable[
+            [Array, Array], Array
+        ] = lambda current_raster_slice, raster_window: raster_window,
     ) -> Array:
         """Update raster with the entire window including buffers.
 
@@ -218,7 +233,9 @@ class WindowOperation(eqx.Module):
         !!! example
 
             ```python
-            window_op = WindowOperation(shape=(100, 100), window_size=20, buffer_size=10)
+            window_op = WindowOperation(
+                shape=(100, 100), window_size=20, buffer_size=10
+            )
             raster = jnp.zeros((100, 100))
             window_data = jnp.ones((40, 40))
 
@@ -254,7 +271,9 @@ class WindowOperation(eqx.Module):
         !!! example
 
             ```python
-            window_op = WindowOperation(shape=(100, 100), window_size=20, buffer_size=10)
+            window_op = WindowOperation(
+                shape=(100, 100), window_size=20, buffer_size=10
+            )
             print(window_op.nb_steps)  # 25 (5x5 grid of windows)
             ```
         """
@@ -280,7 +299,9 @@ class WindowOperation(eqx.Module):
         !!! example
 
             ```python
-            window_op = WindowOperation(shape=(100, 100), window_size=20, buffer_size=10)
+            window_op = WindowOperation(
+                shape=(100, 100), window_size=20, buffer_size=10
+            )
             raster = jnp.ones((100, 100))
 
             for xy, window in window_op.lazy_iterator(raster):
@@ -293,9 +314,8 @@ class WindowOperation(eqx.Module):
         y_steps = self.y_steps
         for i in range(x_steps):
             for j in range(y_steps):
-                x_start, y_start = i * self.window_size, j * self.window_size
-                window = self.extract_total_window([x_start, y_start], raster)
-                yield jnp.array([x_start, y_start]), window
+                xy = jnp.array([i * self.window_size, j * self.window_size])
+                yield xy, self.extract_total_window(xy, raster)
 
     @eqx.filter_jit
     def eager_iterator(self, matrix: Array) -> tuple[Array, Array]:
@@ -311,12 +331,15 @@ class WindowOperation(eqx.Module):
         **Returns:**
 
         Tuple `(xy, windows)` where `xy` has shape `(num_windows, 2)` containing
-        start coordinates, and `windows` has shape `(num_windows, window_height, window_width)`.
+        start coordinates, and `windows` has shape
+        `(num_windows, window_height, window_width)`.
 
         !!! example
 
             ```python
-            window_op = WindowOperation(shape=(100, 100), window_size=20, buffer_size=10)
+            window_op = WindowOperation(
+                shape=(100, 100), window_size=20, buffer_size=10
+            )
             raster = jnp.ones((100, 100))
 
             xy, windows = window_op.eager_iterator(raster)

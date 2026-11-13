@@ -13,7 +13,9 @@ from jaxscape import (
     EuclideanDistance,
     FreeEnergyDistance,
     GridGraph,
+    GridTopology,
     LCPDistance,
+    QUEEN_CONTIGUITY,
     ResistanceDistance,
     SpielmanApproximation,
 )
@@ -216,6 +218,63 @@ def test_queries_solve_the_graph_they_are_given_with_any_state(kind, solver):
     actual = distance(grid_of(NEW_VALUES), nodes=NODES, state=state)
 
     assert_close(actual, SOLVER_DISTANCES[kind](None)(grid_of(NEW_VALUES), nodes=NODES))
+
+
+@pytest.mark.parametrize("solver", ["multigrid", "cholmod", "amjax"])
+def test_a_topology_serves_a_loop_over_conductance_surfaces(solver):
+    if solver == "multigrid":
+        distance = ResistanceDistance()
+    else:
+        distance = ResistanceDistance(solver=make_solver(solver))
+    topology = GridTopology(VALUES.shape)
+
+    def graph_of(values, topology):
+        return GridGraph(values, fun=lambda x, y: (x + y) / 2, topology=topology)
+
+    def objective(values, state, topology):
+        graph = graph_of(values, topology)
+        state = distance.reinit(graph, state)
+        return squared_distances_on(graph, distance, state), state
+
+    step = eqx.filter_jit(eqx.filter_value_and_grad(objective, has_aux=True))
+    state = distance.init(graph_of(VALUES, topology))
+    for values in (NEW_VALUES, VALUES**3, NEW_VALUES):
+        (value, state), gradient = step(values, state, topology)
+
+        # The same query on a graph without topology, from a state of its own.
+        own_state = distance.init(grid_of(values))
+        expected_value, expected_gradient = jax.value_and_grad(
+            lambda values: squared_distances_on(grid_of(values), distance, own_state)
+        )(values)
+        assert_close(value, expected_value)
+        assert_close(gradient, expected_gradient)
+
+
+def squared_distances_on(graph, distance, state):
+    return jnp.sum(distance.nodes_to_nodes_distance(graph, NODES, state) ** 2)
+
+
+@pytest.mark.parametrize("passed_whole", [False, True])
+def test_a_query_on_a_topology_graph_builds_its_state_inside_jit(passed_whole):
+    topology = GridTopology(VALUES.shape, QUEEN_CONTIGUITY)
+    graph = GridGraph(VALUES, fun=lambda x, y: (x + y) / 2, topology=topology)
+    distance = ResistanceDistance()
+
+    if passed_whole:
+        actual = eqx.filter_jit(lambda graph: distance(graph, nodes=NODES))(graph)
+    else:
+        actual = eqx.filter_jit(
+            lambda values, topology: distance(
+                GridGraph(values, fun=lambda x, y: (x + y) / 2, topology=topology),
+                nodes=NODES,
+            )
+        )(VALUES, topology)
+
+    expected = ResistanceDistance(solver=None)(
+        GridGraph(VALUES, fun=lambda x, y: (x + y) / 2, neighbors=QUEEN_CONTIGUITY),
+        nodes=NODES,
+    )
+    np.testing.assert_allclose(actual, expected, rtol=1e-5)
 
 
 @pytest.mark.parametrize("solver", ["cholmod", "dense-cholesky", "cg"])

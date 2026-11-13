@@ -1,4 +1,5 @@
 from importlib.util import find_spec
+from typing import Any, cast
 
 import jax
 import jax.numpy as jnp
@@ -13,7 +14,9 @@ from jaxscape import (
     Graph,
     GridGraph,
     LCPDistance,
+    QUEEN_CONTIGUITY,
     resistance_distance,
+    ROOK_CONTIGUITY,
     SpielmanApproximation,
 )
 from jaxscape.resistance_distance import (
@@ -55,7 +58,11 @@ def avg(x, y):
 
 
 def build_nx_resistance_distance_matrix(G):
-    Rnx_dict = nx.resistance_distance(G, weight="weight", invert_weight=False)
+    # Without `nodeA` or `nodeB`, the distances between all pairs of nodes.
+    Rnx_dict = cast(
+        dict[Any, dict[Any, float]],
+        nx.resistance_distance(G, weight="weight", invert_weight=False),
+    )
     Rnx = jnp.zeros((G.number_of_nodes(), G.number_of_nodes()))
     node_list = list(G)
     for n, rd in Rnx_dict.items():
@@ -333,6 +340,32 @@ def test_padded_sparse_resistance_has_zero_padding_gradient():
     assert jnp.allclose(gradient, expected)
 
 
+@pytest.mark.parametrize(
+    "neighbors", [ROOK_CONTIGUITY, QUEEN_CONTIGUITY], ids=["rook", "queen"]
+)
+@pytest.mark.parametrize(
+    "shape, centre",
+    [
+        ((5, 5), (2, 2)),
+        ((4, 4), (2, 2)),
+        ((4, 5), (2, 2)),
+        ((5, 4), (2, 2)),
+        ((2, 3), (1, 1)),
+        ((6, 7), (3, 3)),
+        ((1, 4), (0, 2)),
+        ((4, 1), (2, 0)),
+    ],
+    ids=str,
+)
+def test_grid_graphs_are_grounded_at_their_centre_pixel(shape, centre, neighbors):
+    # Each row of the Laplacian sums to zero, except that of the ground, whose
+    # degree its diagonal entry adds.
+    grid = GridGraph(jnp.ones(shape), neighbors=neighbors)
+    matrix = ResistanceDistance(solver=None).system_matrix(grid).todense()
+    grounded = np.flatnonzero(np.abs(np.asarray(matrix.sum(axis=1))) > 1e-12)
+    assert [divmod(int(vertex), shape[1]) for vertex in grounded] == [centre]
+
+
 SOLVERS = {
     "dense": lambda: None,
     "cholmod": lambda: CholmodSolver(),
@@ -379,6 +412,37 @@ def test_sources_to_targets_match_all_pairs(solver, pairs, monkeypatch):
 
     (_, actual), gradient = jax.value_and_grad(objective, has_aux=True)(permeability)
     (_, expected), expected_gradient = jax.value_and_grad(all_pairs, has_aux=True)(
+        permeability
+    )
+    np.testing.assert_allclose(actual, expected, rtol=1e-9, atol=1e-12)
+    np.testing.assert_allclose(gradient, expected_gradient, rtol=1e-9, atol=1e-12)
+
+
+@pytest.mark.parametrize("solver", ["dense", "cholmod"])
+@pytest.mark.parametrize("shape", [(6, 8), (6, 7), (7, 6)], ids=str)
+def test_queries_on_grid_graphs_with_even_sides_match_the_pseudo_inverse(solver, shape):
+    # The ground is a gauge choice: queries grounded at the centre pixel give
+    # the resistances of the pseudo-inverse, which grounds no vertex.
+    if solver == "cholmod":
+        pytest.importorskip("cholespy")
+    height, width = shape
+    centre = (height // 2) * width + width // 2
+    sources = jnp.array([centre, 0, width - 1, height * width - 1])
+    rng = np.random.default_rng(0)
+    permeability = jnp.asarray(10 ** rng.uniform(-1, 0, shape))
+    weights = jnp.asarray(rng.uniform(size=(sources.size, height * width)))
+
+    def objective(permeability):
+        grid = GridGraph(permeability, fun=avg)
+        distances = ResistanceDistance(solver=SOLVERS[solver]())(grid, sources=sources)
+        return jnp.sum(weights * distances), distances
+
+    def pseudo_inverse(permeability):
+        distances = ResistanceDistance(solver=None)(GridGraph(permeability, fun=avg))
+        return jnp.sum(weights * distances[sources]), distances[sources]
+
+    (_, actual), gradient = jax.value_and_grad(objective, has_aux=True)(permeability)
+    (_, expected), expected_gradient = jax.value_and_grad(pseudo_inverse, has_aux=True)(
         permeability
     )
     np.testing.assert_allclose(actual, expected, rtol=1e-9, atol=1e-12)

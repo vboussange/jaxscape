@@ -34,7 +34,7 @@ license = {file = "LICENSE"}
 name = "jaxscape"
 readme = "README.md"
 requires-python = ">=3.12"
-version = "0.0.16"
+version = "0.0.17"
 
 [project.optional-dependencies]
 amjax = [
@@ -72,6 +72,12 @@ examples = [
   "geopandas",
   "scikit-learn"
 ]
+# The pre-commit hooks run these tools from the project environment.
+lint = [
+  "pre-commit>=4.0",
+  "pyright[nodejs]==1.1.414",
+  "ruff==0.17.4"
+]
 pyamg = [
   "pyamg>=5.1.0"
 ]
@@ -87,7 +93,11 @@ Issues = "https://github.com/vboussange/jaxscape/issues"
 Source = "https://github.com/vboussange/jaxscape"
 
 [tool.pyright]
+# The benchmark is a project of its own (#74), outside the hooks' scope.
+exclude = ["tests/test_benchmark.py"]
 include = ["src", "tests"]
+# CI runs on Linux: check every platform as Linux, to get the same result.
+pythonPlatform = "Linux"
 reportIncompatibleMethodOverride = true
 
 [tool.pytest.ini_options]
@@ -103,13 +113,14 @@ testpaths = ["tests"]
 
 [tool.ruff]
 extend-include = ["*.ipynb"]
-fixable = ["I001", "F401", "UP"]
-ignore = ["E402", "E721", "E731", "E741", "F722", "UP038"]
-ignore-init-module-imports = true
-select = ["E", "F", "I001", "UP"]
 src = []
 
-[tool.ruff.isort]
+[tool.ruff.lint]
+fixable = ["I001", "F401", "UP"]
+ignore = ["E402", "E721", "E731", "E741", "F722"]
+select = ["E", "F", "I001", "UP"]
+
+[tool.ruff.lint.isort]
 combine-as-imports = true
 extra-standard-library = ["typing_extensions"]
 lines-after-imports = 2

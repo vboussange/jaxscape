@@ -409,18 +409,26 @@ def star(n):
     return matrix
 
 
+def dense(n):
+    """A dense, diagonally dominant matrix: every row holds every vertex."""
+    return np.diag(np.full(n, n + 1.0)) - 1.0
+
+
 @pytest.mark.parametrize("vectors", [None, 3])
-@pytest.mark.parametrize("graph", ["grid", "star"])
+@pytest.mark.parametrize("graph", ["grid", "star", "dense"])
 def test_solves_fail_with_a_failed_state_or_a_large_residual(vectors, graph):
     solver = DenseCholesky()
     if graph == "grid":
         matrix = grounded_laplacian(surface("smooth"))
-    else:
+    elif graph == "star":
         matrix = sparse_layout(star(12))
+    else:
+        matrix = sparse_layout(dense(40))
     operator = BCOOLinearOperator(matrix)
     state = solver.init(operator, {})
     # Products of the matrix read each row in a block of 5 entries, on a grid,
-    # and add up the stored entries row by row, on a star.
+    # and add up the stored entries row by row, on a star, and on a dense
+    # matrix, whose rows of 40 entries are too long to read in blocks.
     if graph == "grid":
         assert state.pattern.ell_slots is not None
         assert state.pattern.ell_slots.shape == (operator.in_size(), 5)

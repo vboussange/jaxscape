@@ -81,7 +81,6 @@ nav:
   - Examples:
     - Distance calculation: examples/distance_calculation/distance_calculation.ipynb
     - Connectivity analysis: examples/connectivity_analysis/connectivity_analysis.ipynb
-    - Inverse landscape genetics: examples/inverse_landscape_genetics/inverse_landscape_genetics.ipynb
     - Advanced topics: examples/advanced/moving_windows.ipynb
   - API Reference:
     - Graphs: api/graphs.md

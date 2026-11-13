@@ -134,7 +134,7 @@ def test_missing_amjax_dependency_reports_extra(monkeypatch):
     with pytest.raises(ImportError, match=r"jaxscape\[amjax\]"):
         AMJaxCGSolver()
     with pytest.raises(ImportError, match=r"jaxscape\[amjax\]"):
-        build_amjax_solver(None)  # pyright: ignore[reportGeneralTypeIssues]
+        build_amjax_solver(BCOO.fromdense(jnp.eye(2)))
 
 
 def test_deprecated_state_methods_are_aliases(amjax_dependencies):
