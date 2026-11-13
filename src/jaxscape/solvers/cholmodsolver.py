@@ -55,9 +55,8 @@ class _FactorCache:
         return hash(_FactorCache)
 
     def factor_of(self, A_bcoo: BCOO, solve_dtype: np.dtype) -> _CholespyFactor:
-        # The first slice of any callback batch, in NumPy: this runs on every solve.
+        # In NumPy, since this runs on every solve.
         data = np.asarray(A_bcoo.data)
-        data = data.reshape(-1, data.shape[-1])[0]
         entry = self._entry
         if (
             entry is not None
@@ -65,7 +64,7 @@ class _FactorCache:
             and np.array_equal(entry[0], data)
         ):
             return entry[1]
-        factor = _factorize_host(_unbatched_bcoo(A_bcoo), solve_dtype)
+        factor = _factorize_host(A_bcoo, solve_dtype)
         self._entry = (np.array(data), factor)
         return factor
 
@@ -163,13 +162,36 @@ class CholmodSolver(AbstractReusableStateSolver):
 
         def solve_host(A_bcoo: BCOO, b_jax: JaxArray) -> np.ndarray:
             solve_dtype = _solve_dtype_from_rhs(b_jax)
-            if cache is None:
-                factor = _factorize_host(_unbatched_bcoo(A_bcoo), solve_dtype)
-            else:
-                factor = cache.factor_of(A_bcoo, solve_dtype)
-            return _solve_with_factor_host(factor, b_jax)
+            # Under `jax.vmap`, every argument has the same leading batch axes, of
+            # size 1 along the axes it is not batched on. Each matrix of the batch
+            # solves all its right-hand sides at once.
+            b = np.asarray(b_jax)
+            batch_ndim = b.ndim - 1
+            matrix_batch_shape = np.broadcast_shapes(
+                A_bcoo.data.shape[:batch_ndim], A_bcoo.indices.shape[:batch_ndim]
+            )
+            batch_shape = np.broadcast_shapes(matrix_batch_shape, b.shape[:-1])
+            solution = np.empty(batch_shape + b.shape[-1:], solve_dtype)
+            b = np.broadcast_to(b, solution.shape)
+            for member in np.ndindex(matrix_batch_shape):
+                matrix = BCOO(
+                    (_member(A_bcoo.data, member), _member(A_bcoo.indices, member)),
+                    shape=A_bcoo.shape[-2:],
+                )
+                if cache is None:
+                    factor = _factorize_host(matrix, solve_dtype)
+                else:
+                    factor = cache.factor_of(matrix, solve_dtype)
+                # The right-hand sides of this matrix, along every axis it is not
+                # batched on.
+                rhs = tuple(
+                    i if size > 1 else slice(None)
+                    for i, size in zip(member, matrix_batch_shape)
+                )
+                solution[rhs] = _solve_with_factor_host(factor, b[rhs])
+            return solution
 
-        # `expand_dims` coalesces vmapped RHS solves into one batched host callback.
+        # `expand_dims` coalesces vmapped solves into one batched host callback.
         solution = eqx.filter_pure_callback(
             solve_host,
             A_bcoo,
@@ -244,7 +266,7 @@ def _solve_dtype_from_rhs(rhs: JaxArray) -> np.dtype:
 def _factorize_host(A_bcoo: BCOO, solve_dtype: np.dtype) -> _CholespyFactor:
     # CHOLMOD expects canonical sparse input. Duplicate BCOO entries can arise
     # from sparse arithmetic and may trigger native cholespy aborts.
-    A_bcoo = _unbatched_bcoo(A_bcoo).sum_duplicates()
+    A_bcoo = A_bcoo.sum_duplicates()
     if A_bcoo.shape[0] != A_bcoo.shape[1]:
         raise ValueError("CholmodSolver requires a square operator.")
 
@@ -270,13 +292,13 @@ def _factorize_host(A_bcoo: BCOO, solve_dtype: np.dtype) -> _CholespyFactor:
     return _CholespyFactor(solver, solve_dtype, A_bcoo.shape[0])
 
 
-def _solve_with_factor_host(factor: _CholespyFactor, b_jax: JaxArray) -> np.ndarray:
-    if b_jax.ndim == 0:
+def _solve_with_factor_host(factor: _CholespyFactor, b: np.ndarray) -> np.ndarray:
+    if b.ndim == 0:
         raise ValueError("Right-hand side must have at least one dimension.")
 
     # The cholespy solve API is in-place and has no implicit casting: RHS and
     # output buffers must exactly match CholeskySolverF/D precision.
-    rhs = _writable_c_array(b_jax, dtype=factor.solve_dtype)
+    rhs = _writable_c_array(b, dtype=factor.solve_dtype)
     if rhs.shape[-1] != factor.size:
         raise ValueError("The last dimension of b must match the operator dimension.")
 
@@ -306,17 +328,7 @@ def _writable_c_array(array: Any, dtype: Any | None = None) -> np.ndarray:
     return np.require(array_np, dtype=dtype, requirements=["C", "W"])
 
 
-def _unbatched_bcoo(matrix: BCOO) -> BCOO:
-    if matrix.n_batch == 0:
-        return matrix
-
-    # `pure_callback(..., vmap_method="expand_dims")` can wrap the shared matrix
-    # in a batch dimension while batching only RHS values. The first slice is the
-    # matrix to factor; RHS batching is handled separately in `_solve_with_factor_host`.
-    batch_index = (0,) * matrix.n_batch
-    return BCOO(
-        (matrix.data[batch_index], matrix.indices[batch_index]),
-        shape=matrix.shape[-2:],
-        indices_sorted=matrix.indices_sorted,
-        unique_indices=matrix.unique_indices,
-    )
+def _member(array: JaxArray, member: tuple[int, ...]) -> JaxArray:
+    """The slice of `array` that a member of a callback batch reads, with index 0
+    along the batch axes `array` is not batched on."""
+    return array[tuple(i if size > 1 else 0 for i, size in zip(member, array.shape))]
