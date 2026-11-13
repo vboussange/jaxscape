@@ -5,8 +5,8 @@
 timeout = 3600           # seconds that a call may take
 repeats = 5              # timed calls after the warm-up call
 single_call_after = 300  # seconds of warm-up after which one timed call follows
-cores = "80-95"          # 16 physical cores of gpunode05, on NUMA node 5, that of GPU 5
-gpu = "5"                # the GPU of GPU cells, numbered as nvidia-smi numbers it
+cores = "48-63"          # 16 physical cores of gpunode05, on NUMA node 3, that of GPU 0
+gpu = "0"                # the GPU of GPU cells, numbered as nvidia-smi numbers it
 smoke_side = 32
 smoke_dependency_range = 10  # windows of the windowed analyses in smoke mode
 # The largest Tier 1 error that smoke mode passes. The smoke run's errors reach
