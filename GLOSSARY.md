@@ -59,11 +59,11 @@ _Avoid_: Hierarchy (one kind of preconditioner), setup
 ### Windowed analyses
 
 **Window**:
-The pixels within `dependency_range` of a pixel along both axes. A pixel counts the pixels of its window.
+The pixels within a range of a pixel along both axes: `dependency_range` in windowed analyses, `(size - 1) / 2` in `sources_to_windows_distance`. Windowed analyses count the pairs of each pixel with the pixels of its window only.
 _Avoid_: Neighbourhood
 
 **Block centre**:
-A pixel whose window an analysis computes. Without coarsening every pixel is one; with coarsening, values interpolate between them.
+A pixel whose window an analysis computes. Without coarsening every pixel is one; with coarsening, values are interpolated between them.
 
 **Block source**:
 The pixels that a block centre stands for, weighted by their interpolation weights times their quality, and summing to 1. A resistance window query from it gives the mean of the resistances from these pixels to each pixel of the window (`source_weights`).
@@ -81,3 +81,12 @@ One of the random sign vectors from which the gradient of a Spielman window quer
 
 **Sources that share work**:
 A distance whose query from several sources costs much less than one query per source, such as resistance, whose solves on a graph serve every source with one solver state, a factorization or a multigrid hierarchy. Windowed analyses run it on tiles, and other distances on windows.
+
+### Moving-window operations
+
+**Core window**:
+One of the squares of `window_size` pixels a side that tile a raster in a moving-window operation (`WindowOperation`). A computation on its total window gives the values of its pixels.
+
+**Total window**:
+A core window with the buffer of `buffer_size` pixels on every side (`total_window_size`), which holds the pixels that the computation on the core window depends on.
+_Avoid_: Window (the pixels around one pixel)

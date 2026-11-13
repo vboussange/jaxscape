@@ -1,10 +1,12 @@
 # Window operations
 
-`WindowOperation` divides a raster into square core windows, each with a
-buffer of the neighbouring pixels that a computation on the core depends on,
-and writes the results of a computation on each window back into a raster. It
-serves to build window-based computations other than the analyses of
-[Connectivity analysis](connectivity_analysis.md).
+`WindowOperation` divides a raster into square core windows that tile it. The
+total window of a core window adds a buffer of the neighbouring pixels on which
+a computation on the core window depends. `WindowOperation` extracts the total
+windows of a raster and writes the results of a computation on each total
+window back into a raster, so that computations other than the analyses of
+[Connectivity analysis](connectivity_analysis.md) run as moving-window
+operations.
 `padding` pads a raster to a shape that `WindowOperation` accepts.
 
 ::: jaxscape.window_operation.WindowOperation
