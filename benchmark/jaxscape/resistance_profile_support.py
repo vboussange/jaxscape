@@ -58,7 +58,7 @@ def make_amjaxcg_solver() -> Any:
         raise ImportError(
             "Install the amjax Python extra to enable the AMJaxCG resistance profile."
         ) from error
-    return AMJaxCGSolver(rtol=RESISTANCE_SOLVER_RTOL, max_steps=1_000)
+    return AMJaxCGSolver(rtol=RESISTANCE_SOLVER_RTOL)
 
 
 def make_cudss_solver() -> Any:

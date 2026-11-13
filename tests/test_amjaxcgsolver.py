@@ -104,6 +104,23 @@ def test_single_level_hierarchy_runs_without_a_preconditioner(amjax_dependencies
     np.testing.assert_allclose(gradient, expected, rtol=1e-8, atol=1e-9)
 
 
+def test_state_built_inside_jit_solves_the_graph(amjax_dependencies):
+    """Inside `jax.jit`, the hierarchy is that of a graph of permeability 1."""
+    rng = np.random.default_rng(0)
+    permeability = jnp.asarray(10 ** rng.uniform(-1, 0, (8, 9)))
+    nodes = jnp.array([0, 30, 71])
+    solver = AMJaxCGSolver(rtol=1e-10, coarse_solver="pinv")
+
+    def query(permeability, distance):
+        return distance(GridGraph(permeability, fun=avg), nodes=nodes)
+
+    actual = jax.jit(lambda p: query(p, ResistanceDistance(solver=solver)))(
+        permeability
+    )
+    expected = query(permeability, ResistanceDistance(solver=None))
+    np.testing.assert_allclose(actual, expected, rtol=1e-7)
+
+
 def test_missing_amjax_dependency_reports_extra(monkeypatch):
     from jaxscape.solvers import amjaxcgsolver
 

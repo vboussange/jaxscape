@@ -75,8 +75,11 @@ class AMJaxCGSolver(AbstractSparseIterativeSolver[_Hierarchy]):
       right-hand side (see `AbstractSparseIterativeSolver`).
     - `max_steps`: Largest number of iterations. A hierarchy built on a graph
       of uniform conductance, as windowed analyses and `distance.init(graph)`
-      inside `jax.jit` build it, takes more iterations on graphs of high
-      conductance contrast than one built on their own values.
+      inside `jax.jit` build it, also for queries without a state, takes more
+      iterations on graphs of high conductance contrast than one built on
+      their own values. When their solves exceed `max_steps`, build the state
+      outside `jax.jit` with `distance.init(graph)` and pass it as `state`,
+      so that the hierarchy is that of the values of the graph.
     - `pyamg_method`: The PyAMG function that builds the hierarchy from a
       SciPy CSR matrix. Defaults to `pyamg.smoothed_aggregation_solver`.
     - `pyamg_kwargs`: Keyword arguments of `pyamg_method`.
@@ -89,7 +92,8 @@ class AMJaxCGSolver(AbstractSparseIterativeSolver[_Hierarchy]):
 
         `amjax` and `pyamg` must be installed to use this solver, with
         `pip install 'jaxscape[amjax]'`. Conjugate gradients need a symmetric
-        V-cycle: matching pre- and post-smoothers, as the default ones.
+        V-cycle, as AMJax's `symmetric_smoothing` flag reports for the default
+        smoothers.
     """
 
     rtol: float = 1e-5
