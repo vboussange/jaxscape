@@ -298,7 +298,8 @@ def test_report_draws_the_maryland_figure_and_states_its_correlation(report):
     assert (
         "Rank of each pixel of Maryland in JAXScape's normalized sensitivity "
         "(K = −R) and in Omniscape.jl's normalized current (`cg+amg`), with "
-        "barriers in gray. Spearman's ρ between the two maps is 0.62." in text
+        "the pixels without a value in gray. Spearman's ρ between the two maps is "
+        "0.62." in text
     )
 
 
@@ -332,6 +333,31 @@ def test_solver_section_names_the_fastest_solver_and_lists_every_solver(report):
         "CuDSSSolver",
         "0.3 s",
         "1.0e-12",
+        "",
+        "",
+    ]
+    # An approximation of the distance is never the fastest solver: it has a
+    # table of its own, with its speed-up over the fastest solver on the
+    # raster of its row, or else on its largest raster.
+    connectivity = ("connectivity analysis", "resistance")
+    gmg = "GeometricMultigridCGSolver"
+    assert table_row(fastest, *connectivity, "float32", "256²", gmg)[4:] == [
+        gmg,
+        "91 s",
+        "3.1e-04",
+        "",
+        "",
+    ]
+    spielman = "SpielmanApproximation(epsilon=0.15)"
+    assert table_row(fastest, *connectivity, "float32", "256²", spielman)[5:] == [
+        "GeometricMultigridCGSolver(rtol=3e-4)",
+        "2 s",
+        "4.2e-02",
+        "46",
+    ]
+    assert table_row(fastest, *connectivity, "float64", "1024²", spielman)[5:] == [
+        "CuDSSSolver",
+        "12 s",
         "",
         "",
     ]
@@ -380,13 +406,32 @@ def test_solver_section_states_the_combinations_that_no_record_ran(report):
 
     text = section(page(report(edit=leave_out_cudss)), "## Linear solvers of JAXScape")
 
-    # AMJaxCGSolver in float32 and CuDSSSolver on free-energy distance have
-    # records, and the page does not list them.
+    # AMJaxCGSolver in float32 in the distance calculation and CuDSSSolver on
+    # free-energy distance have records, and the page does not list them.
     assert (
         "**Not run**: free-energy distance in float32; free-energy distance with "
-        "`GeometricMultigridCGSolver` or `AMJaxCGSolver`; free-energy distance with "
-        "`CholmodSolver`." in text
+        "`GeometricMultigridCGSolver` or `AMJaxCGSolver`; `AMJaxCGSolver` in "
+        "float32 in the connectivity analysis or sensitivity analysis; "
+        "free-energy distance with `CholmodSolver`." in text
     )
+
+
+def test_report_reads_the_configuration_of_a_run_of_jaxscape_0_0_16(report):
+    expected = page(report())
+    old = {"distance": "E1", "connectivity": "E2", "sensitivity": "E3"}
+
+    def name_questions_as_0_0_16(config):
+        config["E1"] = config.pop("distance")
+        maryland = config["maryland"]
+        maryland["questions"] = [old[q] for q in maryland["questions"]]
+        for entry in config["tools"]:
+            entry["question"] = old[entry["question"]]
+        view = config["solver_view"]
+        view["questions"] = {old[q]: d for q, d in view["questions"].items()}
+        for entry in view["solvers"].values():
+            entry["questions"] = [old[q] for q in entry.get("questions", [])]
+
+    assert page(report(edit=name_questions_as_0_0_16)) == expected
 
 
 def test_setup_states_the_hardware_protocol_and_versions_of_the_run(report):

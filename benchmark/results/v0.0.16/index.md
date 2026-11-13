@@ -25,13 +25,13 @@ This page compares JAXScape with the software that ecologists use for connectivi
 | Graphab | 3.0.8 | connectivity analysis |
 | Omniscape.jl | 0.6.4 | sensitivity analysis |
 
-The run used JAXScape 0.0.16, whose solvers the page names as JAXScape 0.0.18 does: `GridMultigridSolver` as `GeometricMultigridCGSolver`.
+The page names the solvers of this run as JAXScape 0.0.18 does: `GridMultigridSolver` as `GeometricMultigridCGSolver`.
 
 ??? note "Parameter mapping of each tool"
 
     | Tool | Mapping |
     | --- | --- |
-    | JAXScape | JAXScape builds a `GridGraph` of the permeability raster with rook contiguity, the conductance of an edge being the harmonic mean of the permeabilities of its two pixels (`landscape.conductance`), so that its resistance is their mean resistance. The edge cost of least-cost path and free-energy distances is 1 / conductance, and the free-energy distance has the shared `theta`. The distance calculation is a nodes-to-nodes query among the sites. The connectivity analysis runs `SensitivityAnalysis(var="quality")` for the map and `ConnectivityAnalysis` for the landscape total, sum_i q_i S_i, and the sensitivity analysis runs `SensitivityAnalysis(var="permeability")`, with the shared `dependency_range` and `coarsening_factor`, the default proximity and the `batch_size` of the settings; these windowed analyses build their graphs with JAXScape's own edge rule, the mean permeability of the two pixels. A `proximity` setting, a function of the distance in Python such as `lambda d: -d`, replaces the default proximity. With `normalized`, the map of the sensitivity analysis is the normalized sensitivity to resistance of the connectivity example: p^2 dC/dp divided by dC/dp on a landscape of permeability 1 and the same quality, and 0 where the latter is not positive, both computed in each call. The distance runs with the solver, the resistance `method` and the dtype of its settings, such as `GeometricMultigridCGSolver(rtol=3e-4)` (`dense` is the dense solve, `solver=None`), and every call builds the graphs and the solver states. |
+    | JAXScape | JAXScape builds a `GridGraph` of the permeability raster with rook contiguity, the conductance of an edge being the harmonic mean of the permeabilities of its two pixels (`landscape.conductance`), so that its resistance is their mean resistance. The edge cost of least-cost path and free-energy distances is 1 / conductance, and the free-energy distance has the shared `theta`. The distance calculation is a nodes-to-nodes query among the sites. The connectivity analysis runs `SensitivityAnalysis(...).run("quality")` for the map and `ConnectivityAnalysis` for the landscape total, sum_i q_i S_i, and the sensitivity analysis runs `SensitivityAnalysis(...).run("permeability")`, with the shared `dependency_range` and `coarsening_factor`, the default proximity and the `batch_size` of the settings; these windowed analyses build their graphs with JAXScape's own edge rule, the mean permeability of the two pixels. A `proximity` setting, a function of the distance in Python such as `lambda d: -d`, replaces the default proximity. With `normalized`, the map of the sensitivity analysis is the normalized sensitivity to resistance of the connectivity example: p^2 dC/dp divided by dC/dp on a landscape of permeability 1 and the same quality, and 0 where the latter is not positive, both computed in each call. The distance runs with the solver, the resistance `method` and the dtype of its settings, such as `GeometricMultigridCGSolver(rtol=3e-4)` (`dense` is the dense solve, `solver=None`), and every call builds the graphs and the solver states. |
     | Circuitscape.jl | Circuitscape.jl computes the pairwise resistances among the sites of the distance calculation, in its `pairwise` scenario, with the permeability raster as the conductance of each pixel. `connect_four_neighbors_only` gives rook contiguity, and `connect_using_avg_resistances` makes the resistance of an edge the mean resistance of its two pixels, as `landscape.conductance` does. The solver is `cg+amg` or `cholmod`, in double precision, with `parallelize` on the Julia threads of the cell. Circuitscape.jl has no public in-memory API for this scenario: each call builds its `RasterData` in memory and runs the internals that `compute` runs after reading files (`build_problem`, `single_ground_all_pairs`), and writes only its table of resistances, to /dev/shm. Every call rebuilds the graph, the Laplacian and the AMG hierarchy or Cholesky factor. |
     | ConScape.jl | ConScape.jl builds its graph with rook contiguity (`N4`), the affinity of an edge being the harmonic mean of the permeabilities of its two pixels (`AverageWeight`), as `landscape.conductance` gives, and the cost of an edge 1 / affinity (`Inv`). Its free-energy distance has the shared `theta`. The distance calculation computes the free-energy distances among the sites, the targets of a `GridRSP`. ConScape's free-energy distance is directed, and the adapter returns the mean of the two directions between two sites, as JAXScape's `FreeEnergyDistance` does. The connectivity and sensitivity analyses run on the whole raster, without windows, with targets at landmarks every b pixels (`coarse_graining`), each holding the quality of its block, where b is the `block_size` of the windows, JAXScape's block size: 21. The connectivity analysis returns Hanski's S_i, the connected habitat of each pixel at source quality 1 (`connected_habitat`): the sum over landmarks of their quality times exp(-d / (dependency_range / 4)), exp(-d / 25), for the free-energy distance d to the landmark. The sensitivity analysis returns the quality-weighted betweenness (`betweenness_qweighted`). JAXScape has no free-energy map, and the configuration compares these maps with JAXScape's under least-cost path distance (`compared_with = "lcp"`). The free-energy distance tends to a multiple of the resistance distance as theta tends to 0, and to the least-cost path distance as theta grows. On the synthetic raster of 256 pixels a side, for every theta from 1e-5 to 1.5e-2, the ranking of the pairs of sites of the distance calculation by free-energy distance agrees with their ranking by least-cost path distance (Spearman's ρ 0.98 to 0.99, against 0.92 to 0.95 with resistance distance), and at the shared theta, 0.01, ConScape's maps of connectivity and sensitivity correlate more with the maps of JAXScape's GPU cells under least-cost path distance (ρ 0.93 and 0.84) than under resistance distance (0.87 and 0.72). Every call rebuilds the affinities, the `Grid`, the landmarks and the `GridRSP`, with its sparse LU factorization, which runs on the BLAS threads of the cell. |
     | gdistance | gdistance builds a transition layer of the resistance raster, 1 / permeability, with 4 neighbours (rook contiguity) and the transition function 1 / mean(x): the conductance between two pixels is the reciprocal of their mean resistance, `landscape.conductance`. Resistance distances are `commuteDistance` divided by the volume of the graph, the sum of its conductances in both directions, and least-cost path distances are `costDistance`, whose edge cost is 1 / conductance. Pixels have side 1, so `geoCorrection` leaves the layer unchanged and is left out. Every call builds the transition layer, whose conductances depend on the resistance. |
@@ -163,7 +163,7 @@ On the largest synthetic raster that JAXScape on the GPU and the other tool both
 - **Quantity**: Hanski's connectivity $S_i = \sum_j K(d_{ij})\, q_j$ of each pixel $i$, with the habitat quality $q_j$ of pixel $j$ and the proximity $K$, and its landscape total $C = \sum_i q_i S_i$, the square of the equivalent connected area.
 - **JAXScape**: in each call, `SensitivityAnalysis` computes the map of $\partial C / \partial q_i$, equal to $2 S_i$ for a symmetric distance, and `ConnectivityAnalysis` computes $C$.
 - **Windows**: windowed analyses with `dependency_range` 100 pixels and `coarsening_factor` 0.2, that is, blocks of 21 × 21 pixels, under the proximity $K(d) = e^{-d/25}$, with $d$ in equivalent pixels.
-- **Graph**: rook contiguity, with the mean permeability of two pixels as the conductance of their edge.
+- **Graph**: rook contiguity, with the mean permeability of two pixels as the conductance of their edge. JAXScape's windowed analyses raise permeability below the permeability floor, a small fraction of the largest permeability, to the floor. On Maryland, the other tools treat the barriers, of permeability 0, as impassable, and JAXScape's analyses still cross the barrier pixels: the edge between a barrier pixel and a pixel of permeability $p$ has a conductance of about $p/2$.
 - **Resistance distance**: `SpielmanApproximation(epsilon=0.15)` with `GeometricMultigridCGSolver(rtol=3e-4)`, the setting of the [connectivity example](../examples/connectivity_analysis/connectivity_analysis.ipynb), on tiles of up to 2,601 block centres.
 - **Agreement**: Spearman's ρ between the map of a tool and the map of JAXScape on the GPU under the distance or label of the column "Compared with JAXScape under", over the pixels where both maps are defined.
 
@@ -202,7 +202,7 @@ On the largest synthetic raster that JAXScape on the GPU and the other tool both
 
 <img src="maryland.png" alt="Maryland: JAXScape's normalized sensitivity (K = −R) and Omniscape.jl's normalized current" width="610">
 
-Rank of each pixel of Maryland in JAXScape's normalized sensitivity (K = −R) and in Omniscape.jl's normalized current (`cg+amg`), with barriers in gray. Spearman's ρ between the two maps is 0.80.
+Rank of each pixel of Maryland in JAXScape's normalized sensitivity (K = −R) and in Omniscape.jl's normalized current (`cg+amg`), with the pixels without a value in gray. Spearman's ρ between the two maps is 0.80.
 
 ### Settings that did not complete
 
@@ -219,22 +219,29 @@ Rank of each pixel of Maryland in JAXScape's normalized sensitivity (K = −R) a
 - **Quantity**: the sensitivity $\partial C / \partial p_k$ of $C$ with respect to the permeability $p_k$ of each pixel $k$. The pixels of largest sensitivity are corridors and pinch points: the pixels where a decrease in permeability gives the largest decrease in $C$.
 - **JAXScape**: `SensitivityAnalysis` computes the sensitivity, with the windows and settings of the connectivity analysis. The other tools compute a flow: a current, a betweenness or a number of visits.
 - **Normalized sensitivity (K = −R)**: the map of the section [Comparison with Omniscape's normalized current](../examples/connectivity_analysis/connectivity_analysis.ipynb#comparison-with-omniscapes-normalized-current) of the connectivity example. Under resistance distance with the proximity $K(R) = -R$, under which every pair of habitat pixels has the same weight, it is the ratio of $-\partial C / \partial r_k = p_k^2\, \partial C / \partial p_k$, the sensitivity of $C$ with respect to the resistance $r_k$ of pixel $k$, to its value on a landscape of permeability 1 with the same quality, and 0 where the latter is not positive. Each call computes both sensitivities.
-- **Omniscape.jl**: computes its normalized current with the configuration of its Maryland example, on the same windows and on a graph of eight neighbours.
+- **Omniscape.jl**: computes its normalized current with the configuration of its Maryland example, with `radius` equal to `dependency_range`, the same block size, and a graph of eight neighbours.
 - **Agreement**: as in the connectivity analysis.
 
 ## Linear solvers of JAXScape
 
-The fastest solver of each question, distance and dtype, on the largest synthetic raster on which a solver succeeded:
+The fastest solver of each question, distance and dtype, without an approximation of the distance, on the largest synthetic raster on which one succeeded:
 
 | Question | Distance | dtype | Raster | Fastest solver | Warm runtime | Error | Next fastest solver | Speed-up over it |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | distance calculation | resistance | float32 | 4096² | GeometricMultigridCGSolver | 5.46 s | 3.2e-03 | CholmodSolver | 155 |
 | distance calculation | resistance | float64 | 1024² | GeometricMultigridCGSolver | 0.465 s | 3.0e-07 | AMJaxCGSolver | 11 |
 | distance calculation | free energy | float64 | 1024² | CuDSSSolver | 6.07 s | 1.3e-15 | CholmodSolver | 7.8 |
-| connectivity analysis | resistance | float32 | 256² | SpielmanApproximation(epsilon=0.15), GeometricMultigridCGSolver(rtol=3e-4) | 0.508 s | 6.5e-02 | GeometricMultigridCGSolver | 202 |
+| connectivity analysis | resistance | float32 | 256² | GeometricMultigridCGSolver | 102 s | 1.1e-03 | CuDSSSolver | 1.1 |
 | connectivity analysis | resistance | float64 | 256² | CuDSSSolver | 170 s | 8.8e-15 | GeometricMultigridCGSolver | 1.6 |
-| sensitivity analysis | resistance | float32 | 256² | SpielmanApproximation(epsilon=0.15), GeometricMultigridCGSolver(rtol=3e-4) | 0.542 s | 7.7e-02 | GeometricMultigridCGSolver | 195 |
+| sensitivity analysis | resistance | float32 | 256² | GeometricMultigridCGSolver | 105 s | 1.3e-03 | CuDSSSolver | 1.3 |
 | sensitivity analysis | resistance | float64 | 256² | CuDSSSolver | 251 s | 1.5e-13 | GeometricMultigridCGSolver | 1.4 |
+
+The approximations of resistance distance, each on the raster of its row above, or else on its largest synthetic raster:
+
+| Question | Distance | dtype | Raster | Approximation | Solver | Warm runtime | Error | Speed-up over the fastest solver |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| connectivity analysis | resistance | float32 | 256² | SpielmanApproximation(epsilon=0.15) | GeometricMultigridCGSolver(rtol=3e-4) | 0.508 s | 6.5e-02 | 202 |
+| sensitivity analysis | resistance | float32 | 256² | SpielmanApproximation(epsilon=0.15) | GeometricMultigridCGSolver(rtol=3e-4) | 0.542 s | 7.7e-02 | 195 |
 
 ### Results
 
@@ -314,8 +321,8 @@ The fastest solver of each question, distance and dtype, on the largest syntheti
 
 ### Method
 
-- **Solvers**: JAXScape solves the linear systems of resistance and free-energy distances with one of several solvers, on the GPU, in float32 and float64. `dense` is the dense solve, `solver=None`.
+- **Solvers**: JAXScape solves the linear systems of resistance and free-energy distances with one of several solvers, on the GPU, in float32 and float64. `dense` is the dense solve, `solver=None`. `CholmodSolver` factorizes and solves on the CPU.
 - **Rasters**: in the distance calculation, every raster of its distance; in the windowed analyses, 256², under exact resistance distance and under `SpielmanApproximation(epsilon=0.15)` with `GeometricMultigridCGSolver(rtol=3e-4)`.
 - **Error**: in the distance calculation, the largest relative error with respect to the float64 reference of the distance calculation; in the windowed analyses, the relative L2 error $\lVert m - m_{\mathrm{ref}} \rVert_2 / \lVert m_{\mathrm{ref}} \rVert_2$ of the map $m$ with respect to the map $m_{\mathrm{ref}}$ of exact resistance distance in float64 with `CuDSSSolver` on the same tiles, measured on 256² alone. In the figure of error, errors below $10^{-16}$ are drawn at $10^{-16}$.
-- **Time limit**: a call stops after 15 min, and under `SpielmanApproximation(epsilon=0.15)` after 1 h.
-- **Not run**: free-energy distance in float32; free-energy distance with `AMJaxCGSolver`.
+- **Time limit**: a call stops after 15 min.
+- **Not run**: free-energy distance in float32; free-energy distance with `AMJaxCGSolver`; `AMJaxCGSolver` in float32 in the connectivity analysis or sensitivity analysis.

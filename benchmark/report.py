@@ -38,7 +38,7 @@ DOCS = HERE.parent / "docs" / "benchmark"  # the Benchmark page of the docs
 EXAMPLE = "../examples/connectivity_analysis/connectivity_analysis.ipynb"
 
 # The questions of the benchmark, and the title of the section of each.
-TASKS = {
+QUESTIONS = {
     "distance": "Distance calculation",
     "connectivity": "Connectivity analysis",
     "sensitivity": "Sensitivity analysis",
@@ -52,6 +52,9 @@ NAMES = {
 # The solvers of JAXScape 0.0.16 that JAXScape 0.0.18 renamed, under their names
 # in 0.0.18, which the page gives.
 RENAMED = {"GridMultigridSolver": "GeometricMultigridCGSolver"}
+# The questions as the configuration of the run of JAXScape 0.0.16 names them,
+# under their names.
+OLD_QUESTIONS = {"E1": "distance", "E2": "connectivity", "E3": "sensitivity"}
 # The solvers that JAXScape removed, whose records the page leaves out.
 REMOVED = {"PyAMGSolver"}
 # The names of distances in prose.
@@ -66,7 +69,8 @@ STOPPED = {"oom": "ran out of memory", "timeout": "exceeded the time limit"}
 
 LINE = ("tool", "distance", "device")  # a line of a figure of the comparison
 SOLID = {"gpu", "float32"}  # the lines of the figures drawn solid, others dashed
-MARKERS = "osD^vP*"  # the marker of each raster, from the smallest
+# The marker of each raster, from the smallest; circles mark the dtype.
+MARKERS = "D^vPX*"
 SMALLEST_ERROR = 1e-16  # errors below it are drawn at it, on a log scale
 # The Maryland figure: JAXScape's map of a question next to a tool's map.
 MARYLAND = {
@@ -119,11 +123,11 @@ def report(run_dir):
     """
     records = read_records(run_dir / "records.csv")
     records = [record for record in records if record["solver"] not in REMOVED]
-    config = json.loads((run_dir / "config.json").read_text())
+    config = renamed(json.loads((run_dir / "config.json").read_text()))
     environment = json.loads((run_dir / "environment.json").read_text())
 
     comparison = [record for record in records if record["view"] == "comparison"]
-    for question in TASKS:
+    for question in QUESTIONS:
         if of_question(question, comparison):
             path = run_dir / f"{question}.png"
             plot_runtimes(of_question(question, comparison), ("question",), LINE, path)
@@ -153,15 +157,28 @@ def publish(run_dir, link):
     link.symlink_to(os.path.relpath(run_dir.resolve(), link.parent.resolve()))
 
 
+def renamed(value):
+    """Return a configuration, or a value of it, with its questions under their names.
+
+    The run of JAXScape 0.0.16 names its questions as `OLD_QUESTIONS` gives
+    them, in keys and in values.
+    """
+    if isinstance(value, dict):
+        return {OLD_QUESTIONS.get(k, k): renamed(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [renamed(item) for item in value]
+    return OLD_QUESTIONS.get(value, value) if isinstance(value, str) else value
+
+
 def of_question(question, records):
     """Return the records of a question."""
     return [record for record in records if record["question"] == question]
 
 
 def solver_view(records):
-    """Return the records of the solver view, by question in the order of `TASKS`."""
+    """Return the records of the solver view, in the order of `QUESTIONS`."""
     solvers = [record for record in records if record["view"] == "solver"]
-    return sorted(solvers, key=lambda record: list(TASKS).index(record["question"]))
+    return sorted(solvers, key=lambda record: list(QUESTIONS).index(record["question"]))
 
 
 def name(value):
@@ -228,7 +245,7 @@ def succeeded(records):
 def panel_title(values):
     """Return the title of a panel, such as `Distance calculation, resistance`."""
     return ", ".join(
-        TASKS[value] if field == "question" else name(value)
+        QUESTIONS[value] if field == "question" else name(value)
         for field, value in values.items()
     )
 
@@ -590,7 +607,7 @@ COMPARISON = {
     "Setting": setting,
 }
 SOLVER_VIEW = {
-    "Question": lambda record: TASKS[record["question"]].lower(),
+    "Question": lambda record: QUESTIONS[record["question"]].lower(),
     "Distance": lambda record: name(record["distance"]),
     "dtype": lambda record: record["dtype"],
     "Solver": lambda record: name(record["solver"]),
@@ -897,7 +914,7 @@ def comparison_results(records, config, run_dir, by_distance):
     return [
         " ".join(filter(None, findings)),
         "### Results",
-        picture(run_dir, f"{question}.png", f"{TASKS[question]}: warm runtime"),
+        picture(run_dir, f"{question}.png", f"{QUESTIONS[question]}: warm runtime"),
         speedup_table(pairs, by_distance),
         collapsed(
             f"Warm runtime and {measure} of every setting on every raster",
@@ -944,7 +961,7 @@ def combination(entry):
         ("distance", "", prose),
         ("solver", "with ", code),
         ("dtype", "in ", str),
-        ("question", "in the ", lambda question: TASKS[question].lower()),
+        ("question", "in the ", lambda question: QUESTIONS[question].lower()),
     ):
         if field in entry:
             values = entry[field] if isinstance(entry[field], list) else [entry[field]]
@@ -952,15 +969,26 @@ def combination(entry):
     return " ".join(words)
 
 
-def not_run(entry, records):
+def not_run(entry, records, view):
     """Return the parts of an entry of `fails_by_design` that no record ran.
 
-    The entry is split into its combinations, which take one value of each of
-    its fields, and a record ran a combination when it holds each of its
-    values. The combinations that no record ran, but those of a solver of
-    `REMOVED`, are joined back into entries, one per value of the fields but
-    the last that holds a list.
+    An entry without a question matches each question of the solver view
+    `view` that computes one of its distances, or every question without a
+    distance; it names them when they are several. The entry is split into its
+    combinations, which take one value of each of its fields, and a record ran
+    a combination when it holds each of its values. The combinations that no
+    record ran, but those of a solver of `REMOVED`, are joined back into
+    entries, one per value of the fields but the last that holds a list.
     """
+    distances = entry.get("distance", [])
+    distances = distances if isinstance(distances, list) else [distances]
+    questions = [
+        question
+        for question, computed in view["questions"].items()
+        if not distances or set(distances) & set(computed)
+    ]
+    if "question" not in entry and len(questions) > 1:
+        entry = {**entry, "question": questions}
     fields = list(entry)
     lists = [field for field in fields if isinstance(entry[field], list)]
     joined = lists[-1:]  # the last field that holds a list, if any
@@ -1023,7 +1051,7 @@ def setup_section(records, config, environment):
         [
             tool,
             environment["tools"][tool],
-            ", ".join(TASKS[q].lower() for q in TASKS if q in asked),
+            ", ".join(QUESTIONS[q].lower() for q in QUESTIONS if q in asked),
         ]
         for tool, (_, asked) in tools.items()
     ]
@@ -1034,7 +1062,7 @@ def setup_section(records, config, environment):
     part = ""
     if maryland.get("side"):
         part = f", of which the run takes the top-left {maryland['side']}² pixels"
-    analyses = either((TASKS[q].lower() for q in maryland["questions"]), "and")
+    analyses = either((QUESTIONS[q].lower() for q in maryland["questions"]), "and")
     landscapes = [
         f"**Synthetic rasters** of {either((f'{s}²' for s in sides), 'and')} "
         "pixels. The benchmark draws a Gaussian random field $f$ with a Gaussian "
@@ -1109,7 +1137,7 @@ def setup_section(records, config, environment):
         bullets(hardware),
         "### Tools",
         table(["Tool", "Version", "Questions"], versions),
-        renaming(records, environment),
+        renaming(records),
         collapsed("Parameter mapping of each tool", table(["Tool", "Mapping"], mappings)),
         "### Landscapes",
         bullets(landscapes),
@@ -1123,19 +1151,19 @@ def setup_section(records, config, environment):
     ]
 
 
-def renaming(records, environment):
+def renaming(records):
     """Return the sentence that states the solvers of the run that `RENAMED` renames.
 
     It is empty when the records name none of them.
     """
     words = set(re.findall(r"\w+", " ".join(r["solver"] or "" for r in records)))
-    renamed = [solver for solver in RENAMED if solver in words]
-    if not renamed:
+    old = [solver for solver in RENAMED if solver in words]
+    if not old:
         return ""
-    pairs = (f"`{solver}` as {code(solver)}" for solver in renamed)
+    pairs = (f"`{solver}` as {code(solver)}" for solver in old)
     return (
-        f"The run used JAXScape {environment['tools']['JAXScape']}, whose solvers "
-        f"the page names as JAXScape 0.0.18 does: {either(pairs, 'and')}."
+        "The page names the solvers of this run as JAXScape 0.0.18 does: "
+        f"{either(pairs, 'and')}."
     )
 
 
@@ -1213,7 +1241,17 @@ def connectivity_section(records, config, run_dir):
         f"{block} pixels, under the proximity $K(d) = e^{{-d/{scale}}}$, with $d$ "
         "in equivalent pixels.",
         "**Graph**: rook contiguity, with the mean permeability of two pixels as "
-        "the conductance of their edge.",
+        "the conductance of their edge. JAXScape's windowed analyses raise "
+        "permeability below the permeability floor, a small fraction of the "
+        "largest permeability, to the floor"
+        + (
+            ". On Maryland, the other tools treat the barriers, of permeability "
+            "0, as impassable, and JAXScape's analyses still cross the barrier "
+            "pixels: the edge between a barrier pixel and a pixel of "
+            "permeability $p$ has a conductance of about $p/2$."
+            if "maryland" in config
+            else "."
+        ),
         f"**Resistance distance**: {code(setting('method'))} with "
         f"{code(setting('solver'))}, the setting of the [connectivity "
         f"example]({EXAMPLE}), on tiles of up to {setting('batch_size'):,} block "
@@ -1246,7 +1284,8 @@ def sensitivity_section(records, config, run_dir, maryland):
             ),
             f"Rank of each pixel of Maryland in JAXScape's "
             f"{name(jaxscape['distance'])} and in {other['tool']}'s "
-            f"{MARYLAND['map']} (`{other['solver']}`), with barriers in gray."
+            f"{MARYLAND['map']} (`{other['solver']}`), with the pixels without a "
+            "value in gray."
             + (
                 f" {RHO} between the two maps is {other['agreement']:.2f}."
                 if other["agreement"] is not None
@@ -1272,8 +1311,9 @@ def sensitivity_section(records, config, run_dir, maryland):
         "permeability 1 with the same quality, and 0 where the latter is not "
         "positive. Each call computes both sensitivities.",
         "**Omniscape.jl**: computes its normalized current with the "
-        "configuration of its Maryland example, on the same windows and on a "
-        "graph of eight neighbours.",
+        "configuration of its Maryland example, with `radius` equal to "
+        "`dependency_range`, the same block size, and a graph of eight "
+        "neighbours.",
         "**Agreement**: as in the connectivity analysis.",
     ]
     return [
@@ -1285,15 +1325,31 @@ def sensitivity_section(records, config, run_dir, maryland):
     ]
 
 
-def fastest_solvers(records):
-    """Return the table of the fastest solver of each question, distance and dtype.
+def fastest_solvers(records, approximate):
+    """Return the tables of the fastest solver and of the approximations.
 
-    Each row is on the largest synthetic raster on which a solver succeeded,
-    and compares the fastest solver there with the next fastest.
+    **Arguments:**
+
+    - `records`: The records of the solver view.
+    - `approximate`: The labels of the solvers under an approximation of the
+      distance, such as Spielman's, and their entries in the configuration.
+
+    **Returns:**
+
+    The table of the fastest solver of each question, distance and dtype among
+    those that solve without an approximation, on the largest synthetic raster
+    on which one succeeded, compared with the next fastest; and the table of
+    each approximation on the raster of the row of its question, distance and
+    dtype, or else its largest synthetic raster, with its speed-up over the
+    fastest solver there. Either is empty without a record.
     """
-    rows = []
+    exact, rows = {}, []
     for values, group in group_by(records, ("question", "distance", "dtype")):
-        ok = [record for record in succeeded(group) if side(record["case"])]
+        ok = [
+            record
+            for record in succeeded(group)
+            if side(record["case"]) and record["solver"] not in approximate
+        ]
         if not ok:
             continue
         case = max(ok, key=lambda record: record["cells"])["case"]
@@ -1302,9 +1358,10 @@ def fastest_solvers(records):
             key=lambda record: record["median_s"],
         )
         best, after = ranked[0], ranked[1:2]
+        exact[tuple(values.values())] = best
         rows.append(
             [
-                TASKS[values["question"]].lower(),
+                QUESTIONS[values["question"]].lower(),
                 name(values["distance"]),
                 values["dtype"],
                 case_label(case),
@@ -1320,7 +1377,34 @@ def fastest_solvers(records):
         )
     header = ["Question", "Distance", "dtype", "Raster", "Fastest solver"]
     header += ["Warm runtime", "Error", "Next fastest solver", "Speed-up over it"]
-    return table(header, rows)
+    fastest = table(header, rows) if rows else ""
+    rows = []
+    fields = ("question", "distance", "dtype", "solver")
+    for values, group in group_by(records, fields):
+        ok = [r for r in succeeded(group) if side(r["case"])]
+        if values["solver"] not in approximate or not ok:
+            continue
+        best = exact.get(tuple(values.values())[:-1])
+        cases = {record["case"]: record for record in ok}
+        record = cases.get(best and best["case"]) or max(ok, key=lambda r: r["cells"])
+        compared = best if best and best["case"] == record["case"] else None
+        entry = approximate[values["solver"]]
+        rows.append(
+            [
+                QUESTIONS[values["question"]].lower(),
+                name(values["distance"]),
+                values["dtype"],
+                case_label(record["case"]),
+                name(entry["method"]),
+                name(entry["solver"]),
+                runtime(record),
+                agreement(record).removeprefix("error "),
+                factor(ratio((compared, record))) if compared else "",
+            ]
+        )
+    header = ["Question", "Distance", "dtype", "Raster", "Approximation", "Solver"]
+    header += ["Warm runtime", "Error", "Speed-up over the fastest solver"]
+    return fastest, table(header, rows) if rows else ""
 
 
 def solver_section(records, config, run_dir):
@@ -1355,18 +1439,20 @@ def solver_section(records, config, run_dir):
     left_out = "; ".join(
         combination(part)
         for entry in view.get("fails_by_design", [])
-        for part in not_run(entry, records)
+        for part in not_run(entry, records, view)
     )
     limit = f"**Time limit**: a call stops after {duration(view['timeout'])}"
-    if used:
-        limit += f", and under {methods} after "
-        limit += duration(used[0].get("timeout", view["timeout"]))
+    longer = used[0].get("timeout", view["timeout"]) if used else view["timeout"]
+    if longer != view["timeout"]:
+        limit += f", and under {methods} after {duration(longer)}"
     exponent = f"$10^{{{np.log10(SMALLEST_ERROR):.0f}}}$"
+    cholmod = any(record["solver"] == "CholmodSolver" for record in records)
+    cpu = " `CholmodSolver` factorizes and solves on the CPU." if cholmod else ""
     method = [
         "**Solvers**: JAXScape solves the linear systems of resistance and "
         "free-energy distances with one of several solvers, on the "
         f"{view['device'].upper()}, in {either(view['dtypes'], 'and')}. `dense` "
-        "is the dense solve, `solver=None`.",
+        f"is the dense solve, `solver=None`.{cpu}",
         rasters + ".",
         "**Error**: in the distance calculation, the largest relative error "
         "with respect to the float64 reference of the distance calculation; in "
@@ -1381,11 +1467,20 @@ def solver_section(records, config, run_dir):
         limit + ".",
         f"**Not run**: {left_out}." if left_out else "",
     ]
+    fastest, approximations = fastest_solvers(records, approximate)
     return [
         "## Linear solvers of JAXScape",
-        "The fastest solver of each question, distance and dtype, on the largest "
-        "synthetic raster on which a solver succeeded:",
-        fastest_solvers(records),
+        "The fastest solver of each question, distance and dtype, without an "
+        "approximation of the distance, on the largest synthetic raster on "
+        "which one succeeded:"
+        if fastest
+        else "",
+        fastest,
+        "The approximations of resistance distance, each on the raster of its "
+        "row above, or else on its largest synthetic raster:"
+        if approximations
+        else "",
+        approximations,
         "### Results",
         picture(run_dir, "solvers.png", "Linear solvers: warm runtime"),
         picture(run_dir, "solver-errors.png", "Linear solvers: warm runtime and error"),

@@ -14,7 +14,7 @@
     "habitat_threshold": 0.7,
     "seed": 74
   },
-  "distance": {
+  "E1": {
     "sites": 32,
     "seed": 75,
     "reference": "adapters/reference.py"
@@ -52,8 +52,8 @@
   "maryland": {
     "raster": "data/nlcd_2016_frederick_md.tif",
     "questions": [
-      "connectivity",
-      "sensitivity"
+      "E2",
+      "E3"
     ],
     "resistance": {
       "11": 100,
@@ -74,7 +74,7 @@
   "tools": [
     {
       "tool": "JAXScape",
-      "question": "distance",
+      "question": "E1",
       "adapter": "adapters/jaxscape.py",
       "devices": [
         "gpu",
@@ -100,7 +100,7 @@
     },
     {
       "tool": "JAXScape",
-      "question": "connectivity",
+      "question": "E2",
       "adapter": "adapters/jaxscape.py",
       "devices": [
         "gpu",
@@ -121,7 +121,7 @@
     },
     {
       "tool": "JAXScape",
-      "question": "sensitivity",
+      "question": "E3",
       "adapter": "adapters/jaxscape.py",
       "devices": [
         "gpu",
@@ -151,7 +151,7 @@
     },
     {
       "tool": "Circuitscape.jl",
-      "question": "distance",
+      "question": "E1",
       "adapter": "adapters/circuitscape.jl",
       "devices": [
         "cpu"
@@ -168,7 +168,7 @@
     },
     {
       "tool": "ConScape.jl",
-      "question": "distance",
+      "question": "E1",
       "adapter": "adapters/conscape.jl",
       "devices": [
         "cpu"
@@ -180,7 +180,7 @@
     },
     {
       "tool": "ConScape.jl",
-      "question": "connectivity",
+      "question": "E2",
       "adapter": "adapters/conscape.jl",
       "devices": [
         "cpu"
@@ -193,7 +193,7 @@
     },
     {
       "tool": "ConScape.jl",
-      "question": "sensitivity",
+      "question": "E3",
       "adapter": "adapters/conscape.jl",
       "devices": [
         "cpu"
@@ -206,7 +206,7 @@
     },
     {
       "tool": "gdistance",
-      "question": "distance",
+      "question": "E1",
       "adapter": "adapters/gdistance.R",
       "devices": [
         "cpu"
@@ -220,7 +220,7 @@
     {
       "tool": "skimage.graph.MCP",
       "package": "scikit-image",
-      "question": "distance",
+      "question": "E1",
       "adapter": "adapters/skimage.py",
       "devices": [
         "cpu"
@@ -233,7 +233,7 @@
     {
       "tool": "EcoScape",
       "package": "ecoscape-connectivity",
-      "question": "sensitivity",
+      "question": "E3",
       "adapter": "adapters/ecoscape.py",
       "devices": [
         "gpu"
@@ -248,7 +248,7 @@
     },
     {
       "tool": "samc",
-      "question": "sensitivity",
+      "question": "E3",
       "adapter": "adapters/samc.R",
       "devices": [
         "cpu"
@@ -262,7 +262,7 @@
     },
     {
       "tool": "eco-connectivity",
-      "question": "connectivity",
+      "question": "E2",
       "adapter": "adapters/eco_connectivity.py",
       "devices": [
         "cpu"
@@ -277,7 +277,7 @@
     {
       "tool": "Graphab",
       "package": "graphab",
-      "question": "connectivity",
+      "question": "E2",
       "adapter": "adapters/graphab.py",
       "devices": [
         "cpu"
@@ -289,7 +289,7 @@
     },
     {
       "tool": "Omniscape.jl",
-      "question": "sensitivity",
+      "question": "E3",
       "adapter": "adapters/omniscape.jl",
       "devices": [
         "cpu"
@@ -335,23 +335,23 @@
       }
     ],
     "questions": {
-      "distance": {
+      "E1": {
         "resistance": {},
         "free_energy": {}
       },
-      "connectivity": {
+      "E2": {
         "resistance": {
           "batch_size": 256,
-          "cases": [
-            "synthetic-256"
+          "sides": [
+            256
           ]
         }
       },
-      "sensitivity": {
+      "E3": {
         "resistance": {
           "batch_size": 256,
-          "cases": [
-            "synthetic-256"
+          "sides": [
+            256
           ]
         }
       }
@@ -366,36 +366,13 @@
       "SpielmanApproximation(epsilon=0.15), GridMultigridSolver(rtol=3e-4)": {
         "solver": "GridMultigridSolver(rtol=3e-4)",
         "method": "SpielmanApproximation(epsilon=0.15)",
-        "batch_size": 2601,
         "questions": [
-          "connectivity",
-          "sensitivity"
+          "E2",
+          "E3"
         ],
-        "cases": [
-          "synthetic-256",
-          "synthetic-1024",
-          "synthetic-4096",
-          "synthetic-8192",
-          "maryland"
-        ],
-        "timeout": 3600
-      },
-      "SpielmanApproximation(epsilon=0.15), CuDSSSolver": {
-        "solver": "CuDSSSolver",
-        "method": "SpielmanApproximation(epsilon=0.15)",
-        "batch_size": 576,
-        "questions": [
-          "connectivity",
-          "sensitivity"
-        ],
-        "cases": [
-          "synthetic-256",
-          "synthetic-1024",
-          "synthetic-4096",
-          "synthetic-8192",
-          "maryland"
-        ],
-        "timeout": 3600
+        "dtypes": [
+          "float32"
+        ]
       }
     }
   }

@@ -5,12 +5,12 @@
 # free-energy distances is 1 / conductance, and the free-energy distance has
 # the shared `theta`. The distance calculation is a nodes-to-nodes query among
 # the sites.
-# The connectivity analysis runs `SensitivityAnalysis(var="quality")` for the
-# map and `ConnectivityAnalysis` for the landscape total, sum_i q_i S_i, and
-# the sensitivity analysis runs `SensitivityAnalysis(var="permeability")`, with
-# the shared `dependency_range` and `coarsening_factor`, the default proximity
-# and the `batch_size` of the settings; these windowed analyses build their
-# graphs with JAXScape's own edge rule, the mean permeability of the two
+# The connectivity analysis runs `SensitivityAnalysis(...).run("quality")` for
+# the map and `ConnectivityAnalysis` for the landscape total, sum_i q_i S_i, and
+# the sensitivity analysis runs `SensitivityAnalysis(...).run("permeability")`,
+# with the shared `dependency_range` and `coarsening_factor`, the default
+# proximity and the `batch_size` of the settings; these windowed analyses build
+# their graphs with JAXScape's own edge rule, the mean permeability of the two
 # pixels. A `proximity` setting, a function of the distance in Python such as
 # `lambda d: -d`, replaces the default proximity. With `normalized`, the map of
 # the sensitivity analysis is the normalized sensitivity to resistance of the
