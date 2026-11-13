@@ -30,13 +30,6 @@ except ImportError:
     _MultilevelSolver = None
     AMJAX_AVAILABLE = False
 
-# The default smoother: one iteration of Jacobi of weight 2/3, as in
-# `GeometricMultigridCGSolver`. The V-cycle is positive definite while the
-# weight times the spectral radius of D^-1 A of each level stays below 2, and
-# coarser levels computed from values other than those of `init` can have
-# spectral radii above 2.
-_JACOBI = ("jacobi", {"iterations": 1, "omega": 2 / 3})
-
 
 @final
 class _Hierarchy(eqx.Module):
@@ -115,10 +108,10 @@ class AMJaxCGSolver(AbstractSparseIterativeSolver[_Hierarchy]):
     - `pyamg_method`: The PyAMG function that builds the hierarchy from a
       SciPy CSR matrix. Defaults to `pyamg.smoothed_aggregation_solver`.
     - `pyamg_kwargs`: Keyword arguments of `pyamg_method`.
-    - `presmoother`, `postsmoother`: AMJax smoothers, as `(name, kwargs)`.
-      Default to one iteration of Jacobi of weight 2/3. A Jacobi smoother
-      with `withrho=True` keeps the weight that `init` computes from the
-      spectral radius of its level.
+    - `presmoother`, `postsmoother`: AMJax smoothers, as `(name, kwargs)`,
+      both required. Default to one iteration of Jacobi of weight 2/3. A
+      Jacobi smoother with `withrho=True` keeps the weight that `init`
+      computes from the spectral radius of its level.
     - `coarse_solver`: AMJax solver of the coarsest level. The coarse solvers
       `"pinv"`, `"lu"` and `"qr"` keep the factorization of the coarsest
       matrix of `init`.
@@ -131,17 +124,27 @@ class AMJaxCGSolver(AbstractSparseIterativeSolver[_Hierarchy]):
         positive definite V-cycle. With Jacobi smoothers of weight ω and the
         `"jacobi"` coarse solver, the V-cycle is one when ω times the spectral
         radius of `D⁻¹A`, for the matrix `A` of a level and its diagonal `D`,
-        is below 2 on every level. With values other than those of `init`, a
-        coarser level can have a spectral radius above 2; the default weight of
-        2/3 admits spectral radii up to 3.
+        is below 2 on every level; on the coarsest level, ω is the weight of
+        the coarse solver, 1 by default. With values other than those of
+        `init`, a coarser level can have a spectral radius above 2, and the
+        default weight of the smoothers, 2/3, admits spectral radii up to 3 on
+        the levels they smooth.
     """
 
     rtol: float = 1e-5
     max_steps: int = 1_000
     pyamg_method: Callable | None = None
     pyamg_kwargs: dict[str, Any] | None = None
-    presmoother: Any = _JACOBI
-    postsmoother: Any = _JACOBI
+    # One iteration of Jacobi of weight 2/3, as in `GeometricMultigridCGSolver`:
+    # coarser levels computed from values other than those of `init` can have
+    # spectral radii of D^-1 A above 2, where undamped Jacobi makes the V-cycle
+    # indefinite.
+    presmoother: tuple[str, dict[str, Any]] = eqx.field(
+        default_factory=lambda: ("jacobi", {"iterations": 1, "omega": 2 / 3})
+    )
+    postsmoother: tuple[str, dict[str, Any]] = eqx.field(
+        default_factory=lambda: ("jacobi", {"iterations": 1, "omega": 2 / 3})
+    )
     coarse_solver: str = "jacobi"
     coarse_solver_kwargs: dict[str, Any] | None = None
 
@@ -150,6 +153,12 @@ class AMJaxCGSolver(AbstractSparseIterativeSolver[_Hierarchy]):
             raise ImportError(
                 "AMJaxCGSolver requires amjax and pyamg. "
                 "Install the optional dependency with `uv add jaxscape --extra amjax`."
+            )
+        if self.presmoother is None or self.postsmoother is None:
+            raise ValueError(
+                "Conjugate gradients need a smoother before and after the coarse "
+                "correction: pass `presmoother` and `postsmoother` as "
+                "`(name, kwargs)`."
             )
 
     def preconditioner(self, pattern: CSRPattern, values: Array) -> _Hierarchy:

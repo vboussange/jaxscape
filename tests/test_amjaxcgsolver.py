@@ -174,6 +174,13 @@ def test_state_built_inside_jit_solves_the_graph(amjax_dependencies):
     np.testing.assert_allclose(actual, expected, rtol=1e-7)
 
 
+def test_smoothers_are_required(amjax_dependencies):
+    with pytest.raises(ValueError, match="smoother before and after"):
+        AMJaxCGSolver(presmoother=None)  # pyright: ignore[reportArgumentType]
+    with pytest.raises(ValueError, match="smoother before and after"):
+        AMJaxCGSolver(postsmoother=None)  # pyright: ignore[reportArgumentType]
+
+
 def test_missing_amjax_dependency_reports_extra(monkeypatch):
     from jaxscape.solvers import amjaxcgsolver
 
