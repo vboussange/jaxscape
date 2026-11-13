@@ -162,6 +162,7 @@ them in float64.
 ::: jaxscape.solvers.geometricmultigridcgsolver.GeometricMultigridCGSolver
     options:
       members: false
+      inherited_members: false
 
 ### Algebraic multigrid
 
@@ -185,6 +186,7 @@ graph, is solved by conjugate gradients without preconditioner.
 ::: jaxscape.solvers.amjaxcgsolver.AMJaxCGSolver
     options:
       members: false
+      inherited_members: false
 
 ### Sparse Cholesky factorization
 
