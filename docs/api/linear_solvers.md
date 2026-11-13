@@ -156,17 +156,19 @@ ground vertex of large tiles (see the note on grounding of
 
 Solver setup can cost far more than a solve, as a sparse analysis or a multigrid hierarchy does. `ResistanceDistance` and `FreeEnergyDistance` share one state lifecycle:
 
-- `distance.init(graph)` builds the state of `graph`. Solvers read concrete
-  sparse indices, and some run host code, so call it outside `jax.jit`, except
-  for a `GridGraph`: its state builds inside `jax.jit` too, from its shape and
-  contiguity.
+- `distance.init(graph)` builds the state of `graph`. JAXScape's sparse
+  solvers, except `CholmodSolver`, read concrete sparse indices, and some run
+  host code, so call it outside `jax.jit`, except for a `GridGraph`: its state
+  builds inside `jax.jit` too, from its shape and contiguity. The compiled
+  program then holds the arrays of the state as constants, and on large grids
+  it compiles faster with the state passed as an argument.
 - `distance.reinit(graph, state)` returns the state of another graph with the same
   sparsity pattern, reusing what the solver can. It runs inside `jax.jit`.
 - Queries take that state, and all queries on a graph can share it. A query always
   solves the graph it is given: a state of another graph costs time and leaves the
   distances unchanged.
 
-A loop over conductances carries the state from one step to the next, whatever the solver: `init` returns `None` only with `solver=None`, and `reinit` builds a new state for a solver that keeps nothing from one matrix to the next, such as `lineax.CG`. The state carries no gradient, and `has_aux=True` passes it through the gradient transformation:
+A loop over conductances carries the state from one step to the next, whatever the solver. With Lineax's and JAXScape's solvers, `init` returns `None` only with `solver=None`. For a solver that keeps nothing from one matrix to the next, such as `lineax.CG`, `reinit` ignores the state and returns `init(graph)`. The state carries no gradient, and `has_aux=True` passes it through the gradient transformation:
 
 ```python
 import equinox as eqx
@@ -320,6 +322,7 @@ class JacobiCGSolver(AbstractSparseIterativeSolver):
 ::: jaxscape.solvers.sparsesolver.AbstractSparseSolver
     options:
       members:
+        - init
         - reinit
 
 ::: jaxscape.solvers.sparsedirectsolver.AbstractSparseDirectSolver

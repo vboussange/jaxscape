@@ -203,10 +203,12 @@ class AbstractDistance(eqx.Module):
         """Return the state for `graph`, reusing what the solver can from `state`.
 
         Queries on `graph` take the returned state, and so does the next `reinit`.
-        Carry the state whatever the solver: `reinit` returns `None` only for a
-        distance without a solver, such as one with `solver=None`, and for a
-        solver that keeps nothing from one matrix to the next, such as
-        `lineax.CG`, it ignores `state` and builds a new state.
+        Carry the returned state into the next queries and `reinit`, whatever the
+        distance and solver. The state is `None` for a distance without a solver,
+        such as one with `solver=None`. With Lineax's and JAXScape's solvers, it
+        is never `None`. For a solver that keeps nothing from one matrix to the
+        next, such as `lineax.CG`, `reinit` ignores `state` and returns
+        `init(graph)`.
 
         **Arguments:**
 
@@ -361,15 +363,17 @@ class AbstractSolverDistance(AbstractDistance):
     def init(self, graph: AbstractGraph) -> Any:
         """Build the solver state for `graph`.
 
-        Solvers read concrete sparse indices, and some build a preconditioner
-        on the host, such as `AMJaxCGSolver`, so call it outside `jax.jit`.
-        `ResistanceDistance` also builds the state of a `GridGraph` inside
-        `jax.jit`.
+        JAXScape's sparse solvers, except `CholmodSolver`, read concrete sparse
+        indices, and `AMJaxCGSolver` builds its preconditioner on the host, so
+        call it outside `jax.jit`. `ResistanceDistance` also builds the state
+        of a `GridGraph` inside `jax.jit`.
 
-        With any solver, `init` returns a state, and it returns `None` only with
-        `solver=None`. Carry the state through `reinit` and the queries whatever
-        the solver: for a solver that keeps nothing from one matrix to the next,
-        such as `lineax.CG`, `reinit` builds a new state.
+        `init` returns the state that `solver.init` builds for the system
+        matrix: a state for Lineax's and JAXScape's solvers, and `None` only
+        with `solver=None`. Carry the state through `reinit` and the queries
+        whatever the solver. For a solver that keeps nothing from one matrix to
+        the next, such as `lineax.CG`, `reinit` ignores `state` and returns
+        `init(graph)`.
 
         **Arguments:**
 

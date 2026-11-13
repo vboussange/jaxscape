@@ -116,6 +116,25 @@ class AbstractSparseSolver[State: AbstractSparseState](AbstractReusableStateSolv
         too."""
 
     def init(self, operator: AbstractLinearOperator, options: dict[str, Any]) -> State:
+        """Return the state of `operator`, for its sparsity pattern and values.
+
+        It reads the sparsity pattern from concrete sparse indices: it raises
+        `ValueError` for traced sparse indices, as inside `jax.jit`, and
+        `TypeError` for an operator that is not BCOO-backed. A solve uses the
+        matrix that its state holds, whatever operator `lineax.linear_solve`
+        receives: before solving another matrix of the same sparsity pattern,
+        call `reinit` with its operator.
+
+        **Arguments:**
+
+        - `operator`: BCOO-backed operator of a symmetric positive definite
+          matrix.
+        - `options`: Unused.
+
+        **Returns:**
+
+        The state of `operator`, which keeps its dtype.
+        """
         del options
         matrix = _matrix(self, operator)
         pattern = _pattern(self, matrix)
