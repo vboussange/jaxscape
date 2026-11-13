@@ -325,8 +325,7 @@
         "distance": "free_energy",
         "solver": [
           "GeometricMultigridCGSolver",
-          "AMJaxCGSolver",
-          "PyAMGCGSolver"
+          "AMJaxCGSolver"
         ]
       },
       {
@@ -361,7 +360,6 @@
       "CholmodSolver": {},
       "CuDSSSolver": {},
       "AMJaxCGSolver": {},
-      "PyAMGCGSolver": {},
       "dense": {},
       "SpielmanApproximation(epsilon=0.15), GeometricMultigridCGSolver(rtol=3e-4)": {
         "solver": "GeometricMultigridCGSolver(rtol=3e-4)",

@@ -15,7 +15,7 @@ and enable the repository's pre-commit hooks:
 ```bash
 git clone https://github.com/your-username-here/jaxscape.git
 cd jaxscape
-uv sync --extra lint --extra tests --extra docs --extra pyamg --extra amjax --extra cholespy
+uv sync --extra lint --extra tests --extra docs --extra amjax --extra cholespy
 uv run pre-commit install
 ```
 

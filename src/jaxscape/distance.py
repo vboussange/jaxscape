@@ -1,4 +1,3 @@
-import warnings
 from abc import abstractmethod
 from collections.abc import Callable
 from typing import Any, ClassVar
@@ -381,15 +380,6 @@ class AbstractSolverDistance(AbstractDistance):
         if self.solver is None:
             return None
         return _solver_state(self.system_matrix(graph), self.solver, None, state)
-
-    def init_preconditioner(self, graph: AbstractGraph) -> Any:
-        """Deprecated alias of `init`, which queries now reinitialize for any graph."""
-        warnings.warn(
-            "`init_preconditioner` is deprecated; use `init`.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.init(graph)
 
 
 def _has_tracers(tree: Any) -> bool:

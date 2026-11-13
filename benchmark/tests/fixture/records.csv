@@ -55,7 +55,6 @@ solver,distance,JAXScape,resistance,gpu,float32,dense,synthetic-1024,1048576,ski
 solver,distance,JAXScape,free_energy,gpu,float64,CuDSSSolver,synthetic-256,65536,ok,,3.0,0.35;0.36;0.34,0.35,largest relative error,4.7e-14,,,,0.0.18,False,adapters/jaxscape.py
 solver,connectivity,JAXScape,resistance,gpu,float32,GeometricMultigridCGSolver,synthetic-256,65536,ok,,3.0,91.0;90.0;92.0,91.0,relative L2 error,0.00031,,,120000.0,0.0.18,False,adapters/jaxscape.py
 solver,connectivity,JAXScape,resistance,gpu,float32,"SpielmanApproximation(epsilon=0.15), GeometricMultigridCGSolver(rtol=3e-4)",synthetic-256,65536,ok,,3.0,2.0;2.1;1.9,2.0,relative L2 error,0.042,,,120000.0,0.0.18,False,adapters/jaxscape.py
-solver,sensitivity,JAXScape,resistance,gpu,float64,PyAMGCGSolver,synthetic-256,65536,timeout,a call exceeded 3600 s,,,,relative L2 error,,,,,0.0.18,,adapters/jaxscape.py
 solver,distance,JAXScape,resistance,gpu,float32,GeometricMultigridCGSolver,synthetic-4096,16777216,ok,,9.0,5.1;5.0;5.2;5.0;5.1,5.1,largest relative error,4e-06,,,,0.0.18,False,adapters/jaxscape.py
 solver,sensitivity,JAXScape,resistance,gpu,float32,GeometricMultigridCGSolver,synthetic-256,65536,ok,,120.0,95.0;96.0;94.0;95.0;95.0,95.0,relative L2 error,,,,,0.0.18,False,adapters/jaxscape.py
 solver,connectivity,JAXScape,resistance,gpu,float64,"SpielmanApproximation(epsilon=0.15), CuDSSSolver",synthetic-256,65536,ok,,9.0,1.5;1.4;1.6;1.5;1.5,1.5,relative L2 error,0.04,,,120000.0,0.0.18,False,adapters/jaxscape.py

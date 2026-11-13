@@ -16,7 +16,6 @@ from .operator import (
     AbstractReusableStateSolver as AbstractReusableStateSolver,
     BCOOLinearOperator as BCOOLinearOperator,
 )
-from .pyamgcgsolver import PyAMGCGSolver as PyAMGCGSolver
 from .sparsedirectsolver import (
     AbstractSparseDirectSolver as AbstractSparseDirectSolver,
     CSRPattern as CSRPattern,

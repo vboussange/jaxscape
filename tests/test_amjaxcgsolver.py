@@ -8,7 +8,6 @@ from jaxscape import GridGraph, ResistanceDistance
 from jaxscape.solvers import (
     amjax_preconditioner_operator,
     AMJaxCGSolver,
-    AMJaxCGState,
     BCOOLinearOperator,
     build_amjax_solver,
 )
@@ -135,23 +134,3 @@ def test_missing_amjax_dependency_reports_extra(monkeypatch):
         AMJaxCGSolver()
     with pytest.raises(ImportError, match=r"jaxscape\[amjax\]"):
         build_amjax_solver(BCOO.fromdense(jnp.eye(2)))
-
-
-def test_deprecated_state_methods_are_aliases(amjax_dependencies):
-    matrix = BCOO.from_scipy_sparse(
-        amjax_dependencies.gallery.poisson((6, 6), format="csr", dtype=np.float64)
-    )
-    operator = BCOOLinearOperator(matrix)
-    solver = AMJaxCGSolver(rtol=1e-8, atol=1e-8, max_steps=100)
-    distance = ResistanceDistance(solver=solver)
-    grid = GridGraph(jnp.ones((3, 3)), fun=lambda x, y: (x + y) / 2)
-
-    with pytest.warns(DeprecationWarning, match="use `init`"):
-        state = solver.init_preconditioner(operator)
-    with pytest.warns(DeprecationWarning, match="use `reinit`"):
-        state = solver.materialize_state(operator, {}, state)
-    with pytest.warns(DeprecationWarning, match="use `init`"):
-        distance_state = distance.init_preconditioner(grid)
-
-    assert isinstance(state, AMJaxCGState)
-    assert isinstance(distance_state, AMJaxCGState)

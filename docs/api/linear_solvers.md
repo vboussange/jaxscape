@@ -32,8 +32,7 @@ Memory restricts the choice first. Dense linear algebra stores matrices of
 $n^2$ entries for a graph of $n$ vertices, and so fits small graphs only.
 `GeometricMultigridCGSolver` stores the matrix on its grid and a few arrays of $n$
 entries per right-hand side. Sparse Cholesky solvers store a factorization of
-the matrix; when it does not fit in memory, use `AMJaxCGSolver` on a GPU and
-`PyAMGCGSolver` on a CPU.
+the matrix; when it does not fit in memory, use `AMJaxCGSolver`.
 
 The entries of the inverse of the free-energy system matrix decay
 exponentially with path cost. Iterative solvers therefore need tolerances far
@@ -75,13 +74,12 @@ solvers and their options.
 
 ## `JAXScape` solvers
 
-`jaxscape.solvers` provides five solvers. `GeometricMultigridCGSolver` needs no
-optional dependency. Each of the four others needs one, installed with an
+`jaxscape.solvers` provides four solvers. `GeometricMultigridCGSolver` needs no
+optional dependency. Each of the three others needs one, installed with an
 extra of `jaxscape`:
 
 ```console
 uv add jaxscape --extra cholespy   # CholmodSolver
-uv add jaxscape --extra pyamg      # PyAMGCGSolver
 uv add jaxscape --extra amjax      # AMJaxCGSolver
 uv add jaxscape --extra cudss      # CuDSSSolver (NVIDIA GPU, CUDA 13)
 ```
@@ -90,7 +88,6 @@ uv add jaxscape --extra cudss      # CuDSSSolver (NVIDIA GPU, CUDA 13)
 |---|---|---|---|
 | `GeometricMultigridCGSolver` | Conjugate gradients preconditioned by geometric multigrid | JAX, on CPU or GPU | Grid graphs |
 | `AMJaxCGSolver` | Conjugate gradients preconditioned by algebraic multigrid | Preconditioner built on the CPU; solves in JAX, on CPU or GPU | Any connected graph |
-| `PyAMGCGSolver` | Conjugate gradients preconditioned by algebraic multigrid | SciPy and PyAMG on the CPU, through a host callback | Any connected graph |
 | `CholmodSolver` | Sparse Cholesky factorization | CHOLMOD on the CPU, through a host callback | Any connected graph |
 | `CuDSSSolver` | Sparse Cholesky factorization | NVIDIA cuDSS on the GPU, inside `jax.jit` | Any connected graph |
 
@@ -99,11 +96,11 @@ on a GPU then travel to the CPU and back.
 
 !!! info "Testing"
 
-    The continuous integration tests `GeometricMultigridCGSolver`, `CholmodSolver`,
-    `PyAMGCGSolver` and `AMJaxCGSolver`. Its machines have no NVIDIA GPU: they
-    test the logic of `AbstractSparseDirectSolver` with a dense Cholesky
-    factorization in place of cuDSS. The `CuDSSSolver` tests are marked `gpu`
-    and run only on a machine with an NVIDIA GPU, spineax and cuDSS.
+    The continuous integration tests `GeometricMultigridCGSolver`, `CholmodSolver`
+    and `AMJaxCGSolver`. Its machines have no NVIDIA GPU: they test the logic
+    of `AbstractSparseDirectSolver` with a dense Cholesky factorization in place
+    of cuDSS. The `CuDSSSolver` tests are marked `gpu` and run only on a machine
+    with an NVIDIA GPU, spineax and cuDSS.
 
 ### Geometric multigrid
 
@@ -169,10 +166,9 @@ them in float64.
 
 Algebraic multigrid builds its coarser levels from the entries of the matrix,
 without a grid, and so preconditions the matrix of any graph. `AMJaxCGSolver`
-and `PyAMGCGSolver` solve by conjugate gradients preconditioned by an algebraic
-multigrid hierarchy, which PyAMG builds, by smoothed aggregation by default.
-They suit graphs other than grid graphs whose sparse Cholesky factorization
-does not fit in memory.
+solves by conjugate gradients preconditioned by an algebraic multigrid
+hierarchy, built by smoothed aggregation by default. It suits graphs other than
+grid graphs whose sparse Cholesky factorization does not fit in memory.
 
 `AMJaxCGSolver` builds the hierarchy once, in `init`, on the CPU. It solves
 with Lineax conjugate gradients, preconditioned by AMJax multigrid V-cycles, in
@@ -184,15 +180,7 @@ right-hand sides in float64: enabling 64-bit floats does not convert existing
 float32 arrays. A matrix whose hierarchy has a single level, as that of a small
 graph, is solved by conjugate gradients without preconditioner.
 
-`PyAMGCGSolver` builds the hierarchy at each solve and runs SciPy conjugate
-gradients on the CPU, through a host callback, on one right-hand side after
-another.
-
 ::: jaxscape.solvers.amjaxcgsolver.AMJaxCGSolver
-    options:
-      members: false
-
-::: jaxscape.solvers.pyamgcgsolver.PyAMGCGSolver
     options:
       members: false
 
@@ -297,7 +285,7 @@ What the state of each solver keeps from one graph to the next:
 | `AMJaxCGSolver` | The algebraic multigrid hierarchy |
 | `CuDSSSolver` | The symbolic analysis, and the factorization while the values stay the same |
 | `CholmodSolver` | Its last factorization, while the values stay the same |
-| `PyAMGCGSolver`, Lineax solvers | Nothing: each query runs `init`, which only records the matrix |
+| Lineax solvers | Nothing: each query runs `init`, which only records the matrix |
 
 The graphs of one raster shape and contiguity can also share a
 [`GridTopology`][jaxscape.graph.GridTopology], built once outside `jax.jit`. It

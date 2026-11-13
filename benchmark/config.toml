@@ -293,22 +293,21 @@ reference_solver = "CuDSSSolver"
 # A call of the solver view stops after 15 minutes. At 256^2, one call of the
 # connectivity or sensitivity analysis took 2 to 5 minutes with
 # GeometricMultigridCGSolver and CuDSSSolver in float32, and more than 10 with
-# CholmodSolver and PyAMGCGSolver, which solve on the CPU: at an hour, their
-# timeouts alone would take 8 hours.
+# CholmodSolver, which solves on the CPU: at an hour, its timeouts alone would
+# take 4 hours.
 timeout = 900
 # The combinations that fail by design, which the solver view leaves out; an
 # entry matches each combination whose fields hold its values. Free energy in
 # float32 resolves no distance across the raster (see the distance
-# calculation), and the iterative solvers, GeometricMultigridCGSolver,
-# AMJaxCGSolver and PyAMGCGSolver, resolve no free energy in either dtype: in the
-# run of
-# v0.0.16, GeometricMultigridCGSolver failed to resolve it in float64 at 256^2.
+# calculation), and the iterative solvers, GeometricMultigridCGSolver and
+# AMJaxCGSolver, resolve no free energy in either dtype: in the run of v0.0.16,
+# GeometricMultigridCGSolver failed to resolve it in float64 at 256^2.
 # AMJaxCGSolver returns non-finite output in float32, in the distance
 # calculation, from 256^2 in the run of v0.0.16, as on the windows of the
 # connectivity and sensitivity analyses.
 fails_by_design = [
   { distance = "free_energy", dtype = "float32" },
-  { distance = "free_energy", solver = ["GeometricMultigridCGSolver", "AMJaxCGSolver", "PyAMGCGSolver"] },
+  { distance = "free_energy", solver = ["GeometricMultigridCGSolver", "AMJaxCGSolver"] },
   { solver = "AMJaxCGSolver", dtype = "float32" },
 ]
 
@@ -332,7 +331,6 @@ GeometricMultigridCGSolver = {}
 CholmodSolver = {}
 CuDSSSolver = {}
 AMJaxCGSolver = {}
-PyAMGCGSolver = {}
 dense = {}
 
 # Spielman's approximation of resistance, with the two solvers that the docs

@@ -23,7 +23,6 @@ from jaxscape.solvers import (
     AMJaxCGSolver,
     CholmodSolver,
     CuDSSSolver,
-    PyAMGCGSolver,
 )
 
 
@@ -119,9 +118,6 @@ def make_solver(name):
     if name == "cholmod":
         pytest.importorskip("cholespy")
         return CholmodSolver()
-    pytest.importorskip("pyamg")
-    if name == "pyamg":
-        return PyAMGCGSolver(rtol=1e-13, atol=1e-13, maxiter=500)
     pytest.importorskip("amjax")
     return AMJaxCGSolver(rtol=1e-13, atol=1e-13, max_steps=500)
 
@@ -150,7 +146,6 @@ LIFECYCLE_CASES = [
     ("free-energy", "dense-cholesky", "nodes_to_nodes"),
     on_gpu("free-energy", "all_pairs"),
     ("exact", "cholmod", "nodes_to_nodes"),
-    ("spielman", "pyamg", "all_pairs"),
     ("free-energy", "cg", "sources_to_targets"),
 ]
 
@@ -207,7 +202,6 @@ def test_state_lifecycle_matches_the_dense_reference(kind, solver, query):
         ("free-energy", "amjax"),
         ("exact", "cholmod"),
         ("free-energy", "cholmod"),
-        ("spielman", "pyamg"),
         ("exact", "cg"),
     ],
 )

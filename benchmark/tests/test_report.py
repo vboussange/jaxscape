@@ -348,11 +348,6 @@ def test_solver_section_names_the_fastest_solver_and_lists_every_solver(report):
             "float64",
             "SpielmanApproximation(epsilon=0.15), CuDSSSolver",
         ): ["1.5 s, error 4.0e-02", "12 s", ""],
-        ("sensitivity analysis", "resistance", "float64", "PyAMGCGSolver"): [
-            "timeout",
-            "",
-            "",
-        ],
     }
     for configuration, cells in rows.items():
         assert table_row(table, *configuration)[4:] == cells
@@ -370,8 +365,8 @@ def test_solver_section_states_the_combinations_that_no_record_ran(report):
     # records, and the page does not list them.
     assert (
         "**Not run**: free-energy distance in float32; free-energy distance with "
-        "`GeometricMultigridCGSolver`, `AMJaxCGSolver` or `PyAMGCGSolver`; "
-        "free-energy distance with `CholmodSolver`." in text
+        "`GeometricMultigridCGSolver` or `AMJaxCGSolver`; free-energy distance with "
+        "`CholmodSolver`." in text
     )
 
 

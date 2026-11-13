@@ -89,10 +89,3 @@ distance as `theta` grows, and a multiple of the resistance distance as
     options:
       members: false
       inherited_members: false
-
-## Removed distances
-
-`RSPDistance`, the randomized shortest paths (RSP) distance, was removed in JAXScape
-0.0.14. `FreeEnergyDistance` replaces it, with edge costs equal to inverse
-conductances and symmetric first-hitting free energies as output. Its values
-differ from the expected path costs that `RSPDistance` returned.

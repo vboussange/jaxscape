@@ -1,4 +1,3 @@
-import warnings
 from collections.abc import Callable
 from typing import Any, final
 
@@ -110,7 +109,7 @@ def build_amjax_solver(
 class AMJaxCGSolver(AbstractReusableStateSolver):
     """Conjugate gradients preconditioned by algebraic multigrid, in JAX.
 
-    `init` builds the multigrid hierarchy of the matrix with PyAMG, on the CPU,
+    `init` builds the algebraic multigrid hierarchy of the matrix on the CPU,
     and converts it to AMJax. Each solve runs `lineax.CG`, preconditioned by
     one AMJax V-cycle per iteration, in JAX on CPU or GPU, inside `jax.jit`.
     `reinit` keeps the hierarchy for a matrix of the same sparsity pattern with
@@ -132,7 +131,7 @@ class AMJaxCGSolver(AbstractReusableStateSolver):
         ```
 
     !!! warning
-        `amjax` and `pyamg` must be installed to use this solver.
+        The `amjax` extra of `jaxscape` must be installed to use this solver.
 
         Reverse-mode gradients through the solves require a symmetric
         preconditioner. The default smoothers, the same Jacobi relaxation
@@ -206,33 +205,6 @@ class AMJaxCGSolver(AbstractReusableStateSolver):
             cg_state=self._cg_solver().init(operator, options),
             preconditioner=state.preconditioner,
         )
-
-    def init_preconditioner(
-        self,
-        operator: AbstractLinearOperator,
-        options: dict[str, Any] | None = None,
-    ) -> AMJaxCGState:
-        """Deprecated alias of `init`, as `reinit` serves any operator."""
-        warnings.warn(
-            "`init_preconditioner` is deprecated; use `init`.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.init(operator, {} if options is None else options)
-
-    def materialize_state(
-        self,
-        operator: AbstractLinearOperator,
-        options: dict[str, Any],
-        state: AMJaxCGState,
-    ) -> AMJaxCGState:
-        """Deprecated alias of `reinit`."""
-        warnings.warn(
-            "`materialize_state` is deprecated; use `reinit`.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.reinit(operator, options, state)
 
     def _init_preconditioner(
         self, operator: AbstractLinearOperator, options: dict[str, Any]

@@ -22,7 +22,7 @@ jobs:
           python-version: "3.13"
 
       - name: Install dependencies
-        run: uv sync --extra lint --extra tests --extra docs --extra pyamg --extra amjax --extra cholespy
+        run: uv sync --extra lint --extra tests --extra docs --extra amjax --extra cholespy
 
       - name: Run pre-commit hooks
         run: uv run --no-sync pre-commit run --all-files --show-diff-on-failure
@@ -45,7 +45,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --extra tests --extra docs --extra pyamg --extra amjax --extra cholespy
+        run: uv sync --extra tests --extra docs --extra amjax --extra cholespy
 
       # Every test but those marked `gpu`, the slow ones included, with one
       # pytest-xdist worker per core.

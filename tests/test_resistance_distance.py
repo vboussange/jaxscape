@@ -28,19 +28,15 @@ from jaxscape.solvers import (
     AMJaxCGSolver,
     CholmodSolver,
     CuDSSSolver,
-    PyAMGCGSolver,
 )
 
 
 # Check availability of optional solvers
-PYAMG_AVAILABLE = find_spec("pyamg") is not None
 CHOLMOD_AVAILABLE = find_spec("cholespy") is not None
-AMJAX_AVAILABLE = PYAMG_AVAILABLE and find_spec("amjax") is not None
+AMJAX_AVAILABLE = find_spec("amjax") is not None
 
 # Build list of available solvers
 available_solvers = []
-if PYAMG_AVAILABLE:
-    available_solvers.append(PyAMGCGSolver())
 if CHOLMOD_AVAILABLE:
     available_solvers.append(CholmodSolver())
 if AMJAX_AVAILABLE:

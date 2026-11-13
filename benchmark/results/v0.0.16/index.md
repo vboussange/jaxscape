@@ -252,13 +252,11 @@ The fastest solver of each question, distance and dtype, on the largest syntheti
     | distance calculation | resistance | float32 | CholmodSolver | 1.16 s, error 1.0e-05 | 25.3 s, error 1.8e-04 | 844 s, error 2.6e-04 | oom |
     | distance calculation | resistance | float32 | CuDSSSolver | 0.292 s, error 1.2e-04 | 5.81 s, error 3.9e-03 | failed | skipped |
     | distance calculation | resistance | float32 | AMJaxCGSolver | failed | skipped | skipped | skipped |
-    | distance calculation | resistance | float32 | PyAMGSolver | 2.73 s, error 4.4e-05 | 59 s, error 2.4e-04 | timeout | skipped |
     | distance calculation | resistance | float32 | dense | oom | skipped | skipped | skipped |
     | distance calculation | resistance | float64 | GeometricMultigridCGSolver | 0.051 s, error 1.1e-07 | 0.465 s, error 3.0e-07 | oom | skipped |
     | distance calculation | resistance | float64 | CholmodSolver | 1.18 s, error 0.0e+00 | 25.3 s, error 0.0e+00 | oom | skipped |
     | distance calculation | resistance | float64 | CuDSSSolver | 0.297 s, error 2.6e-13 | 5.89 s, error 2.9e-12 | oom | skipped |
     | distance calculation | resistance | float64 | AMJaxCGSolver | 2.04 s, error 5.5e-04 | 5.18 s, error 5.4e-04 | oom | skipped |
-    | distance calculation | resistance | float64 | PyAMGSolver | 2.94 s, error 1.5e-07 | 66.4 s, error 2.6e-07 | timeout | skipped |
     | distance calculation | resistance | float64 | dense | oom | skipped | skipped | skipped |
     | distance calculation | free energy | float64 | GeometricMultigridCGSolver | failed | skipped |  |  |
     | distance calculation | free energy | float64 | CholmodSolver | 3.93 s, error 4.4e-16 | 47.5 s, error 2.5e-16 |  |  |
@@ -267,31 +265,27 @@ The fastest solver of each question, distance and dtype, on the largest syntheti
     | connectivity analysis | resistance | float32 | GeometricMultigridCGSolver | 102 s, error 1.1e-03 |  |  |  |
     | connectivity analysis | resistance | float32 | CholmodSolver | timeout |  |  |  |
     | connectivity analysis | resistance | float32 | CuDSSSolver | 108 s, error 1.6e-03 |  |  |  |
-    | connectivity analysis | resistance | float32 | PyAMGSolver | timeout |  |  |  |
     | connectivity analysis | resistance | float32 | dense | failed |  |  |  |
     | connectivity analysis | resistance | float32 | SpielmanApproximation(epsilon=0.15), GeometricMultigridCGSolver(rtol=3e-4) | 0.508 s, error 6.5e-02 |  |  |  |
     | connectivity analysis | resistance | float64 | GeometricMultigridCGSolver | 279 s, error 5.1e-07 |  |  |  |
     | connectivity analysis | resistance | float64 | CholmodSolver | timeout |  |  |  |
     | connectivity analysis | resistance | float64 | CuDSSSolver | 170 s, error 8.8e-15 |  |  |  |
     | connectivity analysis | resistance | float64 | AMJaxCGSolver | oom |  |  |  |
-    | connectivity analysis | resistance | float64 | PyAMGSolver | timeout |  |  |  |
     | connectivity analysis | resistance | float64 | dense | failed |  |  |  |
     | sensitivity analysis | resistance | float32 | GeometricMultigridCGSolver | 105 s, error 1.3e-03 |  |  |  |
     | sensitivity analysis | resistance | float32 | CholmodSolver | timeout |  |  |  |
     | sensitivity analysis | resistance | float32 | CuDSSSolver | 134 s, error 2.3e-03 |  |  |  |
-    | sensitivity analysis | resistance | float32 | PyAMGSolver | timeout |  |  |  |
     | sensitivity analysis | resistance | float32 | dense | failed |  |  |  |
     | sensitivity analysis | resistance | float32 | SpielmanApproximation(epsilon=0.15), GeometricMultigridCGSolver(rtol=3e-4) | 0.542 s, error 7.7e-02 |  |  |  |
     | sensitivity analysis | resistance | float64 | GeometricMultigridCGSolver | 346 s, error 3.2e-07 |  |  |  |
     | sensitivity analysis | resistance | float64 | CholmodSolver | timeout |  |  |  |
     | sensitivity analysis | resistance | float64 | CuDSSSolver | 251 s, error 1.5e-13 |  |  |  |
     | sensitivity analysis | resistance | float64 | AMJaxCGSolver | oom |  |  |  |
-    | sensitivity analysis | resistance | float64 | PyAMGSolver | timeout |  |  |  |
     | sensitivity analysis | resistance | float64 | dense | failed |  |  |  |
 
 ### Settings that did not complete
 
-??? note "28 settings"
+??? note "22 settings"
 
     | Question | Distance | dtype | Solver | Raster | Status | Recorded reason |
     | --- | --- | --- | --- | --- | --- | --- |
@@ -299,29 +293,23 @@ The fastest solver of each question, distance and dtype, on the largest syntheti
     | distance calculation | resistance | float32 | CholmodSolver | 8192² | `oom` | allocation of 2.50 GiB failed |
     | distance calculation | resistance | float32 | CuDSSSolver | 4096² | `failed` | `jax.errors.JaxRuntimeError: INTERNAL: spineax pbatch token: cuDSS call failed (status 2): cudssExecute analysis [executable_name='jit__initial_state']` |
     | distance calculation | resistance | float32 | AMJaxCGSolver | 256² | `failed` | `equinox.EquinoxRuntimeError: A linear solver returned non-finite (NaN or inf) output. This usually means that an` |
-    | distance calculation | resistance | float32 | PyAMGSolver | 4096² | `timeout` | `a call exceeded 900 s` |
     | distance calculation | resistance | float32 | dense | 256² | `oom` | allocation of 16.02 GiB failed |
     | distance calculation | resistance | float64 | GeometricMultigridCGSolver | 4096² | `oom` | allocation of 22.50 GiB failed |
     | distance calculation | resistance | float64 | CholmodSolver | 4096² | `oom` | allocation of 9.88 GiB failed |
     | distance calculation | resistance | float64 | CuDSSSolver | 4096² | `oom` | allocation of 13.62 GiB failed |
     | distance calculation | resistance | float64 | AMJaxCGSolver | 4096² | `oom` | `jax.errors.JaxRuntimeError: RESOURCE_EXHAUSTED: Failed to get configs for: 8 out of 83 instructions. See logs for all failures. Example failure:` |
-    | distance calculation | resistance | float64 | PyAMGSolver | 4096² | `timeout` | `a call exceeded 900 s` |
     | distance calculation | resistance | float64 | dense | 256² | `oom` | allocation of 32.02 GiB failed |
     | distance calculation | free energy | float64 | GeometricMultigridCGSolver | 256² | `failed` | `equinox.EquinoxRuntimeError: FreeEnergyDistance cannot resolve the requested logarithms accurately; choose a different theta, float64 precision, or tighter solver tolerances.` |
     | distance calculation | free energy | float64 | dense | 256² | `oom` | allocation of 64.01 GiB failed |
     | connectivity analysis | resistance | float32 | CholmodSolver | 256² | `timeout` | `a call exceeded 900 s` |
-    | connectivity analysis | resistance | float32 | PyAMGSolver | 256² | `timeout` | `a call exceeded 900 s` |
     | connectivity analysis | resistance | float32 | dense | 256² | `failed` | `jax.errors.JaxRuntimeError: NOT_FOUND: All configs failed during profiling or were excluded from selection.` |
     | connectivity analysis | resistance | float64 | CholmodSolver | 256² | `timeout` | `a call exceeded 900 s` |
     | connectivity analysis | resistance | float64 | AMJaxCGSolver | 256² | `oom` | allocation of 16.17 GiB failed |
-    | connectivity analysis | resistance | float64 | PyAMGSolver | 256² | `timeout` | `a call exceeded 900 s` |
     | connectivity analysis | resistance | float64 | dense | 256² | `failed` | `jax.errors.JaxRuntimeError: NOT_FOUND: Failed to get configs for: 2 out of 23 instructions. See logs for all failures. Example failure:` |
     | sensitivity analysis | resistance | float32 | CholmodSolver | 256² | `timeout` | `a call exceeded 900 s` |
-    | sensitivity analysis | resistance | float32 | PyAMGSolver | 256² | `timeout` | `a call exceeded 900 s` |
     | sensitivity analysis | resistance | float32 | dense | 256² | `failed` | `jax.errors.JaxRuntimeError: NOT_FOUND: All configs failed during profiling or were excluded from selection.` |
     | sensitivity analysis | resistance | float64 | CholmodSolver | 256² | `timeout` | `a call exceeded 900 s` |
     | sensitivity analysis | resistance | float64 | AMJaxCGSolver | 256² | `oom` | allocation of 17.40 GiB failed |
-    | sensitivity analysis | resistance | float64 | PyAMGSolver | 256² | `timeout` | `a call exceeded 900 s` |
     | sensitivity analysis | resistance | float64 | dense | 256² | `failed` | `jax.errors.JaxRuntimeError: NOT_FOUND: Failed to get configs for: 2 out of 23 instructions. See logs for all failures. Example failure:` |
 
 ### Method
@@ -330,4 +318,4 @@ The fastest solver of each question, distance and dtype, on the largest syntheti
 - **Rasters**: in the distance calculation, every raster of its distance; in the windowed analyses, 256², under exact resistance distance and under `SpielmanApproximation(epsilon=0.15)` with `GeometricMultigridCGSolver(rtol=3e-4)`.
 - **Error**: in the distance calculation, the largest relative error with respect to the float64 reference of the distance calculation; in the windowed analyses, the relative L2 error $\lVert m - m_{\mathrm{ref}} \rVert_2 / \lVert m_{\mathrm{ref}} \rVert_2$ of the map $m$ with respect to the map $m_{\mathrm{ref}}$ of exact resistance distance in float64 with `CuDSSSolver` on the same tiles, measured on 256² alone. In the figure of error, errors below $10^{-16}$ are drawn at $10^{-16}$.
 - **Time limit**: a call stops after 15 min, and under `SpielmanApproximation(epsilon=0.15)` after 1 h.
-- **Not run**: free-energy distance in float32; free-energy distance with `AMJaxCGSolver` or `PyAMGSolver`.
+- **Not run**: free-energy distance in float32; free-energy distance with `AMJaxCGSolver`.

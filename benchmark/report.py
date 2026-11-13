@@ -52,6 +52,8 @@ NAMES = {
 # The solvers of JAXScape 0.0.16 that JAXScape 0.0.18 renamed, under their names
 # in 0.0.18, which the page gives.
 RENAMED = {"GridMultigridSolver": "GeometricMultigridCGSolver"}
+# The solvers that JAXScape removed, whose records the page leaves out.
+REMOVED = {"PyAMGSolver"}
 # The names of distances in prose.
 PROSE = {
     "resistance": "resistance distance",
@@ -116,6 +118,7 @@ def report(run_dir):
       figure. Without the maps, the Maryland figure drawn before stays.
     """
     records = read_records(run_dir / "records.csv")
+    records = [record for record in records if record["solver"] not in REMOVED]
     config = json.loads((run_dir / "config.json").read_text())
     environment = json.loads((run_dir / "environment.json").read_text())
 
@@ -914,8 +917,9 @@ def not_run(entry, records):
 
     The entry is split into its combinations, which take one value of each of
     its fields, and a record ran a combination when it holds each of its
-    values. The combinations that no record ran are joined back into entries,
-    one per value of the fields but the last that holds a list.
+    values. The combinations that no record ran, but those of a solver of
+    `REMOVED`, are joined back into entries, one per value of the fields but
+    the last that holds a list.
     """
     fields = list(entry)
     lists = [field for field in fields if isinstance(entry[field], list)]
@@ -924,7 +928,9 @@ def not_run(entry, records):
     parts = {}
     for chosen in product(*values):
         part = dict(zip(fields, chosen))
-        if any(all(record[f] == part[f] for f in fields) for record in records):
+        if part.get("solver") in REMOVED or any(
+            all(record[f] == part[f] for f in fields) for record in records
+        ):
             continue
         key = tuple(value for field, value in part.items() if field not in joined)
         parts.setdefault(key, part | {field: [] for field in joined})

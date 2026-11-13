@@ -51,8 +51,8 @@ class ResistanceDistance(AbstractSolverDistance):
       Laplacians of grid graphs, such as those of a `GridGraph`, on any
       device without an optional dependency, also in float32 and inside
       `jax.jit`. With the default, queries on other graphs raise an error:
-      pass `jaxscape.solvers.CholmodSolver`, `PyAMGCGSolver`, `AMJaxCGSolver`
-      or `CuDSSSolver`, or `solver=None`.
+      pass `jaxscape.solvers.CholmodSolver`, `AMJaxCGSolver` or
+      `CuDSSSolver`, or `solver=None`.
       [Choosing a solver](linear_solvers.md#choosing-a-solver) gives the
       solver for each device and query. Without a solver, exact all-pairs
       and nodes-to-nodes queries compute the pseudo-inverse of the dense
