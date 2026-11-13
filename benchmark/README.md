@@ -136,8 +136,8 @@ of the view:
 
 ```toml
 [solver_view.solvers]
-GridMultigridCGSolver = {}
-"GridMultigridCGSolver(rtol=1e-3)" = { dtypes = ["float32"] }
+GeometricMultigridCGSolver = {}
+"GeometricMultigridCGSolver(rtol=1e-3)" = { dtypes = ["float32"] }
 ```
 
 ## Publish a run

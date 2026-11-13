@@ -539,7 +539,7 @@ wheels = [
 [[package]]
 name = "jaxscape"
 version = "0.0.18"
-source = { git = "https://github.com/vboussange/jaxscape?rev=a15918857692a53886a2037fb4e867127cd028ec#a15918857692a53886a2037fb4e867127cd028ec" }
+source = { git = "https://github.com/vboussange/jaxscape?rev=99cba66b0026b277a44f9b91e113dc3bbe9a703a#99cba66b0026b277a44f9b91e113dc3bbe9a703a" }
 dependencies = [
     { name = "equinox" },
     { name = "jax" },
@@ -590,7 +590,7 @@ requires-dist = [
     { name = "ecoscape-connectivity", specifier = "==0.2.5" },
     { name = "gdal", specifier = "==3.4.1" },
     { name = "jax", extras = ["cuda13"] },
-    { name = "jaxscape", extras = ["amjax", "cholespy", "cudss"], git = "https://github.com/vboussange/jaxscape?rev=a15918857692a53886a2037fb4e867127cd028ec" },
+    { name = "jaxscape", extras = ["amjax", "cholespy", "cudss"], git = "https://github.com/vboussange/jaxscape?rev=99cba66b0026b277a44f9b91e113dc3bbe9a703a" },
     { name = "matplotlib", specifier = ">=3.9" },
     { name = "numpy", specifier = ">=2" },
     { name = "rasterio", specifier = ">=1.4" },

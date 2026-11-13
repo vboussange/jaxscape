@@ -84,7 +84,7 @@
       "distances": {
         "resistance": {
           "dtype": "float32",
-          "solver": "GridMultigridCGSolver"
+          "solver": "GeometricMultigridCGSolver"
         },
         "lcp": {
           "dtype": "float32"
@@ -109,7 +109,7 @@
       "distances": {
         "resistance": {
           "dtype": "float32",
-          "solver": "GridMultigridCGSolver(rtol=3e-4)",
+          "solver": "GeometricMultigridCGSolver(rtol=3e-4)",
           "method": "SpielmanApproximation(epsilon=0.15)",
           "batch_size": 2601
         },
@@ -130,7 +130,7 @@
       "distances": {
         "resistance": {
           "dtype": "float32",
-          "solver": "GridMultigridCGSolver(rtol=3e-4)",
+          "solver": "GeometricMultigridCGSolver(rtol=3e-4)",
           "method": "SpielmanApproximation(epsilon=0.15)",
           "batch_size": 2601
         },
@@ -141,7 +141,7 @@
         "resistance, K = -R, normalized": {
           "distance": "resistance",
           "dtype": "float32",
-          "solver": "GridMultigridCGSolver(rtol=3e-4)",
+          "solver": "GeometricMultigridCGSolver(rtol=3e-4)",
           "method": "SpielmanApproximation(epsilon=0.15)",
           "batch_size": 2601,
           "proximity": "lambda d: -d",
@@ -324,7 +324,7 @@
       {
         "distance": "free_energy",
         "solver": [
-          "GridMultigridCGSolver",
+          "GeometricMultigridCGSolver",
           "AMJaxCGSolver",
           "PyAMGCGSolver"
         ]
@@ -357,14 +357,14 @@
       }
     },
     "solvers": {
-      "GridMultigridCGSolver": {},
+      "GeometricMultigridCGSolver": {},
       "CholmodSolver": {},
       "CuDSSSolver": {},
       "AMJaxCGSolver": {},
       "PyAMGCGSolver": {},
       "dense": {},
-      "SpielmanApproximation(epsilon=0.15), GridMultigridCGSolver(rtol=3e-4)": {
-        "solver": "GridMultigridCGSolver(rtol=3e-4)",
+      "SpielmanApproximation(epsilon=0.15), GeometricMultigridCGSolver(rtol=3e-4)": {
+        "solver": "GeometricMultigridCGSolver(rtol=3e-4)",
         "method": "SpielmanApproximation(epsilon=0.15)",
         "batch_size": 2601,
         "questions": [

@@ -48,7 +48,7 @@ def test_normalized_sensitivity_to_resistance_is_one_on_a_uniform_landscape(
 ):
     settings = {
         "dtype": "float32",
-        "solver": "GridMultigridCGSolver(rtol=3e-4)",
+        "solver": "GeometricMultigridCGSolver(rtol=3e-4)",
         "method": "SpielmanApproximation(epsilon=0.15)",
         "batch_size": 2601,
         "proximity": "lambda d: -d",

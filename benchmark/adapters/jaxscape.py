@@ -17,7 +17,8 @@
 # permeability 1 and the same quality, and 0 where the latter is not positive,
 # both computed in each call. The distance runs with the solver, the resistance
 # `method` and the dtype of its settings, such as
-# `GridMultigridCGSolver(rtol=3e-4)` (`dense` is the dense solve, `solver=None`),
+# `GeometricMultigridCGSolver(rtol=3e-4)` (`dense` is the dense solve,
+# `solver=None`),
 # and every call builds the graphs and the solver states.
 import ast
 
@@ -47,7 +48,7 @@ from landscape import conductance
 def construct(setting, module):
     """Return the object of `module` that a setting names.
 
-    A setting such as `GridMultigridCGSolver(rtol=3e-4)` calls the class with its
+    A setting such as `GeometricMultigridCGSolver(rtol=3e-4)` calls the class with its
     keywords, and `dense` gives `None`.
     """
     if setting == "dense":
