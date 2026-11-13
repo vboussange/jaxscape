@@ -316,8 +316,10 @@ replaces inside `jax.jit`, and a factorization or a preconditioner. It scales
 right-hand sides, checks the sparse indices of each new matrix, and reports
 failed solves. A new solver subclasses one of its two families, with a final
 class. The methods that it implements take the sparsity pattern as a
-[`CSRPattern`][jaxscape.solvers.sparsesolver.CSRPattern], whose properties `n`
-and `nnz` are the number of rows and the number of CSR values.
+[`CSRPattern`][jaxscape.solvers.sparsesolver.CSRPattern]: its arrays `offsets`
+and `columns` give the columns of each row, and its properties `n`, `nnz` and
+`rows` the number of rows, the number of CSR values and the row of each CSR
+value.
 
 `AbstractSparseDirectSolver` turns the phases of a sparse factorization library
 into a solver, and checks each factorization and solve; `CuDSSSolver`
