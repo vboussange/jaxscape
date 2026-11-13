@@ -31,7 +31,8 @@ class CSRPattern(eqx.Module):
       `(nnz,)`.
     - `value_map`: For each stored entry of the BCOO matrix, the index of its CSR
       value, or `nnz` for padding entries.
-    - `max_row_length`: Number of CSR values of the longest row.
+    - `max_row_length`: Number of CSR values of the longest row. It is static:
+      states whose longest rows differ compile separately.
     - `n`: Number of rows, and of columns, of the matrix.
     - `nnz`: Number of CSR values.
     - `rows`: Row of each CSR value, with shape `(nnz,)`, computed from
@@ -283,9 +284,13 @@ def _padded_rows(pattern: CSRPattern, values: Array) -> tuple[Array, Array]:
     entry = jnp.arange(pattern.max_row_length)
     stored = entry < jnp.diff(pattern.offsets)[:, None]
     # Padding entries read at position `nnz`, past the CSR values, which gives
-    # the fill value. Masking the positions, rather than the values read, also
-    # keeps XLA:CPU in jaxlib 0.12 from miscompiling the reads: it returned
-    # wrong values for some shapes.
+    # the fill value. Masking the positions rather than the values read works
+    # around XLA:CPU in jaxlib 0.12.0.1: under `jax.jit`, with `offsets` an
+    # argument of the program, its loop fusion of a masked read of the values,
+    # in any index mode, gives 0 for every row past the first, for nearly every
+    # number and length of rows. On 4 rows of 3 entries,
+    # `jnp.where(o[:-1, None] + k < o[1:, None], v.at[o[:-1, None] + k].get(
+    # mode="clip"), 0)` with `k = jnp.arange(3)` gives 0 in rows 1 to 3.
     position = jnp.where(stored, pattern.offsets[:-1, None] + entry, pattern.nnz)
     padded = values.at[position].get(mode="fill", fill_value=0)
     columns = pattern.columns.at[position].get(mode="fill", fill_value=0)
@@ -298,45 +303,47 @@ def _product(pattern: CSRPattern, values: Array) -> Callable[[Array], Array]:
     shape `(n,)`.
 
     When the padded rows (see `_padded_rows`) hold at most twice as many
-    entries as the CSR values, and products unroll them, the product adds up
-    one term per column of the padded rows, and `jax.vmap` gathers each term
-    from the whole batch of vectors. The residual checks of a batch of
-    solutions then cost little beside their solve, and less than one sum over
-    the padded rows. Otherwise it sums over the CSR values, and under
-    `jax.vmap` over vectors alone, it computes the products one vector after
-    another: XLA gathers the entries of a batch of vectors as a slice per
-    index, which reads the batch in strides of the vector size and runs slower.
+    entries as the CSR values, and are at most `_PADDED_ROW_LENGTH` entries
+    long (see `_pads`), the product adds up one term per column of the padded
+    rows, and `jax.vmap` gathers each term from the whole batch of vectors.
+    The residual checks of a batch of solutions then cost little beside their
+    solve, and less than one sum over the padded rows. Otherwise it sums over
+    the CSR values, and under `jax.vmap` over vectors alone, it computes the
+    products one vector after another: XLA gathers the entries of a batch of
+    vectors as a slice per index, which reads the batch in strides of the
+    vector size and runs slower.
 
     It prepares the padded rows, or the rows of the CSR values, once, outside
     the loops that apply the product.
     """
-    length = pattern.max_row_length
-    if pattern.n * length > 2 * pattern.nnz or length > _PADDED_ROW_LENGTH:
+    if not _pads(pattern):
         rows = pattern.rows
         return lambda vector: _summed_product(rows, pattern.columns, values, vector)
     padded, columns = _padded_rows(pattern, values)
 
     def product(vector: Array) -> Array:
         result = jnp.zeros(pattern.n, jnp.result_type(values, vector))
-        for k in range(length):
+        for k in range(pattern.max_row_length):
             result = result + padded[:, k] * vector[columns[:, k]]
         return result
 
     return product
 
 
-def _sum(rows: Array, columns: Array, values: Array, vector: Array) -> Array:
+def _pads(pattern: CSRPattern) -> bool:
+    """Whether products of the matrix of `pattern` read its padded rows."""
+    length = pattern.max_row_length
+    return pattern.n * length <= 2 * pattern.nnz and length <= _PADDED_ROW_LENGTH
+
+
+@jax.custom_batching.custom_vmap
+def _summed_product(rows: Array, columns: Array, values: Array, vector: Array) -> Array:
     return jax.ops.segment_sum(
         values * vector[columns],
         rows,
         num_segments=vector.shape[0],
         indices_are_sorted=True,
     )
-
-
-@jax.custom_batching.custom_vmap
-def _summed_product(rows: Array, columns: Array, values: Array, vector: Array):
-    return _sum(rows, columns, values, vector)
 
 
 @_summed_product.def_vmap
@@ -351,10 +358,11 @@ def _(
     del axis_size
     if in_batched[3] and not any(in_batched[:3]):
         return jax.lax.map(
-            lambda vector: _sum(rows, columns, values, vector), vector
+            lambda vector: _summed_product.fun(rows, columns, values, vector), vector
         ), True
     axes = [0 if batched else None for batched in in_batched]
-    return jax.vmap(_sum, in_axes=axes)(rows, columns, values, vector), True
+    product = jax.vmap(_summed_product.fun, in_axes=axes)
+    return product(rows, columns, values, vector), True
 
 
 # Longest rows that products pad (see `_product`). They add up one term per

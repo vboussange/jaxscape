@@ -170,7 +170,7 @@ def _grid(pattern: CSRPattern) -> _Grid:
     of `_grid_width`.
     """
     n = pattern.n
-    rows = np.repeat(np.arange(n), np.diff(np.asarray(pattern.offsets)))
+    rows = np.asarray(pattern.rows, np.int64)
     columns = np.asarray(pattern.columns, np.int64)
     width = int(_grid_width(np.abs(columns - rows)))
     steps = np.stack(

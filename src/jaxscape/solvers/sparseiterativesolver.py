@@ -193,6 +193,10 @@ def csr_matvec(pattern: CSRPattern, values: Array) -> Callable[[Array], Array]:
     vectors, as `AbstractSparseIterativeSolver.matvec` returns it for a
     `vector_shape` of `(pattern.n,)`.
 
+    It gathers the rows of the matrix when called, and the function it returns
+    reuses them: call it once per solve, as `matvec` does, and apply the
+    returned function in the loop.
+
     **Arguments:**
 
     - `pattern`: The CSR pattern of the matrix.

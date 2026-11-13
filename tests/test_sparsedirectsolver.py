@@ -19,6 +19,7 @@ from jaxscape.solvers import (
     AbstractSparseDirectSolver,
     BCOOLinearOperator,
     CuDSSSolver,
+    sparsesolver,
 )
 from jaxscape.solvers.operator import _batched_linear_solve, _linear_solve
 from jaxscape.utils import graph_laplacian
@@ -433,6 +434,7 @@ def test_solves_fail_with_a_failed_state_or_a_large_residual(vectors, graph):
     # would hold more than twice as many entries, and on a dense matrix, whose
     # rows of 40 entries are too long to read in blocks.
     assert state.pattern.max_row_length == {"grid": 5, "star": 12, "dense": 40}[graph]
+    assert sparsesolver._pads(state.pattern) == (graph == "grid")
     b = jnp.ones(operator.in_size())
     compute = solver.compute
     if vectors is not None:
