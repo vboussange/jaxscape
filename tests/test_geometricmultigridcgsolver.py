@@ -83,7 +83,9 @@ def grids_one_after_another(state):
     the interpolations `Ps` from each coarse grid, each built from the grid
     before it in arrays of its own shape."""
     offsets = state.preconditioner.offsets
-    A = geometricmultigridcgsolver._stencil(state.preconditioner, state.values)
+    A = geometricmultigridcgsolver._stencil(
+        state.preconditioner, state.pattern, state.values
+    )
     As, Ps = [A], []
     while A[0].size > 1024:
         coarse = ((A[0].shape[0] + 1) // 2, (A[0].shape[1] + 1) // 2)
@@ -104,7 +106,7 @@ def test_hierarchies_of_four_grids_match_grids_built_one_after_another():
     solver = GeometricMultigridCGSolver(rtol=1e-12, max_steps=60)
     state = solver.init(BCOOLinearOperator(matrix), {})
     grid = state.preconditioner
-    stencil = geometricmultigridcgsolver._stencil(grid, state.values)
+    stencil = geometricmultigridcgsolver._stencil(grid, state.pattern, state.values)
     ml = geometricmultigridcgsolver._multilevel_solver(grid.offsets, stencil)
 
     shapes = [level.A[0].shape for level in ml.levels]

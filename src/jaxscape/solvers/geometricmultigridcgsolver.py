@@ -11,7 +11,7 @@ from jax import lax
 from jaxtyping import Array
 
 from .sparseiterativesolver import _ratio, AbstractSparseIterativeSolver
-from .sparsesolver import CSRPattern
+from .sparsesolver import _padded_rows, CSRPattern
 
 
 # Stencil offsets (row, column) of rook and queen contiguity, and of the coarse
@@ -34,13 +34,10 @@ class _Grid(eqx.Module):
 
     **Attributes:**
 
-    - `slots`: For each CSR value, the index of its coefficient in the
-      flattened stencil.
     - `shape`: The shape `(rows, columns)` of the grid.
     - `offsets`: The offsets (row, column) of the stencil.
     """
 
-    slots: Array
     shape: tuple[int, int] = eqx.field(static=True)
     offsets: tuple[tuple[int, int], ...] = eqx.field(static=True)
 
@@ -134,16 +131,14 @@ class GeometricMultigridCGSolver(AbstractSparseIterativeSolver[_Grid]):
     def precondition(
         self, preconditioner: _Grid, pattern: CSRPattern, values: Array
     ) -> Callable[[Array], Array]:
-        del pattern
-        stencil = _stencil(preconditioner, values)
+        stencil = _stencil(preconditioner, pattern, values)
         ml = _multilevel_solver(preconditioner.offsets, stencil)
         return lambda residuals: _v_cycle(ml, residuals)
 
     def matvec(
         self, preconditioner: _Grid, pattern: CSRPattern, values: Array
     ) -> Callable[[Array], Array]:
-        del pattern
-        stencil = _stencil(preconditioner, values)
+        stencil = _stencil(preconditioner, pattern, values)
         return lambda x: _matvec(preconditioner.offsets, stencil, x)
 
     def vector_shape(
@@ -175,7 +170,7 @@ def _grid(pattern: CSRPattern) -> _Grid:
     of `_grid_width`.
     """
     n = pattern.n
-    rows = np.asarray(pattern.rows, np.int64)
+    rows = np.repeat(np.arange(n), np.diff(np.asarray(pattern.offsets)))
     columns = np.asarray(pattern.columns, np.int64)
     width = int(_grid_width(np.abs(columns - rows)))
     steps = np.stack(
@@ -195,18 +190,25 @@ def _grid(pattern: CSRPattern) -> _Grid:
     present = np.zeros(9, bool)
     present[position] = True
     offsets = _ROOK if not np.any(present[[0, 2, 6, 8]]) else _QUEEN
-    index = np.zeros(9, np.int64)
-    index[[(i + 1) * 3 + j + 1 for i, j in offsets]] = np.arange(len(offsets))
-    slots = jnp.asarray(index[position] * n + rows, jnp.int32)
-    return _Grid(slots, (n // width, width), offsets)
+    return _Grid((n // width, width), offsets)
 
 
-def _stencil(grid: _Grid, values: Array) -> tuple[Array, ...]:
-    """The stencil coefficients of the matrix of CSR `values` on `grid`: for
-    each offset, an array of the grid's shape."""
+def _stencil(grid: _Grid, pattern: CSRPattern, values: Array) -> tuple[Array, ...]:
+    """The stencil coefficients of the matrix of CSR `pattern` and `values` on
+    `grid`: for each offset, an array of the grid's shape."""
     height, width = grid.shape
-    stencil = jnp.zeros(len(grid.offsets) * height * width, values.dtype)
-    stencil = stencil.at[grid.slots].add(values)
+    n = height * width
+    padded, columns = _padded_rows(pattern, values)
+    rows = jnp.arange(n, dtype=columns.dtype)[:, None]
+    # The index of each entry's offset in a stencil of all nine offsets, and in
+    # the stencil of the grid.
+    position = (columns // width - rows // width + 1) * 3
+    position = position + columns % width - rows % width + 1
+    index = np.zeros(9, np.int32)
+    index[[(i + 1) * 3 + j + 1 for i, j in grid.offsets]] = np.arange(len(grid.offsets))
+    slots = jnp.asarray(index)[position] * n + rows
+    stencil = jnp.zeros(len(grid.offsets) * n, values.dtype)
+    stencil = stencil.at[slots].add(padded)
     return tuple(stencil.reshape(len(grid.offsets), height, width))
 
 
