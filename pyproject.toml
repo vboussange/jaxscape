@@ -90,8 +90,6 @@ Issues = "https://github.com/vboussange/jaxscape/issues"
 Source = "https://github.com/vboussange/jaxscape"
 
 [tool.pyright]
-# The benchmark is a project of its own (#74), outside the hooks' scope.
-exclude = ["tests/test_benchmark.py"]
 include = ["src", "tests"]
 # CI runs on Linux: check every platform as Linux, to get the same result.
 pythonPlatform = "Linux"
