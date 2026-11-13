@@ -14,7 +14,7 @@
     "habitat_threshold": 0.7,
     "seed": 74
   },
-  "E1": {
+  "distance": {
     "sites": 32,
     "seed": 75,
     "reference": "adapters/reference.py"
@@ -52,8 +52,8 @@
   "maryland": {
     "raster": "data/nlcd_2016_frederick_md.tif",
     "questions": [
-      "E2",
-      "E3"
+      "connectivity",
+      "sensitivity"
     ],
     "resistance": {
       "11": 100,
@@ -74,7 +74,7 @@
   "tools": [
     {
       "tool": "JAXScape",
-      "question": "E1",
+      "question": "distance",
       "adapter": "adapters/jaxscape.py",
       "devices": [
         "gpu",
@@ -100,7 +100,7 @@
     },
     {
       "tool": "JAXScape",
-      "question": "E2",
+      "question": "connectivity",
       "adapter": "adapters/jaxscape.py",
       "devices": [
         "gpu",
@@ -121,7 +121,7 @@
     },
     {
       "tool": "JAXScape",
-      "question": "E3",
+      "question": "sensitivity",
       "adapter": "adapters/jaxscape.py",
       "devices": [
         "gpu",
@@ -151,7 +151,7 @@
     },
     {
       "tool": "Circuitscape.jl",
-      "question": "E1",
+      "question": "distance",
       "adapter": "adapters/circuitscape.jl",
       "devices": [
         "cpu"
@@ -168,7 +168,7 @@
     },
     {
       "tool": "ConScape.jl",
-      "question": "E1",
+      "question": "distance",
       "adapter": "adapters/conscape.jl",
       "devices": [
         "cpu"
@@ -180,7 +180,7 @@
     },
     {
       "tool": "ConScape.jl",
-      "question": "E2",
+      "question": "connectivity",
       "adapter": "adapters/conscape.jl",
       "devices": [
         "cpu"
@@ -193,7 +193,7 @@
     },
     {
       "tool": "ConScape.jl",
-      "question": "E3",
+      "question": "sensitivity",
       "adapter": "adapters/conscape.jl",
       "devices": [
         "cpu"
@@ -206,7 +206,7 @@
     },
     {
       "tool": "gdistance",
-      "question": "E1",
+      "question": "distance",
       "adapter": "adapters/gdistance.R",
       "devices": [
         "cpu"
@@ -220,7 +220,7 @@
     {
       "tool": "skimage.graph.MCP",
       "package": "scikit-image",
-      "question": "E1",
+      "question": "distance",
       "adapter": "adapters/skimage.py",
       "devices": [
         "cpu"
@@ -233,7 +233,7 @@
     {
       "tool": "EcoScape",
       "package": "ecoscape-connectivity",
-      "question": "E3",
+      "question": "sensitivity",
       "adapter": "adapters/ecoscape.py",
       "devices": [
         "gpu"
@@ -248,7 +248,7 @@
     },
     {
       "tool": "samc",
-      "question": "E3",
+      "question": "sensitivity",
       "adapter": "adapters/samc.R",
       "devices": [
         "cpu"
@@ -262,7 +262,7 @@
     },
     {
       "tool": "eco-connectivity",
-      "question": "E2",
+      "question": "connectivity",
       "adapter": "adapters/eco_connectivity.py",
       "devices": [
         "cpu"
@@ -277,7 +277,7 @@
     {
       "tool": "Graphab",
       "package": "graphab",
-      "question": "E2",
+      "question": "connectivity",
       "adapter": "adapters/graphab.py",
       "devices": [
         "cpu"
@@ -289,12 +289,13 @@
     },
     {
       "tool": "Omniscape.jl",
-      "question": "E3",
+      "question": "sensitivity",
       "adapter": "adapters/omniscape.jl",
       "devices": [
         "cpu"
       ],
       "tier": 3,
+      "compared_with": "resistance, K = -R, normalized",
       "distances": {
         "resistance": {
           "solver": [
@@ -302,8 +303,7 @@
             "cholmod"
           ]
         }
-      },
-      "compared_with": "resistance, K = -R, normalized"
+      }
     }
   ],
   "solver_view": {
@@ -324,37 +324,34 @@
       {
         "distance": "free_energy",
         "solver": [
+          "GridMultigridSolver",
           "AMJaxCGSolver",
           "PyAMGSolver"
         ]
       },
       {
         "solver": "AMJaxCGSolver",
-        "dtype": "float32",
-        "question": [
-          "E2",
-          "E3"
-        ]
+        "dtype": "float32"
       }
     ],
     "questions": {
-      "E1": {
+      "distance": {
         "resistance": {},
         "free_energy": {}
       },
-      "E2": {
+      "connectivity": {
         "resistance": {
           "batch_size": 256,
-          "sides": [
-            256
+          "cases": [
+            "synthetic-256"
           ]
         }
       },
-      "E3": {
+      "sensitivity": {
         "resistance": {
           "batch_size": 256,
-          "sides": [
-            256
+          "cases": [
+            "synthetic-256"
           ]
         }
       }
@@ -369,13 +366,36 @@
       "SpielmanApproximation(epsilon=0.15), GridMultigridSolver(rtol=3e-4)": {
         "solver": "GridMultigridSolver(rtol=3e-4)",
         "method": "SpielmanApproximation(epsilon=0.15)",
+        "batch_size": 2601,
         "questions": [
-          "E2",
-          "E3"
+          "connectivity",
+          "sensitivity"
         ],
-        "dtypes": [
-          "float32"
-        ]
+        "cases": [
+          "synthetic-256",
+          "synthetic-1024",
+          "synthetic-4096",
+          "synthetic-8192",
+          "maryland"
+        ],
+        "timeout": 3600
+      },
+      "SpielmanApproximation(epsilon=0.15), CuDSSSolver": {
+        "solver": "CuDSSSolver",
+        "method": "SpielmanApproximation(epsilon=0.15)",
+        "batch_size": 576,
+        "questions": [
+          "connectivity",
+          "sensitivity"
+        ],
+        "cases": [
+          "synthetic-256",
+          "synthetic-1024",
+          "synthetic-4096",
+          "synthetic-8192",
+          "maryland"
+        ],
+        "timeout": 3600
       }
     }
   }

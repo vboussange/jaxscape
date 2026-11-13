@@ -1,10 +1,10 @@
-# A fake tool for the runner's tests. For E1, it returns the Euclidean
-# distances among the sites, and for E2 and E3 the quality, as a map, or minus
-# the quality with `reversed`, both times 1 + `error`; with `off_graph`, its map
-# is the exponential of the quality, NaN on the first pixel, as on a pixel off
-# a tool's graph, and with `nan`, its output is NaN. It reports the `total` of
-# its settings, raises on the cases of `fail_on`, and outlasts the timeout on
-# the cases of `sleep_on`.
+# A fake tool for the runner's tests. For the distance calculation, it returns
+# the Euclidean distances among the sites, and for the windowed analyses the
+# quality, as a map, or minus the quality with `reversed`, both times 1 +
+# `error`; with `off_graph`, its map is the exponential of the quality, NaN on
+# the first pixel, as on a pixel off a tool's graph, and with `nan`, its output
+# is NaN. It reports the `total` of its settings, raises on the cases of
+# `fail_on`, and outlasts the timeout on the cases of `sleep_on`.
 import time
 from pathlib import Path
 
@@ -22,7 +22,7 @@ if case in settings.get("fail_on", []):
 def call():
     if case in settings.get("sleep_on", []):
         time.sleep(600)
-    if cell["question"] == "E1":
+    if cell["question"] == "distance":
         sites = arrays["sites"]
         output = np.linalg.norm(sites[:, None] - sites[None, :], axis=-1)
     elif settings.get("off_graph"):

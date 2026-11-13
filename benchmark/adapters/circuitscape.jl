@@ -1,15 +1,15 @@
-# Circuitscape.jl computes the pairwise resistances among the E1 sites, in its
-# `pairwise` scenario, with the permeability raster as the conductance of each
-# cell. `connect_four_neighbors_only` gives rook contiguity, and
-# `connect_using_avg_resistances` makes the resistance of an edge the mean
-# resistance of its two cells, as `landscape.conductance` does. The solver is
-# `cg+amg` or `cholmod`, in double precision, with `parallelize` on the Julia
-# threads of the cell. Circuitscape.jl has no public in-memory API for this
-# scenario: each call builds its `RasterData` in memory and runs the internals
-# that `compute` runs after reading files (`build_problem`,
-# `single_ground_all_pairs`), and writes only its table of resistances, to
-# /dev/shm. Every call rebuilds the graph, the Laplacian and the AMG hierarchy
-# or Cholesky factor.
+# Circuitscape.jl computes the pairwise resistances among the sites of the
+# distance calculation, in its `pairwise` scenario, with the permeability
+# raster as the conductance of each cell. `connect_four_neighbors_only` gives
+# rook contiguity, and `connect_using_avg_resistances` makes the resistance of
+# an edge the mean resistance of its two cells, as `landscape.conductance`
+# does. The solver is `cg+amg` or `cholmod`, in double precision, with
+# `parallelize` on the Julia threads of the cell. Circuitscape.jl has no public
+# in-memory API for this scenario: each call builds its `RasterData` in memory
+# and runs the internals that `compute` runs after reading files
+# (`build_problem`, `single_ground_all_pairs`), and writes only its table of
+# resistances, to /dev/shm. Every call rebuilds the graph, the Laplacian and
+# the AMG hierarchy or Cholesky factor.
 include("protocol.jl")
 using Circuitscape
 

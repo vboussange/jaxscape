@@ -3,21 +3,22 @@
 # permeabilities of its two pixels (`landscape.conductance`), so that its
 # resistance is their mean resistance. Least-cost and free-energy distances
 # take 1 / conductance as the edge cost, and the free energy takes the shared
-# `theta`. E1 is a nodes-to-nodes query among the sites. E2 runs
-# `SensitivityAnalysis(var="quality")` for the map and `ConnectivityAnalysis`
-# for the landscape total, sum_i q_i S_i, and E3
-# `SensitivityAnalysis(var="permeability")`, with the shared `dependency_range`
-# and `coarsening_factor`, the default proximity and the `batch_size` of the
-# settings; these windowed analyses build their graphs with JAXScape's own edge
-# rule, the mean permeability of the two pixels. A `proximity` setting, a
-# function of the distance in Python such as `lambda d: -d`, replaces the
-# default proximity. With `normalized`, the map of E3 is the normalized
-# sensitivity to resistance of the connectivity example: p^2 dC/dp divided by
-# dC/dp on a flat landscape of permeability 1 and the same quality, and 0 where
-# the latter is not positive, both computed in each call. The distance runs
-# with the solver, the resistance `method` and the dtype of its settings, such as
-# `GridMultigridSolver(rtol=3e-4)` (`dense` is the dense solve,
-# `solver=None`), and every call builds the graphs and the solver states.
+# `theta`. The distance calculation is a nodes-to-nodes query among the sites.
+# The connectivity analysis runs `SensitivityAnalysis(var="quality")` for the
+# map and `ConnectivityAnalysis` for the landscape total, sum_i q_i S_i, and
+# the sensitivity analysis runs `SensitivityAnalysis(var="permeability")`, with
+# the shared `dependency_range` and `coarsening_factor`, the default proximity
+# and the `batch_size` of the settings; these windowed analyses build their
+# graphs with JAXScape's own edge rule, the mean permeability of the two
+# pixels. A `proximity` setting, a function of the distance in Python such as
+# `lambda d: -d`, replaces the default proximity. With `normalized`, the map of
+# the sensitivity analysis is the normalized sensitivity to resistance of the
+# connectivity example: p^2 dC/dp divided by dC/dp on a flat landscape of
+# permeability 1 and the same quality, and 0 where the latter is not positive,
+# both computed in each call. The distance runs with the solver, the resistance
+# `method` and the dtype of its settings, such as
+# `GridMultigridSolver(rtol=3e-4)` (`dense` is the dense solve, `solver=None`),
+# and every call builds the graphs and the solver states.
 import ast
 
 import jax
@@ -86,7 +87,7 @@ windows = dict(
 )
 
 
-def isolation():
+def distances():
     graph = GridGraph(permeability, fun=conductance)
     return distance(graph, nodes=jnp.asarray(arrays["sites"])).block_until_ready()
 
@@ -97,23 +98,28 @@ def connectivity():
     return jax.block_until_ready((habitat, total))
 
 
-def corridors():
+def sensitivity():
     return SensitivityAnalysis(**windows).run("permeability").block_until_ready()
 
 
-def normalized_corridors():
+def normalized_sensitivity():
     # p^2 dC/dp over dC/dp on the flat landscape, as the connectivity example
     # computes it.
     flat = {**windows, "permeability_raster": jnp.ones_like(permeability)}
-    sensitivity = SensitivityAnalysis(**windows).run("permeability")
-    flat_sensitivity = SensitivityAnalysis(**flat).run("permeability")
-    positive = flat_sensitivity > 0
-    ratio = permeability**2 * sensitivity / jnp.where(positive, flat_sensitivity, 1)
+    raw = SensitivityAnalysis(**windows).run("permeability")
+    reference = SensitivityAnalysis(**flat).run("permeability")
+    positive = reference > 0
+    ratio = permeability**2 * raw / jnp.where(positive, reference, 1)
     return jnp.where(positive, ratio, 0).block_until_ready()
 
 
-e3 = normalized_corridors if settings.get("normalized") else corridors
-call = {"E1": isolation, "E2": connectivity, "E3": e3}[cell["question"]]
-output, warmup, times = time_calls(cell, call)
-output, total = output if cell["question"] == "E2" else (output, None)
+calls = {
+    "distance": distances,
+    "connectivity": connectivity,
+    "sensitivity": sensitivity,
+}
+if settings.get("normalized"):
+    calls["sensitivity"] = normalized_sensitivity
+output, warmup, times = time_calls(cell, calls[cell["question"]])
+output, total = output if cell["question"] == "connectivity" else (output, None)
 write_result(cell, output, warmup, times, total=total)

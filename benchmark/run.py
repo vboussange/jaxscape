@@ -7,10 +7,11 @@ A cell is one question, tool, distance, device and case, in the comparison or in
 the solver view, which runs JAXScape with each solver. The runner writes the
 configuration of the run to `RUN_DIR/config.json` and the environment snapshot
 to `RUN_DIR/environment.json`, appends the record of each cell to
-`RUN_DIR/records.jsonl` as it finishes, and skips the cells recorded there when
-it restarts. It keeps in `RUN_DIR/maps` the maps of JAXScape's E2 and E3 cells
-of the comparison on the GPU, with which it compares the other tools' maps, and
-the other tools' maps of Maryland, for the report's Maryland figure. Smoke mode
+`RUN_DIR/records.csv` as it finishes, and skips the cells recorded there when
+it restarts. It keeps in `RUN_DIR/maps` the maps of JAXScape's GPU cells of the
+connectivity and sensitivity analyses in the comparison, with which it compares
+the other tools' maps, and the other tools' maps of Maryland, for the report's
+Maryland figure. Smoke mode
 runs every cell on a raster of `smoke_side` pixels a side, with windows of
 `smoke_dependency_range` and one timed call, into a new run directory, and
 exits with an error unless every cell is `ok` with its agreement, and every
@@ -19,6 +20,7 @@ Tier 1 error is at most `smoke_tolerance`.
 
 import argparse
 import copy
+import csv
 import json
 import math
 import os
@@ -42,15 +44,17 @@ from scipy.stats import spearmanr
 
 
 HERE = Path(__file__).resolve().parent
-# The fields of a cell record, the contract between the runner and the report;
-# the first ones, up to `case`, are the key of the cell.
+# The fields of a cell record, the contract between the runner and the report,
+# and the type of their values; the first ones, up to `case`, are the key of
+# the cell. `times_s` holds the times of the timed calls.
 KEY = ("view", "question", "tool", "distance", "device", "dtype", "solver", "case")
-FIELDS = (
-    *KEY,
-    *("cells", "status", "reason", "warmup_s", "times_s", "median_s"),
-    *("measure", "agreement", "tier", "compared_with", "total", "version"),
-    *("files", "adapter"),
-)
+FIELDS = {
+    **dict.fromkeys(KEY, str),
+    **{"cells": int, "status": str, "reason": str, "warmup_s": float},
+    **{"times_s": list, "median_s": float, "measure": str, "agreement": float},
+    **{"tier": int, "compared_with": str, "total": float, "version": str},
+    **{"files": bool, "adapter": str},
+}
 INTERPRETERS = {".jl": ["julia", f"--project={HERE / 'julia'}"], ".R": ["Rscript"]}
 OOM = re.compile(
     r"RESOURCE_EXHAUSTED|out of memory|OutOfMemoryError|MemoryError|bad_alloc|"
@@ -71,7 +75,7 @@ def main():
     parser.add_argument("--config", type=Path, default=HERE / "config.toml")
     arguments = parser.parse_args()
     config = tomllib.loads(arguments.config.read_text())
-    records = arguments.run_dir / "records.jsonl"
+    records = arguments.run_dir / "records.csv"
     if arguments.smoke and records.exists():
         sys.exit(f"smoke mode needs a new run directory, and {records} exists")
 
@@ -80,9 +84,7 @@ def main():
     if arguments.smoke:
         tolerance = config["run"]["smoke_tolerance"]
         failures = [
-            record
-            for record in map(json.loads, records.read_text().splitlines())
-            if not passes(record, tolerance)
+            record for record in read_records(records) if not passes(record, tolerance)
         ]
         for record in failures:
             print(
@@ -115,9 +117,10 @@ def run_config(config, smoke):
 
     - `config`: The configuration, as `config.toml` gives it.
     - `smoke`: Whether the run is in smoke mode, which runs every distance, and
-      every question of the solver view, on the raster of `smoke_side`, takes
-      the top-left square of Maryland of that side and windows of
-      `smoke_dependency_range`, and makes one timed call.
+      every question of the solver view, on the raster of `smoke_side` in
+      place of the synthetic rasters, takes the top-left square of Maryland of
+      that side and windows of `smoke_dependency_range`, and makes one timed
+      call.
 
     **Returns:**
 
@@ -131,10 +134,18 @@ def run_config(config, smoke):
         config["run"]["repeats"] = 1
         for parameters in config["distances"].values():
             parameters["sides"] = [side]
-        for distances in config.get("solver_view", {}).get("questions", {}).values():
-            for settings in distances.values():
-                if "sides" in settings:
-                    settings["sides"] = [side]
+        view = config.get("solver_view", {})
+        restricted = [
+            *(s for d in view.get("questions", {}).values() for s in d.values()),
+            *view.get("solvers", {}).values(),
+        ]
+        for settings in restricted:
+            if "cases" in settings:
+                smoke_cases = (
+                    case if case == "maryland" else f"synthetic-{side}"
+                    for case in settings["cases"]
+                )
+                settings["cases"] = list(dict.fromkeys(smoke_cases))
         if "maryland" in config:
             config["maryland"]["side"] = side
         if "windows" in config:
@@ -161,7 +172,7 @@ def run(config, run_dir):
     - `config`: The configuration of the run (see `run_config`).
     - `run_dir`: The run directory, into which the run writes `config.json`
       and `environment.json` when they are missing, and appends to
-      `records.jsonl`.
+      `records.csv`.
     """
     for directory in ("logs", "references", "maps"):
         (run_dir / directory).mkdir(parents=True, exist_ok=True)
@@ -171,10 +182,10 @@ def run(config, run_dir):
         if not path.exists():
             path.write_text(json.dumps(snapshot(), indent=2) + "\n")
     versions = json.loads((run_dir / "environment.json").read_text())["tools"]
-    records_path = run_dir / "records.jsonl"
+    records_path = run_dir / "records.csv"
     recorded = {}
     if records_path.exists():
-        for record in map(json.loads, records_path.read_text().splitlines()):
+        for record in read_records(records_path):
             recorded[tuple(record[field] for field in KEY)] = record
     # JAXScape runs first, so that its maps exist when other tools need them.
     ordered = sorted(configurations(config), key=lambda c: c["tool"] != "JAXScape")
@@ -193,6 +204,9 @@ def run(config, run_dir):
                     "cells": case["cells"],
                     "version": versions.get(configuration["tool"]),
                 }
+                reference_cases = configuration["reference_cases"]
+                if reference_cases is not None and case["case"] not in reference_cases:
+                    cell["measure"] = None  # no reference to measure against
                 key = tuple(cell[field] for field in KEY)
                 configuration_key = key[:-1]
                 synthetic_case = case["side"] is not None
@@ -207,13 +221,48 @@ def run(config, run_dir):
                         if not case_dir.exists():
                             write_case(config, case, case_dir)
                         record = run_cell(config, cell, case_dir, run_dir)
-                    with open(records_path, "a") as file:
-                        file.write(json.dumps(record) + "\n")
+                    append_record(records_path, record)
                     outcome = record["median_s"] or record["reason"]
                     print(f"{label(record)}: {record['status']} {outcome}", flush=True)
                 if synthetic_case and record["status"] in ("failed", "timeout", "oom"):
                     stopped_at[configuration_key] = record
             shutil.rmtree(case_dir, ignore_errors=True)
+
+
+def append_record(path, record):
+    """Append a record to a records file, which starts with the header of `FIELDS`.
+
+    A list of times is one value, its times joined by `;`, and a missing value
+    is empty.
+    """
+    new = not path.exists()
+    with open(path, "a", newline="") as file:
+        writer = csv.DictWriter(file, FIELDS)
+        if new:
+            writer.writeheader()
+        writer.writerow(
+            {
+                field: ";".join(map(str, value)) if isinstance(value, list) else value
+                for field, value in record.items()
+            }
+        )
+
+
+def read_records(path):
+    """Return the records of a records file (see `append_record`)."""
+
+    def parse(kind, text):
+        if text == "":
+            return None
+        if kind is list:
+            return [float(time) for time in text.split(";")]
+        return text == "True" if kind is bool else kind(text)
+
+    with open(path, newline="") as file:
+        return [
+            {field: parse(FIELDS[field], text) for field, text in row.items()}
+            for row in csv.DictReader(file)
+        ]
 
 
 def cases(config):
@@ -279,8 +328,11 @@ def configurations(config):
     device, and a list of solvers gives one configuration per solver. The solver
     view gives one per distance of each of its questions, dtype and solver, but
     the combinations of its `fails_by_design`: a solver's entry gives the label
-    of its records and the settings that it adds to those of the distance, and
-    its `questions` and `dtypes` restrict where it runs.
+    of its records and the settings that it adds to those of the distance, or
+    replaces, its `questions` and `dtypes` restrict where it runs, and its
+    `timeout` replaces that of the view. The reference of a connectivity or
+    sensitivity analysis runs on the `cases` of the settings of its distance
+    alone.
     """
     for entry in config["tools"]:
         for distance, settings in entry["distances"].items():
@@ -312,8 +364,13 @@ def configurations(config):
                         or fails_by_design(view, combination)
                     ):
                         continue
+                    entry = {
+                        **view,
+                        "question": question,
+                        "reference_cases": shared.get("cases"),
+                        "timeout": added.pop("timeout", view.get("timeout")),
+                    }
                     settings = {**shared, "dtype": dtype, "solver": solver, **added}
-                    entry = {**view, "question": question}
                     yield configuration(
                         "solver", entry, distance, view["device"], solver, settings
                     )
@@ -330,19 +387,22 @@ def configuration(view, entry, distance, device, solver, settings):
     - `distance`, `device`: What the cell computes, and where. `distance` is
       the key of the settings' table, which labels the records; the cell
       computes under the settings' `distance`, by default this key.
-    - `solver`: The label of the solver in the records, or `""`.
-    - `settings`: The settings that the adapter reads; their `sides` restrict
-      the synthetic rasters on which the configuration runs.
+    - `solver`: The label of the solver in the records, or `""` for none.
+    - `settings`: The settings that the adapter reads; their `cases`, such as
+      `["synthetic-256", "maryland"]`, restrict the cases on which the
+      configuration runs.
 
     **Returns:**
 
     The configuration, with the fields of the record that do not depend on the
     case and what the runner needs to run its cells: `computed_with`, the
-    distance under which it computes, and, for a tool compared by Spearman's
-    ρ, `compared_with`, the label of the JAXScape map compared.
+    distance under which it computes, for a tool compared by Spearman's ρ,
+    `compared_with`, the label of the JAXScape map compared, and the
+    `reference_cases` of the entry, the cases on which its reference runs, or
+    `None` for every case.
     """
     settings = dict(settings)
-    sides = settings.pop("sides", None)
+    cases = settings.pop("cases", None)
     computed_with = settings.pop("distance", distance)
     tier = entry.get("tier")
     measured = view == "solver" or tier is not None
@@ -354,7 +414,7 @@ def configuration(view, entry, distance, device, solver, settings):
         "distance": distance,
         "device": device,
         "dtype": settings.get("dtype", "float64"),
-        "solver": solver,
+        "solver": solver or None,
         "tier": tier,
         "measure": measure,
         "compared_with": (
@@ -363,7 +423,8 @@ def configuration(view, entry, distance, device, solver, settings):
         "computed_with": computed_with,
         "adapter": entry["adapter"],
         "settings": settings,
-        "sides": sides,
+        "cases": cases,
+        "reference_cases": entry.get("reference_cases"),
         "timeout": entry.get("timeout"),
     }
 
@@ -387,14 +448,13 @@ def runs_on(configuration, case):
     """Return whether a configuration runs on a case.
 
     The distance under which it computes and its question run on the case, and
-    a configuration with `sides` runs on the synthetic rasters of these sides
-    alone.
+    a configuration with `cases` runs on these cases alone.
     """
     if configuration["computed_with"] not in case["distances"]:
         return False
     if configuration["question"] not in case["questions"]:
         return False
-    return configuration["sides"] is None or case["side"] in configuration["sides"]
+    return configuration["cases"] is None or case["case"] in configuration["cases"]
 
 
 def label(cell):
@@ -412,14 +472,14 @@ def label(cell):
 
 
 def write_case(config, case, case_dir):
-    """Write the rasters of a case and the sites of E1 to a directory."""
+    """Write the rasters of a case and the sites of the distance calculation."""
     quality, permeability = rasters(config, case["side"])
     case_dir.mkdir(parents=True)
     np.save(case_dir / "quality.npy", quality)
     np.save(case_dir / "permeability.npy", permeability)
     np.save(
         case_dir / "sites.npy",
-        sites(quality, config["E1"]["sites"], config["E1"]["seed"]),
+        sites(quality, config["distance"]["sites"], config["distance"]["seed"]),
     )
 
 
@@ -457,7 +517,8 @@ def run_cell(config, cell, case_dir, run_dir):
     )
     output = np.load(work / "output.npy")
     jaxscape_gpu = cell["tool"] == "JAXScape" and cell["device"] == "gpu"
-    if cell["view"] == "comparison" and cell["question"] != "E1" and jaxscape_gpu:
+    windowed = cell["question"] != "distance"
+    if cell["view"] == "comparison" and windowed and jaxscape_gpu:
         np.save(map_path(run_dir, cell), output)
     if cell["measure"] is None:
         return record
@@ -476,7 +537,7 @@ def run_cell(config, cell, case_dir, run_dir):
 
 
 def map_path(run_dir, cell):
-    """Return where the runner keeps the map of a cell of E2 or E3.
+    """Return where the runner keeps the map of a connectivity or sensitivity cell.
 
     **Arguments:**
 
@@ -519,23 +580,24 @@ def cell_file(config, cell, case_dir, work):
 def reference_of(config, cell, case_dir, run_dir):
     """Return the float64 reference of a cell.
 
-    The reference is computed once per case and distance, and for E2 and E3 per
-    question. E1 takes the `reference` adapter of its configuration on the CPU.
-    E2 and E3 take the adapter of the solver view on its device, in float64
+    The reference is computed once per case and distance, and for the
+    connectivity and sensitivity analyses per question. The distance
+    calculation takes the `reference` adapter of its configuration on the CPU,
+    and the analyses the adapter of the solver view on its device, in float64
     with its `reference_solver` and the settings of the distance in the
     question. A reference that failed is recorded next to where it would be and
     never retried; the function then returns `None`.
     """
-    if cell["question"] == "E1":
+    if cell["question"] == "distance":
         name = f"{cell['case']}-{cell['computed_with']}"
-        adapter, device = config["E1"]["reference"], "cpu"
+        adapter, device = config["distance"]["reference"], "cpu"
         settings = {"dtype": "float64"}
     else:
         name = f"{cell['case']}-{cell['question']}-{cell['computed_with']}"
         view = config["solver_view"]
         adapter, device = view["adapter"], view["device"]
         shared = view["questions"][cell["question"]][cell["computed_with"]]
-        settings = {k: v for k, v in shared.items() if k != "sides"}
+        settings = {k: v for k, v in shared.items() if k != "cases"}
         settings.update(dtype="float64", solver=view["reference_solver"])
     path = run_dir / "references" / f"{name}.npy"
     failure = path.with_suffix(".txt")
@@ -578,12 +640,12 @@ RHO = "Spearman's ρ"
 # measures it from an output and its reference. A measure that is undefined,
 # NaN, is recorded as missing.
 MEASURES = {
-    ("comparison", "E1"): ("largest relative error", largest_relative_error),
-    ("comparison", "E2"): (RHO, rank_correlation),
-    ("comparison", "E3"): (RHO, rank_correlation),
-    ("solver", "E1"): ("largest relative error", largest_relative_error),
-    ("solver", "E2"): ("relative L2 error", relative_l2_error),
-    ("solver", "E3"): ("relative L2 error", relative_l2_error),
+    ("comparison", "distance"): ("largest relative error", largest_relative_error),
+    ("comparison", "connectivity"): (RHO, rank_correlation),
+    ("comparison", "sensitivity"): (RHO, rank_correlation),
+    ("solver", "distance"): ("largest relative error", largest_relative_error),
+    ("solver", "connectivity"): ("relative L2 error", relative_l2_error),
+    ("solver", "sensitivity"): ("relative L2 error", relative_l2_error),
 }
 
 
@@ -643,15 +705,20 @@ def threads(cores):
 
     XLA sizes its CPU thread pools to the cores that `taskset` leaves it.
     """
-    count = 0
-    for part in cores.split(","):
-        first, _, last = part.partition("-")
-        count += int(last or first) - int(first) + 1
     names = (
         "OMP_NUM_THREADS OPENBLAS_NUM_THREADS MKL_NUM_THREADS JULIA_NUM_THREADS "
         "RCPP_PARALLEL_NUM_THREADS"
     ).split()
-    return {name: str(count) for name in names}
+    return {name: str(core_count(cores)) for name in names}
+
+
+def core_count(cores):
+    """Return the number of cores of a `taskset` list, such as 16 for `80-95`."""
+    count = 0
+    for part in cores.split(","):
+        first, _, last = part.partition("-")
+        count += int(last or first) - int(first) + 1
+    return count
 
 
 def variables(config, device):
@@ -679,21 +746,24 @@ def variables(config, device):
 def environment(config):
     """Return the snapshot of the run's hardware, threads and versions.
 
-    The GPU is that of the configuration, with its index and UUID, or `None`
-    without one. The versions are those of the runtimes, and of each tool of
-    the configuration (see `tool_versions`).
+    The GPU is the model of that of the configuration, with its driver, the
+    CUDA version of the driver and its memory, or `None` without one. `cores`
+    is the number of cores of the configuration. The versions are those of the
+    operating system, the runtimes, and each tool of the configuration (see
+    `tool_versions`).
     """
     gpu = None
     if config["run"]["gpu"] != "":
         query = [
             "nvidia-smi",
             f"--id={config['run']['gpu']}",
-            "--query-gpu=index,uuid,name,driver_version,memory.total",
+            "--query-gpu=name,driver_version,memory.total",
             "--format=csv,noheader",
         ]
         values = subprocess.run(query, capture_output=True, text=True, check=True)
-        names = ("index", "uuid", "name", "driver", "memory")
-        gpu = dict(zip(names, values.stdout.strip().split(", ")))
+        gpu = dict(zip(("name", "driver", "memory"), values.stdout.strip().split(", ")))
+        header = subprocess.run(["nvidia-smi"], capture_output=True, text=True).stdout
+        gpu["cuda"] = re.search(r"CUDA Version: (\S+)", header).group(1)
     cpu = next(
         line.split(":", 1)[1].strip()
         for line in Path("/proc/cpuinfo").read_text().splitlines()
@@ -705,11 +775,11 @@ def environment(config):
     java = dict(line.split("=", 1) for line in lines if "=" in line)
     return {
         "date": datetime.now(UTC).isoformat(timespec="seconds"),
-        "host": platform.node(),
         "gpu": gpu,
         "cpu": cpu,
-        "cores": config["run"]["cores"],
+        "cores": core_count(config["run"]["cores"]),
         "threads": threads(config["run"]["cores"]),
+        "os": platform.freedesktop_os_release()["PRETTY_NAME"],
         "runtimes": {
             "Python": platform.python_version(),
             "JAX": version("jax"),

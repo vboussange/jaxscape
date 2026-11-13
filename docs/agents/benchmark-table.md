@@ -12,8 +12,9 @@ each time a benchmark run is published under `benchmark/results/<run>/` (see
 1. **Read the run.** Its page, `benchmark/results/<run>/index.md`, has one table
    per benchmark question, with the status of each cell (`ok`, `failed`,
    `timeout`, `oom`, `skipped`) or its warm runtime. Map questions to columns:
-   E1, by distance, to the three "Effective distance" columns; E2 to "Connected
-   habitat"; E3 to "Movement corridors and pinch points". Use the synthetic
+   the distance calculation, by distance, to the three "Effective distance"
+   columns; the connectivity analysis to "Connected habitat"; the sensitivity
+   analysis to "Movement corridors and pinch points". Use the synthetic
    rasters only, not the Maryland case.
 2. **Speed-up row.** For each column and each other package, take the fastest
    configuration of each package (any distance, solver or device) and JAXScape
