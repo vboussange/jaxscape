@@ -173,18 +173,15 @@ grid graphs whose sparse Cholesky factorization does not fit in memory.
 
 `AMJaxCGSolver` builds the hierarchy once, in `init`, on the CPU. It solves
 by conjugate gradients, preconditioned by V-cycles of the hierarchy, in JAX on
-CPU or GPU, inside `jax.jit` and `jax.grad`. `reinit` keeps the hierarchy for a
-matrix of the same sparsity pattern with other values, whose solves then take
-more iterations the further these values are from those of the hierarchy. In
-windowed analyses, JAXScape builds the state once, from a graph of uniform
-conductance, and `reinit` keeps its hierarchy for every tile: on tiles of high
-conductance contrast, the solver then needs many iterations and can stop at
-`max_steps` ([issue #96](https://github.com/vboussange/jaxscape/issues/96)). The
-hierarchy has the dtype of the matrix. For ill-conditioned graph Laplacians,
-enable 64-bit floats with `JAX_ENABLE_X64=true` and build the matrix and the
-right-hand sides in float64: enabling 64-bit floats does not convert existing
-float32 arrays. A matrix whose hierarchy has a single level, as that of a small
-graph, is solved by conjugate gradients without preconditioner.
+CPU or GPU, inside `jax.jit` and `jax.grad`. `reinit` keeps the prolongation
+and restriction operators of the hierarchy, and each solve computes the
+matrices of its coarser levels from the current values, as Galerkin products
+with these operators. The hierarchy has the dtype of the matrix. For
+ill-conditioned graph Laplacians, enable 64-bit floats with
+`JAX_ENABLE_X64=true` and build the matrix and the right-hand sides in
+float64: enabling 64-bit floats does not convert existing float32 arrays. A
+matrix whose hierarchy has a single level, as that of a small graph, is solved
+by conjugate gradients without preconditioner.
 
 ::: jaxscape.solvers.amjaxcgsolver.AMJaxCGSolver
     options:
@@ -293,7 +290,7 @@ What the state of each solver keeps from one graph to the next:
 | Solver | Kept by the state |
 |---|---|
 | `GeometricMultigridCGSolver` | Its preconditioner, the grid; each solve builds the multigrid hierarchy of the new values |
-| `AMJaxCGSolver` | Its preconditioner, the algebraic multigrid hierarchy of the values of `init` |
+| `AMJaxCGSolver` | Its preconditioner, the prolongation and restriction operators of the algebraic multigrid hierarchy of `init`; each solve computes the matrices of the coarser levels from the new values |
 | `CuDSSSolver` | The analysis, and the factorization while the values stay the same |
 | `CholmodSolver` | The last factorization, while the values stay the same |
 | Lineax's iterative solvers, such as `lineax.CG` | Nothing: each query runs `init` |
