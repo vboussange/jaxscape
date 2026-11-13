@@ -255,6 +255,7 @@ def test_sensitivity_section_gives_the_speed_up_tier_and_rank_correlation(report
         "0.43",
     ]
     table = full_table(text)
+    assert table_row(table, "Tool")[:3] == ["Tool", "Distance or label", "Setting"]
     gpu = table_row(table, "JAXScape", label, GMG)
     assert gpu[3:5] == ["70 s", "300 s"]
     amg = table_row(table, "Omniscape.jl", "resistance", "CPU, float64, cg+amg")
@@ -357,13 +358,20 @@ def test_solver_section_names_the_fastest_solver_and_lists_every_solver(report):
         assert table_row(table, *configuration)[4:] == cells
 
 
-def test_solver_section_states_the_combinations_that_do_not_run(report):
-    text = section(page(report()), "## Linear solvers of JAXScape")
+def test_solver_section_states_the_combinations_that_no_record_ran(report):
+    def leave_out_cudss(config):
+        config["solver_view"]["fails_by_design"].append(
+            {"distance": "free_energy", "solver": ["CuDSSSolver", "CholmodSolver"]}
+        )
 
+    text = section(page(report(edit=leave_out_cudss)), "## Linear solvers of JAXScape")
+
+    # AMJaxCGSolver in float32 and CuDSSSolver on free-energy distance have
+    # records, and the page does not list them.
     assert (
         "**Not run**: free-energy distance in float32; free-energy distance with "
         "`GeometricMultigridCGSolver`, `AMJaxCGSolver` or `PyAMGCGSolver`; "
-        "`AMJaxCGSolver` in float32." in text
+        "free-energy distance with `CholmodSolver`." in text
     )
 
 
@@ -379,7 +387,12 @@ def test_setup_states_the_hardware_protocol_and_versions_of_the_run(report):
     assert "Ubuntu 22.04.5 LTS" in setup
     assert "the median time of the 5 timed calls of a cell" in setup
     assert "when the warm-up call takes more than 5 min" in setup
-    assert "`timeout` when a call exceeds 1 h" in setup
+    assert (
+        "**Time limit**: a call stops after 1 h, and in the section of the linear "
+        "solvers of JAXScape after the time limit stated in its Method." in setup
+    )
+    assert "`timeout` when a call exceeds its time limit" in setup
+    assert "the fastest setting of a tool, distance and device" in setup
     assert "Python 3.13.5, JAX 0.12.0.1, Julia 1.13.3" in setup
     jaxscape = table_row(setup, "JAXScape", "0.0.18")
     assert jaxscape[2] == "distance calculation, connectivity analysis, sensitivity analysis"
@@ -412,7 +425,7 @@ def test_page_of_a_smoke_run_states_the_smoke_settings(report):
     text = page(report(edit=smoke))
 
     assert "the median time of the 1 timed call of a cell" in text
-    assert "`timeout` when a call exceeds 10 min" in text
+    assert "**Time limit**: a call stops after 10 min" in text
     assert "`dependency_range` 10 pixels and `coarsening_factor` 0.2" in text
     assert "blocks of 3 × 3 pixels" in text
     assert "a call stops after 2 min, and under" in text

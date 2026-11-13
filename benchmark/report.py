@@ -17,7 +17,7 @@ import json
 import os
 import re
 import textwrap
-from itertools import groupby
+from itertools import groupby, product
 from pathlib import Path
 
 import matplotlib
@@ -547,6 +547,21 @@ SOLVER_VIEW = {
 }
 
 
+def comparison_columns(records, config):
+    """Return the columns that name a setting in the tables of a question.
+
+    They are those of `COMPARISON`, whose column of distances is headed
+    "Distance or label" when a record holds a label in it, such as
+    `resistance, K = -R, normalized`.
+    """
+    if all(record["distance"] in config["distances"] for record in records):
+        return COMPARISON
+    return {
+        "Distance or label" if header == "Distance" else header: text
+        for header, text in COMPARISON.items()
+    }
+
+
 def row(cells):
     """Return a row of a Markdown table."""
     return "| " + " | ".join(str(cell).replace("|", "\\|") for cell in cells) + " |"
@@ -837,7 +852,7 @@ def comparison_results(records, config, run_dir, by_distance):
         collapsed(
             f"Warm runtime and {measure} of every setting on every raster",
             missing,
-            outcome_table(records, COMPARISON),
+            outcome_table(records, comparison_columns(records, config)),
         ),
     ]
 
@@ -887,6 +902,30 @@ def combination(entry):
     return " ".join(words)
 
 
+def not_run(entry, records):
+    """Return the parts of an entry of `fails_by_design` that no record ran.
+
+    The entry is split into its combinations, which take one value of each of
+    its fields, and a record ran a combination when it holds each of its
+    values. The combinations that no record ran are joined back into entries,
+    one per value of the fields but the last that holds a list.
+    """
+    fields = list(entry)
+    lists = [field for field in fields if isinstance(entry[field], list)]
+    joined = lists[-1:]  # the last field that holds a list, if any
+    values = [entry[field] if field in lists else [entry[field]] for field in fields]
+    parts = {}
+    for chosen in product(*values):
+        part = dict(zip(fields, chosen))
+        if any(all(record[f] == part[f] for f in fields) for record in records):
+            continue
+        key = tuple(value for field, value in part.items() if field not in joined)
+        parts.setdefault(key, part | {field: [] for field in joined})
+        for field in joined:
+            parts[key][field].append(part[field])
+    return list(parts.values())
+
+
 def introduction():
     """Return the introduction of the page."""
     return [
@@ -906,6 +945,7 @@ def setup_section(records, config, environment):
     run, landscape, maryland = config["run"], config["landscape"], config["maryland"]
     gpu, cpu, cores = environment["gpu"], environment["cpu"], environment["cores"]
     comparison = [record for record in records if record["view"] == "comparison"]
+    solvers = solver_view(records)
     hardware = []
     if gpu:
         hardware.append(
@@ -968,14 +1008,25 @@ def setup_section(records, config, environment):
         "**Work of a call**: every call redoes the work that depends on the "
         "landscape: graph assembly, factorization, multigrid hierarchy and "
         "solver state.",
-        "**Speed-up of JAXScape** over a tool: the warm runtime of the tool "
-        "divided by that of JAXScape on the GPU, each in its fastest setting, on "
-        "the largest synthetic raster that both completed.",
-        f"**Status of a cell that did not complete**: `timeout` when a call "
-        f"exceeds {duration(run['timeout'])}, `oom` when a call runs out of "
-        "memory, and `failed` on another error. A setting runs on the synthetic "
-        "rasters from the smallest up, and is `skipped` on the rasters larger "
-        "than one where it stopped; Maryland always runs.",
+        "**Speed-up of JAXScape** over a tool under a distance: the warm "
+        "runtime of the tool divided by that of JAXScape on the GPU, each in its "
+        "fastest setting on the largest synthetic raster that both completed, "
+        "with JAXScape under the same distance in the distance calculation, and "
+        "under the distance or label of the column \"Compared with JAXScape "
+        "under\" in the connectivity and sensitivity analyses.",
+        f"**Time limit**: a call stops after {duration(run['timeout'])}"
+        + (
+            ", and in the section of the linear solvers of JAXScape after the "
+            "time limit stated in its Method"
+            if solvers
+            else ""
+        )
+        + ".",
+        "**Status of a cell that did not complete**: `timeout` when a call "
+        "exceeds its time limit, `oom` when a call runs out of memory, and "
+        "`failed` on another error. A setting runs on the synthetic rasters from "
+        "the smallest up, and is `skipped` on the rasters larger than one where "
+        "it stopped; Maryland always runs.",
     ]
     rho = f"{RHO} between the map of the tool and that of JAXScape"
     tiers = [
@@ -987,8 +1038,15 @@ def setup_section(records, config, environment):
     ]
     reading = [
         "**Figures of runtime**: each line passes through the warm runtimes of "
-        "the fastest setting of a tool and distance that succeeded on each "
-        "synthetic raster; a star marks Maryland.",
+        "the fastest setting of a tool, distance and device that succeeded on "
+        "each synthetic raster, solid on the GPU and dashed on the CPU"
+        + (
+            "; in the section of the linear solvers, a line is a solver and "
+            "dtype, solid in float32 and dashed in float64"
+            if solvers
+            else ""
+        )
+        + ". A star marks Maryland.",
         "**Tables**: an entry is the warm runtime and the agreement of a cell "
         "that succeeded, or the status of a cell that did not.",
     ]
@@ -1056,7 +1114,7 @@ def distance_section(records, config, run_dir):
     return [
         "## Distance calculation",
         *comparison_results(records, config, run_dir, by_distance=True),
-        *failures(records, COMPARISON),
+        *failures(records, comparison_columns(records, config)),
         "### Method",
         bullets(method),
     ]
@@ -1097,7 +1155,7 @@ def connectivity_section(records, config, run_dir):
     return [
         "## Connectivity analysis",
         *comparison_results(records, config, run_dir, by_distance=False),
-        *failures(records, COMPARISON),
+        *failures(records, comparison_columns(records, config)),
         "### Method",
         bullets(method),
     ]
@@ -1151,7 +1209,7 @@ def sensitivity_section(records, config, run_dir, maryland):
     return [
         "## Sensitivity analysis",
         *results,
-        *failures(records, COMPARISON),
+        *failures(records, comparison_columns(records, config)),
         "### Method",
         bullets(method),
     ]
@@ -1215,12 +1273,20 @@ def solver_section(records, config, run_dir):
     rasters = "**Rasters**: in the distance calculation, every raster of its distance"
     windows = []
     if exact:
-        windows.append(f"{cases(exact)} under exact resistance distance")
+        windows.append((cases(exact), "exact resistance distance"))
     if ran:
-        windows.append(f"{cases(ran)} under {methods} with {solvers}")
-    if windows:
-        rasters += f"; in the windowed analyses, {either(windows, 'and')}"
-    left_out = "; ".join(map(combination, view.get("fails_by_design", [])))
+        windows.append((cases(ran), f"{methods} with {solvers}"))
+    if len(windows) == 2 and windows[0][0] == windows[1][0]:
+        under = either((what for _, what in windows), "and under")
+        rasters += f"; in the windowed analyses, {windows[0][0]}, under {under}"
+    elif windows:
+        under = (f"{found} under {what}" for found, what in windows)
+        rasters += f"; in the windowed analyses, {either(under, 'and')}"
+    left_out = "; ".join(
+        combination(part)
+        for entry in view.get("fails_by_design", [])
+        for part in not_run(entry, records)
+    )
     limit = f"**Time limit**: a call stops after {duration(view['timeout'])}"
     if used:
         limit += f", and under {methods} after "

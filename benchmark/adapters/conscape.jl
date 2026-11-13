@@ -20,10 +20,10 @@
 # and to the least-cost path distance as theta grows. On the synthetic raster
 # of 256 pixels a side, for every theta from 1e-5 to 1.5e-2, the ranking of the
 # pairs of sites of the distance calculation by free-energy distance agrees
-# with their ranking by least-cost path distance (Spearman's rho 0.98 to 0.99,
+# with their ranking by least-cost path distance (Spearman's ρ 0.98 to 0.99,
 # against 0.92 to 0.95 with resistance distance), and at the shared theta,
 # 0.01, ConScape's maps of connectivity and sensitivity correlate more with the
-# maps of JAXScape's GPU cells under least-cost path distance (rho 0.93 and
+# maps of JAXScape's GPU cells under least-cost path distance (ρ 0.93 and
 # 0.84) than under resistance distance (0.87 and 0.72). Every call rebuilds the
 # affinities, the `Grid`, the landmarks and the `GridRSP`, with its sparse LU
 # factorization, which runs on the BLAS threads of the cell.
