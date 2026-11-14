@@ -170,7 +170,8 @@ def _grid(pattern: CSRPattern) -> _Grid:
     of `_grid_width`.
     """
     n = pattern.n
-    rows = np.asarray(pattern.rows, np.int64)
+    # On the host: `pattern.rows` repeats the vertices on the device.
+    rows = np.repeat(np.arange(n), np.diff(np.asarray(pattern.offsets)))
     columns = np.asarray(pattern.columns, np.int64)
     width = int(_grid_width(np.abs(columns - rows)))
     steps = np.stack(

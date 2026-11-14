@@ -10,6 +10,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from jax import errors as jax_errors
+from jax.core import Tracer
 from jax.experimental.sparse import BCOO
 from jaxtyping import Array
 from lineax import AbstractLinearOperator, RESULTS
@@ -269,6 +270,17 @@ def _checked_data(
 
 
 def _csr_values(data: Array, pattern: CSRPattern) -> Array:
+    """The CSR values of `pattern`: the sums of the stored values `data` of a
+    BCOO matrix over its duplicate entries.
+
+    Concrete values, as `init` reads them, are summed on the host. An eager
+    scatter would allocate its operands and its result in device memory, which
+    the solves that follow may need.
+    """
+    if not isinstance(data, Tracer) and not isinstance(pattern.value_map, Tracer):
+        value_map = np.asarray(pattern.value_map)
+        sums = np.bincount(value_map, np.asarray(data), minlength=pattern.nnz + 1)
+        return jnp.asarray(sums[: pattern.nnz].astype(data.dtype))
     values = jnp.zeros(pattern.nnz, dtype=data.dtype)
     return values.at[pattern.value_map].add(data, mode="drop")
 
