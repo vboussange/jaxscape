@@ -225,8 +225,8 @@ def _pattern(solver: AbstractSparseSolver, matrix: BCOO) -> CSRPattern:
     keys = np.where(in_bounds, rows.astype(np.int64) * n + columns, n * n)
     # The index of each key among the sorted unique keys, as `np.unique` with
     # `return_inverse` gives it, from a stable sort: sparse indices commonly
-    # come in sorted runs, as those of a `GridGraph` do, which a stable sort
-    # sorts several times faster than the default sort of `np.unique`.
+    # come nearly sorted, as those of a `GridGraph` do, which a stable sort
+    # (timsort) sorts several times faster than the quicksort of `np.unique`.
     order = np.argsort(keys, kind="stable")
     sorted_keys = keys[order]
     first = np.diff(sorted_keys, prepend=-1) != 0
@@ -237,7 +237,8 @@ def _pattern(solver: AbstractSparseSolver, matrix: BCOO) -> CSRPattern:
     heads = order[first][:nnz]
     row_counts = np.bincount(rows[heads], minlength=n)
     offsets = np.concatenate([[0], np.cumsum(row_counts)])
-    # Converted on the host: with a dtype, `jnp.asarray` converts on the device.
+    # Cast with NumPy: with a dtype, `jnp.asarray` runs an eager
+    # `convert_element_type`, which copies the array once more on the device.
     return CSRPattern(
         offsets=jnp.asarray(offsets.astype(np.int32)),
         columns=jnp.asarray(columns[heads].astype(np.int32)),
@@ -284,11 +285,14 @@ def _checked_data(
 
 def _csr_values(data: Array, pattern: CSRPattern) -> Array:
     """The CSR values of `pattern`: the sums of the stored values `data` of a
-    BCOO matrix over its duplicate entries.
+    BCOO matrix over its duplicate entries, without its padding entries.
 
-    Concrete values, as `init` reads them, are summed on the host. An eager
-    scatter would allocate its operands and its result in device memory, which
-    the solves that follow may need.
+    Concrete values, as `init` and an eager `reinit` read them, are summed on
+    the host in float64 and rounded to their dtype: an eager scatter would
+    allocate its operands and its result in device memory, which the solves
+    that follow may need. Traced values are summed on the device in their
+    dtype, so that their sums over three or more duplicates can differ from
+    the host sums in the last bits.
     """
     if not isinstance(data, Tracer) and not isinstance(pattern.value_map, Tracer):
         value_map = np.asarray(pattern.value_map)
