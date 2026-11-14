@@ -10,6 +10,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from jax import errors as jax_errors
+from jax.core import Tracer
 from jax.experimental.sparse import BCOO
 from jaxtyping import Array
 from lineax import AbstractLinearOperator, RESULTS
@@ -206,7 +207,7 @@ def _matrix(solver: AbstractSparseSolver, operator: AbstractLinearOperator) -> B
 
 def _pattern(solver: AbstractSparseSolver, matrix: BCOO) -> CSRPattern:
     try:
-        indices = np.asarray(matrix.indices, dtype=np.int64)
+        indices = np.asarray(matrix.indices)
     except jax_errors.TracerArrayConversionError:
         raise ValueError(
             f"{type(solver).__name__} reads its sparsity pattern from concrete "
@@ -217,17 +218,31 @@ def _pattern(solver: AbstractSparseSolver, matrix: BCOO) -> CSRPattern:
             "`state`."
         ) from None
     n = matrix.shape[0]
-    valid = np.all((indices >= 0) & (indices < np.asarray(matrix.shape)), axis=1)
-    keys = indices[valid, 0] * n + indices[valid, 1]
-    unique_keys, slots = np.unique(keys, return_inverse=True)
-    nnz = unique_keys.shape[0]
-    row_counts = np.bincount(unique_keys // n, minlength=n)
-    value_map = np.full(indices.shape[0], nnz)
-    value_map[valid] = slots
+    rows, columns = indices[:, 0], indices[:, 1]
+    # Padding entries take the key `n * n`, past the keys of the matrix entries,
+    # so that they map to index `nnz`, past the CSR values.
+    in_bounds = (rows >= 0) & (rows < n) & (columns >= 0) & (columns < n)
+    keys = np.where(in_bounds, rows.astype(np.int64) * n + columns, n * n)
+    # The index of each key among the sorted unique keys, as `np.unique` with
+    # `return_inverse` gives it, from a stable sort: sparse indices commonly
+    # come nearly sorted, as those of a `GridGraph` do, which a stable sort
+    # (timsort) sorts several times faster than the quicksort of `np.unique`.
+    order = np.argsort(keys, kind="stable")
+    sorted_keys = keys[order]
+    first = np.diff(sorted_keys, prepend=-1) != 0
+    value_map = np.empty(keys.shape, np.int32)
+    value_map[order] = np.cumsum(first, dtype=np.int32) - 1
+    nnz = int(np.searchsorted(sorted_keys[first], n * n))
+    # The first stored entry of each CSR value.
+    heads = order[first][:nnz]
+    row_counts = np.bincount(rows[heads], minlength=n)
+    offsets = np.concatenate([[0], np.cumsum(row_counts)])
+    # Cast with NumPy: with a dtype, `jnp.asarray` runs an eager
+    # `convert_element_type`, which copies the array once more on the device.
     return CSRPattern(
-        offsets=jnp.asarray(np.concatenate([[0], np.cumsum(row_counts)]), jnp.int32),
-        columns=jnp.asarray(unique_keys % n, jnp.int32),
-        value_map=jnp.asarray(value_map, jnp.int32),
+        offsets=jnp.asarray(offsets.astype(np.int32)),
+        columns=jnp.asarray(columns[heads].astype(np.int32)),
+        value_map=jnp.asarray(value_map),
         max_row_length=int(row_counts.max(initial=0)),
     )
 
@@ -269,6 +284,20 @@ def _checked_data(
 
 
 def _csr_values(data: Array, pattern: CSRPattern) -> Array:
+    """The CSR values of `pattern`: the sums of the stored values `data` of a
+    BCOO matrix over its duplicate entries, without its padding entries.
+
+    Concrete values, as `init` and an eager `reinit` read them, are summed on
+    the host in float64 and rounded to their dtype: an eager scatter would
+    allocate its operands and its result in device memory, which the solves
+    that follow may need. Traced values are summed on the device in their
+    dtype, so that their sums over three or more duplicates can differ from
+    the host sums in the last bits.
+    """
+    if not isinstance(data, Tracer) and not isinstance(pattern.value_map, Tracer):
+        value_map = np.asarray(pattern.value_map)
+        sums = np.bincount(value_map, np.asarray(data), minlength=pattern.nnz + 1)
+        return jnp.asarray(sums[: pattern.nnz].astype(data.dtype))
     values = jnp.zeros(pattern.nnz, dtype=data.dtype)
     return values.at[pattern.value_map].add(data, mode="drop")
 
