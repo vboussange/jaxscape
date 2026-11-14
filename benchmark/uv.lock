@@ -538,14 +538,18 @@ wheels = [
 
 [[package]]
 name = "jaxscape"
-version = "0.0.18"
-source = { git = "https://github.com/vboussange/jaxscape?rev=99cba66b0026b277a44f9b91e113dc3bbe9a703a#99cba66b0026b277a44f9b91e113dc3bbe9a703a" }
+version = "0.0.19"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "equinox" },
     { name = "jax" },
     { name = "lineax" },
     { name = "numpy" },
     { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c8/cb/c2ccea9fe8d3bd0f2082f6660d8fd78118707479fc1ebc2f7abfbcdda1d0/jaxscape-0.0.19.tar.gz", hash = "sha256:df5b44170c7b26b3f480e375637629f22f95ee0c25d9113328b989f660374dd6", size = 6617029, upload-time = "2026-11-14T07:29:23.472Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0b/d9/df26fb09217dde7bd078dfefe3a4acbabe53d387b40e14514347fdaa0530/jaxscape-0.0.19-py3-none-any.whl", hash = "sha256:c3260402b4f23a77cbc69089d2f7b06511da527a0d59688712e247f3182c68a1", size = 101919, upload-time = "2026-11-14T07:29:21.561Z" },
 ]
 
 [package.optional-dependencies]
@@ -590,7 +594,7 @@ requires-dist = [
     { name = "ecoscape-connectivity", specifier = "==0.2.5" },
     { name = "gdal", specifier = "==3.4.1" },
     { name = "jax", extras = ["cuda13"] },
-    { name = "jaxscape", extras = ["amjax", "cholespy", "cudss"], git = "https://github.com/vboussange/jaxscape?rev=99cba66b0026b277a44f9b91e113dc3bbe9a703a" },
+    { name = "jaxscape", extras = ["amjax", "cholespy", "cudss"], specifier = "==0.0.19" },
     { name = "matplotlib", specifier = ">=3.9" },
     { name = "numpy", specifier = ">=2" },
     { name = "rasterio", specifier = ">=1.4" },

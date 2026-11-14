@@ -4,7 +4,7 @@ version = "0"
 description = "Benchmark of JAXScape against connectivity software, pinned to a JAXScape release"
 requires-python = ">=3.12"
 dependencies = [
-  "jaxscape[amjax,cholespy,cudss] @ git+https://github.com/vboussange/jaxscape@99cba66b0026b277a44f9b91e113dc3bbe9a703a",
+  "jaxscape[amjax,cholespy,cudss]==0.0.19",
   "jax[cuda13]",
   "ecoscape-connectivity==0.2.5",
   # EcoScape imports GDAL, whose bindings build against the GDAL of the node
