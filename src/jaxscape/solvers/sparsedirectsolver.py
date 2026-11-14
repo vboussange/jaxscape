@@ -176,7 +176,7 @@ class AbstractSparseDirectSolver[Factorization](
         self, state: SparseDirectState[Factorization], vector: Array
     ) -> tuple[Array, RESULTS]:
         solution = self.solve(state.factorization, vector)
-        product = _product(state.pattern, state.values, solution)
+        product = _product(state.pattern, state.values)(solution)
         tolerance = self.residual_tolerance(solution.dtype)
         # A NaN residual compares false. The scaling of `vector` keeps float32
         # solutions of tiny right-hand sides normal, so that they pass.
@@ -200,17 +200,12 @@ class AbstractSparseDirectSolver[Factorization](
         1.0e-15 in float64; those that met a non-positive pivot had at least
         3.9e-2, or were not finite.
         """
-        b = _product(pattern, values, jnp.ones(pattern.n, values.dtype))
+        product = _product(pattern, values)
+        ones = jnp.ones(pattern.n, values.dtype)
+        b = product(ones)
         x = self.solve(factorization, b)
-        residual = jnp.max(jnp.abs(b - _product(pattern, values, x)))
-        norm = jnp.max(
-            jax.ops.segment_sum(
-                jnp.abs(values),
-                pattern.rows,
-                num_segments=pattern.n,
-                indices_are_sorted=True,
-            )
-        )
+        residual = jnp.max(jnp.abs(b - product(x)))
+        norm = jnp.max(_product(pattern, jnp.abs(values))(ones))
         tolerance = jnp.sqrt(jnp.finfo(values.dtype).eps)
         # A NaN residual compares false.
         return ~(residual <= tolerance * norm * jnp.max(jnp.abs(x)))

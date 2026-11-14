@@ -193,6 +193,10 @@ def csr_matvec(pattern: CSRPattern, values: Array) -> Callable[[Array], Array]:
     vectors, as `AbstractSparseIterativeSolver.matvec` returns it for a
     `vector_shape` of `(pattern.n,)`.
 
+    It gathers the rows of the matrix when called, and the function it returns
+    reuses them: call it once per solve, as `matvec` does, and apply the
+    returned function in the loop.
+
     **Arguments:**
 
     - `pattern`: The CSR pattern of the matrix.
@@ -202,9 +206,7 @@ def csr_matvec(pattern: CSRPattern, values: Array) -> Callable[[Array], Array]:
 
     A function that multiplies the matrix with `m` vectors, with shape `(n, m)`.
     """
-    return jax.vmap(
-        lambda vector: _product(pattern, values, vector), in_axes=1, out_axes=1
-    )
+    return jax.vmap(_product(pattern, values), in_axes=1, out_axes=1)
 
 
 def _ratio(numerator: Array, denominator: Array) -> Array:

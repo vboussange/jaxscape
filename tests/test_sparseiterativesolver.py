@@ -3,6 +3,7 @@ guide."""
 
 from typing import final
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import lineax as lx
@@ -45,7 +46,10 @@ def conductance():
     return jnp.asarray(10 ** rng.uniform(-2, 0, (9, 11)))
 
 
-def test_a_backend_needs_only_a_preconditioner():
+# A state passed to `jax.jit` holds its CSR pattern as arguments of the
+# program, and a state closed over holds it as constants, which XLA folds.
+@pytest.mark.parametrize("state_as", ["constant", "argument"])
+def test_a_backend_needs_only_a_preconditioner(state_as):
     distance = ResistanceDistance(solver=JacobiCGSolver(rtol=1e-12))
     state = distance.init(grid_of(jnp.ones((9, 11))))
     nodes = jnp.array([0, 50, 98])
@@ -53,9 +57,13 @@ def test_a_backend_needs_only_a_preconditioner():
     def objective(conductance, distance, state=None):
         return jnp.sum(distance(grid_of(conductance), nodes=nodes, state=state) ** 2)
 
-    actual = jax.jit(jax.value_and_grad(lambda c: objective(c, distance, state)))(
-        conductance()
-    )
+    if state_as == "constant":
+        actual = jax.jit(jax.value_and_grad(lambda c: objective(c, distance, state)))(
+            conductance()
+        )
+    else:
+        value_and_grad = jax.value_and_grad(lambda c, s: objective(c, distance, s))
+        actual = eqx.filter_jit(value_and_grad)(conductance(), state)
     expected = jax.value_and_grad(objective)(conductance(), ResistanceDistance(None))
     for a, e in zip(actual, expected):
         np.testing.assert_allclose(a, e, rtol=1e-8)
