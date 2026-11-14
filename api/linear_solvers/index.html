@@ -1,0 +1,2518 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A minimal JAX library for connectivity modelling at scale">
+      
+      
+        <meta name="author" content="Victor Boussange">
+      
+      
+        <link rel="canonical" href="https://vboussange.github.io/jaxscape/api/linear_solvers/">
+      
+      
+        <link rel="prev" href="../distances/">
+      
+      
+        <link rel="next" href="../connectivity_analysis/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+    
+    
+      
+        <title>Linear solvers - JAXScape</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../_static/custom_css.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#linear-solvers" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="JAXScape" class="md-header__button md-logo" aria-label="JAXScape" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            JAXScape
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Linear solvers
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/vboussange/jaxscape" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    vboussange/jaxscape
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="JAXScape" class="md-nav__button md-logo" aria-label="JAXScape" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    JAXScape
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/vboussange/jaxscape" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    vboussange/jaxscape
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../benchmark/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmark
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/distance_calculation/distance_calculation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Distance calculation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/connectivity_analysis/connectivity_analysis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connectivity analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/advanced/moving_windows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Moving-window operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../graphs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Graphs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../distances/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Distances
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linear solvers
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linear solvers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#choosing-a-solver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choosing a solver
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lineax-solvers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lineax solvers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#jaxscape-solvers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JAXScape solvers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="JAXScape solvers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#geometric-multigrid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Geometric multigrid
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Geometric multigrid">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#jaxscape.solvers.geometricmultigridcgsolver.GeometricMultigridCGSolver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;GeometricMultigridCGSolver
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#algebraic-multigrid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Algebraic multigrid
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Algebraic multigrid">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#jaxscape.solvers.amjaxcgsolver.AMJaxCGSolver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;AMJaxCGSolver
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sparse-direct-solvers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sparse direct solvers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Sparse direct solvers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#jaxscape.solvers.cholmodsolver.CholmodSolver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;CholmodSolver
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#jaxscape.solvers.cudsssolver.CuDSSSolver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;CuDSSSolver
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reusing-solver-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reusing solver state
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#extending-the-solvers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extending the solvers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Extending the solvers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#jaxscape.solvers.operator.BCOOLinearOperator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;BCOOLinearOperator
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#jaxscape.solvers.sparsesolver.CSRPattern" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;CSRPattern
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#jaxscape.solvers.sparsesolver.AbstractSparseSolver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;AbstractSparseSolver
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label=" AbstractSparseSolver">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#jaxscape.solvers.sparsesolver.AbstractSparseSolver.init" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;init
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#jaxscape.solvers.sparsesolver.AbstractSparseSolver.reinit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;reinit
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#jaxscape.solvers.sparsedirectsolver.AbstractSparseDirectSolver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;AbstractSparseDirectSolver
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label=" AbstractSparseDirectSolver">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#jaxscape.solvers.sparsedirectsolver.AbstractSparseDirectSolver.factorize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;factorize
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#jaxscape.solvers.sparsedirectsolver.AbstractSparseDirectSolver.refactorize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;refactorize
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#jaxscape.solvers.sparsedirectsolver.AbstractSparseDirectSolver.solve" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;solve
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#jaxscape.solvers.sparsedirectsolver.AbstractSparseDirectSolver.residual_tolerance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;residual_tolerance
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#jaxscape.solvers.sparseiterativesolver.AbstractSparseIterativeSolver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;AbstractSparseIterativeSolver
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label=" AbstractSparseIterativeSolver">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#jaxscape.solvers.sparseiterativesolver.AbstractSparseIterativeSolver.preconditioner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;preconditioner
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#jaxscape.solvers.sparseiterativesolver.AbstractSparseIterativeSolver.precondition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;precondition
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#jaxscape.solvers.sparseiterativesolver.AbstractSparseIterativeSolver.matvec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;matvec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#jaxscape.solvers.sparseiterativesolver.AbstractSparseIterativeSolver.vector_shape" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;vector_shape
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#jaxscape.solvers.sparseiterativesolver.csr_matvec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-function"></code>&nbsp;csr_matvec
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../connectivity_analysis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connectivity analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../window_operations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Window operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="linear-solvers">Linear solvers<a class="headerlink" href="#linear-solvers" title="Permanent link">¤</a></h1>
+<p>Computing resistance and free-energy distances, and their gradients, requires
+solving linear systems in a sparse symmetric positive definite matrix of the
+graph, which
+<a class="autorefs autorefs-internal" title="            system_matrix(graph: AbstractGraph) -> BCOO" href="../distances/#jaxscape.distance.AbstractSolverDistance.system_matrix"><code>AbstractSolverDistance.system_matrix</code></a>
+returns. For
+<a class="autorefs autorefs-internal" title="            jaxscape.resistance_distance.ResistanceDistance" href="../distances/#jaxscape.resistance_distance.ResistanceDistance"><code>ResistanceDistance</code></a>, this
+matrix is the graph Laplacian grounded at one vertex. For
+<a class="autorefs autorefs-internal" title="            jaxscape.free_energy_distance.FreeEnergyDistance" href="../distances/#jaxscape.free_energy_distance.FreeEnergyDistance"><code>FreeEnergyDistance</code></a>, with
+conductances <span class="arithmatex">\(a_{ij}\)</span> and inverse temperature <span class="arithmatex">\(\theta\)</span>, it is the Laplacian of
+the edge weights <span class="arithmatex">\(a_{ij} e^{-\theta / a_{ij}}\)</span> plus the positive diagonal
+<span class="arithmatex">\(\kappa_i = \sum_j a_{ij} (1 - e^{-\theta / a_{ij}})\)</span>. A linear solver, passed
+as the <code>solver</code> argument of the distance, solves these systems; with
+<code>solver=None</code>, the distances are computed with dense linear algebra instead. The solver sets the
+runtime, the memory and the accuracy of the distances.</p>
+<h2 id="choosing-a-solver">Choosing a solver<a class="headerlink" href="#choosing-a-solver" title="Permanent link">¤</a></h2>
+<p>The default solver of <code>ResistanceDistance</code> is <code>GeometricMultigridCGSolver()</code>:
+conjugate gradients (CG) preconditioned by geometric multigrid, in JAX on CPU
+and GPU, for the matrices of grid graphs such as those of
+<a class="autorefs autorefs-internal" title="            jaxscape.graph.GridGraph" href="../graphs/#jaxscape.graph.GridGraph"><code>GridGraph</code></a>. On other graphs, the default solver
+raises an error; pass <code>solver</code>. <code>FreeEnergyDistance</code> uses dense linear algebra
+by default, <code>solver=None</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Distance and query</th>
+<th>GPU</th>
+<th>CPU</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Resistance distances among a few vertices: <code>nodes_to_nodes_distance</code>, few sources and targets, gradient-based fitting of conductances to observed distances, and <a class="autorefs autorefs-internal" title="            jaxscape.resistance_distance.SpielmanApproximation" href="../distances/#jaxscape.resistance_distance.SpielmanApproximation"><code>SpielmanApproximation</code></a></td>
+<td><code>GeometricMultigridCGSolver</code>, the default</td>
+<td><code>GeometricMultigridCGSolver</code>, the default</td>
+</tr>
+<tr>
+<td>Resistance distances from one or all sources to every vertex: <code>all_pairs_distance</code>, and windowed analyses with <a class="autorefs autorefs-internal" title="            jaxscape.resistance_distance.ExactResistance" href="../distances/#jaxscape.resistance_distance.ExactResistance"><code>ExactResistance</code></a></td>
+<td><code>solver=None</code> for small graphs and tiles; <code>GeometricMultigridCGSolver</code> for larger ones</td>
+<td><code>solver=None</code> for small graphs and tiles; <code>CholmodSolver</code> for larger ones</td>
+</tr>
+<tr>
+<td>Free-energy distances</td>
+<td><code>solver=None</code>, the default, for small graphs; <code>CuDSSSolver</code> for larger ones</td>
+<td><code>solver=None</code> for small graphs; <code>CholmodSolver</code> for larger ones</td>
+</tr>
+<tr>
+<td>Resistance or free-energy distances on graphs other than grid graphs</td>
+<td><code>solver=None</code> for small graphs; <code>CuDSSSolver</code> for larger ones; <code>AMJaxCGSolver</code> when the factorization does not fit in memory</td>
+<td><code>solver=None</code> for small graphs; <code>CholmodSolver</code> for larger ones; <code>AMJaxCGSolver</code> when the factorization does not fit in memory</td>
+</tr>
+</tbody>
+</table>
+<p>In float64, on GPUs of low float64 throughput, <code>CuDSSSolver</code> can compute
+resistance distances faster than <code>GeometricMultigridCGSolver</code>.</p>
+<p>Memory restricts the choice first. Dense linear algebra stores matrices of
+<span class="arithmatex">\(n^2\)</span> entries for a graph of <span class="arithmatex">\(n\)</span> vertices, and so fits small graphs only.
+<code>GeometricMultigridCGSolver</code> stores the matrix on its grid and a few arrays of <span class="arithmatex">\(n\)</span>
+entries per right-hand side. Sparse direct solvers store a factorization of
+the matrix; when it does not fit in memory, use <code>GeometricMultigridCGSolver</code> on
+grid graphs and <code>AMJaxCGSolver</code> on other graphs.</p>
+<p>The entries of the inverse of the free-energy system matrix decay
+exponentially with path cost. Iterative solvers therefore need tolerances far
+below their defaults to resolve the distances between distant vertices, and in
+float32, the distances are accurate over a limited range of <code>theta</code> on a given
+landscape.</p>
+<p>With a solver, <code>ResistanceDistance</code> requires a connected graph: the grounded
+Laplacian of a disconnected graph is singular, and queries raise an error. A
+grid graph is disconnected when some of its pixels are joined to the others
+only by edges of zero conductance, such as the edges that the weight function
+<code>fun</code> of <code>GridGraph</code> gives between pixels of zero permeability. Windowed analyses raise permeability to a floor value, so that
+their graphs are connected.</p>
+<p>The tolerance at which a solver gives accurate distances depends on the query
+and on the floating-point precision. A solver can converge and still give
+inaccurate distances: check the distances of your queries, for example against
+<code>solver=None</code> on a small graph. The measurements behind this page are in <a href="https://github.com/vboussange/jaxscape/issues/35#issuecomment-6760998974">issue #35</a>.</p>
+<h2 id="lineax-solvers">Lineax solvers<a class="headerlink" href="#lineax-solvers" title="Permanent link">¤</a></h2>
+<p>Any <a href="https://docs.kidger.site/lineax/">Lineax</a> solver of sparse symmetric
+positive definite operators can be passed as <code>solver</code>, such as conjugate
+gradients without preconditioner, <code>lineax.CG</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">lineax</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">lx</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxscape</span><span class="w"> </span><span class="kn">import</span> <span class="n">FreeEnergyDistance</span><span class="p">,</span> <span class="n">ResistanceDistance</span>
+
+<span class="n">solver</span> <span class="o">=</span> <span class="n">lx</span><span class="o">.</span><span class="n">CG</span><span class="p">(</span><span class="n">rtol</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">,</span> <span class="n">atol</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">)</span>
+<span class="n">resistance</span> <span class="o">=</span> <span class="n">ResistanceDistance</span><span class="p">(</span><span class="n">solver</span><span class="o">=</span><span class="n">solver</span><span class="p">)</span>
+<span class="n">free_energy</span> <span class="o">=</span> <span class="n">FreeEnergyDistance</span><span class="p">(</span><span class="n">theta</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span> <span class="n">solver</span><span class="o">=</span><span class="n">solver</span><span class="p">)</span>
+</code></pre></div>
+<p>The distance passes its system matrix to the solver as a
+<a href="#jaxscape.solvers.operator.BCOOLinearOperator"><code>BCOOLinearOperator</code></a>. The
+<a href="https://docs.kidger.site/lineax/">Lineax documentation</a> lists the available
+solvers and their options.</p>
+<h2 id="jaxscape-solvers">JAXScape solvers<a class="headerlink" href="#jaxscape-solvers" title="Permanent link">¤</a></h2>
+<p><code>jaxscape.solvers</code> provides four solvers. <code>GeometricMultigridCGSolver</code> needs no
+optional dependency. Each of the three others needs one, installed with an
+extra of <code>jaxscape</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="go">uv add jaxscape --extra cholespy   # CholmodSolver</span>
+<span class="go">uv add jaxscape --extra amjax      # AMJaxCGSolver</span>
+<span class="go">uv add jaxscape --extra cudss      # CuDSSSolver (NVIDIA GPU, CUDA 13)</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Solver</th>
+<th>Method</th>
+<th>Execution</th>
+<th>Graphs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GeometricMultigridCGSolver</code></td>
+<td>Conjugate gradients preconditioned by geometric multigrid</td>
+<td>JAX, on CPU or GPU</td>
+<td>Grid graphs</td>
+</tr>
+<tr>
+<td><code>AMJaxCGSolver</code></td>
+<td>Conjugate gradients preconditioned by algebraic multigrid</td>
+<td>Preconditioner built on the CPU; solves in JAX, on CPU or GPU</td>
+<td>Any connected graph</td>
+</tr>
+<tr>
+<td><code>CholmodSolver</code></td>
+<td>Sparse Cholesky factorization</td>
+<td>CHOLMOD on the CPU, through a host callback</td>
+<td>Any connected graph</td>
+</tr>
+<tr>
+<td><code>CuDSSSolver</code></td>
+<td>Sparse Cholesky factorization</td>
+<td>NVIDIA cuDSS on the GPU, inside <code>jax.jit</code></td>
+<td>Any connected graph</td>
+</tr>
+</tbody>
+</table>
+<p>A host callback runs Python code on the CPU from a compiled JAX program. Arrays
+on a GPU then travel to the CPU and back.</p>
+<h3 id="geometric-multigrid">Geometric multigrid<a class="headerlink" href="#geometric-multigrid" title="Permanent link">¤</a></h3>
+<p><code>GeometricMultigridCGSolver</code> solves the matrices of grid graphs, such as the
+grounded Laplacian of a <code>GridGraph</code> with rook or queen contiguity, by conjugate
+gradients preconditioned by geometric multigrid. It is the default solver of
+<code>ResistanceDistance</code>. It runs in JAX on CPU and GPU, in float32 and float64,
+inside <code>jax.jit</code>, and needs no optional dependency.</p>
+<details class="info">
+<summary>Theory: multigrid preconditioning</summary>
+<p>The number of conjugate gradient iterations grows with the condition number
+of the matrix, which grows with the size of the grid and with the contrast
+of conductances. A preconditioner is an approximate inverse of the matrix,
+which the solver applies at each iteration, so that it reaches the
+tolerance in fewer iterations. In multigrid, the solver builds the
+preconditioner from a hierarchy of coarser grids: by relaxation on a grid,
+it lowers the components of the error that vary from pixel to pixel, and by
+corrections on the coarser grids, the components that vary smoothly, at a
+fraction of the cost. In geometric multigrid, the solver builds the coarser
+grids from the raster: each holds every other pixel along each axis. The
+cycle, the interpolation between grids and the solve on the coarsest grid
+are given in the API entry of <code>GeometricMultigridCGSolver</code> below.</p>
+</details>
+<p>The preconditioner of its state is the grid, a raster shape and contiguity.
+<code>init</code> reads the grid from the sparse indices of the matrix;
+<code>distance.init(graph)</code> reads it from the shape and contiguity of a
+<code>GridGraph</code>, also inside <code>jax.jit</code>. <code>reinit</code> replaces the values of the matrix
+with those of another matrix of the same grid. Each solve builds the multigrid
+hierarchy of the matrix it solves, so that each tile of a windowed analysis is
+solved with the hierarchy of its own conductances.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">jaxscape</span><span class="w"> </span><span class="kn">import</span> <span class="n">ResistanceDistance</span><span class="p">,</span> <span class="n">SpielmanApproximation</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxscape.solvers</span><span class="w"> </span><span class="kn">import</span> <span class="n">GeometricMultigridCGSolver</span>
+
+<span class="n">exact</span> <span class="o">=</span> <span class="n">ResistanceDistance</span><span class="p">()</span>  <span class="c1"># GeometricMultigridCGSolver(rtol=1e-5)</span>
+<span class="n">approximate</span> <span class="o">=</span> <span class="n">ResistanceDistance</span><span class="p">(</span>
+    <span class="n">solver</span><span class="o">=</span><span class="n">GeometricMultigridCGSolver</span><span class="p">(</span><span class="n">rtol</span><span class="o">=</span><span class="mf">3e-4</span><span class="p">),</span>
+    <span class="n">method</span><span class="o">=</span><span class="n">SpielmanApproximation</span><span class="p">(</span><span class="n">epsilon</span><span class="o">=</span><span class="mf">0.15</span><span class="p">),</span>
+<span class="p">)</span>
+</code></pre></div>
+<p><code>rtol</code> is the bound on the norm of the residual that conjugate gradients
+update at each iteration, relative to the norm of the right-hand side. With a
+larger <code>rtol</code>, the solves take fewer iterations. In float32, because of
+rounding, the residual <code>b - A x</code> of the solution <code>x</code> stops decreasing at some
+level; with an <code>rtol</code> below that level, the iterations continue without
+improving the solution. The resistances to pixels behind barriers converge
+last: with a large <code>rtol</code>, the gradient of the distances with respect to the
+permeability of these pixels loses accuracy first.</p>
+<p>In float32 on grid graphs, <code>GeometricMultigridCGSolver</code> gives the most accurate
+resistance distances of the JAXScape solvers. In float32, sparse direct solvers
+give inaccurate solutions around the ground vertex of large tiles (see the note on grounding of
+<a class="autorefs autorefs-internal" title="            jaxscape.resistance_distance.ResistanceDistance" href="../distances/#jaxscape.resistance_distance.ResistanceDistance"><code>ResistanceDistance</code></a>): use
+them in float64.</p>
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="jaxscape.solvers.geometricmultigridcgsolver.GeometricMultigridCGSolver" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <code>jaxscape.solvers.geometricmultigridcgsolver.GeometricMultigridCGSolver</code>
+
+
+<a href="#jaxscape.solvers.geometricmultigridcgsolver.GeometricMultigridCGSolver" class="headerlink" title="Permanent link">¤</a></h4>
+
+
+    <div class="doc doc-contents first">
+
+
+
+        <p>Conjugate gradients preconditioned by geometric multigrid, for grid graphs.</p>
+<p>Solves the symmetric positive definite matrices whose sparsity pattern is a
+grid stencil, such as the grounded Laplacians of a <code>GridGraph</code> with rook or
+queen contiguity, in which <code>ResistanceDistance</code> solves linear systems. It
+is the default solver of <code>ResistanceDistance</code>. It runs in JAX, on any
+device, in float32 and float64, and needs no optional dependency. Its
+preconditioner is the grid, which <code>init</code> reads from concrete sparse
+indices. Each solve builds the multigrid hierarchy of the current values on
+it, at a small fraction of the cost of the solve. A compiled program then
+holds one hierarchy for each place where it solves, whatever the states it
+reinitializes.</p>
+<p>Each V-cycle has one iteration of damped Jacobi relaxation before and after
+the coarse correction. The coarse grids hold every other point along each
+axis. The values at the other points are interpolated from the matrix
+coefficients, as in black-box multigrid
+(<a href="https://doi.org/10.1016/0021-9991(82)90057-2">Dendy, 1982</a>), so that
+convergence stays fast across jumps of conductance. The matrices of the
+coarse grids are the Galerkin products of the interpolation. The first grid
+of at most 1024 points is solved with a Cholesky factorization.</p>
+<p>With a larger <code>rtol</code>, the solves take fewer iterations, at the cost of the
+accuracy of the resistances to pixels behind barriers, which converge
+last. On large grids in float32, the solutions of this solver stay accurate
+around the ground vertex of <code>ResistanceDistance</code>, where those of sparse
+direct solvers lose accuracy. It factorizes only the matrix of the coarsest
+grid, which suits conductances that change at every step, as in
+optimization loops. In float64, sparse direct solvers can be faster.</p>
+<p><strong>Attributes:</strong></p>
+<ul>
+<li><code>rtol</code>: Largest Euclidean norm of the residual, relative to that of the
+  right-hand side (see <code>AbstractSparseIterativeSolver</code>).</li>
+<li><code>max_steps</code>: Largest number of iterations.</li>
+</ul>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>A state belongs to one grid: a raster shape and contiguity, with any
+conductances. The matrix must be positive definite: a grounded
+Laplacian of a connected graph. The solves of a singular matrix fail
+with <code>lineax.RESULTS.singular</code> when their solution is not finite, and
+with <code>lineax.RESULTS.max_steps_reached</code> otherwise.</p>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div><h3 id="algebraic-multigrid">Algebraic multigrid<a class="headerlink" href="#algebraic-multigrid" title="Permanent link">¤</a></h3>
+<p>In algebraic multigrid, the coarser levels are built from the entries of the
+matrix, without a grid, so that the matrix of any graph can be preconditioned. <code>AMJaxCGSolver</code>
+solves by conjugate gradients preconditioned by an algebraic multigrid
+hierarchy, built by smoothed aggregation by default. It suits graphs other than
+grid graphs whose sparse Cholesky factorization does not fit in memory.</p>
+<p><code>AMJaxCGSolver</code> builds the hierarchy once, in <code>init</code>, on the CPU. It solves
+by conjugate gradients, preconditioned by V-cycles of the hierarchy, in JAX on
+CPU or GPU, inside <code>jax.jit</code> and <code>jax.grad</code>. <code>reinit</code> keeps the prolongation
+and restriction operators of the hierarchy, and each solve computes the
+matrices of its coarser levels from the current values, as Galerkin products
+with these operators. The state also holds, for each level but the coarsest,
+the map from the values of the level to those of the next: sparse matrices
+several times the size of the hierarchy. The hierarchy has the dtype of the
+matrix. For ill-conditioned graph Laplacians, enable 64-bit floats with
+<code>JAX_ENABLE_X64=true</code> and build the matrix and the right-hand sides in
+float64: enabling 64-bit floats does not convert existing float32 arrays. A
+matrix whose hierarchy has a single level, as that of a small graph, is solved
+by conjugate gradients without preconditioner.</p>
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="jaxscape.solvers.amjaxcgsolver.AMJaxCGSolver" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <code>jaxscape.solvers.amjaxcgsolver.AMJaxCGSolver</code>
+
+
+<a href="#jaxscape.solvers.amjaxcgsolver.AMJaxCGSolver" class="headerlink" title="Permanent link">¤</a></h4>
+
+
+    <div class="doc doc-contents first">
+
+
+
+        <p>Conjugate gradients preconditioned by algebraic multigrid, with AMJax.</p>
+<p>Its preconditioner is a multigrid hierarchy, which <code>init</code> builds once on the
+host with PyAMG, from the values it is given, and converts to an AMJax
+hierarchy. Each solve applies one V-cycle of that hierarchy per iteration,
+in JAX, inside <code>jax.jit</code> and <code>jax.grad</code>. <code>reinit</code> keeps the prolongation
+and restriction operators of the hierarchy, and each solve computes the
+matrices of its coarser levels from the current values, as Galerkin
+products with these operators. The state also holds, for each level but
+the coarsest, the map from the values of the level to those of the next:
+sparse matrices several times the size of the hierarchy. The hierarchy
+keeps the dtype of the matrix. With a hierarchy of a single level, as that
+of a tiny graph, conjugate gradients run without a preconditioner.</p>
+<div class="admonition example">
+<p class="admonition-title">Example</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">jaxscape</span><span class="w"> </span><span class="kn">import</span> <span class="n">ResistanceDistance</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxscape.solvers</span><span class="w"> </span><span class="kn">import</span> <span class="n">AMJaxCGSolver</span>
+
+<span class="n">distance</span> <span class="o">=</span> <span class="n">ResistanceDistance</span><span class="p">(</span><span class="n">solver</span><span class="o">=</span><span class="n">AMJaxCGSolver</span><span class="p">(</span><span class="n">rtol</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">))</span>
+<span class="n">state</span> <span class="o">=</span> <span class="n">distance</span><span class="o">.</span><span class="n">init</span><span class="p">(</span><span class="n">grid</span><span class="p">)</span>  <span class="c1"># builds the hierarchy</span>
+<span class="n">dist</span> <span class="o">=</span> <span class="n">distance</span><span class="p">(</span><span class="n">grid</span><span class="p">,</span> <span class="n">state</span><span class="o">=</span><span class="n">state</span><span class="p">)</span>
+</code></pre></div>
+</div>
+<p><strong>Attributes:</strong></p>
+<ul>
+<li><code>rtol</code>: Largest Euclidean norm of the residual, relative to that of the
+  right-hand side (see <code>AbstractSparseIterativeSolver</code>).</li>
+<li><code>max_steps</code>: Largest number of iterations.</li>
+<li><code>pyamg_method</code>: The PyAMG function that builds the hierarchy from a
+  SciPy CSR matrix. Defaults to <code>pyamg.smoothed_aggregation_solver</code>.</li>
+<li><code>pyamg_kwargs</code>: Keyword arguments of <code>pyamg_method</code>.</li>
+<li><code>presmoother</code>, <code>postsmoother</code>: AMJax smoothers, as <code>(name, kwargs)</code>,
+  both required. Default to one iteration of Jacobi of weight 2/3. A
+  Jacobi smoother with <code>withrho=True</code> keeps the weight that <code>init</code>
+  computes from the spectral radius of its level.</li>
+<li><code>coarse_solver</code>: AMJax solver of the coarsest level. The coarse solvers
+  <code>"pinv"</code>, <code>"lu"</code> and <code>"qr"</code> keep the factorization of the coarsest
+  matrix of <code>init</code>.</li>
+<li><code>coarse_solver_kwargs</code>: Keyword arguments of <code>coarse_solver</code>.</li>
+</ul>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p><code>amjax</code> and <code>pyamg</code> must be installed to use this solver, with
+<code>uv add jaxscape --extra amjax</code>. Conjugate gradients need a symmetric
+positive definite V-cycle. With Jacobi smoothers of weight ω and the
+<code>"jacobi"</code> coarse solver, the V-cycle is one when ω times the spectral
+radius of <code>D⁻¹A</code>, for the matrix <code>A</code> of a level and its diagonal <code>D</code>,
+is below 2 on every level; on the coarsest level, ω is the weight of
+the coarse solver, 1 by default. With values other than those of
+<code>init</code>, a coarser level can have a spectral radius above 2, and the
+default weight of the smoothers, 2/3, admits spectral radii up to 3 on
+the levels they smooth.</p>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div><h3 id="sparse-direct-solvers">Sparse direct solvers<a class="headerlink" href="#sparse-direct-solvers" title="Permanent link">¤</a></h3>
+<p>A sparse Cholesky factorization of the matrix is a product <span class="arithmatex">\(L L^\top\)</span>, with <span class="arithmatex">\(L\)</span>
+sparse and lower triangular, after a reordering of its rows and columns that
+limits the number of entries of <span class="arithmatex">\(L\)</span>. Each solve then takes two triangular
+solves. The factorization costs far more than a solve, and many right-hand
+sides share it. Its cost depends on the sparsity pattern of the matrix only, and
+is the same whatever the contrast of conductances. <code>CholmodSolver</code> and
+<code>CuDSSSolver</code> solve the matrix of any connected graph. In float32, their
+solutions on large grids are inaccurate around the ground vertex of
+<code>ResistanceDistance</code>.</p>
+<p><code>CholmodSolver</code> factorizes with CHOLMOD, through cholespy, on the CPU, through
+a host callback. Solves reuse the last factorization while the values of the
+matrix stay the same.</p>
+<p><code>CuDSSSolver</code> factorizes with NVIDIA cuDSS, through spineax, on the GPU, inside
+<code>jax.jit</code>. Its state keeps the analysis of the sparsity pattern: the ordering
+of the rows and columns and the structure of <span class="arithmatex">\(L\)</span>. A matrix with new values is
+factorized on this analysis. It needs an NVIDIA GPU and Linux x86-64.</p>
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="jaxscape.solvers.cholmodsolver.CholmodSolver" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <code>jaxscape.solvers.cholmodsolver.CholmodSolver</code>
+
+
+<a href="#jaxscape.solvers.cholmodsolver.CholmodSolver" class="headerlink" title="Permanent link">¤</a></h4>
+
+
+    <div class="doc doc-contents first">
+
+
+
+        <p>Sparse Cholesky factorization with CHOLMOD, through cholespy, on the CPU.</p>
+<p>Solves symmetric positive definite matrices through a host callback. Solves
+reuse the last factorization while the values of the matrix stay the same,
+and factorize the matrix again when they change. The solver keeps one
+factorization, so under <code>jax.vmap</code> over the values of the matrix, each
+solve factorizes every distinct matrix of the batch.</p>
+<p><strong>Attributes:</strong></p>
+<ul>
+<li><code>factorize_in_init</code>: Whether <code>init</code>, called outside <code>jax.jit</code>, factorizes
+  the matrix. Otherwise, or when <code>init</code> runs inside <code>jax.jit</code>, the first
+  solve factorizes it. Defaults to <code>True</code>.</li>
+</ul>
+<div class="admonition example">
+<p class="admonition-title">Example</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">jaxscape.solvers</span><span class="w"> </span><span class="kn">import</span> <span class="n">CholmodSolver</span>
+
+<span class="n">solver</span> <span class="o">=</span> <span class="n">CholmodSolver</span><span class="p">()</span>
+<span class="n">distance</span> <span class="o">=</span> <span class="n">ResistanceDistance</span><span class="p">(</span><span class="n">solver</span><span class="o">=</span><span class="n">solver</span><span class="p">)</span>
+<span class="n">state</span> <span class="o">=</span> <span class="n">distance</span><span class="o">.</span><span class="n">init</span><span class="p">(</span><span class="n">grid</span><span class="p">)</span>  <span class="c1"># factorizes the grounded Laplacian</span>
+<span class="n">dist</span> <span class="o">=</span> <span class="n">distance</span><span class="p">(</span><span class="n">grid</span><span class="p">,</span> <span class="n">state</span><span class="o">=</span><span class="n">state</span><span class="p">)</span>
+</code></pre></div>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p><code>cholespy</code> must be installed to use this solver, with
+<code>uv add jaxscape --extra cholespy</code>.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Float64 solves run through a host callback, and require 64-bit floats
+enabled for the whole process before JAX computes anything, with
+<code>JAX_ENABLE_X64=1</code> or <code>jax.config.update("jax_enable_x64", True)</code>. A
+<code>with jax.enable_x64()</code> block enables them in its own thread only, and
+the host callback then fails with a dtype mismatch such as
+<code>Expected: float64, Actual: float32</code>.</p>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="jaxscape.solvers.cudsssolver.CuDSSSolver" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <code>jaxscape.solvers.cudsssolver.CuDSSSolver</code>
+
+
+<a href="#jaxscape.solvers.cudsssolver.CuDSSSolver" class="headerlink" title="Permanent link">¤</a></h4>
+
+
+    <div class="doc doc-contents first">
+
+
+
+        <p>Sparse Cholesky solver running NVIDIA cuDSS on the GPU through spineax.</p>
+<p>Solves float32 and float64 systems. A query solves all its right-hand sides
+in one call of cuDSS, with one factorization. JAX does not differentiate
+through the solves: the gradients are computed from the solutions or the
+factorization of the query. See <code>AbstractSparseDirectSolver</code> for the checks
+of each factorization and solve.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>It needs an NVIDIA GPU and CUDA-enabled JAX, and raises an error naming
+what is missing elsewhere. The <code>cudss</code> extra,
+<code>uv add jaxscape --extra cudss</code>, installs spineax and cuDSS for CUDA 13,
+on Linux x86-64. It brings JAX's CUDA 13 plugin, so leave out the <code>cuda</code>
+extra. For CUDA 12, build spineax from source as in
+<a href="https://github.com/vboussange/jaxscape/issues/49#issuecomment-6501729059">these notes</a>.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>The factorizations are held outside JAX's memory pool, so leave room
+with <code>XLA_PYTHON_CLIENT_PREALLOCATE=false</code>. <code>SPINEAX_FACTOR_CACHE</code> sets
+the number of factorizations that spineax keeps in device memory.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><code>reinit</code> consumes the factorization of the state it refactorizes. A
+used-up state, or one evicted from spineax's cache, still gives correct
+solutions, but each solve with it repeats the analysis, which is
+costly: pass each new state to the next <code>reinit</code>. In float32, on large
+grids, a matrix with vertices cut off from the ground vertex can pass
+the solve check; use float64 when conductances can be zero.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>In float32, solutions on large grids are inaccurate around the ground
+vertex of <code>ResistanceDistance</code>. For permeability sensitivity on large
+tiles, use float64, or <code>GeometricMultigridCGSolver</code> in float32.</p>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div><h3 id="reusing-solver-state">Reusing solver state<a class="headerlink" href="#reusing-solver-state" title="Permanent link">¤</a></h3>
+<p>Building the state of a solver, as a sparse factorization or a multigrid
+hierarchy, can cost far more than a solve. <code>ResistanceDistance</code> and
+<code>FreeEnergyDistance</code> share one state lifecycle:</p>
+<ul>
+<li><code>distance.init(graph)</code> builds the state for the system matrix of <code>graph</code>.
+  JAXScape's sparse solvers, except <code>CholmodSolver</code>, read concrete sparse
+  indices, and <code>AMJaxCGSolver</code> runs code on the CPU, so call it outside
+  <code>jax.jit</code>. <code>ResistanceDistance</code> also builds the state of a <code>GridGraph</code> inside
+  <code>jax.jit</code>, from the shape and contiguity of the graph. The compiled program
+  then holds the arrays of the state as constants: on large grids, it compiles
+  faster with the state passed as an argument.</li>
+<li><code>distance.reinit(graph, state)</code> returns the state for another graph of the
+  same sparsity pattern, and keeps what the solver can reuse. It runs inside
+  <code>jax.jit</code>.</li>
+<li>Queries take the state as <code>state</code>, and the queries on one graph can share
+  it. A query always solves the system matrix of the graph it receives: an
+  outdated state can make the query slower, and leaves its distances
+  unchanged.</li>
+</ul>
+<p>An optimization loop over conductances passes the state from one step to the
+next, whatever the solver. <code>distance.init</code> returns a state with Lineax's and
+JAXScape's solvers, and <code>None</code> only with <code>solver=None</code>. For a solver that keeps
+nothing from one matrix to the next, such as <code>lineax.CG</code>, <code>reinit</code> ignores the
+state and returns <code>init(graph)</code>. The state has no gradient: with
+<code>has_aux=True</code>, the differentiated function returns it alongside the loss.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">equinox</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eqx</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxscape</span><span class="w"> </span><span class="kn">import</span> <span class="n">GridGraph</span><span class="p">,</span> <span class="n">ResistanceDistance</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">landscape</span><span class="p">(</span><span class="n">log_conductance</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">GridGraph</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_conductance</span><span class="p">),</span> <span class="n">fun</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="p">(</span><span class="n">x</span> <span class="o">+</span> <span class="n">y</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span>
+
+
+<span class="n">sites</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">45</span><span class="p">,</span> <span class="mi">99</span><span class="p">])</span>
+<span class="n">true_log_conductance</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">key</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">10</span><span class="p">))</span>
+<span class="n">target</span> <span class="o">=</span> <span class="n">ResistanceDistance</span><span class="p">()(</span><span class="n">landscape</span><span class="p">(</span><span class="n">true_log_conductance</span><span class="p">),</span> <span class="n">nodes</span><span class="o">=</span><span class="n">sites</span><span class="p">)</span>
+
+<span class="n">distance</span> <span class="o">=</span> <span class="n">ResistanceDistance</span><span class="p">()</span>  <span class="c1"># GeometricMultigridCGSolver</span>
+<span class="n">log_conductance</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">10</span><span class="p">,</span> <span class="mi">10</span><span class="p">))</span>
+<span class="n">state</span> <span class="o">=</span> <span class="n">distance</span><span class="o">.</span><span class="n">init</span><span class="p">(</span><span class="n">landscape</span><span class="p">(</span><span class="n">log_conductance</span><span class="p">))</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">loss</span><span class="p">(</span><span class="n">log_conductance</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+    <span class="n">grid</span> <span class="o">=</span> <span class="n">landscape</span><span class="p">(</span><span class="n">log_conductance</span><span class="p">)</span>
+    <span class="n">state</span> <span class="o">=</span> <span class="n">distance</span><span class="o">.</span><span class="n">reinit</span><span class="p">(</span><span class="n">grid</span><span class="p">,</span> <span class="n">state</span><span class="p">)</span>
+    <span class="n">predicted</span> <span class="o">=</span> <span class="n">distance</span><span class="o">.</span><span class="n">nodes_to_nodes_distance</span><span class="p">(</span><span class="n">grid</span><span class="p">,</span> <span class="n">sites</span><span class="p">,</span> <span class="n">state</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">mean</span><span class="p">((</span><span class="n">predicted</span> <span class="o">-</span> <span class="n">target</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">),</span> <span class="n">state</span>
+
+
+<span class="nd">@eqx</span><span class="o">.</span><span class="n">filter_jit</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">step</span><span class="p">(</span><span class="n">log_conductance</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+    <span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">state</span><span class="p">),</span> <span class="n">gradient</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">filter_value_and_grad</span><span class="p">(</span><span class="n">loss</span><span class="p">,</span> <span class="n">has_aux</span><span class="o">=</span><span class="kc">True</span><span class="p">)(</span>
+        <span class="n">log_conductance</span><span class="p">,</span> <span class="n">state</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">log_conductance</span> <span class="o">-</span> <span class="mf">0.1</span> <span class="o">*</span> <span class="n">gradient</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">state</span>
+
+
+<span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">):</span>
+    <span class="n">log_conductance</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">state</span> <span class="o">=</span> <span class="n">step</span><span class="p">(</span><span class="n">log_conductance</span><span class="p">,</span> <span class="n">state</span><span class="p">)</span>
+</code></pre></div>
+<p>What the state of each solver keeps from one graph to the next:</p>
+<table>
+<thead>
+<tr>
+<th>Solver</th>
+<th>Kept by the state</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GeometricMultigridCGSolver</code></td>
+<td>Its preconditioner, the grid; each solve builds the multigrid hierarchy of the new values</td>
+</tr>
+<tr>
+<td><code>AMJaxCGSolver</code></td>
+<td>Its preconditioner, the prolongation and restriction operators of the algebraic multigrid hierarchy of <code>init</code>; each solve computes the matrices of the coarser levels from the new values</td>
+</tr>
+<tr>
+<td><code>CuDSSSolver</code></td>
+<td>The analysis, and the factorization while the values stay the same</td>
+</tr>
+<tr>
+<td><code>CholmodSolver</code></td>
+<td>The last factorization, while the values stay the same</td>
+</tr>
+<tr>
+<td>Lineax's iterative solvers, such as <code>lineax.CG</code></td>
+<td>Nothing: each query runs <code>init</code></td>
+</tr>
+</tbody>
+</table>
+<p>The graphs of one raster shape and contiguity can also share a
+<a class="autorefs autorefs-internal" title="            jaxscape.graph.GridTopology" href="../graphs/#jaxscape.graph.GridTopology"><code>GridTopology</code></a>, built once outside <code>jax.jit</code>. It
+holds their edges, so that each <code>GridGraph(surface, fun=fun, topology=topology)</code>
+computes its edge weights only.</p>
+<p>Windowed analyses build their own states and pass them from tile to tile; see
+<a class="autorefs autorefs-internal" title="            jaxscape.windowed_analysis.WindowedAnalysis" href="../connectivity_analysis/#jaxscape.windowed_analysis.WindowedAnalysis"><code>WindowedAnalysis</code></a>.</p>
+<h2 id="extending-the-solvers">Extending the solvers<a class="headerlink" href="#extending-the-solvers" title="Permanent link">¤</a></h2>
+<p><code>BCOOLinearOperator</code> presents a sparse matrix to Lineax. <code>AbstractSparseSolver</code>
+is the parent of JAXScape's sparse solvers of symmetric positive definite
+matrices. Its state holds the compressed sparse row (CSR) sparsity pattern of
+the matrix, read once from concrete sparse indices, the values, which <code>reinit</code>
+replaces inside <code>jax.jit</code>, and a factorization or a preconditioner. It scales
+right-hand sides, checks the sparse indices of each new matrix, and reports
+failed solves. A new solver subclasses one of its two families, with a final
+class. The methods that it implements take the sparsity pattern as a
+<a class="autorefs autorefs-internal" title="            jaxscape.solvers.sparsesolver.CSRPattern" href="#jaxscape.solvers.sparsesolver.CSRPattern"><code>CSRPattern</code></a>: its arrays <code>offsets</code>
+and <code>columns</code> give the columns of each row, and its properties <code>n</code>, <code>nnz</code> and
+<code>rows</code> the number of rows, the number of CSR values and the row of each CSR
+value.</p>
+<p><code>AbstractSparseDirectSolver</code> turns the phases of a sparse factorization library
+into a solver, and checks each factorization and solve; <code>CuDSSSolver</code>
+subclasses it:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">final</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxscape.solvers</span><span class="w"> </span><span class="kn">import</span> <span class="n">AbstractSparseDirectSolver</span>
+
+
+<span class="nd">@final</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">MySolver</span><span class="p">(</span><span class="n">AbstractSparseDirectSolver</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">factorize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">values</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">my_library</span><span class="o">.</span><span class="n">factorize</span><span class="p">(</span><span class="n">pattern</span><span class="o">.</span><span class="n">offsets</span><span class="p">,</span> <span class="n">pattern</span><span class="o">.</span><span class="n">columns</span><span class="p">,</span> <span class="n">values</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">refactorize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">factorization</span><span class="p">,</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">values</span><span class="p">):</span>  <span class="c1"># Optional.</span>
+        <span class="k">return</span> <span class="n">my_library</span><span class="o">.</span><span class="n">refactorize</span><span class="p">(</span><span class="n">factorization</span><span class="p">,</span> <span class="n">values</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">solve</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">factorization</span><span class="p">,</span> <span class="n">vector</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">my_library</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">factorization</span><span class="p">,</span> <span class="n">vector</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">residual_tolerance</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dtype</span><span class="p">):</span>
+        <span class="k">return</span> <span class="mf">1e-4</span> <span class="k">if</span> <span class="n">dtype</span> <span class="o">==</span> <span class="n">jnp</span><span class="o">.</span><span class="n">float64</span> <span class="k">else</span> <span class="mf">1e-1</span>
+</code></pre></div>
+<p>The phases run inside <code>jax.jit</code>. Set <code>residual_tolerance</code> from the residuals the
+library leaves on valid matrices of your workload.</p>
+<p><code>AbstractSparseIterativeSolver</code> runs conjugate gradients with a preconditioner;
+<code>GeometricMultigridCGSolver</code> and <code>AMJaxCGSolver</code> subclass it. <code>preconditioner</code>
+builds what the state keeps across values, in <code>init</code>, and <code>precondition</code>
+returns the preconditioner of the current values at each solve, as a function
+of residuals. <code>matvec</code> returns the product of the current matrix with vectors,
+and <code>vector_shape</code> the shape in which both take vectors: <code>csr_matvec</code>
+multiplies vectors of shape <code>(n,)</code> with the CSR values, and
+<code>GeometricMultigridCGSolver</code> multiplies rasters with its stencil. Jacobi
+preconditioning keeps nothing:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">final</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxscape.solvers</span><span class="w"> </span><span class="kn">import</span> <span class="n">AbstractSparseIterativeSolver</span><span class="p">,</span> <span class="n">csr_matvec</span>
+
+
+<span class="nd">@final</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">JacobiCGSolver</span><span class="p">(</span><span class="n">AbstractSparseIterativeSolver</span><span class="p">):</span>
+    <span class="n">rtol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1e-5</span>
+    <span class="n">max_steps</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1_000</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">preconditioner</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">values</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">precondition</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">preconditioner</span><span class="p">,</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">values</span><span class="p">):</span>
+        <span class="n">on_diagonal</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">pattern</span><span class="o">.</span><span class="n">rows</span> <span class="o">==</span> <span class="n">pattern</span><span class="o">.</span><span class="n">columns</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="n">diagonal</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">pattern</span><span class="o">.</span><span class="n">n</span><span class="p">,</span> <span class="n">values</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">pattern</span><span class="o">.</span><span class="n">rows</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">on_diagonal</span><span class="p">)</span>
+        <span class="k">return</span> <span class="k">lambda</span> <span class="n">residuals</span><span class="p">:</span> <span class="n">residuals</span> <span class="o">/</span> <span class="n">diagonal</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">matvec</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">preconditioner</span><span class="p">,</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">values</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">csr_matvec</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="n">values</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">vector_shape</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">preconditioner</span><span class="p">,</span> <span class="n">pattern</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">pattern</span><span class="o">.</span><span class="n">n</span><span class="p">,)</span>
+</code></pre></div>
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="jaxscape.solvers.operator.BCOOLinearOperator" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <code>jaxscape.solvers.operator.BCOOLinearOperator</code>
+
+
+<a href="#jaxscape.solvers.operator.BCOOLinearOperator" class="headerlink" title="Permanent link">¤</a></h3>
+
+
+    <div class="doc doc-contents first">
+
+
+
+        <p>Lineax linear operator of a <code>jax.experimental.sparse.BCOO</code> matrix.</p>
+<p>Its products with vectors are computed with the sparse matrix, so that
+Lineax solvers that only multiply by the operator, such as <code>lineax.CG</code>,
+never form a dense matrix. Every <code>BCOOLinearOperator</code> is registered with
+Lineax as positive semidefinite, whatever its tags, so that <code>lineax.CG</code>
+accepts it: pass only symmetric positive semidefinite matrices to such
+solvers.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="jaxscape.solvers.sparsesolver.CSRPattern" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <code>jaxscape.solvers.sparsesolver.CSRPattern</code>
+
+
+<a href="#jaxscape.solvers.sparsesolver.CSRPattern" class="headerlink" title="Permanent link">¤</a></h3>
+
+
+    <div class="doc doc-contents first">
+
+
+
+        <p>Compressed sparse row pattern of a BCOO matrix.</p>
+<p>Duplicate entries of the BCOO matrix share one CSR value, and its padding
+entries, whose indices are out of bounds, are left out.</p>
+<p><strong>Attributes:</strong></p>
+<ul>
+<li><code>offsets</code>: Start of each row in <code>columns</code>, with shape <code>(n + 1,)</code>.</li>
+<li><code>columns</code>: Column of each CSR value, sorted within each row, with shape
+  <code>(nnz,)</code>.</li>
+<li><code>value_map</code>: For each stored entry of the BCOO matrix, the index of its CSR
+  value, or <code>nnz</code> for padding entries.</li>
+<li><code>max_row_length</code>: Number of CSR values of the longest row. It is static:
+  states whose longest rows differ compile separately.</li>
+<li><code>n</code>: Number of rows, and of columns, of the matrix.</li>
+<li><code>nnz</code>: Number of CSR values.</li>
+<li><code>rows</code>: Row of each CSR value, with shape <code>(nnz,)</code>, computed from
+  <code>offsets</code> at each access.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="jaxscape.solvers.sparsesolver.AbstractSparseSolver" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <code>jaxscape.solvers.sparsesolver.AbstractSparseSolver</code>
+
+
+<a href="#jaxscape.solvers.sparsesolver.AbstractSparseSolver" class="headerlink" title="Permanent link">¤</a></h3>
+
+
+    <div class="doc doc-contents first">
+
+
+
+        <p>Lineax solver of sparse symmetric positive definite matrices, with a state
+for one sparsity pattern.</p>
+<p>Subclass <code>AbstractSparseDirectSolver</code> with the phases of a sparse
+factorization library, or <code>AbstractSparseIterativeSolver</code> with a
+preconditioner. This class provides what they share. <code>init</code> reads the CSR
+pattern of the matrix from concrete sparse indices, and <code>reinit</code> replaces
+its values inside <code>jax.jit</code>, after checking that the sparse indices are
+those of the pattern. The state holds the pattern, the values, and the
+factorization or preconditioner of the solver.</p>
+<p>Each solve scales the right-hand side exactly, by a power of two, to a
+largest magnitude in [0.5, 1), so that its solution keeps the precision of
+the dtype: float32 right-hand sides of about 1e-37 had subnormal solutions.
+Right-hand sides below the smallest normal number solve to 0. A failed solve
+returns NaN and reports its failure through <code>lineax.RESULTS</code>, so it raises
+with <code>throw=True</code> and returns a failed result with <code>throw=False</code>. On GPUs,
+Lineax may only print the error, and the failed distances are then NaN.</p>
+<p>The matrix is symmetric: the state of a solver is also that of the
+transposed matrix.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p><code>init</code> reads concrete sparse indices: <code>distance.init(graph)</code> builds the
+state of a <code>GridGraph</code> from its shape and contiguity, also inside
+<code>jax.jit</code>, and that of another graph outside <code>jax.jit</code>. A state belongs
+to one sparsity pattern: for a <code>GridGraph</code>, the raster shape and
+contiguity, with any conductances. <code>reinit</code> raises an error for an
+operator with other sparse indices.</p>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="jaxscape.solvers.sparsesolver.AbstractSparseSolver.init" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <code class="highlight language-python"><span class="n">init</span><span class="p">(</span><span class="n">operator</span><span class="p">:</span> <span class="n">AbstractLinearOperator</span><span class="p">,</span> <span class="n">options</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">typing</span><span class="o">.</span><span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">State</span></code>
+
+<a href="#jaxscape.solvers.sparsesolver.AbstractSparseSolver.init" class="headerlink" title="Permanent link">¤</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return the state of <code>operator</code>, for its sparsity pattern and values.</p>
+<p>It reads the sparsity pattern from concrete sparse indices: it raises
+<code>ValueError</code> for traced sparse indices, as inside <code>jax.jit</code>, and
+<code>TypeError</code> for an operator that is not BCOO-backed. A solve uses the
+matrix that its state holds, whatever operator <code>lineax.linear_solve</code>
+receives: before solving another matrix of the same sparsity pattern,
+call <code>reinit</code> with its operator.</p>
+<p><strong>Arguments:</strong></p>
+<ul>
+<li><code>operator</code>: BCOO-backed operator of a symmetric positive definite
+  matrix.</li>
+<li><code>options</code>: Unused.</li>
+</ul>
+<p><strong>Returns:</strong></p>
+<p>The state of <code>operator</code>, which keeps its dtype.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="jaxscape.solvers.sparsesolver.AbstractSparseSolver.reinit" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <code class="highlight language-python"><span class="n">reinit</span><span class="p">(</span><span class="n">operator</span><span class="p">:</span> <span class="n">AbstractLinearOperator</span><span class="p">,</span> <span class="n">options</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">typing</span><span class="o">.</span><span class="n">Any</span><span class="p">],</span> <span class="n">state</span><span class="p">:</span> <span class="n">State</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">State</span></code>
+
+<a href="#jaxscape.solvers.sparsesolver.AbstractSparseSolver.reinit" class="headerlink" title="Permanent link">¤</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return the state of the values of <code>operator</code>, keeping its pattern.</p>
+<p><strong>Arguments:</strong></p>
+<ul>
+<li><code>operator</code>: BCOO-backed operator with the sparse indices <code>state</code> was
+  initialized for.</li>
+<li><code>options</code>: Unused.</li>
+<li><code>state</code>: State from <code>init</code> or an earlier call.</li>
+</ul>
+<p><strong>Returns:</strong></p>
+<p>The state of the values of <code>operator</code>.</p>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="jaxscape.solvers.sparsedirectsolver.AbstractSparseDirectSolver" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <code>jaxscape.solvers.sparsedirectsolver.AbstractSparseDirectSolver</code>
+
+
+<a href="#jaxscape.solvers.sparsedirectsolver.AbstractSparseDirectSolver" class="headerlink" title="Permanent link">¤</a></h3>
+
+
+    <div class="doc doc-contents first">
+
+
+
+        <p>Direct solver for sparse symmetric positive definite matrices.</p>
+<p>Subclass it with the phases of a sparse factorization library: <code>factorize</code>,
+<code>solve</code>, <code>residual_tolerance</code> and, when the library can reuse an analysis,
+<code>refactorize</code>. The base class provides the Lineax solver, as
+<code>AbstractSparseSolver</code> describes: it factorizes the matrix again when its
+values change, and checks the results.</p>
+<p><code>reinit</code> returns its state itself when the state passed its check and the
+values are those it factorizes, up to the rounding of assembling the
+matrix. Otherwise it refactorizes the state, whose factorization may no
+longer be valid afterwards, and analyses the values afresh when the state
+failed its check or when the refactorization fails its own.</p>
+<p>The checks assume nothing from the library. Each factorization solves
+<code>A x = A 1</code>, and fails when the backward error
+<code>max|A 1 - A x| / (||A||_inf max|x|)</code> is not finite or exceeds the square root
+of the machine epsilon. Each solve fails when its solution <code>x</code> of the scaled
+right-hand side <code>b</code> is not finite or <code>max|b - A x|</code> exceeds
+<code>residual_tolerance</code> times <code>max|b|</code>, and reports <code>lineax.RESULTS.singular</code>.</p>
+<p>A refactorization that fails its check is retried on a fresh analysis, and the
+next <code>reinit</code> of a failed state analyses its values afresh, so a failure leaves
+later values exact. The checks cost one solve of one right-hand side and two
+sparse matrix-vector products per factorization, and one sparse matrix-vector
+product per right-hand side.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="jaxscape.solvers.sparsedirectsolver.AbstractSparseDirectSolver.factorize" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <code class="highlight language-python"><span class="n">factorize</span><span class="p">(</span><span class="n">pattern</span><span class="p">:</span> <span class="n">CSRPattern</span><span class="p">,</span> <span class="n">values</span><span class="p">:</span> <span class="n">Array</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Factorization</span></code>
+
+<a href="#jaxscape.solvers.sparsedirectsolver.AbstractSparseDirectSolver.factorize" class="headerlink" title="Permanent link">¤</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Analyse <code>pattern</code> and factorize <code>values</code> on a new handle.</p>
+<p><strong>Arguments:</strong></p>
+<ul>
+<li><code>pattern</code>: The CSR pattern of the matrix.</li>
+<li><code>values</code>: The CSR values of the matrix.</li>
+</ul>
+<p><strong>Returns:</strong></p>
+<p>A pytree to pass to <code>solve</code> and <code>refactorize</code>, with the same structure for
+every <code>pattern</code> and <code>values</code>, so that it can pass through <code>jax.lax.cond</code>.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="jaxscape.solvers.sparsedirectsolver.AbstractSparseDirectSolver.refactorize" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <code class="highlight language-python"><span class="n">refactorize</span><span class="p">(</span><span class="n">factorization</span><span class="p">:</span> <span class="n">Factorization</span><span class="p">,</span> <span class="n">pattern</span><span class="p">:</span> <span class="n">CSRPattern</span><span class="p">,</span> <span class="n">values</span><span class="p">:</span> <span class="n">Array</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Factorization</span></code>
+
+<a href="#jaxscape.solvers.sparsedirectsolver.AbstractSparseDirectSolver.refactorize" class="headerlink" title="Permanent link">¤</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Factorize new <code>values</code>. Defaults to a new analysis with <code>factorize</code>.</p>
+<p><strong>Arguments:</strong></p>
+<ul>
+<li><code>factorization</code>: A factorization of the same pattern. It need not stay
+  valid after this call.</li>
+<li><code>pattern</code>: The CSR pattern of the matrix.</li>
+<li><code>values</code>: The new CSR values.</li>
+</ul>
+<p><strong>Returns:</strong></p>
+<p>The factorization of <code>values</code>.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="jaxscape.solvers.sparsedirectsolver.AbstractSparseDirectSolver.solve" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <code class="highlight language-python"><span class="n">solve</span><span class="p">(</span><span class="n">factorization</span><span class="p">:</span> <span class="n">Factorization</span><span class="p">,</span> <span class="n">vector</span><span class="p">:</span> <span class="n">Array</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Array</span></code>
+
+<a href="#jaxscape.solvers.sparsedirectsolver.AbstractSparseDirectSolver.solve" class="headerlink" title="Permanent link">¤</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Solve for one right-hand side, also under <code>jax.vmap</code> over <code>vector</code>.</p>
+<p><strong>Arguments:</strong></p>
+<ul>
+<li><code>factorization</code>: The factorization of the matrix.</li>
+<li><code>vector</code>: The right-hand side, with shape <code>(n,)</code>.</li>
+</ul>
+<p><strong>Returns:</strong></p>
+<p>The solution, with shape <code>(n,)</code>.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="jaxscape.solvers.sparsedirectsolver.AbstractSparseDirectSolver.residual_tolerance" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <code class="highlight language-python"><span class="n">residual_tolerance</span><span class="p">(</span><span class="n">dtype</span><span class="p">:</span> <span class="n">typing</span><span class="o">.</span><span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span></code>
+
+<a href="#jaxscape.solvers.sparsedirectsolver.AbstractSparseDirectSolver.residual_tolerance" class="headerlink" title="Permanent link">¤</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Largest residual of a solution, relative to its right-hand side.</p>
+<p><strong>Arguments:</strong></p>
+<ul>
+<li><code>dtype</code>: The dtype of the solution.</li>
+</ul>
+<p><strong>Returns:</strong></p>
+<p>The tolerance of the infinity norms of the residual and the right-hand
+side, above the residuals this library leaves on valid matrices.</p>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="jaxscape.solvers.sparseiterativesolver.AbstractSparseIterativeSolver" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <code>jaxscape.solvers.sparseiterativesolver.AbstractSparseIterativeSolver</code>
+
+
+<a href="#jaxscape.solvers.sparseiterativesolver.AbstractSparseIterativeSolver" class="headerlink" title="Permanent link">¤</a></h3>
+
+
+    <div class="doc doc-contents first">
+
+
+
+        <p>Conjugate gradients on sparse symmetric positive definite matrices, with a
+preconditioner.</p>
+<p>Subclass it with <code>preconditioner</code>, which <code>init</code> builds once, <code>precondition</code>,
+which applies it to the current values at each solve, <code>matvec</code>, the product
+of the current matrix with vectors, and <code>vector_shape</code>, the shape of those
+vectors. <code>csr_matvec</code> gives the product of the CSR values, with vectors of
+shape <code>(n,)</code>. The base class provides the Lineax solver, as
+<code>AbstractSparseSolver</code> describes: <code>reinit</code> keeps the preconditioner and
+replaces the values. Values other than those the preconditioner was built
+from change the number of iterations, and a solve that then exceeds
+<code>max_steps</code> fails.</p>
+<p>A batch of right-hand sides, as <code>jax.vmap</code> makes, runs as one solve with the
+right-hand sides contiguous in memory, until all have converged. A solve
+that has not converged after <code>max_steps</code> iterations fails with
+<code>lineax.RESULTS.max_steps_reached</code>, and one whose solution is not finite,
+as those of singular matrices can be, with <code>lineax.RESULTS.singular</code>.</p>
+<p><strong>Attributes:</strong></p>
+<ul>
+<li><code>rtol</code>: Largest Euclidean norm, relative to that of the right-hand side,
+  of the residual that conjugate gradients update at each iteration. In
+  exact arithmetic it equals the residual <code>b - A x</code> of the solution <code>x</code>.
+  In float32, rounding stops the decrease of <code>b - A x</code>, so that solves
+  can converge with a residual <code>b - A x</code> above <code>rtol</code>.</li>
+<li><code>max_steps</code>: Largest number of iterations.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="jaxscape.solvers.sparseiterativesolver.AbstractSparseIterativeSolver.preconditioner" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <code class="highlight language-python"><span class="n">preconditioner</span><span class="p">(</span><span class="n">pattern</span><span class="p">:</span> <span class="n">CSRPattern</span><span class="p">,</span> <span class="n">values</span><span class="p">:</span> <span class="n">Array</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Preconditioner</span></code>
+
+<a href="#jaxscape.solvers.sparseiterativesolver.AbstractSparseIterativeSolver.preconditioner" class="headerlink" title="Permanent link">¤</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Build what the state keeps across values. <code>init</code> calls it.</p>
+<p>It may read concrete arrays or run host code, as <code>init</code> runs outside
+<code>jax.jit</code>, apart from the states that <code>distance.init(graph)</code> builds from
+the shape and contiguity of a <code>GridGraph</code>, with concrete values. Those
+build eagerly, under <code>jax.ensure_compile_time_eval</code>, where
+<code>eqx.error_if</code> raises whatever its condition: it must not call
+<code>eqx.error_if</code>.</p>
+<p><strong>Arguments:</strong></p>
+<ul>
+<li><code>pattern</code>: The CSR pattern of the matrix.</li>
+<li><code>values</code>: The CSR values of the matrix.</li>
+</ul>
+<p><strong>Returns:</strong></p>
+<p>A pytree, which states carry through <code>jax.jit</code>.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="jaxscape.solvers.sparseiterativesolver.AbstractSparseIterativeSolver.precondition" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <code class="highlight language-python"><span class="n">precondition</span><span class="p">(</span><span class="n">preconditioner</span><span class="p">:</span> <span class="n">Preconditioner</span><span class="p">,</span> <span class="n">pattern</span><span class="p">:</span> <span class="n">CSRPattern</span><span class="p">,</span> <span class="n">values</span><span class="p">:</span> <span class="n">Array</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">collections</span><span class="o">.</span><span class="n">abc</span><span class="o">.</span><span class="n">Callable</span><span class="p">[[</span><span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">],</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">]</span></code>
+
+<a href="#jaxscape.solvers.sparseiterativesolver.AbstractSparseIterativeSolver.precondition" class="headerlink" title="Permanent link">¤</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return the preconditioner of the current values. Each solve calls it
+once, inside <code>jax.jit</code>.</p>
+<p><strong>Arguments:</strong></p>
+<ul>
+<li><code>preconditioner</code>: What <code>preconditioner</code> built.</li>
+<li><code>pattern</code>: The CSR pattern of the matrix.</li>
+<li><code>values</code>: The current CSR values of the matrix.</li>
+</ul>
+<p><strong>Returns:</strong></p>
+<p>A function that applies a symmetric positive definite approximation of
+the inverse of the matrix to residuals of <code>m</code> right-hand sides, with
+shape <code>vector_shape(...) + (m,)</code>.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="jaxscape.solvers.sparseiterativesolver.AbstractSparseIterativeSolver.matvec" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <code class="highlight language-python"><span class="n">matvec</span><span class="p">(</span><span class="n">preconditioner</span><span class="p">:</span> <span class="n">Preconditioner</span><span class="p">,</span> <span class="n">pattern</span><span class="p">:</span> <span class="n">CSRPattern</span><span class="p">,</span> <span class="n">values</span><span class="p">:</span> <span class="n">Array</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">collections</span><span class="o">.</span><span class="n">abc</span><span class="o">.</span><span class="n">Callable</span><span class="p">[[</span><span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">],</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">]</span></code>
+
+<a href="#jaxscape.solvers.sparseiterativesolver.AbstractSparseIterativeSolver.matvec" class="headerlink" title="Permanent link">¤</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return the product of the matrix with vectors. Each solve calls it
+once, inside <code>jax.jit</code>. <code>csr_matvec(pattern, values)</code> gives the product
+of the CSR values.</p>
+<p><strong>Arguments:</strong></p>
+<ul>
+<li><code>preconditioner</code>: What <code>preconditioner</code> built.</li>
+<li><code>pattern</code>: The CSR pattern of the matrix.</li>
+<li><code>values</code>: The current CSR values of the matrix.</li>
+</ul>
+<p><strong>Returns:</strong></p>
+<p>A function that multiplies the matrix with <code>m</code> vectors, with shape
+<code>vector_shape(...) + (m,)</code>.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="jaxscape.solvers.sparseiterativesolver.AbstractSparseIterativeSolver.vector_shape" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <code class="highlight language-python"><span class="n">vector_shape</span><span class="p">(</span><span class="n">preconditioner</span><span class="p">:</span> <span class="n">Preconditioner</span><span class="p">,</span> <span class="n">pattern</span><span class="p">:</span> <span class="n">CSRPattern</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span></code>
+
+<a href="#jaxscape.solvers.sparseiterativesolver.AbstractSparseIterativeSolver.vector_shape" class="headerlink" title="Permanent link">¤</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return the shape in which <code>matvec</code> and <code>precondition</code> take vectors:
+<code>(pattern.n,)</code>, or another shape of <code>n</code> entries.</p>
+<p>Conjugate gradients carry their vectors in this shape, with a last axis
+of right-hand sides: a solver of rasters takes them as rasters, which
+XLA would copy at each iteration if they were reshaped there.</p>
+<p><strong>Arguments:</strong></p>
+<ul>
+<li><code>preconditioner</code>: What <code>preconditioner</code> built.</li>
+<li><code>pattern</code>: The CSR pattern of the matrix.</li>
+</ul>
+<p><strong>Returns:</strong></p>
+<p>A shape of <code>n</code> entries.</p>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="jaxscape.solvers.sparseiterativesolver.csr_matvec" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-function"></code>            <code class="highlight language-python"><span class="n">jaxscape</span><span class="o">.</span><span class="n">solvers</span><span class="o">.</span><span class="n">sparseiterativesolver</span><span class="o">.</span><span class="n">csr_matvec</span><span class="p">(</span><span class="n">pattern</span><span class="p">:</span> <span class="n">CSRPattern</span><span class="p">,</span> <span class="n">values</span><span class="p">:</span> <span class="n">Array</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">collections</span><span class="o">.</span><span class="n">abc</span><span class="o">.</span><span class="n">Callable</span><span class="p">[[</span><span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">],</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">]</span></code>
+
+<a href="#jaxscape.solvers.sparseiterativesolver.csr_matvec" class="headerlink" title="Permanent link">¤</a></h3>
+
+
+    <div class="doc doc-contents first">
+
+        <p>Return the product of the matrix of CSR <code>pattern</code> and <code>values</code> with
+vectors, as <code>AbstractSparseIterativeSolver.matvec</code> returns it for a
+<code>vector_shape</code> of <code>(pattern.n,)</code>.</p>
+<p>It gathers the rows of the matrix when called, and the function it returns
+reuses them: call it once per solve, as <code>matvec</code> does, and apply the
+returned function in the loop.</p>
+<p><strong>Arguments:</strong></p>
+<ul>
+<li><code>pattern</code>: The CSR pattern of the matrix.</li>
+<li><code>values</code>: The CSR values of the matrix.</li>
+</ul>
+<p><strong>Returns:</strong></p>
+<p>A function that multiplies the matrix with <code>m</code> vectors, with shape <code>(n, m)</code>.</p>
+
+
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "toc.integrate", "header.autohide", "content.code.copy"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+        <script src="../../_static/mathjax.js"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>

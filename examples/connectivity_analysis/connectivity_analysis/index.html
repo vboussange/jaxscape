@@ -1,0 +1,1246 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A minimal JAX library for connectivity modelling at scale">
+      
+      
+        <meta name="author" content="Victor Boussange">
+      
+      
+        <link rel="canonical" href="https://vboussange.github.io/jaxscape/examples/connectivity_analysis/connectivity_analysis/">
+      
+      
+        <link rel="prev" href="../../distance_calculation/distance_calculation/">
+      
+      
+        <link rel="next" href="../../advanced/moving_windows/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+    
+    
+      
+        <title>Connectivity analysis - JAXScape</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../../_static/custom_css.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#connectivity-analysis" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="JAXScape" class="md-header__button md-logo" aria-label="JAXScape" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            JAXScape
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Connectivity analysis
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/vboussange/jaxscape" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    vboussange/jaxscape
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="JAXScape" class="md-nav__button md-logo" aria-label="JAXScape" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    JAXScape
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/vboussange/jaxscape" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    vboussange/jaxscape
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../benchmark/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmark
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../distance_calculation/distance_calculation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Distance calculation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connectivity analysis
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connectivity analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#land-cover-habitat-quality-and-permeability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Land cover, habitat quality and permeability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#connectivity-and-its-sensitivities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Connectivity and its sensitivities
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sensitivity-to-permeability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sensitivity to permeability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sensitivity-to-habitat-quality" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sensitivity to habitat quality
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#normalized-sensitivity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Normalized sensitivity
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#comparison-with-omniscapes-normalized-current" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comparison with Omniscape's normalized current
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#runtimes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtimes
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../advanced/moving_windows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Moving-window operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/graphs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Graphs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/distances/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Distances
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/linear_solvers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linear solvers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/connectivity_analysis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connectivity analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/window_operations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Window operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="connectivity-analysis">Connectivity analysis<a class="headerlink" href="#connectivity-analysis" title="Permanent link">¤</a></h1>
+<p>A connectivity analysis quantifies how much habitat a species can reach, given the resistance of the landscape to its movement. JAXScape measures it by the connectivity</p>
+<div class="arithmatex">\[C = \sum_i \sum_{j \neq i} q_i \, K_{ij} \, q_j,\]</div>
+<p>where <span class="arithmatex">\(q_i\)</span> is the habitat quality of pixel <span class="arithmatex">\(i\)</span> and <span class="arithmatex">\(K_{ij}\)</span> is the proximity of pixels <span class="arithmatex">\(i\)</span> and <span class="arithmatex">\(j\)</span>: a dispersal kernel that decreases with a distance <span class="arithmatex">\(d_{ij}\)</span>, which grows with the resistance (the inverse of the permeability <span class="arithmatex">\(p\)</span>) of the pixels between them. Maps of the sensitivities of <span class="arithmatex">\(C\)</span>, its derivatives with respect to the permeability <span class="arithmatex">\(p_k\)</span> and the habitat quality <span class="arithmatex">\(q_k\)</span> of each pixel <span class="arithmatex">\(k\)</span>, show where a gain in permeability or in habitat most increases the habitat that the species can reach. The elasticities express the same derivatives in relative terms.</p>
+<p>This example computes <span class="arithmatex">\(C\)</span> with <a href="../../../api/connectivity_analysis/#jaxscape.connectivity_analysis.ConnectivityAnalysis"><code>ConnectivityAnalysis</code></a> and its sensitivities with <a href="../../../api/connectivity_analysis/#jaxscape.connectivity_analysis.SensitivityAnalysis"><code>SensitivityAnalysis</code></a>, on the 2016 land cover around Frederick, Maryland, with forest as the habitat, for two distances: the least-cost path distance and the resistance distance.</p>
+<h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">¤</a></h2>
+<div class="highlight"><pre><span></span><code>uv<span class="w"> </span>add<span class="w"> </span>jaxscape<span class="w"> </span>rasterio<span class="w"> </span>matplotlib
+</code></pre></div>
+<p>The analyses run on CPU or GPU; see the <a href="../../../#installation">installation instructions</a> for NVIDIA GPUs.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">urllib.request</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">rasterio</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxscape</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">ConnectivityAnalysis</span><span class="p">,</span>
+    <span class="n">LCPDistance</span><span class="p">,</span>
+    <span class="n">ResistanceDistance</span><span class="p">,</span>
+    <span class="n">SensitivityAnalysis</span><span class="p">,</span>
+    <span class="n">SpielmanApproximation</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxscape.solvers</span><span class="w"> </span><span class="kn">import</span> <span class="n">GeometricMultigridCGSolver</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib.colors</span><span class="w"> </span><span class="kn">import</span> <span class="n">LinearSegmentedColormap</span><span class="p">,</span> <span class="n">ListedColormap</span><span class="p">,</span> <span class="n">LogNorm</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib.patches</span><span class="w"> </span><span class="kn">import</span> <span class="n">Patch</span>
+
+
+<span class="nb">print</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">devices</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">device_kind</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>NVIDIA GeForce RTX 3090
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="c1"># Download the land cover raster if not already present</span>
+<span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">"../data/nlcd_2016_frederick_md.tif"</span><span class="p">)</span>
+<span class="k">if</span> <span class="ow">not</span> <span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+    <span class="n">path</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">urllib</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">urlretrieve</span><span class="p">(</span>
+        <span class="s2">"https://raw.githubusercontent.com/Circuitscape/datasets/main/data/"</span>
+        <span class="s2">"nlcd_2016_frederick_md.tif"</span><span class="p">,</span>
+        <span class="n">path</span><span class="p">,</span>
+    <span class="p">)</span>
+</code></pre></div>
+<h2 id="land-cover-habitat-quality-and-permeability">Land cover, habitat quality and permeability<a class="headerlink" href="#land-cover-habitat-quality-and-permeability" title="Permanent link">¤</a></h2>
+<p>The analyses take two rasters of the same shape: the habitat quality <span class="arithmatex">\(q\)</span> and the permeability <span class="arithmatex">\(p\)</span> of each pixel. Both derive here from the classes of the 2016 National Land Cover Database (NLCD), in pixels of 30 m, through the resistances of <a href="https://docs.circuitscape.org/Omniscape.jl/stable/examples/">Omniscape.jl's example</a> on the same raster.</p>
+<ul>
+<li><strong>Habitat quality</strong> is 1 in forest, the land cover of resistance 1, and 0 elsewhere.</li>
+<li><strong>Permeability</strong> is the inverse of the resistance: 1 in forest, down to 1/1000 in low-intensity development. Medium- and high-intensity development are barriers, of infinite resistance and permeability 0. The analyses raise every permeability below the <em>permeability floor</em>, <span class="arithmatex">\(10^{-4}\)</span> times the largest permeability, to that floor: barriers are nearly impassable, and the graph of every window stays connected.</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="k">with</span> <span class="n">rasterio</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="k">as</span> <span class="n">src</span><span class="p">:</span>
+    <span class="n">landcover</span> <span class="o">=</span> <span class="n">src</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+<span class="c1"># Resistance of each land cover class, from Omniscape's example; inf for barriers</span>
+<span class="n">resistance_table</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="mi">11</span><span class="p">:</span> <span class="mi">100</span><span class="p">,</span>  <span class="c1"># Open water</span>
+    <span class="mi">21</span><span class="p">:</span> <span class="mi">500</span><span class="p">,</span>  <span class="c1"># Developed, open space</span>
+    <span class="mi">22</span><span class="p">:</span> <span class="mi">1000</span><span class="p">,</span>  <span class="c1"># Developed, low intensity</span>
+    <span class="mi">23</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span>  <span class="c1"># Developed, medium intensity</span>
+    <span class="mi">24</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span>  <span class="c1"># Developed, high intensity</span>
+    <span class="mi">31</span><span class="p">:</span> <span class="mi">100</span><span class="p">,</span>  <span class="c1"># Barren land</span>
+    <span class="mi">41</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>  <span class="c1"># Deciduous forest</span>
+    <span class="mi">42</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>  <span class="c1"># Evergreen forest</span>
+    <span class="mi">43</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>  <span class="c1"># Mixed forest</span>
+    <span class="mi">52</span><span class="p">:</span> <span class="mi">20</span><span class="p">,</span>  <span class="c1"># Shrub/scrub</span>
+    <span class="mi">71</span><span class="p">:</span> <span class="mi">30</span><span class="p">,</span>  <span class="c1"># Grassland/herbaceous</span>
+    <span class="mi">81</span><span class="p">:</span> <span class="mi">200</span><span class="p">,</span>  <span class="c1"># Pasture/hay</span>
+    <span class="mi">82</span><span class="p">:</span> <span class="mi">300</span><span class="p">,</span>  <span class="c1"># Cultivated crops</span>
+    <span class="mi">90</span><span class="p">:</span> <span class="mi">20</span><span class="p">,</span>  <span class="c1"># Woody wetlands</span>
+    <span class="mi">95</span><span class="p">:</span> <span class="mi">30</span><span class="p">,</span>  <span class="c1"># Emergent herbaceous wetlands</span>
+<span class="p">}</span>
+<span class="n">lookup</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="mi">256</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">nlcd_class</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">resistance_table</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+    <span class="n">lookup</span><span class="p">[</span><span class="n">nlcd_class</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+<span class="n">resistance</span> <span class="o">=</span> <span class="n">lookup</span><span class="p">[</span><span class="n">landcover</span><span class="p">]</span>
+
+<span class="n">permeability</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="n">resistance</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">"float32"</span><span class="p">)</span>  <span class="c1"># 0 for barriers</span>
+<span class="n">quality</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">resistance</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">"float32"</span><span class="p">)</span>  <span class="c1"># Forest</span>
+<span class="n">barrier</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isinf</span><span class="p">(</span><span class="n">resistance</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">quality</span><span class="o">.</span><span class="n">size</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2"> pixels: </span><span class="si">{</span><span class="n">quality</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.0%</span><span class="si">}</span><span class="s2"> forest"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">barrier</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.0%</span><span class="si">}</span><span class="s2"> barriers"</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>503,150 pixels: 26% forest
+6% barriers
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="n">groups</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">"Forest (1)"</span><span class="p">:</span> <span class="p">([</span><span class="mi">41</span><span class="p">,</span> <span class="mi">42</span><span class="p">,</span> <span class="mi">43</span><span class="p">],</span> <span class="s2">"#2f6b3a"</span><span class="p">),</span>
+    <span class="s2">"Shrub, grassland, wetland (20 to 30)"</span><span class="p">:</span> <span class="p">([</span><span class="mi">52</span><span class="p">,</span> <span class="mi">71</span><span class="p">,</span> <span class="mi">90</span><span class="p">,</span> <span class="mi">95</span><span class="p">],</span> <span class="s2">"#a9c47f"</span><span class="p">),</span>
+    <span class="s2">"Water, barren (100)"</span><span class="p">:</span> <span class="p">([</span><span class="mi">11</span><span class="p">,</span> <span class="mi">31</span><span class="p">],</span> <span class="s2">"#6a9ec9"</span><span class="p">),</span>
+    <span class="s2">"Pasture, crops (200 to 300)"</span><span class="p">:</span> <span class="p">([</span><span class="mi">81</span><span class="p">,</span> <span class="mi">82</span><span class="p">],</span> <span class="s2">"#e6d58f"</span><span class="p">),</span>
+    <span class="s2">"Developed, open space or low intensity (500 to 1000)"</span><span class="p">:</span> <span class="p">([</span><span class="mi">21</span><span class="p">,</span> <span class="mi">22</span><span class="p">],</span> <span class="s2">"#d9a08b"</span><span class="p">),</span>
+    <span class="s2">"Developed, medium or high intensity (barrier)"</span><span class="p">:</span> <span class="p">([</span><span class="mi">23</span><span class="p">,</span> <span class="mi">24</span><span class="p">],</span> <span class="s2">"#7a1f1f"</span><span class="p">),</span>
+<span class="p">}</span>
+<span class="n">group</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">landcover</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="p">(</span><span class="n">classes</span><span class="p">,</span> <span class="n">_</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">groups</span><span class="o">.</span><span class="n">values</span><span class="p">()):</span>
+    <span class="n">group</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">isin</span><span class="p">(</span><span class="n">landcover</span><span class="p">,</span> <span class="n">classes</span><span class="p">)]</span> <span class="o">=</span> <span class="n">index</span>
+
+<span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mf">7.5</span><span class="p">,</span> <span class="mi">8</span><span class="p">),</span> <span class="n">layout</span><span class="o">=</span><span class="s2">"constrained"</span><span class="p">)</span>
+<span class="n">colors</span> <span class="o">=</span> <span class="p">[</span><span class="n">color</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">color</span> <span class="ow">in</span> <span class="n">groups</span><span class="o">.</span><span class="n">values</span><span class="p">()]</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">group</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="n">ListedColormap</span><span class="p">(</span><span class="n">colors</span><span class="p">),</span> <span class="n">interpolation</span><span class="o">=</span><span class="s2">"nearest"</span><span class="p">)</span>
+<span class="n">handles</span> <span class="o">=</span> <span class="p">[</span><span class="n">Patch</span><span class="p">(</span><span class="n">color</span><span class="o">=</span><span class="n">color</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="n">name</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="p">(</span><span class="n">_</span><span class="p">,</span> <span class="n">color</span><span class="p">)</span> <span class="ow">in</span> <span class="n">groups</span><span class="o">.</span><span class="n">items</span><span class="p">()]</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">legend</span><span class="p">(</span>
+    <span class="n">handles</span><span class="o">=</span><span class="n">handles</span><span class="p">,</span>
+    <span class="n">title</span><span class="o">=</span><span class="s2">"Land cover (resistance)"</span><span class="p">,</span>
+    <span class="n">loc</span><span class="o">=</span><span class="s2">"upper center"</span><span class="p">,</span>
+    <span class="n">bbox_to_anchor</span><span class="o">=</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
+    <span class="n">ncols</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+    <span class="n">frameon</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">axis</span><span class="p">(</span><span class="s2">"off"</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</code></pre></div>
+<p><img alt="img" src="../_data/2165c5661ecd4d1a81d4f99912776acc.png" /></p>
+<h2 id="settings">Settings<a class="headerlink" href="#settings" title="Permanent link">¤</a></h2>
+<p>Both analyses count only the pairs of pixels within a window centred on each pixel, so that their cost grows linearly with the number of pixels. The two distances share all other settings, those of Omniscape.jl's example, so that their maps compare directly.</p>
+<ul>
+<li><strong>Dependency range</strong> <span class="arithmatex">\(D = 100\)</span> pixels (3 km): the half-width of the window. Pairs of pixels farther apart than <span class="arithmatex">\(D\)</span> along either axis do not contribute to <span class="arithmatex">\(C\)</span>.</li>
+<li><strong>Coarsening</strong>: <code>coarsening_factor=0.2</code> divides the raster into blocks of <span class="arithmatex">\(b \times b = 21 \times 21\)</span> pixels. The analyses compute the distances from the block centres only, and interpolate between them (see <a href="../../../api/connectivity_analysis/#jaxscape.windowed_analysis.WindowedAnalysis"><code>WindowedAnalysis</code></a>).</li>
+<li><strong>Proximity</strong>: the default, the negative-exponential dispersal kernel <span class="arithmatex">\(K(d) = e^{-d/\alpha}\)</span> with <span class="arithmatex">\(\alpha = D/4 = 25\)</span> pixels (750 m), where <span class="arithmatex">\(d\)</span> is the distance in <em>equivalent pixels</em>: the separation, in pixels along an axis, of two pixels of a uniform forest landscape (permeability 1) at the same distance. The mean dispersal distance of this kernel is <span class="arithmatex">\(2\alpha = 50\)</span> pixels (1.5 km).</li>
+<li><strong>Distances</strong>: the least-cost path distance (<a href="../../../api/distances/#jaxscape.lcp_distance.LCPDistance"><code>LCPDistance</code></a>) is the cost of the cheapest route between two pixels; the resistance distance (<a href="../../../api/distances/#jaxscape.resistance_distance.ResistanceDistance"><code>ResistanceDistance</code></a>) depends on all routes. <a href="../../../api/distances/#jaxscape.resistance_distance.SpielmanApproximation"><code>SpielmanApproximation</code></a> estimates the resistance distance by random projections.</li>
+<li><strong>Batch size</strong>: for the least-cost path distance, the number of windows computed together; for the resistance distance, the largest number of block centres in one <em>tile</em>, the union of their windows, on whose graph one query computes the distances from these block centres to the pixels of their windows. Here, one tile holds all block centres.</li>
+</ul>
+<p>All rasters are float32.</p>
+<details class="info">
+<summary>Theory: least-cost path and resistance distances</summary>
+<p>The pixels form a graph: each pixel is a vertex, joined to its four neighbours by edges of conductance <span class="arithmatex">\(a_e\)</span>, the mean permeability of the two pixels.</p>
+<ul>
+<li>The <strong>least-cost path distance</strong> between two pixels is the smallest sum of the edge costs <span class="arithmatex">\(1/a_e\)</span> over the paths that join them. It describes a species that moves along the cheapest route.</li>
+<li>The <strong>resistance distance</strong> is the effective resistance between the two pixels in the electrical circuit whose edges have conductances <span class="arithmatex">\(a_e\)</span>. It equals the commute time of a random walker, which steps to a neighbour with probability proportional to the conductance of the edge, divided by twice the sum of the conductances; the commute time is the expected number of steps from one pixel to the other and back. It describes a species that moves at random, and depends on all paths.</li>
+</ul>
+</details>
+<details class="info">
+<summary>Implementation: coarsening, randomized resistance distance and linear solver</summary>
+<ul>
+<li><strong>Coarsening.</strong> The block side <span class="arithmatex">\(b\)</span> is <span class="arithmatex">\(0.2 D = 20\)</span> pixels rounded up to an odd integer. Values between block centres are interpolated bilinearly; the sensitivity to habitat quality, which is twice the habitat within reach of each pixel, is interpolated from its values at the block centres. For the sensitivity to permeability with the resistance distance, the distances in the window of each block centre are computed from its <em>block source</em>: the habitat pixels that the centre stands for, weighted by their interpolation weights, so that one query gives the mean of their resistance distances to each pixel of the window. With the least-cost path distance, the analyses add a block correction after Omniscape's for the pairs of pixels within blocks. They compute it in a window of uniform permeability; where the landscape is not uniform, the maps then show straight lines along the lattice of block centres. Computing every window, <code>coarsening_factor=0</code>, removes these lines and requires <span class="arithmatex">\(b^2\)</span> times more windows.</li>
+<li><strong>Randomized resistance distance.</strong> <a href="../../../api/distances/#jaxscape.resistance_distance.SpielmanApproximation"><code>SpielmanApproximation</code></a> estimates resistance distances from <span class="arithmatex">\(k = \lceil \log(n) / \epsilon^2 \rceil\)</span> random projections in a graph of <span class="arithmatex">\(n\)</span> pixels. Each projection requires solving a linear system in the graph Laplacian, and all windows of a tile share these solutions. With a smaller <code>epsilon</code>, the estimates are less noisy and require more linear solves. Comparing the maps of two values of <code>seed</code> shows how much the noise affects them.</li>
+<li><strong>Linear solver.</strong> Computing resistance distances requires solving linear systems in the graph Laplacian. <a href="../../../api/linear_solvers/#jaxscape.solvers.geometricmultigridcgsolver.GeometricMultigridCGSolver"><code>GeometricMultigridCGSolver</code></a> solves them by the conjugate gradient (CG) method with a geometric multigrid preconditioner, on CPU or GPU, to the relative tolerance <code>rtol</code>. The other solvers are listed in <a href="../../../api/linear_solvers/">Linear solvers</a>.</li>
+</ul>
+</details>
+<div class="highlight"><pre><span></span><code><span class="n">D</span> <span class="o">=</span> <span class="mi">100</span>  <span class="c1"># Dependency range, in pixels: windows of 201 x 201 pixels</span>
+<span class="n">settings</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">dependency_range</span><span class="o">=</span><span class="n">D</span><span class="p">,</span> <span class="n">coarsening_factor</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span>  <span class="c1"># Blocks of 21 x 21 pixels</span>
+<span class="n">distances</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">"Least-cost path distance"</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(</span><span class="n">distance</span><span class="o">=</span><span class="n">LCPDistance</span><span class="p">(),</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">64</span><span class="p">),</span>
+    <span class="s2">"Resistance distance"</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(</span>
+        <span class="n">distance</span><span class="o">=</span><span class="n">ResistanceDistance</span><span class="p">(</span>
+            <span class="n">solver</span><span class="o">=</span><span class="n">GeometricMultigridCGSolver</span><span class="p">(</span><span class="n">rtol</span><span class="o">=</span><span class="mf">3e-4</span><span class="p">),</span>
+            <span class="n">method</span><span class="o">=</span><span class="n">SpielmanApproximation</span><span class="p">(</span><span class="n">epsilon</span><span class="o">=</span><span class="mf">0.15</span><span class="p">),</span>
+        <span class="p">),</span>
+        <span class="n">batch_size</span><span class="o">=</span><span class="mi">4096</span><span class="p">,</span>  <span class="c1"># One tile holds all block centres</span>
+    <span class="p">),</span>
+<span class="p">}</span>
+</code></pre></div>
+<h2 id="connectivity-and-its-sensitivities">Connectivity and its sensitivities<a class="headerlink" href="#connectivity-and-its-sensitivities" title="Permanent link">¤</a></h2>
+<p><a href="../../../api/connectivity_analysis/#jaxscape.connectivity_analysis.ConnectivityAnalysis"><code>ConnectivityAnalysis</code></a> computes the connectivity <span class="arithmatex">\(C\)</span>, a single number. <a href="../../../api/connectivity_analysis/#jaxscape.connectivity_analysis.SensitivityAnalysis"><code>SensitivityAnalysis</code></a> computes the derivative of <span class="arithmatex">\(C\)</span> with respect to the permeability or the habitat quality of every pixel, by automatic differentiation in the same windows: a map of the same shape as the rasters.</p>
+<details class="info">
+<summary>Theory: connectivity, sensitivity and elasticity</summary>
+<p>The connectivity is the sum, over the pairs of distinct pixels <span class="arithmatex">\(i, j\)</span>, of the product of their habitat qualities and of their proximity <span class="arithmatex">\(K_{ij}\)</span>, a decreasing function of the distance <span class="arithmatex">\(d_{ij}\)</span> between them:</p>
+<div class="arithmatex">\[C = \sum_i \sum_{j \neq i} q_i \, K_{ij} \, q_j.\]</div>
+<p>With <span class="arithmatex">\(q\)</span> equal to 1 in habitat and 0 elsewhere, <span class="arithmatex">\(\sum_{j \neq i} K_{ij} q_j\)</span> is the amount of habitat within reach of pixel <span class="arithmatex">\(i\)</span>, each habitat pixel weighted by its proximity to <span class="arithmatex">\(i\)</span>, and <span class="arithmatex">\(C\)</span> is the sum of this amount over the habitat pixels.</p>
+<p>The <strong>sensitivity</strong> of <span class="arithmatex">\(C\)</span> to the permeability <span class="arithmatex">\(p_i\)</span> of pixel <span class="arithmatex">\(i\)</span> is the derivative <span class="arithmatex">\(\partial C / \partial p_i\)</span>: the change of <span class="arithmatex">\(C\)</span> per unit increase of <span class="arithmatex">\(p_i\)</span>. The sensitivity to the habitat quality is <span class="arithmatex">\(\partial C / \partial q_i\)</span>; if <span class="arithmatex">\(K_{ij} = K_{ji}\)</span>,</p>
+<div class="arithmatex">\[\frac{\partial C}{\partial q_i} = 2 \sum_{j \neq i} K_{ij} \, q_j,\]</div>
+<p>twice the habitat within reach of pixel <span class="arithmatex">\(i\)</span>.</p>
+<p>The <strong>elasticity</strong> is the relative change of <span class="arithmatex">\(C\)</span> for a relative change of the value of a pixel:</p>
+<div class="arithmatex">\[E^p_i = \frac{p_i}{C} \frac{\partial C}{\partial p_i}, \qquad E^q_i = \frac{q_i}{C} \frac{\partial C}{\partial q_i}.\]</div>
+<p>With a 1 % increase of <span class="arithmatex">\(p_i\)</span>, <span class="arithmatex">\(C\)</span> increases by about <span class="arithmatex">\(E^p_i\)</span> %. Elasticities do not depend on the units of <span class="arithmatex">\(p\)</span>, <span class="arithmatex">\(q\)</span> and <span class="arithmatex">\(C\)</span>. Ranking pixels by sensitivity compares the effect of the same absolute change of permeability at every pixel, which is large relative to the permeability of the least permeable pixels; ranking them by elasticity compares the effect of the same relative change. As the pair <span class="arithmatex">\((i, i)\)</span> does not count, <span class="arithmatex">\(C\)</span> is linear in each <span class="arithmatex">\(q_i\)</span>: <span class="arithmatex">\(q_i \, \partial C / \partial q_i\)</span> is the loss of connectivity if pixel <span class="arithmatex">\(i\)</span> loses its habitat, and <span class="arithmatex">\(E^q_i\)</span> is this loss as a fraction of <span class="arithmatex">\(C\)</span>.</p>
+<p>Sensitivities and elasticities are derivatives: they are the effect of small changes, and an approximation of the effect of larger ones, such as converting cropland to forest.</p>
+</details>
+<p>The function below runs the analyses for one distance and records their runtimes, listed in the <a href="#runtimes">last section</a>. Besides <span class="arithmatex">\(C\)</span> and its sensitivities to <span class="arithmatex">\(p\)</span> and <span class="arithmatex">\(q\)</span>, it computes the <em>reference sensitivity</em> to permeability: the sensitivity with the same habitat quality and permeability 1 at every pixel, the denominator of the <a href="#normalized-sensitivity">normalized sensitivity</a>.</p>
+<div class="highlight"><pre><span></span><code><span class="n">uniform</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">permeability</span><span class="p">)</span>  <span class="c1"># Permeability 1, that of forest, everywhere</span>
+<span class="n">runtimes</span> <span class="o">=</span> <span class="p">{}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">timed</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">run</span><span class="p">):</span>
+    <span class="n">start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">block_until_ready</span><span class="p">(</span><span class="n">run</span><span class="p">())</span>
+    <span class="n">runtimes</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">start</span>
+    <span class="k">return</span> <span class="n">result</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">analyse</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">distance</span><span class="p">,</span> <span class="n">batch_size</span><span class="p">):</span>
+    <span class="n">common</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+        <span class="n">settings</span><span class="p">,</span> <span class="n">quality_raster</span><span class="o">=</span><span class="n">quality</span><span class="p">,</span> <span class="n">distance</span><span class="o">=</span><span class="n">distance</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span>
+    <span class="p">)</span>
+    <span class="n">landscape</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">common</span><span class="p">,</span> <span class="n">permeability_raster</span><span class="o">=</span><span class="n">permeability</span><span class="p">)</span>
+    <span class="n">reference</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">common</span><span class="p">,</span> <span class="n">permeability_raster</span><span class="o">=</span><span class="n">uniform</span><span class="p">)</span>
+    <span class="n">connectivity</span> <span class="o">=</span> <span class="n">timed</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">, connectivity"</span><span class="p">,</span> <span class="k">lambda</span><span class="p">:</span> <span class="n">ConnectivityAnalysis</span><span class="p">(</span><span class="o">**</span><span class="n">landscape</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+    <span class="p">)</span>
+    <span class="n">to_permeability</span> <span class="o">=</span> <span class="n">timed</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">, sensitivity to permeability"</span><span class="p">,</span>
+        <span class="k">lambda</span><span class="p">:</span> <span class="n">SensitivityAnalysis</span><span class="p">(</span><span class="o">**</span><span class="n">landscape</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">"permeability"</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">to_quality</span> <span class="o">=</span> <span class="n">timed</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">, sensitivity to quality"</span><span class="p">,</span>
+        <span class="k">lambda</span><span class="p">:</span> <span class="n">SensitivityAnalysis</span><span class="p">(</span><span class="o">**</span><span class="n">landscape</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">"quality"</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">reference_to_permeability</span> <span class="o">=</span> <span class="n">timed</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">, reference sensitivity to permeability"</span><span class="p">,</span>
+        <span class="k">lambda</span><span class="p">:</span> <span class="n">SensitivityAnalysis</span><span class="p">(</span><span class="o">**</span><span class="n">reference</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">"permeability"</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span>
+        <span class="n">connectivity</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">connectivity</span><span class="p">),</span>
+        <span class="n">permeability</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">to_permeability</span><span class="p">),</span>
+        <span class="n">quality</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">to_quality</span><span class="p">),</span>
+        <span class="n">reference</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">reference_to_permeability</span><span class="p">),</span>
+    <span class="p">)</span>
+
+
+<span class="n">results</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">analyse</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="o">**</span><span class="n">arguments</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">arguments</span> <span class="ow">in</span> <span class="n">distances</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+</code></pre></div>
+<h2 id="sensitivity-to-permeability">Sensitivity to permeability<a class="headerlink" href="#sensitivity-to-permeability" title="Permanent link">¤</a></h2>
+<p>The map of the sensitivity to permeability shows where a gain in permeability most increases the habitat that the species can reach. The elasticity is the sensitivity times <span class="arithmatex">\(p_k / C\)</span>; its map shows the same for a relative gain. Barriers are grey.</p>
+<div class="highlight"><pre><span></span><code><span class="n">sequential</span> <span class="o">=</span> <span class="n">LinearSegmentedColormap</span><span class="o">.</span><span class="n">from_list</span><span class="p">(</span>
+    <span class="s2">"sequential"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"#f7f6f2"</span><span class="p">,</span> <span class="s2">"#cde2fb"</span><span class="p">,</span> <span class="s2">"#6da7ec"</span><span class="p">,</span> <span class="s2">"#256abf"</span><span class="p">,</span> <span class="s2">"#104281"</span><span class="p">,</span> <span class="s2">"#0b1f3d"</span><span class="p">]</span>
+<span class="p">)</span>
+<span class="n">grey</span> <span class="o">=</span> <span class="n">ListedColormap</span><span class="p">([</span><span class="s2">"#8c8a83"</span><span class="p">])</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">show</span><span class="p">(</span><span class="n">ax</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">cmap</span><span class="p">,</span> <span class="n">norm</span><span class="p">,</span> <span class="n">title</span><span class="p">):</span>
+    <span class="c1"># Rasters are downsampled to the figure by averaging their colours.</span>
+    <span class="n">image</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="n">cmap</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">,</span> <span class="n">interpolation_stage</span><span class="o">=</span><span class="s2">"rgba"</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">ma</span><span class="o">.</span><span class="n">masked_where</span><span class="p">(</span><span class="o">~</span><span class="n">barrier</span><span class="p">,</span> <span class="n">barrier</span><span class="p">),</span> <span class="n">cmap</span><span class="o">=</span><span class="n">grey</span><span class="p">,</span> <span class="n">interpolation_stage</span><span class="o">=</span><span class="s2">"rgba"</span>
+    <span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="n">title</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">axis</span><span class="p">(</span><span class="s2">"off"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">image</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">sensitivity_maps</span><span class="p">(</span><span class="n">var</span><span class="p">,</span> <span class="n">raster</span><span class="p">,</span> <span class="n">names</span><span class="p">):</span>
+    <span class="n">fig</span><span class="p">,</span> <span class="n">axs</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span>
+        <span class="nb">len</span><span class="p">(</span><span class="n">names</span><span class="p">),</span> <span class="mi">2</span><span class="p">,</span> <span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mf">0.5</span> <span class="o">+</span> <span class="mf">4.5</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">names</span><span class="p">)),</span> <span class="n">layout</span><span class="o">=</span><span class="s2">"constrained"</span>
+    <span class="p">)</span>
+    <span class="k">for</span> <span class="n">row</span><span class="p">,</span> <span class="n">name</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">axs</span><span class="p">),</span> <span class="n">names</span><span class="p">):</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
+        <span class="n">sensitivity</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="n">var</span><span class="p">]</span>
+        <span class="n">elasticity</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">raster</span><span class="p">)</span> <span class="o">*</span> <span class="n">sensitivity</span> <span class="o">/</span> <span class="n">result</span><span class="p">[</span><span class="s2">"connectivity"</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">ax</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">title</span> <span class="ow">in</span> <span class="p">[</span>
+            <span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">sensitivity</span><span class="p">,</span> <span class="s2">"sensitivity"</span><span class="p">),</span>
+            <span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">elasticity</span><span class="p">,</span> <span class="s2">"elasticity"</span><span class="p">),</span>
+        <span class="p">]:</span>
+            <span class="n">top</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">percentile</span><span class="p">(</span><span class="n">values</span><span class="p">[</span><span class="n">values</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">],</span> <span class="mf">99.9</span><span class="p">)</span>
+            <span class="n">norm</span> <span class="o">=</span> <span class="n">LogNorm</span><span class="p">(</span><span class="n">top</span> <span class="o">/</span> <span class="mf">1e4</span><span class="p">,</span> <span class="n">top</span><span class="p">)</span>
+            <span class="n">values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">top</span> <span class="o">/</span> <span class="mf">1e4</span><span class="p">,</span> <span class="n">top</span><span class="p">)</span>
+            <span class="n">image</span> <span class="o">=</span> <span class="n">show</span><span class="p">(</span><span class="n">ax</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">sequential</span><span class="p">,</span> <span class="n">norm</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">title</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="n">fig</span><span class="o">.</span><span class="n">colorbar</span><span class="p">(</span><span class="n">image</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span> <span class="n">shrink</span><span class="o">=</span><span class="mf">0.8</span><span class="p">)</span>
+    <span class="n">fig</span><span class="o">.</span><span class="n">suptitle</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Sensitivity and elasticity to </span><span class="si">{</span><span class="n">var</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+
+
+<span class="n">sensitivity_maps</span><span class="p">(</span><span class="s2">"permeability"</span><span class="p">,</span> <span class="n">permeability</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">results</span><span class="p">))</span>
+</code></pre></div>
+<p><img alt="img" src="../_data/70decdbc6eef4737acdf24e96f8ff9e2.png" /></p>
+<p>With the least-cost path distance, the species moves along the cheapest routes, which stay in forest: a gain in permeability matters in forest and next to it only, and most where these routes cross the roads and streams inside forest. The resistance distance depends on all routes: a gain in permeability also matters in the farmland between forest patches, and most on the roads and streams that cross forest and in the farmland around small forest patches, through which movement between patches is funnelled. In both maps, the elasticities are largest in forest, most of all in the large western forest, where a given relative loss of permeability costs the most connectivity. The straight lines across forest in the least-cost path maps are an artefact of coarsening (see the implementation box in <a href="#settings">Settings</a>).</p>
+<h2 id="sensitivity-to-habitat-quality">Sensitivity to habitat quality<a class="headerlink" href="#sensitivity-to-habitat-quality" title="Permanent link">¤</a></h2>
+<p>The map of the sensitivity to habitat quality shows where new habitat most increases connectivity. The elasticity to habitat quality, nonzero in forest only, is the fraction of <span class="arithmatex">\(C\)</span> that is lost if the habitat of a pixel is lost: ranking forest pixels by it gives the pixels to protect. The maps below are those of the resistance distance.</p>
+<div class="highlight"><pre><span></span><code><span class="n">sensitivity_maps</span><span class="p">(</span><span class="s2">"quality"</span><span class="p">,</span> <span class="n">quality</span><span class="p">,</span> <span class="p">[</span><span class="s2">"Resistance distance"</span><span class="p">])</span>
+</code></pre></div>
+<p><img alt="img" src="../_data/a49c4348bb124919a30f667490fa2191.png" /></p>
+<p>New habitat adds the most connectivity in and next to large forests, where much habitat lies within reach, and little in the farmland and town between them. The forest pixels whose loss removes the largest fraction of <span class="arithmatex">\(C\)</span> lie in the large western forest; those of small, isolated patches hold little of it. The square shapes around small forest patches come from the interpolation between block centres.</p>
+<h2 id="normalized-sensitivity">Normalized sensitivity<a class="headerlink" href="#normalized-sensitivity" title="Permanent link">¤</a></h2>
+<p>The sensitivity to permeability of a pixel depends on the habitat within its reach and on the land cover. The normalized sensitivity is its ratio to the reference sensitivity, computed with the same habitat and permeability 1 at every pixel: what remains is the effect of the land cover.</p>
+<details class="info">
+<summary>Theory: normalized sensitivity</summary>
+<p>The normalized sensitivity of pixel <span class="arithmatex">\(i\)</span> is</p>
+<div class="arithmatex">\[S_i = \frac{\partial C / \partial p_i}{\partial C^\circ / \partial p_i},\]</div>
+<p>where <span class="arithmatex">\(C^\circ\)</span> is the connectivity of the same habitat quality <span class="arithmatex">\(q\)</span> with permeability 1, that of forest, at every pixel. The denominator depends only on the position of pixel <span class="arithmatex">\(i\)</span> relative to the habitat. Above 1, a gain in permeability at pixel <span class="arithmatex">\(i\)</span> increases connectivity more than it would if every pixel had permeability 1; below 1, less.</p>
+<p>For the least-cost path distance, the cost <span class="arithmatex">\(1/a_e\)</span> of an edge <span class="arithmatex">\(e\)</span> of pixel <span class="arithmatex">\(i\)</span> has the derivative <span class="arithmatex">\(-1/(2 a_e^2)\)</span> with respect to <span class="arithmatex">\(p_i\)</span>. The derivative of the distance between two pixels is the sum of these terms over the edges of pixel <span class="arithmatex">\(i\)</span> on the cheapest route, and is 0 for a route without pixel <span class="arithmatex">\(i\)</span>.</p>
+<p>For the resistance distance, let a unit current enter the circuit at pixel <span class="arithmatex">\(s\)</span> and leave it at pixel <span class="arithmatex">\(t\)</span>. The current <span class="arithmatex">\(I_e\)</span> through edge <span class="arithmatex">\(e\)</span> is the expected net number of crossings of <span class="arithmatex">\(e\)</span> by a random walker that starts at <span class="arithmatex">\(s\)</span> and stops at <span class="arithmatex">\(t\)</span>. The derivative of the resistance distance <span class="arithmatex">\(R_{st}\)</span> is</p>
+<div class="arithmatex">\[\frac{\partial R_{st}}{\partial p_i} = -\frac{1}{2} \sum_{e \ni i} \frac{I_e^2}{a_e^2}.\]</div>
+<p>The sensitivity of <span class="arithmatex">\(C\)</span> is the sum of the terms <span class="arithmatex">\(\frac{1}{2} \sum_{e \ni i} I_e^2 / a_e^2\)</span> over the ordered pairs of distinct habitat pixels <span class="arithmatex">\(s, t\)</span>, with the weights <span class="arithmatex">\(-q_s q_t \, K'(R_{st})\)</span>, positive for a decreasing <span class="arithmatex">\(K\)</span>. Because of the factor <span class="arithmatex">\(1/a_e^2\)</span>, close to <span class="arithmatex">\(1/p_i^2\)</span> where neighbouring pixels have similar permeabilities, the sensitivity is large on pixels of low permeability that random walkers between habitat pixels cross.</p>
+</details>
+<div class="highlight"><pre><span></span><code><span class="n">diverging</span> <span class="o">=</span> <span class="n">LinearSegmentedColormap</span><span class="o">.</span><span class="n">from_list</span><span class="p">(</span>
+    <span class="s2">"diverging"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"#0d366b"</span><span class="p">,</span> <span class="s2">"#3987e5"</span><span class="p">,</span> <span class="s2">"#eeece6"</span><span class="p">,</span> <span class="s2">"#e66767"</span><span class="p">,</span> <span class="s2">"#7a1414"</span><span class="p">]</span>
+<span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">normalize</span><span class="p">(</span><span class="n">sensitivity</span><span class="p">,</span> <span class="n">reference</span><span class="p">):</span>
+    <span class="c1"># The reference sensitivity is 0 at pixels that no cheapest route crosses.</span>
+    <span class="n">ratio</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">divide</span><span class="p">(</span>
+        <span class="n">sensitivity</span><span class="p">,</span> <span class="n">reference</span><span class="p">,</span> <span class="n">out</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">sensitivity</span><span class="p">),</span> <span class="n">where</span><span class="o">=</span><span class="n">reference</span> <span class="o">&gt;</span> <span class="mi">0</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">ratio</span><span class="p">,</span> <span class="mf">1e-2</span><span class="p">,</span> <span class="mf">1e2</span><span class="p">)</span>
+
+
+<span class="n">fig</span><span class="p">,</span> <span class="n">axs</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">11</span><span class="p">,</span> <span class="mf">5.8</span><span class="p">),</span> <span class="n">layout</span><span class="o">=</span><span class="s2">"constrained"</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">ax</span><span class="p">,</span> <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">result</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">axs</span><span class="p">,</span> <span class="n">results</span><span class="o">.</span><span class="n">items</span><span class="p">()):</span>
+    <span class="n">normalized</span> <span class="o">=</span> <span class="n">normalize</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="s2">"permeability"</span><span class="p">],</span> <span class="n">result</span><span class="p">[</span><span class="s2">"reference"</span><span class="p">])</span>
+    <span class="n">image</span> <span class="o">=</span> <span class="n">show</span><span class="p">(</span><span class="n">ax</span><span class="p">,</span> <span class="n">normalized</span><span class="p">,</span> <span class="n">diverging</span><span class="p">,</span> <span class="n">LogNorm</span><span class="p">(</span><span class="mf">1e-2</span><span class="p">,</span> <span class="mf">1e2</span><span class="p">),</span> <span class="n">name</span><span class="p">)</span>
+<span class="n">fig</span><span class="o">.</span><span class="n">colorbar</span><span class="p">(</span><span class="n">image</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">axs</span><span class="p">,</span> <span class="n">shrink</span><span class="o">=</span><span class="mf">0.7</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">"Normalized sensitivity"</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</code></pre></div>
+<p><img alt="img" src="../_data/3380bf1284db4a3283b9aaa6bb5ef89a.png" /></p>
+<p>For conservation planning, pixels with values above 1 are land of low permeability that movement between habitat patches crosses, where restoring permeability (wildlife crossings, hedgerows, riparian forest) gains the most connectivity: with the resistance distance, the roads and streams through forest, the farmland around small forest patches and the developed land next to barriers. Pixels with values far below 1 are where restoration gains little: small forest patches, whose permeability is already the highest, and farmland that movement between habitat patches bypasses. With the least-cost path distance, pixels with values above 1 lie mostly where the cheapest routes cross roads and streams inside forest.</p>
+<h2 id="comparison-with-omniscapes-normalized-current">Comparison with Omniscape's normalized current<a class="headerlink" href="#comparison-with-omniscapes-normalized-current" title="Permanent link">¤</a></h2>
+<p><a href="https://docs.circuitscape.org/Omniscape.jl/stable/">Omniscape.jl</a> maps connectivity with circuit theory in moving windows, and divides its cumulative current by the current with resistance 1 at every pixel: pixels with values above 1 are corridors and pinch points, where movement is channelled. Two changes bring the normalized sensitivity close to this normalized current: the derivative with respect to resistance instead of permeability, and a proximity with equal weights for all pairs of habitat pixels, <span class="arithmatex">\(K(R) = -R\)</span>. The <code>proximity</code> argument accepts any differentiable function of the distance.</p>
+<details class="info">
+<summary>Theory: normalized sensitivity and Omniscape's normalized current</summary>
+<p>Omniscape injects current from the habitat pixels of each window into its centre, sums the magnitudes of the currents through each pixel over all windows, and divides this cumulative current by the <em>flow potential</em>, the same sum with resistance 1 at every pixel. Two changes relate the normalized sensitivity of the resistance distance to this normalized current.</p>
+<ul>
+<li><strong>Sensitivity to resistance.</strong> Multiplied by <span class="arithmatex">\(p_i^2\)</span>, the sensitivity to permeability becomes the sensitivity to the resistance <span class="arithmatex">\(r_i = 1/p_i\)</span> of the pixel, with its sign changed: <span class="arithmatex">\(p_i^2 \, \partial C / \partial p_i = -\partial C / \partial r_i\)</span>. Where <span class="arithmatex">\(a_e \approx p_i\)</span>, the factor <span class="arithmatex">\(1/a_e^2\)</span> cancels, and each pair of habitat pixels contributes <span class="arithmatex">\(\frac{1}{2} \sum_{e \ni i} I_e^2\)</span>, the squared currents through pixel <span class="arithmatex">\(i\)</span>.</li>
+<li><strong>Equal pair weights.</strong> Each pair of habitat pixels <span class="arithmatex">\(s, t\)</span> contributes with the weight <span class="arithmatex">\(-q_s q_t \, K'(R_{st})\)</span>. With the default kernel, <span class="arithmatex">\(-K'\)</span> decreases with <span class="arithmatex">\(R\)</span> as <span class="arithmatex">\(K\)</span> does, so that the pairs that farmland separates weigh almost nothing; Omniscape injects the current of every source in the window, whatever the resistance between the source and the centre. With the proximity <span class="arithmatex">\(K(R) = -R\)</span>, every pair has the weight <span class="arithmatex">\(q_s q_t\)</span>, and <span class="arithmatex">\(C\)</span> is minus the sum of the resistance distances between the habitat pixels within the dependency range of each other.</li>
+</ul>
+<p>With permeability 1 at every pixel, <span class="arithmatex">\(p_i^2 = 1\)</span>, so the normalized sensitivity to resistance is <span class="arithmatex">\(p_i^2 \, \partial C / \partial p_i\)</span> divided by the reference sensitivity <span class="arithmatex">\(\partial C^\circ / \partial p_i\)</span>.</p>
+<p>The two quantities still differ. Omniscape sums the magnitudes of the currents from the sources of each circular window to its centre, on a graph of eight neighbours. <code>SensitivityAnalysis</code> sums the squared currents between all pairs of habitat pixels that lie within <span class="arithmatex">\(D\)</span> of each other along both axes, on a graph of four neighbours.</p>
+</details>
+<div class="highlight"><pre><span></span><code><span class="n">equal_weights</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+    <span class="n">settings</span><span class="p">,</span>
+    <span class="n">proximity</span><span class="o">=</span><span class="k">lambda</span> <span class="n">d</span><span class="p">:</span> <span class="o">-</span><span class="n">d</span><span class="p">,</span>  <span class="c1"># K(R) = -R: all pairs of habitat pixels weigh the same</span>
+    <span class="n">quality_raster</span><span class="o">=</span><span class="n">quality</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">distances</span><span class="p">[</span><span class="s2">"Resistance distance"</span><span class="p">],</span>
+<span class="p">)</span>
+<span class="n">to_permeability</span> <span class="o">=</span> <span class="n">timed</span><span class="p">(</span>
+    <span class="s2">"Resistance distance, K = -R, sensitivity to permeability"</span><span class="p">,</span>
+    <span class="k">lambda</span><span class="p">:</span> <span class="n">SensitivityAnalysis</span><span class="p">(</span><span class="o">**</span><span class="n">equal_weights</span><span class="p">,</span> <span class="n">permeability_raster</span><span class="o">=</span><span class="n">permeability</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+        <span class="s2">"permeability"</span>
+    <span class="p">),</span>
+<span class="p">)</span>
+<span class="n">reference_to_permeability</span> <span class="o">=</span> <span class="n">timed</span><span class="p">(</span>
+    <span class="s2">"Resistance distance, K = -R, reference sensitivity to permeability"</span><span class="p">,</span>
+    <span class="k">lambda</span><span class="p">:</span> <span class="n">SensitivityAnalysis</span><span class="p">(</span><span class="o">**</span><span class="n">equal_weights</span><span class="p">,</span> <span class="n">permeability_raster</span><span class="o">=</span><span class="n">uniform</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+        <span class="s2">"permeability"</span>
+    <span class="p">),</span>
+<span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="c1"># p² ∂C/∂p = -∂C/∂r; the reference permeability is 1</span>
+<span class="n">normalized</span> <span class="o">=</span> <span class="n">normalize</span><span class="p">(</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">permeability</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">to_permeability</span><span class="p">),</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">reference_to_permeability</span><span class="p">),</span>
+<span class="p">)</span>
+
+<span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mf">6.5</span><span class="p">,</span> <span class="mi">6</span><span class="p">),</span> <span class="n">layout</span><span class="o">=</span><span class="s2">"constrained"</span><span class="p">)</span>
+<span class="n">image</span> <span class="o">=</span> <span class="n">show</span><span class="p">(</span>
+    <span class="n">ax</span><span class="p">,</span> <span class="n">normalized</span><span class="p">,</span> <span class="n">diverging</span><span class="p">,</span> <span class="n">LogNorm</span><span class="p">(</span><span class="mf">1e-2</span><span class="p">,</span> <span class="mf">1e2</span><span class="p">),</span> <span class="s2">"Resistance distance, $K = -R$"</span>
+<span class="p">)</span>
+<span class="n">fig</span><span class="o">.</span><span class="n">colorbar</span><span class="p">(</span><span class="n">image</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span> <span class="n">shrink</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">"Normalized sensitivity to resistance"</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</code></pre></div>
+<p><img alt="img" src="../_data/ea5ccf21dce841bd81b6900d8e9c0ca7.png" /></p>
+<p>Omniscape.jl's documentation shows its normalized current for the same land cover, radius and blocks, on a linear colour scale:</p>
+<p><img src="https://docs.circuitscape.org/Omniscape.jl/stable/figs/md-norm-cur.png" alt="Normalized current flow of Omniscape.jl's Maryland example" width="500"></p>
+<p><em>Normalized current flow of <a href="https://docs.circuitscape.org/Omniscape.jl/stable/examples/">Omniscape.jl's example</a>.</em></p>
+<p>In both maps, values exceed 1 along the same corridors: the river and the streams lined with forest, the north-south strip of forest in the west, and the links between the forest patches of the east. A planner reads this map as Omniscape's: pixels with values above 1 are corridors and pinch points to protect, where movement concentrates and a loss of permeability costs the most connectivity; pixels with values below 1 are land where movement is impeded. The map of the normalized sensitivity to permeability, in the previous section, shows in addition where restoration pays off.</p>
+<h2 id="runtimes">Runtimes<a class="headerlink" href="#runtimes" title="Permanent link">¤</a></h2>
+<p>The runtimes include creating the analyses and compiling their programs, which JAX does on their first run in a process. These maps and runtimes are compared with Omniscape.jl's in <a href="https://github.com/vboussange/jaxscape/issues/57#issuecomment-6763809687">issue #57</a>.</p>
+<div class="highlight"><pre><span></span><code><span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">seconds</span> <span class="ow">in</span> <span class="n">runtimes</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">label</span><span class="si">:</span><span class="s2">&lt;68</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">seconds</span><span class="si">:</span><span class="s2">5.1f</span><span class="si">}</span><span class="s2"> s"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="s1">'Total'</span><span class="si">:</span><span class="s2">&lt;68</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="nb">sum</span><span class="p">(</span><span class="n">runtimes</span><span class="o">.</span><span class="n">values</span><span class="p">())</span><span class="si">:</span><span class="s2">5.1f</span><span class="si">}</span><span class="s2"> s"</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>Least-cost path distance, connectivity                                 3.7 s
+Least-cost path distance, sensitivity to permeability                  4.2 s
+Least-cost path distance, sensitivity to quality                       3.1 s
+Least-cost path distance, reference sensitivity to permeability        0.6 s
+Resistance distance, connectivity                                     13.3 s
+Resistance distance, sensitivity to permeability                      13.5 s
+Resistance distance, sensitivity to quality                            5.0 s
+Resistance distance, reference sensitivity to permeability             2.5 s
+Resistance distance, K = -R, sensitivity to permeability              13.3 s
+Resistance distance, K = -R, reference sensitivity to permeability     2.4 s
+Total                                                                 61.6 s
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "toc.integrate", "header.autohide", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+        <script src="../../../_static/mathjax.js"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>

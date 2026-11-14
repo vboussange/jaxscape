@@ -1,0 +1,1190 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A minimal JAX library for connectivity modelling at scale">
+      
+      
+        <meta name="author" content="Victor Boussange">
+      
+      
+        <link rel="canonical" href="https://vboussange.github.io/jaxscape/examples/distance_calculation/distance_calculation/">
+      
+      
+        <link rel="prev" href="../../../benchmark/">
+      
+      
+        <link rel="next" href="../../connectivity_analysis/connectivity_analysis/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+    
+    
+      
+        <title>Distance calculation - JAXScape</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../../_static/custom_css.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#distance-calculation" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="JAXScape" class="md-header__button md-logo" aria-label="JAXScape" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            JAXScape
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Distance calculation
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/vboussange/jaxscape" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    vboussange/jaxscape
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="JAXScape" class="md-nav__button md-logo" aria-label="JAXScape" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    JAXScape
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/vboussange/jaxscape" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    vboussange/jaxscape
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../benchmark/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmark
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Distance calculation
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Distance calculation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#graph-from-a-raster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Graph from a raster
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#distances" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Distances
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resistance-distance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resistance distance
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Resistance distance">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#linear-solvers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Linear solvers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#exact-and-approximate-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exact and approximate methods
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#free-energy-distance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Free-energy distance
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#differentiating-distances" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Differentiating distances
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../connectivity_analysis/connectivity_analysis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connectivity analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../advanced/moving_windows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Moving-window operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/graphs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Graphs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/distances/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Distances
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/linear_solvers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linear solvers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/connectivity_analysis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connectivity analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/window_operations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Window operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="distance-calculation">Distance calculation<a class="headerlink" href="#distance-calculation" title="Permanent link">¤</a></h1>
+<p>This example computes distances on a graph with JAXScape and differentiates them.
+The graph has one vertex per pixel of a raster, and its edge weights derive
+from the raster values. JAXScape implements the least-cost path distance
+(<a href="../../../api/distances/#jaxscape.lcp_distance.LCPDistance"><code>LCPDistance</code></a>), the resistance distance (<a href="../../../api/distances/#jaxscape.resistance_distance.ResistanceDistance"><code>ResistanceDistance</code></a>),
+and the free-energy distance (<a href="../../../api/distances/#jaxscape.free_energy_distance.FreeEnergyDistance"><code>FreeEnergyDistance</code></a>), a family of
+distances between the two, indexed by an inverse temperature <span class="arithmatex">\(\theta\)</span>. All three are differentiable with respect to the edge weights,
+and so with respect to the raster. <a href="../../../api/distances/#jaxscape.euclidean_distance.EuclideanDistance"><code>EuclideanDistance</code></a> returns the
+straight-line distance between pixel centres, which does not depend on the edge
+weights.</p>
+<p>The example needs JAXScape and Matplotlib:</p>
+<div class="highlight"><pre><span></span><code>uv<span class="w"> </span>add<span class="w"> </span>jaxscape<span class="w"> </span>matplotlib
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="c1"># Download the example raster.</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">urllib.request</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">zipfile</span>
+
+
+<span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="s2">"../data"</span><span class="p">):</span>
+    <span class="n">urllib</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">urlretrieve</span><span class="p">(</span>
+        <span class="s2">"https://github.com/vboussange/jaxscape/releases/download/v0.0.6/data.zip"</span><span class="p">,</span>
+        <span class="s2">"../data.zip"</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">with</span> <span class="n">zipfile</span><span class="o">.</span><span class="n">ZipFile</span><span class="p">(</span><span class="s2">"../data.zip"</span><span class="p">)</span> <span class="k">as</span> <span class="n">z</span><span class="p">:</span>
+        <span class="n">z</span><span class="o">.</span><span class="n">extractall</span><span class="p">(</span><span class="s2">".."</span><span class="p">)</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"../data.zip"</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">equinox</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eqx</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxscape</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">FreeEnergyDistance</span><span class="p">,</span>
+    <span class="n">GridGraph</span><span class="p">,</span>
+    <span class="n">LCPDistance</span><span class="p">,</span>
+    <span class="n">ResistanceDistance</span><span class="p">,</span>
+    <span class="n">SpielmanApproximation</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxscape.solvers</span><span class="w"> </span><span class="kn">import</span> <span class="n">GeometricMultigridCGSolver</span>
+</code></pre></div>
+<h2 id="graph-from-a-raster">Graph from a raster<a class="headerlink" href="#graph-from-a-raster" title="Permanent link">¤</a></h2>
+<p>A <a href="../../../api/graphs/#jaxscape.graph.GridGraph"><code>GridGraph</code></a> has one vertex per pixel, and an edge between each pixel
+and each of its four horizontal and vertical neighbours (<code>ROOK_CONTIGUITY</code>, the
+default; <code>QUEEN_CONTIGUITY</code> adds the four diagonal neighbours). The weight of
+the edge from pixel <span class="arithmatex">\(i\)</span> to pixel <span class="arithmatex">\(j\)</span> is <code>fun(x_i, x_j)</code>, where <span class="arithmatex">\(x\)</span> is the
+raster. JAXScape reads edge weights as conductances <span class="arithmatex">\(a_{ij}\)</span>; <code>LCPDistance</code> and
+<code>FreeEnergyDistance</code> assign each edge the cost <span class="arithmatex">\(c_{ij} = 1/a_{ij}\)</span>.</p>
+<p>The raster is a 20 × 20 map of permeability, the ease of movement through a
+pixel, as used in movement ecology: 1 in the open area and 0 in two barriers.
+Adding 0.01 keeps the graph connected. An edge of zero conductance is absent:
+with a permeability of 0, the pixels inside the barriers would have no edges,
+and the resistance and free-energy distances require a connected graph.</p>
+<div class="highlight"><pre><span></span><code><span class="n">permeability</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">loadtxt</span><span class="p">(</span><span class="s2">"../data/permeability.csv"</span><span class="p">,</span> <span class="n">delimiter</span><span class="o">=</span><span class="s2">","</span><span class="p">))</span>
+<span class="n">permeability</span> <span class="o">=</span> <span class="n">permeability</span> <span class="o">+</span> <span class="mf">0.01</span>
+<span class="n">barriers</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">permeability</span> <span class="o">&lt;</span> <span class="mf">0.1</span><span class="p">)</span>
+
+<span class="n">grid</span> <span class="o">=</span> <span class="n">GridGraph</span><span class="p">(</span><span class="n">permeability</span><span class="p">,</span> <span class="n">fun</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="p">(</span><span class="n">x</span> <span class="o">+</span> <span class="n">y</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">grid</span><span class="o">.</span><span class="n">nv</span><span class="si">}</span><span class="s2"> vertices"</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>400 vertices
+</code></pre></div>
+<p>With the arithmetic mean, <span class="arithmatex">\(a_{ij} = a_{ji}\)</span>: the graph is undirected, as the
+resistance and free-energy distances require. The default,
+<code>fun=lambda x, y: y</code>, takes the permeability of the target pixel and gives a
+directed graph.</p>
+<h2 id="distances">Distances<a class="headerlink" href="#distances" title="Permanent link">¤</a></h2>
+<p>A distance is an <a href="https://docs.kidger.site/equinox/">Equinox</a> module. Called
+on a graph with <span class="arithmatex">\(n\)</span> vertices, it returns a matrix of distances:</p>
+<ul>
+<li><code>distance(graph)</code>: between all pairs of vertices, with shape <span class="arithmatex">\((n, n)\)</span>;</li>
+<li><code>distance(graph, sources=s)</code>: from the <span class="arithmatex">\(p\)</span> vertices <code>s</code> to every vertex, with
+  shape <span class="arithmatex">\((p, n)\)</span>;</li>
+<li><code>distance(graph, sources=s, targets=t)</code>: from the <span class="arithmatex">\(p\)</span> vertices <code>s</code> to the
+  <span class="arithmatex">\(q\)</span> vertices <code>t</code>, with shape <span class="arithmatex">\((p, q)\)</span>;</li>
+<li><code>distance(graph, nodes=v)</code>: between the <span class="arithmatex">\(p\)</span> vertices <code>v</code>, with shape <span class="arithmatex">\((p, p)\)</span>.</li>
+</ul>
+<p>Vertices are given as indices, in a 1D array, or on a <code>GridGraph</code> as
+(row, column) coordinates, in an array of shape <span class="arithmatex">\((p, 2)\)</span>. The code below
+computes the distances from the top-left pixel to every pixel.</p>
+<details class="info">
+<summary>Theory: definitions</summary>
+<p>Let <span class="arithmatex">\(A\)</span> be the matrix of conductances <span class="arithmatex">\(a_{ij}\)</span>, <span class="arithmatex">\(D\)</span> the diagonal matrix of
+weighted degrees <span class="arithmatex">\(D_{ii} = \sum_j a_{ij}\)</span>, and <span class="arithmatex">\(c_{ij} = 1/a_{ij}\)</span> the cost
+of edge <span class="arithmatex">\((i, j)\)</span>.</p>
+<p><strong>Least-cost path distance.</strong> The minimum, over the paths <span class="arithmatex">\(\pi\)</span> from <span class="arithmatex">\(i\)</span> to
+<span class="arithmatex">\(j\)</span>, of the total edge cost:</p>
+<div class="arithmatex">\[d_{ij} = \min_{\pi} \sum_{(u, v) \in \pi} c_{uv}.\]</div>
+<p><code>LCPDistance</code> computes it with the Bellman-Ford algorithm by default, or
+with the Floyd-Warshall algorithm (<code>algorithm="floyd-warshall"</code>).</p>
+<p><strong>Resistance distance.</strong> With the Laplacian <span class="arithmatex">\(L = D - A\)</span> and its
+Moore-Penrose pseudo-inverse <span class="arithmatex">\(L^+\)</span>,</p>
+<div class="arithmatex">\[R_{ij} = (e_i - e_j)^\top L^+ (e_i - e_j),\]</div>
+<p>the effective resistance between <span class="arithmatex">\(i\)</span> and <span class="arithmatex">\(j\)</span> in the electrical network whose
+edges have conductances <span class="arithmatex">\(a_{ij}\)</span>. It depends on every path between <span class="arithmatex">\(i\)</span> and
+<span class="arithmatex">\(j\)</span>. For the random walk with transition probabilities <span class="arithmatex">\(a_{ij}/D_{ii}\)</span>, the
+expected number of steps from <span class="arithmatex">\(i\)</span> to <span class="arithmatex">\(j\)</span> and back to <span class="arithmatex">\(i\)</span> is
+<span class="arithmatex">\(R_{ij} \sum_k D_{kk}\)</span>.</p>
+<p><strong>Free-energy distance.</strong> Let <span class="arithmatex">\(P = D^{-1} A\)</span> be the transition matrix of
+that random walk, <span class="arithmatex">\(C\)</span> the matrix of edge costs, and <span class="arithmatex">\(\theta &gt; 0\)</span> an inverse
+temperature. With <span class="arithmatex">\(Z = (I - P \odot e^{-\theta C})^{-1}\)</span>, where the product
+<span class="arithmatex">\(\odot\)</span> and the exponential are elementwise, and <span class="arithmatex">\(z^h_{ij} = Z_{ij} / Z_{jj}\)</span>,</p>
+<div class="arithmatex">\[d_{ij} = -\frac{\log z^h_{ij} + \log z^h_{ji}}{2\theta}.\]</div>
+<p><span class="arithmatex">\(Z_{ij}\)</span> is the sum, over the walks from <span class="arithmatex">\(i\)</span> to <span class="arithmatex">\(j\)</span>, of their probability
+under the random walk times <span class="arithmatex">\(e^{-\theta \times \text{cost}}\)</span>. As <span class="arithmatex">\(\theta \to \infty\)</span>,
+<span class="arithmatex">\(d_{ij}\)</span> tends to the least-cost path distance. As <span class="arithmatex">\(\theta \to 0\)</span>, on a
+graph with <span class="arithmatex">\(m\)</span> undirected edges and no self-loops, it tends to <span class="arithmatex">\(m R_{ij}\)</span>.
+See <a href="https://arxiv.org/abs/1212.1666">Kivimäki, Shimbo and Saerens (2014)</a>
+and <a href="https://apiacoa.org/publications/2017/francoissekivimakietal2017bag-of-path.pdf">Françoisse et al. (2017)</a>.</p>
+<p><strong>Euclidean distance.</strong> The straight-line distance between pixel centres,
+in units of the pixel side.</p>
+</details>
+<div class="highlight"><pre><span></span><code><span class="n">source</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]])</span>  <span class="c1"># (row, column) of the top-left pixel</span>
+
+<span class="n">distances</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">"Least-cost path"</span><span class="p">:</span> <span class="n">LCPDistance</span><span class="p">(),</span>
+    <span class="s2">"Resistance"</span><span class="p">:</span> <span class="n">ResistanceDistance</span><span class="p">(),</span>
+    <span class="sa">r</span><span class="s2">"Free energy, $\theta = 0.03$"</span><span class="p">:</span> <span class="n">FreeEnergyDistance</span><span class="p">(</span><span class="n">theta</span><span class="o">=</span><span class="mf">0.03</span><span class="p">),</span>
+<span class="p">}</span>
+<span class="n">maps</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">distance</span> <span class="ow">in</span> <span class="n">distances</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="n">distance</span><span class="p">(</span><span class="n">grid</span><span class="p">,</span> <span class="n">sources</span><span class="o">=</span><span class="n">source</span><span class="p">)</span>  <span class="c1"># shape (1, grid.nv)</span>
+    <span class="n">maps</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ma</span><span class="o">.</span><span class="n">masked_where</span><span class="p">(</span><span class="n">barriers</span><span class="p">,</span> <span class="n">grid</span><span class="o">.</span><span class="n">node_values_to_array</span><span class="p">(</span><span class="n">d</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="n">cmap</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">cm</span><span class="o">.</span><span class="n">magma</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+<span class="n">cmap</span><span class="o">.</span><span class="n">set_bad</span><span class="p">(</span><span class="s2">"lightgray"</span><span class="p">)</span>  <span class="c1"># barrier pixels</span>
+
+<span class="n">fig</span><span class="p">,</span> <span class="n">axs</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">12</span><span class="p">,</span> <span class="mf">3.3</span><span class="p">))</span>
+<span class="n">im</span> <span class="o">=</span> <span class="n">axs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">permeability</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="s2">"gray"</span><span class="p">,</span> <span class="n">vmin</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">vmax</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">axs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s2">"Permeability"</span><span class="p">)</span>
+<span class="n">fig</span><span class="o">.</span><span class="n">colorbar</span><span class="p">(</span><span class="n">im</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">axs</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">shrink</span><span class="o">=</span><span class="mf">0.7</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">ax</span><span class="p">,</span> <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">values</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">axs</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="n">maps</span><span class="o">.</span><span class="n">items</span><span class="p">()):</span>
+    <span class="n">im</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="n">cmap</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+    <span class="n">fig</span><span class="o">.</span><span class="n">colorbar</span><span class="p">(</span><span class="n">im</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span> <span class="n">shrink</span><span class="o">=</span><span class="mf">0.7</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">ax</span> <span class="ow">in</span> <span class="n">axs</span><span class="p">:</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_xticks</span><span class="p">([])</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_yticks</span><span class="p">([])</span>
+<span class="n">fig</span><span class="o">.</span><span class="n">suptitle</span><span class="p">(</span><span class="s2">"Distance from the top-left pixel"</span><span class="p">)</span>
+<span class="n">fig</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
+<span class="n">fig</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="s2">"distances.png"</span><span class="p">,</span> <span class="n">dpi</span><span class="o">=</span><span class="mi">300</span><span class="p">,</span> <span class="n">transparent</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">bbox_inches</span><span class="o">=</span><span class="s2">"tight"</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</code></pre></div>
+<p><img alt="img" src="../_data/595f965a1e834d038232d00d5a7f39be.png" /></p>
+<h2 id="resistance-distance">Resistance distance<a class="headerlink" href="#resistance-distance" title="Permanent link">¤</a></h2>
+<p>Computing resistance distances requires solving linear systems in the graph
+Laplacian: the exact distances from one source to all <span class="arithmatex">\(n\)</span> vertices require
+solutions for <span class="arithmatex">\(n + 1\)</span> right-hand sides. Two attributes of <code>ResistanceDistance</code>
+set the cost and accuracy of the computation: <code>solver</code>, which solves the linear
+systems, and <code>method</code>, which selects exact distances or a randomized
+approximation.</p>
+<details class="info">
+<summary>Theory: exact resistance distances</summary>
+<p>For a connected graph, <span class="arithmatex">\(L\)</span> is singular: <span class="arithmatex">\(L \mathbf{1} = 0\)</span>. JAXScape
+grounds it at a vertex <span class="arithmatex">\(g\)</span> of high weighted degree, near the centre pixel of
+a grid graph: <span class="arithmatex">\(L_g = L + D_{gg} e_g e_g^\top\)</span> is symmetric positive
+definite.
+Let <span class="arithmatex">\(S\)</span> be the inverse of <span class="arithmatex">\(L\)</span> with the row and column of <span class="arithmatex">\(g\)</span> removed,
+padded with zeros in that row and column; the solutions of <span class="arithmatex">\(L_g x = e_i\)</span>
+minus their value at <span class="arithmatex">\(g\)</span> are the columns <span class="arithmatex">\(S e_i\)</span>. Then</p>
+<div class="arithmatex">\[R_{ij} = S_{ii} + S_{jj} - 2 S_{ij}.\]</div>
+<p>The distances from source <span class="arithmatex">\(i\)</span> to targets <span class="arithmatex">\(j\)</span> need the column <span class="arithmatex">\(S e_i\)</span>, one
+right-hand side, and the diagonal entries <span class="arithmatex">\(S_{jj}\)</span>, one right-hand side
+per target.</p>
+</details>
+<h3 id="linear-solvers">Linear solvers<a class="headerlink" href="#linear-solvers" title="Permanent link">¤</a></h3>
+<p>The default solver, <a href="../../../api/linear_solvers/#jaxscape.solvers.geometricmultigridcgsolver.GeometricMultigridCGSolver"><code>GeometricMultigridCGSolver</code></a>, applies the conjugate
+gradient (CG) method, preconditioned by one geometric multigrid cycle per
+iteration, to the grounded Laplacian. It runs in JAX on CPUs and GPUs, in
+float32 and float64, inside <code>jax.jit</code>. It applies to grid graphs, such as those
+of a <code>GridGraph</code>; with other graphs, the default solver raises an error. The
+alternatives:</p>
+<ul>
+<li><code>solver=None</code>: dense linear algebra, the pseudo-inverse of <span class="arithmatex">\(L\)</span> for all-pairs
+  and <code>nodes</code> queries and a dense Cholesky factorization of <span class="arithmatex">\(L_g\)</span> for the
+  others. Memory grows with <span class="arithmatex">\(n^2\)</span>, so it suits small graphs only.</li>
+<li>Sparse direct solvers, <a href="../../../api/linear_solvers/#jaxscape.solvers.cholmodsolver.CholmodSolver"><code>CholmodSolver</code></a> on CPUs and
+  <a href="../../../api/linear_solvers/#jaxscape.solvers.cudsssolver.CuDSSSolver"><code>CuDSSSolver</code></a> on NVIDIA GPUs: every right-hand side is solved with
+  one sparse factorization of <span class="arithmatex">\(L_g\)</span>. They suit graphs other than grids and, on
+  CPUs, queries with many right-hand sides, such as all pairs or one source to
+  every vertex, when the factorization fits in memory.</li>
+<li>CG preconditioned by algebraic multigrid, <a href="../../../api/linear_solvers/#jaxscape.solvers.amjaxcgsolver.AMJaxCGSolver"><code>AMJaxCGSolver</code></a>, when
+  the factorization does not fit in memory.</li>
+<li>Any <a href="https://docs.kidger.site/lineax/">Lineax</a> solver that accepts a sparse
+  symmetric positive definite operator, such as <code>lineax.CG</code>.</li>
+</ul>
+<p>The solver for each device, query and graph size, and the optional dependency
+of each, are in <a href="../../../api/linear_solvers/">Linear solvers</a>. CG
+stops when the norm of its residual, relative to that of the right-hand side,
+falls below <code>rtol</code> (<span class="arithmatex">\(10^{-5}\)</span> by default). The code below compares the default
+solver with dense linear algebra.</p>
+<div class="highlight"><pre><span></span><code><span class="n">multigrid</span> <span class="o">=</span> <span class="n">ResistanceDistance</span><span class="p">(</span><span class="n">solver</span><span class="o">=</span><span class="n">GeometricMultigridCGSolver</span><span class="p">(</span><span class="n">rtol</span><span class="o">=</span><span class="mf">1e-5</span><span class="p">))</span>  <span class="c1"># default</span>
+<span class="n">dense</span> <span class="o">=</span> <span class="n">ResistanceDistance</span><span class="p">(</span><span class="n">solver</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+
+<span class="n">r_multigrid</span> <span class="o">=</span> <span class="n">multigrid</span><span class="p">(</span><span class="n">grid</span><span class="p">,</span> <span class="n">sources</span><span class="o">=</span><span class="n">source</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">r_dense</span> <span class="o">=</span> <span class="n">dense</span><span class="p">(</span><span class="n">grid</span><span class="p">,</span> <span class="n">sources</span><span class="o">=</span><span class="n">source</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">targets</span> <span class="o">=</span> <span class="n">r_dense</span> <span class="o">&gt;</span> <span class="mi">0</span>  <span class="c1"># every vertex but the source</span>
+<span class="n">difference</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">r_multigrid</span> <span class="o">-</span> <span class="n">r_dense</span><span class="p">)[</span><span class="n">targets</span><span class="p">]</span> <span class="o">/</span> <span class="n">r_dense</span><span class="p">[</span><span class="n">targets</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Largest relative difference: </span><span class="si">{</span><span class="n">jnp</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">difference</span><span class="p">)</span><span class="si">:</span><span class="s2">.1e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>Largest relative difference: 1.9e-05
+</code></pre></div>
+<p>The coarsest grid of the multigrid hierarchy has at most 1024 pixels, and
+<code>GeometricMultigridCGSolver</code> solves it with a Cholesky factorization. This grid of
+400 pixels is its own coarsest grid: both solvers factorize the grounded
+Laplacian, and their distances differ by float32 rounding error.</p>
+<h3 id="exact-and-approximate-methods">Exact and approximate methods<a class="headerlink" href="#exact-and-approximate-methods" title="Permanent link">¤</a></h3>
+<p><code>ResistanceDistance()</code> computes exact resistance distances by default, with
+the method <a href="../../../api/distances/#jaxscape.resistance_distance.ExactResistance"><code>ExactResistance</code></a>. For larger graphs, the
+Spielman-Srivastava randomized approximation, <a href="../../../api/distances/#jaxscape.resistance_distance.SpielmanApproximation"><code>SpielmanApproximation</code></a>,
+is selected with an explicit method object:
+<code>ResistanceDistance(method=SpielmanApproximation(epsilon=0.05, seed=0))</code>. The
+<code>epsilon</code> parameter belongs to <code>SpielmanApproximation</code>: smaller values mean more
+random projections, <span class="arithmatex">\(k = \lceil \ln n / \epsilon^2 \rceil\)</span>, and typically a
+better accuracy at a higher cost in memory and in linear solves. All-pairs and
+sources-to-targets queries require solutions for <span class="arithmatex">\(k\)</span> right-hand sides,
+whatever the number of sources and targets. The approximate method remains
+compatible with <code>jax.grad</code> via a custom implicit-differentiation rule: the
+backward pass solves the adjoint linear systems with the same solver.</p>
+<details class="info">
+<summary>Theory: Spielman-Srivastava approximation</summary>
+<p>Let <span class="arithmatex">\(B\)</span> be the oriented incidence matrix of the graph, with one row per
+edge, and <span class="arithmatex">\(W\)</span> the diagonal matrix of the edge conductances, so that
+<span class="arithmatex">\(L = B^\top W B\)</span>. Then</p>
+<div class="arithmatex">\[R_{ij} = \lVert W^{1/2} B L^+ (e_i - e_j) \rVert_2^2,\]</div>
+<p>the squared Euclidean distance between columns <span class="arithmatex">\(i\)</span> and <span class="arithmatex">\(j\)</span> of
+<span class="arithmatex">\(W^{1/2} B L^+\)</span>. These distances are approximately preserved by a random <span class="arithmatex">\(k \times m\)</span>
+matrix <span class="arithmatex">\(Q\)</span>, for <span class="arithmatex">\(m\)</span> edges, with independent entries <span class="arithmatex">\(\pm 1/\sqrt{k}\)</span>
+(Johnson-Lindenstrauss lemma). The <span class="arithmatex">\(k \times n\)</span> embedding
+<span class="arithmatex">\(Z = Q W^{1/2} B L^+\)</span> requires the solution of one Laplacian system per
+row of <span class="arithmatex">\(Q\)</span>, and</p>
+<div class="arithmatex">\[\tilde R_{ij} = \lVert Z (e_i - e_j) \rVert_2^2\]</div>
+<p>is an estimate of <span class="arithmatex">\(R_{ij}\)</span> for every pair of vertices.
+<a href="https://arxiv.org/abs/0803.0929">Spielman and Srivastava (2011)</a> show that, with
+<span class="arithmatex">\(k = O(\log n / \epsilon^2)\)</span> projections,
+<span class="arithmatex">\((1 - \epsilon) R_{ij} \le \tilde R_{ij} \le (1 + \epsilon) R_{ij}\)</span>
+for all pairs with high probability. <code>SpielmanApproximation</code> takes
+<span class="arithmatex">\(k = \lceil \ln n / \epsilon^2 \rceil\)</span>, with constant 1, so that <span class="arithmatex">\(\epsilon\)</span>
+is only a rough measure of the accuracy. Each estimate is unbiased, with
+variance at most <span class="arithmatex">\(2 R_{ij}^2 / k\)</span>.</p>
+</details>
+<p>The code below compares the approximation with the exact distances from the
+top-left pixel.</p>
+<div class="highlight"><pre><span></span><code><span class="n">exact</span> <span class="o">=</span> <span class="n">ResistanceDistance</span><span class="p">()(</span><span class="n">grid</span><span class="p">,</span> <span class="n">sources</span><span class="o">=</span><span class="n">source</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">targets</span> <span class="o">=</span> <span class="n">exact</span> <span class="o">&gt;</span> <span class="mi">0</span>  <span class="c1"># every vertex but the source</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Exact: </span><span class="si">{</span><span class="n">grid</span><span class="o">.</span><span class="n">nv</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2"> right-hand sides"</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">epsilon</span> <span class="ow">in</span> <span class="p">(</span><span class="mf">0.2</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">):</span>
+    <span class="n">method</span> <span class="o">=</span> <span class="n">SpielmanApproximation</span><span class="p">(</span><span class="n">epsilon</span><span class="o">=</span><span class="n">epsilon</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">approximate</span> <span class="o">=</span> <span class="n">ResistanceDistance</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">)(</span><span class="n">grid</span><span class="p">,</span> <span class="n">sources</span><span class="o">=</span><span class="n">source</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">error</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">approximate</span> <span class="o">-</span> <span class="n">exact</span><span class="p">)[</span><span class="n">targets</span><span class="p">]</span> <span class="o">/</span> <span class="n">exact</span><span class="p">[</span><span class="n">targets</span><span class="p">]</span>
+    <span class="n">k</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">grid</span><span class="o">.</span><span class="n">nv</span><span class="p">)</span> <span class="o">/</span> <span class="n">epsilon</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">"epsilon = </span><span class="si">{</span><span class="n">epsilon</span><span class="si">:</span><span class="s2">&lt;4</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">k</span><span class="si">:</span><span class="s2">&gt;4</span><span class="si">}</span><span class="s2"> right-hand sides, relative error "</span>
+        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">jnp</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">error</span><span class="p">)</span><span class="si">:</span><span class="s2">.1%</span><span class="si">}</span><span class="s2"> (median), </span><span class="si">{</span><span class="n">jnp</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">error</span><span class="p">)</span><span class="si">:</span><span class="s2">.1%</span><span class="si">}</span><span class="s2"> (largest)"</span>
+    <span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>Exact: 401 right-hand sides
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>epsilon = 0.2 :  150 right-hand sides, relative error 14.6% (median), 40.4% (largest)
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>epsilon = 0.1 :  600 right-hand sides, relative error 3.4% (median), 15.5% (largest)
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>epsilon = 0.05: 2397 right-hand sides, relative error 1.3% (median), 7.4% (largest)
+</code></pre></div>
+<p>On this graph of 400 vertices, the exact distances from one source require
+fewer right-hand sides than the approximation for <span class="arithmatex">\(\epsilon \le 0.1\)</span>. On a raster of
+<span class="arithmatex">\(10^6\)</span> pixels, <span class="arithmatex">\(\epsilon = 0.1\)</span> requires <span class="arithmatex">\(k = 1382\)</span> right-hand sides, against
+<span class="arithmatex">\(10^6 + 1\)</span> for the exact distances from one source.</p>
+<h2 id="free-energy-distance">Free-energy distance<a class="headerlink" href="#free-energy-distance" title="Permanent link">¤</a></h2>
+<p>Computing free-energy distances also requires solving linear systems. By
+default (<code>solver=None</code>), <code>FreeEnergyDistance</code> solves them with dense linear
+algebra, which suits small graphs; the solvers for larger graphs are in
+<a href="../../../api/linear_solvers/">Linear solvers</a>. Entries of <span class="arithmatex">\(Z\)</span> decay
+exponentially with path cost. <code>FreeEnergyDistance</code> checks that each queried
+entry is resolved and raises an error otherwise. In float64
+(<code>jax.config.update("jax_enable_x64", True)</code>), larger distances and larger
+values of <span class="arithmatex">\(\theta\)</span> are resolved than in float32, the default of JAX.</p>
+<h2 id="differentiating-distances">Differentiating distances<a class="headerlink" href="#differentiating-distances" title="Permanent link">¤</a></h2>
+<p><code>jax.grad</code> differentiates each distance above with respect to the
+conductances and, through <code>fun</code>, with respect to the raster. The code below
+differentiates the mean pairwise distance</p>
+<div class="arithmatex">\[\bar d = \frac{1}{n^2} \sum_{i, j} d_{ij}\]</div>
+<p>with respect to the permeability of each pixel. The graph is
+built inside the differentiated function, so that the gradient is taken through
+<code>GridGraph</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@eqx</span><span class="o">.</span><span class="n">filter_jit</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">mean_distance</span><span class="p">(</span><span class="n">permeability</span><span class="p">,</span> <span class="n">distance</span><span class="p">):</span>
+    <span class="n">grid</span> <span class="o">=</span> <span class="n">GridGraph</span><span class="p">(</span><span class="n">permeability</span><span class="p">,</span> <span class="n">fun</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="p">(</span><span class="n">x</span> <span class="o">+</span> <span class="n">y</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">distance</span><span class="p">(</span><span class="n">grid</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+
+
+<span class="n">gradients</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="n">name</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">grad</span><span class="p">(</span><span class="n">mean_distance</span><span class="p">)(</span><span class="n">permeability</span><span class="p">,</span> <span class="n">distance</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">distance</span> <span class="ow">in</span> <span class="n">distances</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+<span class="p">}</span>
+
+<span class="n">fig</span><span class="p">,</span> <span class="n">axs</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mf">3.3</span><span class="p">))</span>
+<span class="k">for</span> <span class="n">ax</span><span class="p">,</span> <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">gradient</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">axs</span><span class="p">,</span> <span class="n">gradients</span><span class="o">.</span><span class="n">items</span><span class="p">()):</span>
+    <span class="n">im</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ma</span><span class="o">.</span><span class="n">masked_where</span><span class="p">(</span><span class="n">barriers</span><span class="p">,</span> <span class="n">gradient</span><span class="p">),</span> <span class="n">cmap</span><span class="o">=</span><span class="n">cmap</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_xticks</span><span class="p">([])</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_yticks</span><span class="p">([])</span>
+    <span class="n">fig</span><span class="o">.</span><span class="n">colorbar</span><span class="p">(</span><span class="n">im</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span> <span class="n">shrink</span><span class="o">=</span><span class="mf">0.7</span><span class="p">)</span>
+<span class="n">fig</span><span class="o">.</span><span class="n">suptitle</span><span class="p">(</span><span class="s2">"Gradient of the mean pairwise distance with respect to permeability"</span><span class="p">)</span>
+<span class="n">fig</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</code></pre></div>
+<p><img alt="img" src="../_data/dec74b8134364fc79202fb2ffeb8308f.png" /></p>
+<p>Pixels with negative entries are those where an increase in permeability
+decreases the mean pairwise distance. The least-cost path distance depends on the edges of
+least-cost paths alone: for a unique least-cost path, the derivative of its
+distance with respect to the conductance <span class="arithmatex">\(a\)</span> of an edge is <span class="arithmatex">\(-1/a^2\)</span> on that path
+and zero elsewhere. The resistance and free-energy distances depend on all
+paths between two vertices. In the three maps, the gradient is largest in
+magnitude in the gap between the two barriers, most of all along the barriers:
+movement between the left and right halves of the landscape passes through the
+gap. For a species that moves through this landscape, the gap is a pinch point, where a loss of permeability,
+such as a new road, lengthens the most distances. Barrier pixels are grey.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "toc.integrate", "header.autohide", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+        <script src="../../../_static/mathjax.js"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>
