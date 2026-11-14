@@ -170,13 +170,18 @@ def _grid(pattern: CSRPattern) -> _Grid:
     of `_grid_width`.
     """
     n = pattern.n
+    columns = np.asarray(pattern.columns)
     # On the host: `pattern.rows` repeats the vertices on the device.
-    rows = np.repeat(np.arange(n), np.diff(np.asarray(pattern.offsets)))
-    columns = np.asarray(pattern.columns, np.int64)
-    width = int(_grid_width(np.abs(columns - rows)))
-    steps = np.stack(
-        [columns // width - rows // width, columns % width - rows % width], axis=1
-    )
+    counts = np.diff(np.asarray(pattern.offsets))
+    rows = np.repeat(np.arange(n, dtype=columns.dtype), counts)
+    gaps = columns - rows
+    width = int(_grid_width(np.abs(gaps)))
+    # The differences between the grid rows, and between the grid columns, of
+    # the two vertices of each CSR value: `gaps - row_steps * width` equals
+    # `columns % width - rows % width`.
+    row_steps = columns // width - rows // width
+    column_steps = gaps - row_steps * width
+    steps = np.stack([row_steps, column_steps])
     if n % width or np.any(np.abs(steps) > 1):
         raise ValueError(
             "GeometricMultigridCGSolver solves the matrices of grid graphs, whose "
@@ -186,11 +191,8 @@ def _grid(pattern: CSRPattern) -> _Grid:
             "`CholmodSolver` or `CuDSSSolver`, or `solver=None` for the dense solve "
             "of a small graph, as in `ResistanceDistance(solver=None)`."
         )
-    # The index of each CSR value's offset in a stencil of all nine offsets.
-    position = (steps[:, 0] + 1) * 3 + steps[:, 1] + 1
-    present = np.zeros(9, bool)
-    present[position] = True
-    offsets = _ROOK if not np.any(present[[0, 2, 6, 8]]) else _QUEEN
+    # Queen contiguity couples diagonal neighbours.
+    offsets = _QUEEN if np.any((row_steps != 0) & (column_steps != 0)) else _ROOK
     return _Grid((n // width, width), offsets)
 
 

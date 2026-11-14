@@ -207,7 +207,7 @@ def _matrix(solver: AbstractSparseSolver, operator: AbstractLinearOperator) -> B
 
 def _pattern(solver: AbstractSparseSolver, matrix: BCOO) -> CSRPattern:
     try:
-        indices = np.asarray(matrix.indices, dtype=np.int64)
+        indices = np.asarray(matrix.indices)
     except jax_errors.TracerArrayConversionError:
         raise ValueError(
             f"{type(solver).__name__} reads its sparsity pattern from concrete "
@@ -218,17 +218,30 @@ def _pattern(solver: AbstractSparseSolver, matrix: BCOO) -> CSRPattern:
             "`state`."
         ) from None
     n = matrix.shape[0]
-    valid = np.all((indices >= 0) & (indices < np.asarray(matrix.shape)), axis=1)
-    keys = indices[valid, 0] * n + indices[valid, 1]
-    unique_keys, slots = np.unique(keys, return_inverse=True)
-    nnz = unique_keys.shape[0]
-    row_counts = np.bincount(unique_keys // n, minlength=n)
-    value_map = np.full(indices.shape[0], nnz)
-    value_map[valid] = slots
+    rows, columns = indices[:, 0], indices[:, 1]
+    # Padding entries take the key `n * n`, past the keys of the matrix entries,
+    # so that they map to index `nnz`, past the CSR values.
+    in_bounds = (rows >= 0) & (rows < n) & (columns >= 0) & (columns < n)
+    keys = np.where(in_bounds, rows.astype(np.int64) * n + columns, n * n)
+    # The index of each key among the sorted unique keys, as `np.unique` with
+    # `return_inverse` gives it, from a stable sort: sparse indices commonly
+    # come in sorted runs, as those of a `GridGraph` do, which a stable sort
+    # sorts several times faster than the default sort of `np.unique`.
+    order = np.argsort(keys, kind="stable")
+    sorted_keys = keys[order]
+    first = np.diff(sorted_keys, prepend=-1) != 0
+    value_map = np.empty(keys.shape, np.int32)
+    value_map[order] = np.cumsum(first, dtype=np.int32) - 1
+    nnz = int(np.searchsorted(sorted_keys[first], n * n))
+    # The first stored entry of each CSR value.
+    heads = order[first][:nnz]
+    row_counts = np.bincount(rows[heads], minlength=n)
+    offsets = np.concatenate([[0], np.cumsum(row_counts)])
+    # Converted on the host: with a dtype, `jnp.asarray` converts on the device.
     return CSRPattern(
-        offsets=jnp.asarray(np.concatenate([[0], np.cumsum(row_counts)]), jnp.int32),
-        columns=jnp.asarray(unique_keys % n, jnp.int32),
-        value_map=jnp.asarray(value_map, jnp.int32),
+        offsets=jnp.asarray(offsets.astype(np.int32)),
+        columns=jnp.asarray(columns[heads].astype(np.int32)),
+        value_map=jnp.asarray(value_map),
         max_row_length=int(row_counts.max(initial=0)),
     )
 
