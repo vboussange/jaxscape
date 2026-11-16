@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 
 import pytest
-from report import plot_runtimes, solver_view
+from report import factor, plot_runtimes, solver_view
 from run import read_records
 
 
@@ -191,6 +191,12 @@ def test_distance_section_states_the_speed_up_errors_and_limits_first(report):
         "5.1e-07",
         "3.4e-06",
     ]
+
+
+def test_speed_ups_have_two_significant_digits_below_10():
+    ratios = (0.574, 1.002, 4.03, 9.96, 43.4)
+
+    assert [factor(ratio) for ratio in ratios] == ["0.57", "1.0", "4.0", "10", "43"]
 
 
 def test_distance_table_lists_each_setting_with_its_runtime_and_error(report):

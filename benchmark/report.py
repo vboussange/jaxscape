@@ -578,8 +578,8 @@ def agreement(record):
 
 
 def factor(ratio):
-    """Return a ratio of runtimes, with two significant digits below 10."""
-    return f"{ratio:.2g}" if ratio < 10 else f"{ratio:.0f}"
+    """Return a ratio of runtimes: two significant digits below 10, such as `4.0`."""
+    return f"{ratio:#.2g}".rstrip(".") if ratio < 10 else f"{ratio:.0f}"
 
 
 def entry(record):
