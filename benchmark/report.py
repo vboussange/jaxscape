@@ -49,14 +49,6 @@ NAMES = {
     "free_energy": "free energy",
     "resistance, K = -R, normalized": "normalized sensitivity (K = −R)",
 }
-# The solvers of JAXScape 0.0.16 that JAXScape 0.0.18 renamed, under their names
-# in 0.0.18, which the page gives.
-RENAMED = {"GridMultigridSolver": "GeometricMultigridCGSolver"}
-# The questions as the configuration of the run of JAXScape 0.0.16 names them,
-# under their names.
-OLD_QUESTIONS = {"E1": "distance", "E2": "connectivity", "E3": "sensitivity"}
-# The solvers that JAXScape removed, whose records the page leaves out.
-REMOVED = {"PyAMGSolver"}
 # The names of distances in prose.
 PROSE = {
     "resistance": "resistance distance",
@@ -71,6 +63,7 @@ LINE = ("tool", "distance", "device")  # a line of a figure of the comparison
 SOLID = {"gpu", "float32"}  # the lines of the figures drawn solid, others dashed
 # The marker of each raster, from the smallest; circles mark the dtype.
 MARKERS = "D^vPX*"
+LINE_MARKERS = "osD^vPXp"  # the marker of each line of a figure of runtime
 SMALLEST_ERROR = 1e-16  # errors below it are drawn at it, on a log scale
 # The Maryland figure: JAXScape's map of a question next to a tool's map.
 MARYLAND = {
@@ -122,8 +115,7 @@ def report(run_dir):
       figure. Without the maps, the Maryland figure drawn before stays.
     """
     records = read_records(run_dir / "records.csv")
-    records = [record for record in records if record["solver"] not in REMOVED]
-    config = renamed(json.loads((run_dir / "config.json").read_text()))
+    config = json.loads((run_dir / "config.json").read_text())
     environment = json.loads((run_dir / "environment.json").read_text())
 
     comparison = [record for record in records if record["view"] == "comparison"]
@@ -136,7 +128,7 @@ def report(run_dir):
         panel, line = ("question", "distance"), ("solver", "dtype")
         plot_runtimes(solvers, panel, line, run_dir / "solvers.png")
         plot_errors(solvers, run_dir / "solver-errors.png")
-    pair = maryland_pair(comparison, config)
+    pair = maryland_pair(comparison)
     if pair and all(map_path(run_dir, record).exists() for record in pair):
         plot_maryland(run_dir, *pair, run_dir / "maryland.png")
     maryland = pair if (run_dir / "maryland.png").exists() else None
@@ -157,19 +149,6 @@ def publish(run_dir, link):
     link.symlink_to(os.path.relpath(run_dir.resolve(), link.parent.resolve()))
 
 
-def renamed(value):
-    """Return a configuration, or a value of it, with its questions under their names.
-
-    The run of JAXScape 0.0.16 names its questions as `OLD_QUESTIONS` gives
-    them, in keys and in values.
-    """
-    if isinstance(value, dict):
-        return {OLD_QUESTIONS.get(k, k): renamed(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [renamed(item) for item in value]
-    return OLD_QUESTIONS.get(value, value) if isinstance(value, str) else value
-
-
 def of_question(question, records):
     """Return the records of a question."""
     return [record for record in records if record["question"] == question]
@@ -182,12 +161,8 @@ def solver_view(records):
 
 
 def name(value):
-    """Return the name in tables and figures of a distance, label or solver.
-
-    A solver that JAXScape 0.0.18 renamed takes its name in 0.0.18.
-    """
-    value = NAMES.get(value, value or "")
-    return re.sub(r"\w+", lambda word: RENAMED.get(word[0], word[0]), value)
+    """Return the name in tables and figures of a distance, label or solver."""
+    return NAMES.get(value, value or "")
 
 
 def prose(distance):
@@ -363,8 +338,10 @@ def plot_runtimes(records, panel, line, path):
     - `line`: The fields whose values give a line. The last, the device or the
       dtype, sets its style: GPU and float32 lines are solid with filled
       markers, and CPU and float64 lines dashed with hollow markers. The others
-      set its colour, and the legend gives their values, with the tier of a
-      tool when the tools of the figure differ in tier.
+      set its colour and marker, and the legend gives their values, with the
+      tier of a tool when the tools of the figure differ in tier. The lines of
+      JAXScape lie above those of the other tools, and a line above those
+      after it in the legend.
     - `path`: Where to save the figure.
     """
     panels = list(group_by(records, panel))
@@ -378,25 +355,29 @@ def plot_runtimes(records, panel, line, path):
         rows = [key for key in keys if key in on_panel]
         for of_line, records_of_line in group_by(ok, line):
             key = tuple(of_line.values())[:-1]
-            style = style_of(of_line[line[-1]], f"C{keys.index(key) % 10}")
+            index = keys.index(key)
+            jaxscape = of_line.get("tool") == "JAXScape"
+            style = style_of(of_line[line[-1]], f"C{index % 10}") | {
+                "marker": LINE_MARKERS[index % len(LINE_MARKERS)],
+                "zorder": len(keys) * (1 + jaxscape) - index,
+            }
             cases = dict.fromkeys(record["case"] for record in records_of_line)
             best = [fastest(records_of_line, case) for case in cases]
             if one_raster:
                 dot = style | {"linestyle": ""}
-                axes.plot(best[0]["median_s"], rows.index(key), "o", ms=6, **dot)
+                axes.plot(best[0]["median_s"], rows.index(key), ms=6, **dot)
                 continue
             synthetic = [record for record in best if side(record["case"])]
             axes.plot(
                 [record["cells"] for record in synthetic],
                 [record["median_s"] for record in synthetic],
-                marker="o",
                 ms=4,
                 **style,
             )
             for record in best:
                 if not side(record["case"]):
-                    star = style | {"linestyle": ""}
-                    axes.plot(record["cells"], record["median_s"], "*", ms=9, **star)
+                    star = style | {"linestyle": "", "marker": "*"}
+                    axes.plot(record["cells"], record["median_s"], ms=9, **star)
         if one_raster:
             runtime_axis(axes, [", ".join(map(name, key)) for key in rows], ok)
         else:
@@ -411,6 +392,8 @@ def plot_runtimes(records, panel, line, path):
             [],
             [],
             color=f"C{index % 10}",
+            marker=LINE_MARKERS[index % len(LINE_MARKERS)],
+            ms=4,
             label=", ".join(map(name, key))
             + (f", Tier {tiers[key]}" if tiered and tiers[key] else ""),
         )
@@ -488,22 +471,16 @@ def plot_errors(records, path):
     save(figure, handles, styled, path, len(panels))
 
 
-def compared_with(record, config):
+def compared_with(record):
     """Return the distance, or label, of JAXScape that a record is compared with.
 
-    It is the `compared_with` of the record or, when the record leaves it out,
-    of the tool's entry in the configuration, and by default the distance of
-    the record.
+    It is the `compared_with` of the record and, in the distance calculation,
+    where the record leaves it out, the distance of the record.
     """
-    if record["compared_with"]:
-        return record["compared_with"]
-    for entry in config["tools"]:
-        if (entry["tool"], entry["question"]) == (record["tool"], record["question"]):
-            return entry.get("compared_with") or record["distance"]
-    return record["distance"]
+    return record["compared_with"] or record["distance"]
 
 
-def maryland_pair(records, config):
+def maryland_pair(records):
     """Return the records of the Maryland figure, or `None` when one is missing.
 
     They are the JAXScape GPU record under the tool's `compared_with`, whose map
@@ -519,7 +496,7 @@ def maryland_pair(records, config):
     if not others:
         return None
     other = fastest(others, "maryland")
-    paired = ("JAXScape", "gpu", compared_with(other, config))
+    paired = ("JAXScape", "gpu", compared_with(other))
     for record in on_maryland:
         if (record["tool"], record["device"], record["distance"]) == paired:
             return record, other
@@ -555,7 +532,13 @@ def plot_maryland(run_dir, jaxscape, other, path):
 
 
 def seconds(value):
-    """Return a duration in seconds to three significant digits, such as `1700`."""
+    """Return a duration in seconds to three significant digits, such as `2.00`.
+
+    Trailing zeros stay, and a duration from 100 s has no decimal point, such
+    as `1700`.
+    """
+    if value < 100:
+        return f"{value:#.3g}".rstrip(".")
     return f"{float(f'{value:.3g}'):g}"
 
 
@@ -578,8 +561,8 @@ def agreement(record):
 
 
 def factor(ratio):
-    """Return a ratio of runtimes, with two significant digits below 10."""
-    return f"{ratio:.2g}" if ratio < 10 else f"{ratio:.0f}"
+    """Return a ratio of runtimes: two significant digits below 10, such as `4.0`."""
+    return f"{ratio:#.2g}".rstrip(".") if ratio < 10 else f"{ratio:.0f}"
 
 
 def entry(record):
@@ -737,7 +720,7 @@ def failures(records, columns, fold=10):
     return ["### Settings that did not complete", listed]
 
 
-def speedups(records, config):
+def speedups(records):
     """Return the records that give the speed-up of JAXScape over each tool.
 
     For each other tool and distance of a question, on the largest synthetic
@@ -753,7 +736,7 @@ def speedups(records, config):
     others = [record for record in ok if record["tool"] != "JAXScape"]
     pairs = []
     for _, group in group_by(others, ("tool", "distance")):
-        target = ("JAXScape", "gpu", compared_with(group[0], config))
+        target = ("JAXScape", "gpu", compared_with(group[0]))
         jaxscape = [r for r in ok if (r["tool"], r["device"], r["distance"]) == target]
         shared = {r["case"] for r in group} & {r["case"] for r in jaxscape}
         if shared:
@@ -900,7 +883,7 @@ def speedup_table(pairs, by_distance):
 def comparison_results(records, config, run_dir, by_distance):
     """Return the finding and the results of a question of the comparison."""
     question = records[0]["question"]
-    pairs = speedups(records, config)
+    pairs = speedups(records)
     findings = [speedup_finding(pairs, by_distance)]
     findings += [error_finding(records) if by_distance else rho_finding(pairs)]
     findings.append(limits_finding(records))
@@ -977,9 +960,8 @@ def not_run(entry, records, view):
     distance; it names them when they are several. The entry is split into its
     combinations, which take one value of each of its fields but `reason`, and
     a record ran a combination when it holds each of its values. The
-    combinations that no record ran, but those of a solver of `REMOVED`, are
-    joined back into entries, one per value of the fields but the last that
-    holds a list.
+    combinations that no record ran are joined back into entries, one per
+    value of the fields but the last that holds a list.
     """
     entry = {field: value for field, value in entry.items() if field != "reason"}
     distances = entry.get("distance", [])
@@ -998,9 +980,7 @@ def not_run(entry, records, view):
     parts = {}
     for chosen in product(*values):
         part = dict(zip(fields, chosen))
-        if part.get("solver") in REMOVED or any(
-            all(record[f] == part[f] for f in fields) for record in records
-        ):
+        if any(all(record[f] == part[f] for f in fields) for record in records):
             continue
         key = tuple(value for field, value in part.items() if field not in joined)
         parts.setdefault(key, part | {field: [] for field in joined})
@@ -1021,6 +1001,26 @@ def introduction():
         "[`records.csv`](records.csv) holds the record of every cell of the run: "
         "one setting of a tool on one raster.",
     ]
+
+
+def single_calls(records):
+    """Return where the warm runtime is the time of a single timed call.
+
+    The text, such as `, which applies to 3 of the 20 cells that succeeded on
+    4096²`, counts the cells of each raster that succeeded with a single timed
+    call, on the rasters that have one.
+    """
+    counts = []
+    for values, of_case in group_by(succeeded(records), ("case",)):
+        single = sum(len(record["times_s"]) == 1 for record in of_case)
+        if single:
+            counts.append((of_case[0]["cells"], single, len(of_case), values["case"]))
+    parts = [
+        f"{single} of the {total}{' cells that succeeded' if index == 0 else ''} "
+        f"on {case_label(case)}"
+        for index, (_, single, total, case) in enumerate(sorted(counts))
+    ]
+    return f", which applies to {either(parts, 'and')}" if parts else ""
 
 
 def setup_section(records, config, environment):
@@ -1087,7 +1087,9 @@ def setup_section(records, config, environment):
         f"call{'s' if run['repeats'] != 1 else ''} of a cell, which follow a "
         "warm-up call that compiles the code of the tools that compile; the time "
         "of a single timed call when the warm-up call takes more than "
-        f"{duration(run['single_call_after'])}.",
+        f"{duration(run['single_call_after'])}"
+        + (single_calls(records) if run["repeats"] > 1 else "")
+        + ".",
         "**Work of a call**: every call redoes the work that depends on the "
         "landscape: graph assembly, factorization, multigrid hierarchy and "
         "solver state.",
@@ -1139,7 +1141,6 @@ def setup_section(records, config, environment):
         bullets(hardware),
         "### Tools",
         table(["Tool", "Version", "Questions"], versions),
-        renaming(records),
         collapsed("Parameter mapping of each tool", table(["Tool", "Mapping"], mappings)),
         "### Landscapes",
         bullets(landscapes),
@@ -1151,22 +1152,6 @@ def setup_section(records, config, environment):
         "### Figures and tables",
         bullets(reading),
     ]
-
-
-def renaming(records):
-    """Return the sentence that states the solvers of the run that `RENAMED` renames.
-
-    It is empty when the records name none of them.
-    """
-    words = set(re.findall(r"\w+", " ".join(r["solver"] or "" for r in records)))
-    old = [solver for solver in RENAMED if solver in words]
-    if not old:
-        return ""
-    pairs = (f"`{solver}` as {code(solver)}" for solver in old)
-    return (
-        "The page names the solvers of this run as JAXScape 0.0.18 does: "
-        f"{either(pairs, 'and')}."
-    )
 
 
 def mapping(adapter):

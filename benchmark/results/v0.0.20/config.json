@@ -3,8 +3,8 @@
     "timeout": 3600,
     "repeats": 5,
     "single_call_after": 300,
-    "cores": "80-95",
-    "gpu": "5",
+    "cores": "48-63",
+    "gpu": "0",
     "smoke_side": 32,
     "smoke_dependency_range": 10,
     "smoke_tolerance": 0.0001
@@ -14,7 +14,7 @@
     "habitat_threshold": 0.7,
     "seed": 74
   },
-  "E1": {
+  "distance": {
     "sites": 32,
     "seed": 75,
     "reference": "adapters/reference.py"
@@ -52,8 +52,8 @@
   "maryland": {
     "raster": "data/nlcd_2016_frederick_md.tif",
     "questions": [
-      "E2",
-      "E3"
+      "connectivity",
+      "sensitivity"
     ],
     "resistance": {
       "11": 100,
@@ -74,7 +74,7 @@
   "tools": [
     {
       "tool": "JAXScape",
-      "question": "E1",
+      "question": "distance",
       "adapter": "adapters/jaxscape.py",
       "devices": [
         "gpu",
@@ -84,7 +84,7 @@
       "distances": {
         "resistance": {
           "dtype": "float32",
-          "solver": "GridMultigridSolver"
+          "solver": "GeometricMultigridCGSolver"
         },
         "lcp": {
           "dtype": "float32"
@@ -100,7 +100,7 @@
     },
     {
       "tool": "JAXScape",
-      "question": "E2",
+      "question": "connectivity",
       "adapter": "adapters/jaxscape.py",
       "devices": [
         "gpu",
@@ -109,7 +109,7 @@
       "distances": {
         "resistance": {
           "dtype": "float32",
-          "solver": "GridMultigridSolver(rtol=3e-4)",
+          "solver": "GeometricMultigridCGSolver(rtol=3e-4)",
           "method": "SpielmanApproximation(epsilon=0.15)",
           "batch_size": 2601
         },
@@ -121,7 +121,7 @@
     },
     {
       "tool": "JAXScape",
-      "question": "E3",
+      "question": "sensitivity",
       "adapter": "adapters/jaxscape.py",
       "devices": [
         "gpu",
@@ -130,7 +130,7 @@
       "distances": {
         "resistance": {
           "dtype": "float32",
-          "solver": "GridMultigridSolver(rtol=3e-4)",
+          "solver": "GeometricMultigridCGSolver(rtol=3e-4)",
           "method": "SpielmanApproximation(epsilon=0.15)",
           "batch_size": 2601
         },
@@ -141,7 +141,7 @@
         "resistance, K = -R, normalized": {
           "distance": "resistance",
           "dtype": "float32",
-          "solver": "GridMultigridSolver(rtol=3e-4)",
+          "solver": "GeometricMultigridCGSolver(rtol=3e-4)",
           "method": "SpielmanApproximation(epsilon=0.15)",
           "batch_size": 2601,
           "proximity": "lambda d: -d",
@@ -151,7 +151,7 @@
     },
     {
       "tool": "Circuitscape.jl",
-      "question": "E1",
+      "question": "distance",
       "adapter": "adapters/circuitscape.jl",
       "devices": [
         "cpu"
@@ -168,7 +168,7 @@
     },
     {
       "tool": "ConScape.jl",
-      "question": "E1",
+      "question": "distance",
       "adapter": "adapters/conscape.jl",
       "devices": [
         "cpu"
@@ -180,7 +180,7 @@
     },
     {
       "tool": "ConScape.jl",
-      "question": "E2",
+      "question": "connectivity",
       "adapter": "adapters/conscape.jl",
       "devices": [
         "cpu"
@@ -193,7 +193,7 @@
     },
     {
       "tool": "ConScape.jl",
-      "question": "E3",
+      "question": "sensitivity",
       "adapter": "adapters/conscape.jl",
       "devices": [
         "cpu"
@@ -206,7 +206,7 @@
     },
     {
       "tool": "gdistance",
-      "question": "E1",
+      "question": "distance",
       "adapter": "adapters/gdistance.R",
       "devices": [
         "cpu"
@@ -220,7 +220,7 @@
     {
       "tool": "skimage.graph.MCP",
       "package": "scikit-image",
-      "question": "E1",
+      "question": "distance",
       "adapter": "adapters/skimage.py",
       "devices": [
         "cpu"
@@ -233,7 +233,7 @@
     {
       "tool": "EcoScape",
       "package": "ecoscape-connectivity",
-      "question": "E3",
+      "question": "sensitivity",
       "adapter": "adapters/ecoscape.py",
       "devices": [
         "gpu"
@@ -248,7 +248,7 @@
     },
     {
       "tool": "samc",
-      "question": "E3",
+      "question": "sensitivity",
       "adapter": "adapters/samc.R",
       "devices": [
         "cpu"
@@ -262,7 +262,7 @@
     },
     {
       "tool": "eco-connectivity",
-      "question": "E2",
+      "question": "connectivity",
       "adapter": "adapters/eco_connectivity.py",
       "devices": [
         "cpu"
@@ -277,7 +277,7 @@
     {
       "tool": "Graphab",
       "package": "graphab",
-      "question": "E2",
+      "question": "connectivity",
       "adapter": "adapters/graphab.py",
       "devices": [
         "cpu"
@@ -289,7 +289,7 @@
     },
     {
       "tool": "Omniscape.jl",
-      "question": "E3",
+      "question": "sensitivity",
       "adapter": "adapters/omniscape.jl",
       "devices": [
         "cpu"
@@ -319,60 +319,79 @@
     "fails_by_design": [
       {
         "distance": "free_energy",
-        "dtype": "float32"
+        "dtype": "float32",
+        "reason": "In float32, JAXScape resolves no free-energy distance between sites across the raster, at any theta."
       },
       {
         "distance": "free_energy",
         "solver": [
-          "GridMultigridSolver",
-          "AMJaxCGSolver",
-          "PyAMGSolver"
-        ]
-      },
-      {
-        "solver": "AMJaxCGSolver",
-        "dtype": "float32"
+          "GeometricMultigridCGSolver",
+          "AMJaxCGSolver"
+        ],
+        "reason": "The iterative solvers `GeometricMultigridCGSolver` and `AMJaxCGSolver` resolve no free-energy distance in either dtype: as the docstring of `FreeEnergyDistance` states, they need tolerances far below their defaults to resolve the small entries of $Z$ between distant vertices."
       }
     ],
     "questions": {
-      "E1": {
+      "distance": {
         "resistance": {},
         "free_energy": {}
       },
-      "E2": {
+      "connectivity": {
         "resistance": {
           "batch_size": 256,
-          "sides": [
-            256
+          "cases": [
+            "synthetic-256"
           ]
         }
       },
-      "E3": {
+      "sensitivity": {
         "resistance": {
           "batch_size": 256,
-          "sides": [
-            256
+          "cases": [
+            "synthetic-256"
           ]
         }
       }
     },
     "solvers": {
-      "GridMultigridSolver": {},
+      "GeometricMultigridCGSolver": {},
       "CholmodSolver": {},
       "CuDSSSolver": {},
       "AMJaxCGSolver": {},
-      "PyAMGSolver": {},
       "dense": {},
-      "SpielmanApproximation(epsilon=0.15), GridMultigridSolver(rtol=3e-4)": {
-        "solver": "GridMultigridSolver(rtol=3e-4)",
+      "SpielmanApproximation(epsilon=0.15), GeometricMultigridCGSolver(rtol=3e-4)": {
+        "solver": "GeometricMultigridCGSolver(rtol=3e-4)",
         "method": "SpielmanApproximation(epsilon=0.15)",
+        "batch_size": 2601,
         "questions": [
-          "E2",
-          "E3"
+          "connectivity",
+          "sensitivity"
         ],
-        "dtypes": [
-          "float32"
-        ]
+        "cases": [
+          "synthetic-256",
+          "synthetic-1024",
+          "synthetic-4096",
+          "synthetic-8192",
+          "maryland"
+        ],
+        "timeout": 3600
+      },
+      "SpielmanApproximation(epsilon=0.15), CuDSSSolver": {
+        "solver": "CuDSSSolver",
+        "method": "SpielmanApproximation(epsilon=0.15)",
+        "batch_size": 576,
+        "questions": [
+          "connectivity",
+          "sensitivity"
+        ],
+        "cases": [
+          "synthetic-256",
+          "synthetic-1024",
+          "synthetic-4096",
+          "synthetic-8192",
+          "maryland"
+        ],
+        "timeout": 3600
       }
     }
   }

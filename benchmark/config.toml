@@ -71,7 +71,7 @@ adapter = "adapters/jaxscape.py"
 devices = ["gpu", "cpu"]
 tier = 1
 
-# The reference settings: the defaults of JAXScape 0.0.18, in float32.
+# The reference settings: the defaults of JAXScape, in float32.
 [tools.distances.resistance]
 dtype = "float32"
 solver = "GeometricMultigridCGSolver"
@@ -299,17 +299,9 @@ timeout = 900
 # The combinations that fail by design, which the solver view leaves out; an
 # entry, but its `reason`, matches each combination whose fields hold its
 # values, and the page gives the `reason` after the combinations left out.
-# Free energy in float32 resolves no distance across the raster (see the distance
-# calculation), and the iterative solvers, GeometricMultigridCGSolver and
-# AMJaxCGSolver, resolve no free energy in either dtype: as the docstring of
-# FreeEnergyDistance states, they need tolerances far below their defaults to
-# resolve the small entries of Z between distant vertices. In the windowed
-# analyses, AMJaxCGSolver reaches its `max_steps` on the tiles of the smoke run
-# in either dtype, for the reason of its entry (#96).
 fails_by_design = [
-  { distance = "free_energy", dtype = "float32" },
-  { distance = "free_energy", solver = ["GeometricMultigridCGSolver", "AMJaxCGSolver"] },
-  { solver = "AMJaxCGSolver", question = ["connectivity", "sensitivity"], reason = "In the windowed analyses, JAXScape builds the state of `AMJaxCGSolver` once, from a graph of uniform conductance, and `reinit` keeps its multigrid hierarchy for every tile, so that on tiles of high conductance contrast the solver stops at `max_steps`." },
+  { distance = "free_energy", dtype = "float32", reason = "In float32, JAXScape resolves no free-energy distance between sites across the raster, at any theta." },
+  { distance = "free_energy", solver = ["GeometricMultigridCGSolver", "AMJaxCGSolver"], reason = "The iterative solvers `GeometricMultigridCGSolver` and `AMJaxCGSolver` resolve no free-energy distance in either dtype: as the docstring of `FreeEnergyDistance` states, they need tolerances far below their defaults to resolve the small entries of $Z$ between distant vertices." },
 ]
 
 # The distances of each question, with the settings that every solver shares;
