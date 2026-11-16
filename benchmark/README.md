@@ -8,7 +8,7 @@ the [Benchmark page](https://vboussange.github.io/jaxscape/benchmark/) of the
 docs.
 
 This directory is a uv project of its own, outside the root project, pinned to
-a commit of JAXScape (`jaxscape @ git+...@<commit>` in `pyproject.toml`). Run
+a release of JAXScape (`jaxscape[...]==<version>` in `pyproject.toml`). Run
 every command from this directory:
 
 ```bash

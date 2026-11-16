@@ -1,5 +1,9 @@
 {
-  "date": "2026-11-10T18:19:43+00:00",
+  "date": "2026-11-14T21:10:18+00:00",
+  "benchmark": {
+    "commit": "f106580d1f11f692cc95d8bdb7584683af9ee010",
+    "modified": false
+  },
   "gpu": {
     "name": "NVIDIA GeForce RTX 3090",
     "driver": "580.178.04",
@@ -26,7 +30,7 @@
     "Java": "21.0.13"
   },
   "tools": {
-    "JAXScape": "0.0.16",
+    "JAXScape": "0.0.20",
     "Circuitscape.jl": "6.1.0",
     "ConScape.jl": "0.3.0",
     "gdistance": "1.6.5",
