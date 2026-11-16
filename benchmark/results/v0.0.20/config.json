@@ -319,14 +319,16 @@
     "fails_by_design": [
       {
         "distance": "free_energy",
-        "dtype": "float32"
+        "dtype": "float32",
+        "reason": "In float32, JAXScape resolves no free-energy distance between sites across the raster, at any theta."
       },
       {
         "distance": "free_energy",
         "solver": [
           "GeometricMultigridCGSolver",
           "AMJaxCGSolver"
-        ]
+        ],
+        "reason": "The iterative solvers `GeometricMultigridCGSolver` and `AMJaxCGSolver` resolve no free-energy distance in either dtype: as the docstring of `FreeEnergyDistance` states, they need tolerances far below their defaults to resolve the small entries of $Z$ between distant vertices."
       }
     ],
     "questions": {
