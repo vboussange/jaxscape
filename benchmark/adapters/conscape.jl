@@ -1,7 +1,9 @@
 # ConScape.jl builds its graph with rook contiguity (`N4`), the affinity of an
 # edge being the harmonic mean of the permeabilities of its two pixels
 # (`AverageWeight`), as `landscape.conductance` gives, and the cost of an edge
-# 1 / affinity (`Inv`). Its free-energy distance has the shared `theta`. The
+# 1 / affinity (`Inv`). `Grid` keeps the largest strongly connected component
+# of the graph, through `largest_subgraph`, by its default `prune`, as in
+# ConScape's examples. Its free-energy distance has the shared `theta`. The
 # distance calculation computes the free-energy distances among the sites, the
 # targets of a `GridRSP`. ConScape's free-energy distance is directed, and the
 # adapter returns the mean of the two directions between two sites, as
@@ -13,20 +15,28 @@
 # pixel at source quality 1 (`connected_habitat`): the sum over landmarks of
 # their quality times exp(-d / (dependency_range / 4)), exp(-d / 25), for the
 # free-energy distance d to the landmark. The sensitivity analysis returns the
-# quality-weighted betweenness (`betweenness_qweighted`). JAXScape has no
-# free-energy map, and the configuration compares these maps with JAXScape's
-# under least-cost path distance (`compared_with = "lcp"`). The free-energy
-# distance tends to a multiple of the resistance distance as theta tends to 0,
-# and to the least-cost path distance as theta grows. On the synthetic raster
-# of 256 pixels a side, for every theta from 1e-5 to 1.5e-2, the ranking of the
-# pairs of sites of the distance calculation by free-energy distance agrees
-# with their ranking by least-cost path distance (Spearman's ρ 0.98 to 0.99,
-# against 0.92 to 0.95 with resistance distance), and at the shared theta,
-# 0.01, ConScape's maps of connectivity and sensitivity correlate more with the
-# maps of JAXScape's GPU cells under least-cost path distance (ρ 0.93 and
-# 0.84) than under resistance distance (0.87 and 0.72). Every call rebuilds the
-# affinities, the `Grid`, the landmarks and the `GridRSP`, with its sparse LU
-# factorization, which runs on the BLAS threads of the cell.
+# quality-weighted betweenness (`betweenness_qweighted`). On Maryland, whose
+# resistances reach 1000, the free-energy distance d is larger than 7.4e4 for
+# 45 % of the pairs of a pixel of the component and a landmark: the entry of
+# ConScape's matrix Z for such a pair, proportional to exp(-theta d), is below
+# the smallest positive float64, and is 0. `betweenness_qweighted` replaces the
+# reciprocal of each such entry by the largest float64, its products with the
+# landmark qualities larger than 1 are infinite, and its map is NaN on every
+# pixel. `connected_habitat` weighs such a pair by exp(-d / 25), which is 0,
+# and its map is finite. JAXScape has no free-energy map, and the configuration
+# compares these maps with JAXScape's under least-cost path distance
+# (`compared_with = "lcp"`). The free-energy distance tends to a multiple of
+# the resistance distance as theta tends to 0, and to the least-cost path
+# distance as theta grows. On the synthetic raster of 256 pixels a side, for
+# every theta from 1e-5 to 1.5e-2, the ranking of the pairs of sites of the
+# distance calculation by free-energy distance agrees with their ranking by
+# least-cost path distance (Spearman's ρ 0.98 to 0.99, against 0.92 to 0.95
+# with resistance distance), and at the shared theta, 0.01, ConScape's maps of
+# connectivity and sensitivity correlate more with the maps of JAXScape's GPU
+# cells under least-cost path distance (ρ 0.93 and 0.84) than under resistance
+# distance (0.87 and 0.72). Every call rebuilds the affinities, the `Grid`, the
+# landmarks and the `GridRSP`, with its sparse LU factorization, which runs on
+# the BLAS threads of the cell.
 include("protocol.jl")
 using ConScape, Logging, SparseArrays
 
