@@ -6,9 +6,8 @@
 writes one figure per question, such as `distance.png`, the Maryland figure
 `maryland.png`, the two figures of the solver view, `solvers.png` and
 `solver-errors.png`, and the page `index.md` into RUN_DIR. The report reads the
-records, the configuration and the environment snapshot of the run, the records
-of the other runs of the cells that ran more than once (`reruns.csv`), the maps
-of the Maryland figure, and the header comment of each adapter that the records
+records, the configuration and the environment snapshot of the run, the maps of
+the Maryland figure, and the header comment of each adapter that the records
 name. `--publish` points `docs/benchmark`, the Benchmark page of the docs, at
 RUN_DIR.
 """
@@ -23,7 +22,7 @@ from pathlib import Path
 
 import matplotlib
 import numpy as np
-from run import KEY, map_path, read_records, RHO
+from run import map_path, read_records, RHO
 from scipy.stats import rankdata
 
 
@@ -112,9 +111,8 @@ def report(run_dir):
     **Arguments:**
 
     - `run_dir`: The run directory, with `records.csv`, `config.json`,
-      `environment.json`, `reruns.csv` when a cell ran more than once, and,
-      when they are kept, the maps of the Maryland figure. Without the maps,
-      the Maryland figure drawn before stays.
+      `environment.json` and, when they are kept, the maps of the Maryland
+      figure. Without the maps, the Maryland figure drawn before stays.
     """
     records = read_records(run_dir / "records.csv")
     config = json.loads((run_dir / "config.json").read_text())
@@ -134,9 +132,7 @@ def report(run_dir):
     if pair and all(map_path(run_dir, record).exists() for record in pair):
         plot_maryland(run_dir, *pair, run_dir / "maryland.png")
     maryland = pair if (run_dir / "maryland.png").exists() else None
-    reruns_path = run_dir / "reruns.csv"
-    reruns = read_records(reruns_path) if reruns_path.exists() else []
-    text = page(records, config, environment, maryland, run_dir, reruns)
+    text = page(records, config, environment, maryland, run_dir)
     (run_dir / "index.md").write_text(text)
 
 
@@ -1010,9 +1006,9 @@ def introduction():
 def single_calls(records):
     """Return where the warm runtime is the time of a single timed call.
 
-    The text, such as `, as in 3 of the 20 cells that succeeded on 4096²`,
-    counts the cells of each raster that succeeded with a single timed call,
-    on the rasters that have one.
+    The text, such as `, which applies to 3 of the 20 cells that succeeded on
+    4096²`, counts the cells of each raster that succeeded with a single timed
+    call, on the rasters that have one.
     """
     counts = []
     for values, of_case in group_by(succeeded(records), ("case",)):
@@ -1024,57 +1020,11 @@ def single_calls(records):
         f"on {case_label(case)}"
         for index, (_, single, total, case) in enumerate(sorted(counts))
     ]
-    return f", as in {either(parts, 'and')}" if parts else ""
+    return f", which applies to {either(parts, 'and')}" if parts else ""
 
 
-def runs_again(records, reruns):
-    """Return the item of the Timing section on the cells that ran more than once.
-
-    **Arguments:**
-
-    - `records`: The records of the run, which keep, of each cell that ran more
-      than once, the run with the smallest warm runtime.
-    - `reruns`: The records of the other runs of these cells.
-
-    **Returns:**
-
-    The item, which gives the warm runtime of every run of each such cell, or
-    nothing when no cell ran more than once.
-    """
-    if not reruns:
-        return ""
-
-    def key(record):
-        return tuple(record[field] for field in KEY)
-
-    runs = {}
-    for record in [*records, *reruns]:
-        runs.setdefault(key(record), []).append(record)
-    cells = []
-    for again in dict.fromkeys(key(record) for record in reruns):
-        first = runs[again][0]
-        times = sorted(r["median_s"] for r in runs[again] if r["status"] == "ok")
-        stopped = [r["status"] for r in runs[again] if r["status"] != "ok"]
-        cells.append(
-            f"{first['tool']}, {setting(first)}, "
-            f"{QUESTIONS[first['question']].lower()} on {case_label(first['case'])}: "
-            + either([*(f"{seconds(time)} s" for time in times), *stopped], "and")
-        )
-    return (
-        "**Cells run more than once**, each run in a new process, with the warm "
-        "runtime of each run, of which the page gives the smallest and "
-        "[`reruns.csv`](reruns.csv) holds the records of the others: "
-        + "; ".join(cells)
-        + "."
-    )
-
-
-def setup_section(records, config, environment, reruns=()):
-    """Return the section of the setup: hardware, software, protocol, measures.
-
-    `reruns` holds the records of the other runs of the cells that ran more
-    than once (see `runs_again`).
-    """
+def setup_section(records, config, environment):
+    """Return the section of the setup: hardware, software, protocol, measures."""
     run, landscape, maryland = config["run"], config["landscape"], config["maryland"]
     gpu, cpu, cores = environment["gpu"], environment["cpu"], environment["cores"]
     comparison = [record for record in records if record["view"] == "comparison"]
@@ -1140,7 +1090,6 @@ def setup_section(records, config, environment, reruns=()):
         f"{duration(run['single_call_after'])}"
         + (single_calls(records) if run["repeats"] > 1 else "")
         + ".",
-        runs_again(records, reruns),
         "**Work of a call**: every call redoes the work that depends on the "
         "landscape: graph assembly, factorization, multigrid hierarchy and "
         "solver state.",
@@ -1535,7 +1484,7 @@ def solver_section(records, config, run_dir):
     ]
 
 
-def page(records, config, environment, maryland=None, run_dir=None, reruns=()):
+def page(records, config, environment, maryland=None, run_dir=None):
     """Return the Benchmark page of a run.
 
     **Arguments:**
@@ -1548,8 +1497,6 @@ def page(records, config, environment, maryland=None, run_dir=None, reruns=()):
       has it.
     - `run_dir`: The run directory, whose figures give their width on the
       page.
-    - `reruns`: The records of the other runs of the cells that ran more than
-      once, from `reruns.csv` of the run directory.
 
     **Returns:**
 
@@ -1557,7 +1504,7 @@ def page(records, config, environment, maryland=None, run_dir=None, reruns=()):
     """
     solvers = solver_view(records)
     comparison = [record for record in records if record["view"] == "comparison"]
-    sections = [*introduction(), *setup_section(records, config, environment, reruns)]
+    sections = [*introduction(), *setup_section(records, config, environment)]
     for question, section in (
         ("distance", distance_section),
         ("connectivity", connectivity_section),

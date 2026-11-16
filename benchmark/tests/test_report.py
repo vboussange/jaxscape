@@ -452,10 +452,9 @@ def test_setup_states_the_hardware_protocol_and_versions_of_the_run(report):
     assert "Ubuntu 22.04.5 LTS" in setup
     assert "the median time of the 5 timed calls of a cell" in setup
     assert (
-        "when the warm-up call takes more than 5 min, as in 10 of the 24 cells "
-        "that succeeded on 256² and 7 of the 9 on Maryland." in setup
+        "when the warm-up call takes more than 5 min, which applies to 10 of the "
+        "24 cells that succeeded on 256² and 7 of the 9 on Maryland." in setup
     )
-    assert "run more than once" not in setup
     assert (
         "**Time limit**: a call stops after 1 h, and in the section of the linear "
         "solvers of JAXScape after the time limit stated in its Method." in setup
@@ -472,25 +471,6 @@ def test_setup_states_the_hardware_protocol_and_versions_of_the_run(report):
     # The page names no host and no GPU of a cluster.
     for detail in ("gpunode", "GPU-b8590203", "GPU 5", "80-95"):
         assert detail not in text
-
-
-def test_setup_gives_every_run_of_each_cell_that_ran_more_than_once(report, tmp_path):
-    run_dir = tmp_path / "run"
-    shutil.copytree(FIXTURE, run_dir)
-    header, *lines = (run_dir / "records.csv").read_text().splitlines()
-    [cell] = [line for line in lines if "Circuitscape.jl" in line and "cg+amg,synthetic-1024" in line]
-    rerun = cell.replace("6.0;6.0;6.0;6.0;6.0,6.0,", "9.0;9.0;9.0;9.0;9.0,9.0,")
-    (run_dir / "reruns.csv").write_text(f"{header}\n{rerun}\n")
-
-    setup = section(page(report()), "## Setup")
-
-    assert (
-        "**Cells run more than once**, each run in a new process, with the warm "
-        "runtime of each run, of which the page gives the smallest and "
-        "[`reruns.csv`](reruns.csv) holds the records of the others: "
-        "Circuitscape.jl, CPU, float64, cg+amg, distance calculation on 1024²: "
-        "6.00 s and 9.00 s." in setup
-    )
 
 
 def test_page_states_the_settings_of_the_run(report):

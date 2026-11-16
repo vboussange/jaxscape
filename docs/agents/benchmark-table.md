@@ -28,8 +28,9 @@ each time a benchmark run is published under `benchmark/results/<run>/` (see
    either direction, runs again in a new process, as "Publish a run" in
    `benchmark/README.md` describes. When the runs disagree, the published
    record is the run with the faster time of the other package, which gives
-   the smaller speed-up of JAXScape; the page gives that record and lists the
-   warm runtime of each run.
+   the smaller speed-up of JAXScape. The pull request that publishes the run
+   gives the warm runtime of every run of these cells; the run directory and
+   the page hold the published record alone.
 3. **Speed-up row.** For each column, take the speed-ups of the page over the
    other packages: in the distance calculation, those of the rows of the
    column's distance. The cell shows the smallest, as the page gives it (two
