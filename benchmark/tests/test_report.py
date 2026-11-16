@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 
 import pytest
-from report import factor, plot_runtimes, solver_view
+from report import factor, plot_runtimes, seconds, solver_view
 from run import read_records
 
 
@@ -185,8 +185,8 @@ def test_distance_section_states_the_speed_up_errors_and_limits_first(report):
         "Circuitscape.jl",
         "resistance",
         "1024²",
-        "6 s",
-        "0.41 s",
+        "6.00 s",
+        "0.410 s",
         "15",
         "5.1e-07",
         "3.4e-06",
@@ -199,19 +199,32 @@ def test_speed_ups_have_two_significant_digits_below_10():
     assert [factor(ratio) for ratio in ratios] == ["0.57", "1.0", "4.0", "10", "43"]
 
 
+def test_runtimes_have_three_significant_digits_and_keep_trailing_zeros():
+    durations = (0.0386, 1.098, 2.004, 12.96, 404.49, 1690.25)
+
+    assert [seconds(duration) for duration in durations] == [
+        "0.0386",
+        "1.10",
+        "2.00",
+        "13.0",
+        "404",
+        "1690",
+    ]
+
+
 def test_distance_table_lists_each_setting_with_its_runtime_and_error(report):
     table = full_table(section(page(report()), "## Distance calculation"))
 
     gpu = table_row(table, "JAXScape", "resistance", GMG)
-    assert gpu[3:] == ["0.061 s, error 2.1e-06", "0.41 s, error 3.4e-06", "oom", "skipped"]
+    assert gpu[3:] == ["0.0610 s, error 2.1e-06", "0.410 s, error 3.4e-06", "oom", "skipped"]
     cpu = table_row(table, "JAXScape", "resistance", "CPU, float32, GeometricMultigridCGSolver")
-    assert cpu[3:5] == ["0.39 s", "timeout"]
+    assert cpu[3:5] == ["0.390 s", "timeout"]
     free_energy = table_row(table, "JAXScape", "free energy", "GPU, float64, CuDSSSolver")
-    assert free_energy[3:] == ["0.53 s, error 1.0e-09", "", "", ""]
+    assert free_energy[3:] == ["0.530 s, error 1.0e-09", "", "", ""]
     amg = table_row(table, "Circuitscape.jl", "resistance", "CPU, float64, cg+amg")
-    assert amg[3:] == ["0.9 s, error 4.2e-07", "6 s, error 5.1e-07", "", ""]
+    assert amg[3:] == ["0.900 s, error 4.2e-07", "6.00 s, error 5.1e-07", "", ""]
     conscape = table_row(table, "ConScape.jl", "free energy", "CPU, float64")
-    assert conscape[3:] == ["2.5 s, error 2.0e-14", "", "", ""]
+    assert conscape[3:] == ["2.50 s, error 2.0e-14", "", "", ""]
 
 
 def test_each_setting_that_stopped_shows_its_status_and_recorded_reason(report):
@@ -251,11 +264,11 @@ def test_connectivity_table_lists_the_rank_correlation_of_each_tool(report):
         "4096²",
     ]
     resistance = table_row(table, "JAXScape", "resistance", GMG)
-    assert resistance[3:5] == ["50 s", "200 s"]
+    assert resistance[3:5] == ["50.0 s", "200 s"]
     eco = table_row(table, "eco-connectivity", "least-cost path", "CPU, float32")
-    assert eco[3:6] == ["0.2 s, ρ = 0.98", "1 s, ρ = 0.81", "timeout"]
+    assert eco[3:6] == ["0.200 s, ρ = 0.98", "1.00 s, ρ = 0.81", "timeout"]
     graphab = table_row(table, "Graphab", "least-cost path", "CPU, float64")
-    assert graphab[3:5] == ["4 s, ρ = -0.06", "9.5 s"]
+    assert graphab[3:5] == ["4.00 s, ρ = -0.06", "9.50 s"]
 
 
 def test_sensitivity_section_gives_the_speed_up_tier_and_rank_correlation(report):
@@ -273,17 +286,17 @@ def test_sensitivity_section_gives_the_speed_up_tier_and_rank_correlation(report
         "3",
         label,
         "256²",
-        "8 s",
-        "70 s",
+        "8.00 s",
+        "70.0 s",
         "0.11",
         "0.43",
     ]
     table = full_table(text)
     assert table_row(table, "Tool")[:3] == ["Tool", "Distance or label", "Setting"]
     gpu = table_row(table, "JAXScape", label, GMG)
-    assert gpu[3:5] == ["70 s", "300 s"]
+    assert gpu[3:5] == ["70.0 s", "300 s"]
     amg = table_row(table, "Omniscape.jl", "resistance", "CPU, float64, cg+amg")
-    assert amg[3:5] == ["10 s, ρ = 0.41", "37 s, ρ = 0.62"]
+    assert amg[3:5] == ["10.0 s, ρ = 0.41", "37.0 s, ρ = 0.62"]
     assert "K = -R" not in text
     assert re.search(
         r"\[[^]]*\]\(\.\./examples/connectivity_analysis/"
@@ -329,14 +342,14 @@ def test_solver_section_names_the_fastest_solver_and_lists_every_solver(report):
         "float32",
         "4096²",
         "GeometricMultigridCGSolver",
-        "5.1 s",
+        "5.10 s",
         "4.0e-06",
         "",
         "",
     ]
     assert table_row(fastest, "distance calculation", "resistance", "float64")[4:] == [
         "CuDSSSolver",
-        "0.3 s",
+        "0.300 s",
         "1.0e-12",
         "",
         "",
@@ -348,7 +361,7 @@ def test_solver_section_names_the_fastest_solver_and_lists_every_solver(report):
     gmg = "GeometricMultigridCGSolver"
     assert table_row(fastest, *connectivity, "float32", "256²", gmg)[4:] == [
         gmg,
-        "91 s",
+        "91.0 s",
         "3.1e-04",
         "",
         "",
@@ -356,13 +369,13 @@ def test_solver_section_names_the_fastest_solver_and_lists_every_solver(report):
     spielman = "SpielmanApproximation(epsilon=0.15)"
     assert table_row(fastest, *connectivity, "float32", "256²", spielman)[5:] == [
         "GeometricMultigridCGSolver(rtol=3e-4)",
-        "2 s",
+        "2.00 s",
         "4.2e-02",
         "46",
     ]
     assert table_row(fastest, *connectivity, "float64", "1024²", spielman)[5:] == [
         "CuDSSSolver",
-        "12 s",
+        "12.0 s",
         "",
         "",
     ]
@@ -378,17 +391,17 @@ def test_solver_section_names_the_fastest_solver_and_lists_every_solver(report):
     ]
     rows = {
         ("distance calculation", "resistance", "float32", "GeometricMultigridCGSolver"): [
-            "0.03 s, error 2.0e-06",
-            "0.35 s, error 3.0e-06",
-            "5.1 s, error 4.0e-06",
+            "0.0300 s, error 2.0e-06",
+            "0.350 s, error 3.0e-06",
+            "5.10 s, error 4.0e-06",
         ],
         ("distance calculation", "free energy", "float64", "CuDSSSolver"): [
-            "0.35 s, error 4.7e-14",
+            "0.350 s, error 4.7e-14",
             "",
             "",
         ],
         ("connectivity analysis", "resistance", "float32", "GeometricMultigridCGSolver"): [
-            "91 s, error 3.1e-04",
+            "91.0 s, error 3.1e-04",
             "",
             "",
         ],
@@ -397,7 +410,7 @@ def test_solver_section_names_the_fastest_solver_and_lists_every_solver(report):
             "resistance",
             "float64",
             "SpielmanApproximation(epsilon=0.15), CuDSSSolver",
-        ): ["1.5 s, error 4.0e-02", "12 s", ""],
+        ): ["1.50 s, error 4.0e-02", "12.0 s", ""],
     }
     for configuration, cells in rows.items():
         assert table_row(table, *configuration)[4:] == cells
@@ -438,7 +451,11 @@ def test_setup_states_the_hardware_protocol_and_versions_of_the_run(report):
     assert "16 cores of an AMD EPYC 7742 64-Core Processor" in setup
     assert "Ubuntu 22.04.5 LTS" in setup
     assert "the median time of the 5 timed calls of a cell" in setup
-    assert "when the warm-up call takes more than 5 min" in setup
+    assert (
+        "when the warm-up call takes more than 5 min, as in 10 of the 24 cells "
+        "that succeeded on 256² and 7 of the 9 on Maryland." in setup
+    )
+    assert "run more than once" not in setup
     assert (
         "**Time limit**: a call stops after 1 h, and in the section of the linear "
         "solvers of JAXScape after the time limit stated in its Method." in setup
@@ -455,6 +472,25 @@ def test_setup_states_the_hardware_protocol_and_versions_of_the_run(report):
     # The page names no host and no GPU of a cluster.
     for detail in ("gpunode", "GPU-b8590203", "GPU 5", "80-95"):
         assert detail not in text
+
+
+def test_setup_gives_every_run_of_each_cell_that_ran_more_than_once(report, tmp_path):
+    run_dir = tmp_path / "run"
+    shutil.copytree(FIXTURE, run_dir)
+    header, *lines = (run_dir / "records.csv").read_text().splitlines()
+    [cell] = [line for line in lines if "Circuitscape.jl" in line and "cg+amg,synthetic-1024" in line]
+    rerun = cell.replace("6.0;6.0;6.0;6.0;6.0,6.0,", "9.0;9.0;9.0;9.0;9.0,9.0,")
+    (run_dir / "reruns.csv").write_text(f"{header}\n{rerun}\n")
+
+    setup = section(page(report()), "## Setup")
+
+    assert (
+        "**Cells run more than once**, each run in a new process, with the warm "
+        "runtime of each run, of which the page gives the smallest and "
+        "[`reruns.csv`](reruns.csv) holds the records of the others: "
+        "Circuitscape.jl, CPU, float64, cg+amg, distance calculation on 1024²: "
+        "6.00 s and 9.00 s." in setup
+    )
 
 
 def test_page_states_the_settings_of_the_run(report):

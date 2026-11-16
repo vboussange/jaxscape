@@ -6,8 +6,9 @@
 writes one figure per question, such as `distance.png`, the Maryland figure
 `maryland.png`, the two figures of the solver view, `solvers.png` and
 `solver-errors.png`, and the page `index.md` into RUN_DIR. The report reads the
-records, the configuration and the environment snapshot of the run, the maps of
-the Maryland figure, and the header comment of each adapter that the records
+records, the configuration and the environment snapshot of the run, the records
+of the other runs of the cells that ran more than once (`reruns.csv`), the maps
+of the Maryland figure, and the header comment of each adapter that the records
 name. `--publish` points `docs/benchmark`, the Benchmark page of the docs, at
 RUN_DIR.
 """
@@ -22,7 +23,7 @@ from pathlib import Path
 
 import matplotlib
 import numpy as np
-from run import map_path, read_records, RHO
+from run import KEY, map_path, read_records, RHO
 from scipy.stats import rankdata
 
 
@@ -63,6 +64,7 @@ LINE = ("tool", "distance", "device")  # a line of a figure of the comparison
 SOLID = {"gpu", "float32"}  # the lines of the figures drawn solid, others dashed
 # The marker of each raster, from the smallest; circles mark the dtype.
 MARKERS = "D^vPX*"
+LINE_MARKERS = "osD^vPXp"  # the marker of each line of a figure of runtime
 SMALLEST_ERROR = 1e-16  # errors below it are drawn at it, on a log scale
 # The Maryland figure: JAXScape's map of a question next to a tool's map.
 MARYLAND = {
@@ -110,8 +112,9 @@ def report(run_dir):
     **Arguments:**
 
     - `run_dir`: The run directory, with `records.csv`, `config.json`,
-      `environment.json` and, when they are kept, the maps of the Maryland
-      figure. Without the maps, the Maryland figure drawn before stays.
+      `environment.json`, `reruns.csv` when a cell ran more than once, and,
+      when they are kept, the maps of the Maryland figure. Without the maps,
+      the Maryland figure drawn before stays.
     """
     records = read_records(run_dir / "records.csv")
     config = json.loads((run_dir / "config.json").read_text())
@@ -131,7 +134,9 @@ def report(run_dir):
     if pair and all(map_path(run_dir, record).exists() for record in pair):
         plot_maryland(run_dir, *pair, run_dir / "maryland.png")
     maryland = pair if (run_dir / "maryland.png").exists() else None
-    text = page(records, config, environment, maryland, run_dir)
+    reruns_path = run_dir / "reruns.csv"
+    reruns = read_records(reruns_path) if reruns_path.exists() else []
+    text = page(records, config, environment, maryland, run_dir, reruns)
     (run_dir / "index.md").write_text(text)
 
 
@@ -337,8 +342,10 @@ def plot_runtimes(records, panel, line, path):
     - `line`: The fields whose values give a line. The last, the device or the
       dtype, sets its style: GPU and float32 lines are solid with filled
       markers, and CPU and float64 lines dashed with hollow markers. The others
-      set its colour, and the legend gives their values, with the tier of a
-      tool when the tools of the figure differ in tier.
+      set its colour and marker, and the legend gives their values, with the
+      tier of a tool when the tools of the figure differ in tier. The lines of
+      JAXScape lie above those of the other tools, and a line above those
+      after it in the legend.
     - `path`: Where to save the figure.
     """
     panels = list(group_by(records, panel))
@@ -352,25 +359,29 @@ def plot_runtimes(records, panel, line, path):
         rows = [key for key in keys if key in on_panel]
         for of_line, records_of_line in group_by(ok, line):
             key = tuple(of_line.values())[:-1]
-            style = style_of(of_line[line[-1]], f"C{keys.index(key) % 10}")
+            index = keys.index(key)
+            jaxscape = of_line.get("tool") == "JAXScape"
+            style = style_of(of_line[line[-1]], f"C{index % 10}") | {
+                "marker": LINE_MARKERS[index % len(LINE_MARKERS)],
+                "zorder": len(keys) * (1 + jaxscape) - index,
+            }
             cases = dict.fromkeys(record["case"] for record in records_of_line)
             best = [fastest(records_of_line, case) for case in cases]
             if one_raster:
                 dot = style | {"linestyle": ""}
-                axes.plot(best[0]["median_s"], rows.index(key), "o", ms=6, **dot)
+                axes.plot(best[0]["median_s"], rows.index(key), ms=6, **dot)
                 continue
             synthetic = [record for record in best if side(record["case"])]
             axes.plot(
                 [record["cells"] for record in synthetic],
                 [record["median_s"] for record in synthetic],
-                marker="o",
                 ms=4,
                 **style,
             )
             for record in best:
                 if not side(record["case"]):
-                    star = style | {"linestyle": ""}
-                    axes.plot(record["cells"], record["median_s"], "*", ms=9, **star)
+                    star = style | {"linestyle": "", "marker": "*"}
+                    axes.plot(record["cells"], record["median_s"], ms=9, **star)
         if one_raster:
             runtime_axis(axes, [", ".join(map(name, key)) for key in rows], ok)
         else:
@@ -385,6 +396,8 @@ def plot_runtimes(records, panel, line, path):
             [],
             [],
             color=f"C{index % 10}",
+            marker=LINE_MARKERS[index % len(LINE_MARKERS)],
+            ms=4,
             label=", ".join(map(name, key))
             + (f", Tier {tiers[key]}" if tiered and tiers[key] else ""),
         )
@@ -523,7 +536,13 @@ def plot_maryland(run_dir, jaxscape, other, path):
 
 
 def seconds(value):
-    """Return a duration in seconds to three significant digits, such as `1700`."""
+    """Return a duration in seconds to three significant digits, such as `2.00`.
+
+    Trailing zeros stay, and a duration from 100 s has no decimal point, such
+    as `1700`.
+    """
+    if value < 100:
+        return f"{value:#.3g}".rstrip(".")
     return f"{float(f'{value:.3g}'):g}"
 
 
@@ -988,8 +1007,74 @@ def introduction():
     ]
 
 
-def setup_section(records, config, environment):
-    """Return the section of the setup: hardware, software, protocol, measures."""
+def single_calls(records):
+    """Return where the warm runtime is the time of a single timed call.
+
+    The text, such as `, as in 3 of the 20 cells that succeeded on 4096²`,
+    counts the cells of each raster that succeeded with a single timed call,
+    on the rasters that have one.
+    """
+    counts = []
+    for values, of_case in group_by(succeeded(records), ("case",)):
+        single = sum(len(record["times_s"]) == 1 for record in of_case)
+        if single:
+            counts.append((of_case[0]["cells"], single, len(of_case), values["case"]))
+    parts = [
+        f"{single} of the {total}{' cells that succeeded' if index == 0 else ''} "
+        f"on {case_label(case)}"
+        for index, (_, single, total, case) in enumerate(sorted(counts))
+    ]
+    return f", as in {either(parts, 'and')}" if parts else ""
+
+
+def runs_again(records, reruns):
+    """Return the item of the Timing section on the cells that ran more than once.
+
+    **Arguments:**
+
+    - `records`: The records of the run, which keep, of each cell that ran more
+      than once, the run with the smallest warm runtime.
+    - `reruns`: The records of the other runs of these cells.
+
+    **Returns:**
+
+    The item, which gives the warm runtime of every run of each such cell, or
+    nothing when no cell ran more than once.
+    """
+    if not reruns:
+        return ""
+
+    def key(record):
+        return tuple(record[field] for field in KEY)
+
+    runs = {}
+    for record in [*records, *reruns]:
+        runs.setdefault(key(record), []).append(record)
+    cells = []
+    for again in dict.fromkeys(key(record) for record in reruns):
+        first = runs[again][0]
+        times = sorted(r["median_s"] for r in runs[again] if r["status"] == "ok")
+        stopped = [r["status"] for r in runs[again] if r["status"] != "ok"]
+        cells.append(
+            f"{first['tool']}, {setting(first)}, "
+            f"{QUESTIONS[first['question']].lower()} on {case_label(first['case'])}: "
+            + either([*(f"{seconds(time)} s" for time in times), *stopped], "and")
+        )
+    return (
+        "**Cells run more than once**, each run in a new process, with the warm "
+        "runtime of each run, of which the page gives the smallest and "
+        "[`reruns.csv`](reruns.csv) holds the records of the others: "
+        + "; ".join(cells)
+        + "."
+    )
+
+
+def setup_section(records, config, environment, reruns=()):
+    """Return the section of the setup: hardware, software, protocol, measures.
+
+    `reruns` holds the records of the other runs of the cells that ran more
+    than once (see `runs_again`).
+    """
     run, landscape, maryland = config["run"], config["landscape"], config["maryland"]
     gpu, cpu, cores = environment["gpu"], environment["cpu"], environment["cores"]
     comparison = [record for record in records if record["view"] == "comparison"]
@@ -1052,7 +1137,10 @@ def setup_section(records, config, environment):
         f"call{'s' if run['repeats'] != 1 else ''} of a cell, which follow a "
         "warm-up call that compiles the code of the tools that compile; the time "
         "of a single timed call when the warm-up call takes more than "
-        f"{duration(run['single_call_after'])}.",
+        f"{duration(run['single_call_after'])}"
+        + (single_calls(records) if run["repeats"] > 1 else "")
+        + ".",
+        runs_again(records, reruns),
         "**Work of a call**: every call redoes the work that depends on the "
         "landscape: graph assembly, factorization, multigrid hierarchy and "
         "solver state.",
@@ -1447,7 +1535,7 @@ def solver_section(records, config, run_dir):
     ]
 
 
-def page(records, config, environment, maryland=None, run_dir=None):
+def page(records, config, environment, maryland=None, run_dir=None, reruns=()):
     """Return the Benchmark page of a run.
 
     **Arguments:**
@@ -1460,6 +1548,8 @@ def page(records, config, environment, maryland=None, run_dir=None):
       has it.
     - `run_dir`: The run directory, whose figures give their width on the
       page.
+    - `reruns`: The records of the other runs of the cells that ran more than
+      once, from `reruns.csv` of the run directory.
 
     **Returns:**
 
@@ -1467,7 +1557,7 @@ def page(records, config, environment, maryland=None, run_dir=None):
     """
     solvers = solver_view(records)
     comparison = [record for record in records if record["view"] == "comparison"]
-    sections = [*introduction(), *setup_section(records, config, environment)]
+    sections = [*introduction(), *setup_section(records, config, environment, reruns)]
     for question, section in (
         ("distance", distance_section),
         ("connectivity", connectivity_section),
