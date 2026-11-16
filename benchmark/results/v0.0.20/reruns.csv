@@ -1,0 +1,5 @@
+view,question,tool,distance,device,dtype,solver,case,cells,status,reason,warmup_s,times_s,median_s,measure,agreement,tier,compared_with,version,files,adapter
+comparison,distance,Circuitscape.jl,resistance,cpu,float64,cholmod,synthetic-4096,16777216,ok,,301.299210193,296.009329776,296.009329776,largest relative error,1.8671826602122358e-08,1,,6.1.0,True,adapters/circuitscape.jl
+comparison,distance,Circuitscape.jl,resistance,cpu,float64,cholmod,synthetic-4096,16777216,ok,,144.421345122,179.93229558;139.805242112;140.361421453;161.305798696;156.980276155,156.980276155,largest relative error,1.8671826602122358e-08,1,,6.1.0,True,adapters/circuitscape.jl
+comparison,distance,Circuitscape.jl,resistance,cpu,float64,cg+amg,synthetic-8192,67108864,ok,,2508.850162788,2629.140437567,2629.140437567,largest relative error,,1,,6.1.0,True,adapters/circuitscape.jl
+comparison,sensitivity,Omniscape.jl,resistance,cpu,float64,cg+amg,synthetic-8192,67108864,ok,,2167.419017146,2225.928988693,2225.928988693,Spearman's ρ,0.9374221394415014,3,"resistance, K = -R, normalized",0.6.4,False,adapters/omniscape.jl

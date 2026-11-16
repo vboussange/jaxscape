@@ -38,7 +38,7 @@ The table marks the quantities that each package computes.
 | [eco-connectivity](https://github.com/csiro/connectivity) |  |  |  | ✓ |  |
 | [EcoScape](https://github.com/ecoscape-earth/ecoscape-connectivity) |  |  |  |  | ✓ |
 | [samc](https://cran.r-project.org/package=samc) |  |  |  |  | ✓ |
-| **Smallest speed-up of JAXScape over another package** | 1.2x over skimage.graph.MCP | 43x over Circuitscape.jl | 2.3x over ConScape.jl | 1.1x over Graphab | 4.0x over Omniscape.jl |
+| **Smallest speed-up of JAXScape over another package** | 1.2x over skimage.graph.MCP | 21x over Circuitscape.jl | 2.3x over ConScape.jl | 1.1x over Graphab | 4.0x over Omniscape.jl |
 
 Speed-up: the smallest speed-up of JAXScape on one GPU over another package in the benchmark of JAXScape 0.0.20, that is, the warm runtime of the package divided by that of JAXScape, each in its fastest setting on the largest synthetic raster that both completed, with JAXScape under the distance or setting with which the benchmark compares the package. The [benchmark page](https://vboussange.github.io/jaxscape/benchmark/) of the [documentation](https://vboussange.github.io/jaxscape/) details the comparison.
 

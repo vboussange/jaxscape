@@ -31,7 +31,7 @@ This page compares JAXScape with the software that ecologists use for connectivi
     | --- | --- |
     | JAXScape | JAXScape builds a `GridGraph` of the permeability raster with rook contiguity, the conductance of an edge being the harmonic mean of the permeabilities of its two pixels (`landscape.conductance`), so that its resistance is their mean resistance. The edge cost of least-cost path and free-energy distances is 1 / conductance, and the free-energy distance has the shared `theta`. The distance calculation is a nodes-to-nodes query among the sites. The connectivity analysis runs `SensitivityAnalysis(...).run("quality")` for its map, and the sensitivity analysis runs `SensitivityAnalysis(...).run("permeability")`, with the shared `dependency_range` and `coarsening_factor`, the default proximity and the `batch_size` of the settings; these windowed analyses build their graphs with JAXScape's own edge rule, the mean permeability of the two pixels. A `proximity` setting, a function of the distance in Python such as `lambda d: -d`, replaces the default proximity. With `normalized`, the map of the sensitivity analysis is the normalized sensitivity to resistance of the connectivity example: p^2 dC/dp divided by dC/dp on a landscape of permeability 1 and the same quality, and 0 where the latter is not positive, both computed in each call. The distance runs with the solver, the resistance `method` and the dtype of its settings, such as `GeometricMultigridCGSolver(rtol=3e-4)` (`dense` is the dense solve, `solver=None`), and every call builds the graphs and the solver states. |
     | Circuitscape.jl | Circuitscape.jl computes the pairwise resistances among the sites of the distance calculation, in its `pairwise` scenario, with the permeability raster as the conductance of each pixel. `connect_four_neighbors_only` gives rook contiguity, and `connect_using_avg_resistances` makes the resistance of an edge the mean resistance of its two pixels, as `landscape.conductance` does. The solver is `cg+amg` or `cholmod`, in double precision, with `parallelize` on the Julia threads of the cell. Circuitscape.jl has no public in-memory API for this scenario: each call builds its `RasterData` in memory and runs the internals that `compute` runs after reading files (`build_problem`, `single_ground_all_pairs`), and writes only its table of resistances, to /dev/shm. Every call rebuilds the graph, the Laplacian and the AMG hierarchy or Cholesky factor. |
-    | ConScape.jl | ConScape.jl builds its graph with rook contiguity (`N4`), the affinity of an edge being the harmonic mean of the permeabilities of its two pixels (`AverageWeight`), as `landscape.conductance` gives, and the cost of an edge 1 / affinity (`Inv`). Its free-energy distance has the shared `theta`. The distance calculation computes the free-energy distances among the sites, the targets of a `GridRSP`. ConScape's free-energy distance is directed, and the adapter returns the mean of the two directions between two sites, as JAXScape's `FreeEnergyDistance` does. The connectivity and sensitivity analyses run on the whole raster, without windows, with targets at landmarks every b pixels (`coarse_graining`), each holding the quality of its block, where b is the `block_size` of the windows, JAXScape's block size: 21. The connectivity analysis returns Hanski's S_i, the connected habitat of each pixel at source quality 1 (`connected_habitat`): the sum over landmarks of their quality times exp(-d / (dependency_range / 4)), exp(-d / 25), for the free-energy distance d to the landmark. The sensitivity analysis returns the quality-weighted betweenness (`betweenness_qweighted`). JAXScape has no free-energy map, and the configuration compares these maps with JAXScape's under least-cost path distance (`compared_with = "lcp"`). The free-energy distance tends to a multiple of the resistance distance as theta tends to 0, and to the least-cost path distance as theta grows. On the synthetic raster of 256 pixels a side, for every theta from 1e-5 to 1.5e-2, the ranking of the pairs of sites of the distance calculation by free-energy distance agrees with their ranking by least-cost path distance (Spearman's ρ 0.98 to 0.99, against 0.92 to 0.95 with resistance distance), and at the shared theta, 0.01, ConScape's maps of connectivity and sensitivity correlate more with the maps of JAXScape's GPU cells under least-cost path distance (ρ 0.93 and 0.84) than under resistance distance (0.87 and 0.72). Every call rebuilds the affinities, the `Grid`, the landmarks and the `GridRSP`, with its sparse LU factorization, which runs on the BLAS threads of the cell. |
+    | ConScape.jl | ConScape.jl builds its graph with rook contiguity (`N4`), the affinity of an edge being the harmonic mean of the permeabilities of its two pixels (`AverageWeight`), as `landscape.conductance` gives, and the cost of an edge 1 / affinity (`Inv`). `Grid` keeps the largest strongly connected component of the graph, through `largest_subgraph`, by its default `prune`, as in ConScape's examples. Its free-energy distance has the shared `theta`. The distance calculation computes the free-energy distances among the sites, the targets of a `GridRSP`. ConScape's free-energy distance is directed, and the adapter returns the mean of the two directions between two sites, as JAXScape's `FreeEnergyDistance` does. The connectivity and sensitivity analyses run on the whole raster, without windows, with targets at landmarks every b pixels (`coarse_graining`), each holding the quality of its block, where b is the `block_size` of the windows, JAXScape's block size: 21. The connectivity analysis returns Hanski's S_i, the connected habitat of each pixel at source quality 1 (`connected_habitat`): the sum over landmarks of their quality times exp(-d / (dependency_range / 4)), exp(-d / 25), for the free-energy distance d to the landmark. The sensitivity analysis returns the quality-weighted betweenness (`betweenness_qweighted`). On Maryland, whose resistances reach 1000, the free-energy distance d is larger than 7.4e4 for 45 % of the pairs of a pixel of the component and a landmark: the entry of ConScape's matrix Z for such a pair, proportional to exp(-theta d), is below the smallest positive float64, and is 0. `betweenness_qweighted` replaces the reciprocal of each such entry by the largest float64, its products with the landmark qualities larger than 1 are infinite, and its map is NaN on every pixel. `connected_habitat` weighs such a pair by exp(-d / 25), which is 0, and its map is finite. JAXScape has no free-energy map, and the configuration compares these maps with JAXScape's under least-cost path distance (`compared_with = "lcp"`). The free-energy distance tends to a multiple of the resistance distance as theta tends to 0, and to the least-cost path distance as theta grows. On the synthetic raster of 256 pixels a side, for every theta from 1e-5 to 1.5e-2, the ranking of the pairs of sites of the distance calculation by free-energy distance agrees with their ranking by least-cost path distance (Spearman's ρ 0.98 to 0.99, against 0.92 to 0.95 with resistance distance), and at the shared theta, 0.01, ConScape's maps of connectivity and sensitivity correlate more with the maps of JAXScape's GPU cells under least-cost path distance (ρ 0.93 and 0.84) than under resistance distance (0.87 and 0.72). Every call rebuilds the affinities, the `Grid`, the landmarks and the `GridRSP`, with its sparse LU factorization, which runs on the BLAS threads of the cell. |
     | gdistance | gdistance builds a transition layer of the resistance raster, 1 / permeability, with 4 neighbours (rook contiguity) and the transition function 1 / mean(x): the conductance between two pixels is the reciprocal of their mean resistance, `landscape.conductance`. Resistance distances are `commuteDistance` divided by the volume of the graph, the sum of its conductances in both directions, and least-cost path distances are `costDistance`, whose edge cost is 1 / conductance. Pixels have side 1, so `geoCorrection` leaves the layer unchanged and is left out. Every call builds the transition layer, whose conductances depend on the resistance. |
     | skimage.graph.MCP | skimage.graph.MCP_Geometric finds least-cost paths on the resistance raster, 1 / permeability, with rook contiguity (`fully_connected=False`). The cost of a step is the mean resistance of its two pixels, 1 / `landscape.conductance`, the edge cost of JAXScape. Each call builds the MCP object, and searches from each site until it reaches all the others. |
     | EcoScape | EcoScape (`ecoscape-connectivity`) simulates the repopulation of the habitat, the pixels of quality > 0, from seeds drawn at random in it, and maps its flow: the gradient of the repopulation with respect to the permeability of each pixel, times that permeability. Its edge rule is its own: at each step, individuals spread to the 8 neighbours of a pixel, survive a coin toss, and are multiplied by the permeability of their destination. The dispersal distance is the shared `dependency_range`, in pixels, which is also the border of its tiles and their padding, so that its map covers the raster. Quality enters only as habitat. The other settings are EcoScape's defaults: 400 simulations, 4 seeds per square of side 2 `dependency_range` + 1, tiles of 1000 pixels and no gap crossing, with the `batch_size` of the settings and a fixed random seed. EcoScape tiles a raster through GeoTIFFs only: every call writes the habitat and permeability to /dev/shm, runs on the GPU, and reads back the flow, which EcoScape writes with its connectivity. Its map is compared with JAXScape's under least-cost path distances: repopulation follows the most permeable neighbour, the maximum over neighbours, as a least-cost path does. |
@@ -47,7 +47,8 @@ This page compares JAXScape with the software that ecologists use for connectivi
 
 ### Timing
 
-- **Warm runtime**: the median time of the 5 timed calls of a cell, which follow a warm-up call that compiles the code of the tools that compile; the time of a single timed call when the warm-up call takes more than 5 min.
+- **Warm runtime**: the median time of the 5 timed calls of a cell, which follow a warm-up call that compiles the code of the tools that compile; the time of a single timed call when the warm-up call takes more than 5 min, as in 1 of the 56 cells that succeeded on 256², 2 of the 25 on Maryland, 4 of the 48 on 1024², 12 of the 31 on 4096² and 13 of the 22 on 8192².
+- **Cells run more than once**, each run in a new process, with the warm runtime of each run, of which the page gives the smallest and [`reruns.csv`](reruns.csv) holds the records of the others: Circuitscape.jl, CPU, float64, cholmod, distance calculation on 4096²: 141 s, 157 s and 296 s; Circuitscape.jl, CPU, float64, cg+amg, distance calculation on 8192²: 1890 s and 2630 s; Omniscape.jl, CPU, float64, cg+amg, sensitivity analysis on 8192²: 2170 s and 2230 s.
 - **Work of a call**: every call redoes the work that depends on the landscape: graph assembly, factorization, multigrid hierarchy and solver state.
 - **Speed-up of JAXScape** over a tool under a distance: the warm runtime of the tool divided by that of JAXScape on the GPU, each in its fastest setting on the largest synthetic raster that both completed, with JAXScape under the same distance in the distance calculation, and under the distance or label of the column "Compared with JAXScape under" in the connectivity and sensitivity analyses.
 - **Time limit**: a call stops after 1 h, and in the section of the linear solvers of JAXScape after the time limit stated in its Method.
@@ -78,8 +79,8 @@ On the largest synthetic raster that JAXScape on the GPU and the other tool both
 
 | Tool | Distance | Raster | Warm runtime of the tool | Warm runtime of JAXScape | Speed-up | Error of the tool | Error of JAXScape |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Circuitscape.jl | resistance | 4096² | 296 s | 6.81 s | 43 | 1.9e-08 | 1.3e-03 |
-| ConScape.jl | free energy | 1024² | 13 s | 5.66 s | 2.3 | 9.0e-16 | 1.3e-15 |
+| Circuitscape.jl | resistance | 4096² | 141 s | 6.81 s | 21 | 1.9e-08 | 1.3e-03 |
+| ConScape.jl | free energy | 1024² | 13.0 s | 5.66 s | 2.3 | 9.0e-16 | 1.3e-15 |
 | gdistance | resistance | 4096² | 1690 s | 6.81 s | 248 | 2.6e-09 | 1.3e-03 |
 | gdistance | least-cost path | 1024² | 27.7 s | 10.6 s | 2.6 | 4.5e-15 | 1.5e-06 |
 | skimage.graph.MCP | least-cost path | 1024² | 12.4 s | 10.6 s | 1.2 | 3.4e-16 | 1.5e-06 |
@@ -96,9 +97,9 @@ On the largest synthetic raster that JAXScape on the GPU and the other tool both
     | JAXScape | least-cost path | CPU, float32 | 12.9 s, error 5.9e-07 | 505 s, error 1.5e-06 | timeout | skipped |
     | JAXScape | free energy | GPU, float64, CuDSSSolver | 0.281 s, error 1.4e-15 | 5.66 s, error 1.3e-15 |  |  |
     | JAXScape | free energy | CPU, float64, CholmodSolver | 1.65 s, error 0.0e+00 | 37.9 s, error 0.0e+00 |  |  |
-    | Circuitscape.jl | resistance | CPU, float64, cg+amg | 0.383 s, error 6.2e-07 | 21 s, error 1.3e-06 | 602 s, error 5.6e-05 | 2630 s |
-    | Circuitscape.jl | resistance | CPU, float64, cholmod | 0.276 s, error 8.7e-11 | 4.93 s, error 1.6e-09 | 296 s, error 1.9e-08 | 642 s |
-    | ConScape.jl | free energy | CPU, float64 | 0.62 s, error 1.3e-15 | 13 s, error 9.0e-16 |  |  |
+    | Circuitscape.jl | resistance | CPU, float64, cg+amg | 0.383 s, error 6.2e-07 | 21.0 s, error 1.3e-06 | 602 s, error 5.6e-05 | 1890 s |
+    | Circuitscape.jl | resistance | CPU, float64, cholmod | 0.276 s, error 8.7e-11 | 4.93 s, error 1.6e-09 | 141 s, error 1.9e-08 | 642 s |
+    | ConScape.jl | free energy | CPU, float64 | 0.620 s, error 1.3e-15 | 13.0 s, error 9.0e-16 |  |  |
     | gdistance | resistance | CPU, float64 | 1.53 s, error 6.8e-13 | 39.2 s, error 1.5e-10 | 1690 s, error 2.6e-09 | oom |
     | gdistance | least-cost path | CPU, float64 | 1.41 s, error 1.4e-15 | 27.7 s, error 4.5e-15 | 520 s, error 7.6e-15 | 2620 s, error 1.1e-14 |
     | skimage.graph.MCP | least-cost path | CPU, float64 | 0.429 s, error 3.3e-16 | 12.4 s, error 3.4e-16 | 244 s, error 3.1e-16 | 1180 s, error 3.6e-16 |
@@ -131,7 +132,7 @@ On the largest synthetic raster that JAXScape on the GPU and the other tool both
 
 | Tool | Tier | Compared with JAXScape under | Raster | Warm runtime of the tool | Warm runtime of JAXScape | Speed-up | Spearman's ρ |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| ConScape.jl | 3 | least-cost path | 1024² | 197 s | 1.1 s | 180 | 0.91 |
+| ConScape.jl | 3 | least-cost path | 1024² | 197 s | 1.10 s | 180 | 0.91 |
 | eco-connectivity | 2 | least-cost path | 8192² | 725 s | 74.8 s | 9.7 | 0.97 |
 | Graphab | 3 | least-cost path | 8192² | 80.6 s | 74.8 s | 1.1 | 0.33 |
 
@@ -143,7 +144,7 @@ On the largest synthetic raster that JAXScape on the GPU and the other tool both
     | --- | --- | --- | --- | --- | --- | --- | --- |
     | JAXScape | resistance | GPU, float32, GeometricMultigridCGSolver(rtol=3e-4) | 0.277 s | 1.74 s | 1.97 s | 23.3 s | 89.6 s |
     | JAXScape | resistance | CPU, float32, GeometricMultigridCGSolver(rtol=3e-4) | 17.8 s | 130 s | 148 s | 2310 s | timeout |
-    | JAXScape | least-cost path | GPU, float32 | 0.0931 s | 0.652 s | 1.1 s | 18.8 s | 74.8 s |
+    | JAXScape | least-cost path | GPU, float32 | 0.0931 s | 0.652 s | 1.10 s | 18.8 s | 74.8 s |
     | JAXScape | least-cost path | CPU, float32 | 4.59 s | 33.4 s | 59.3 s | 895 s | timeout |
     | ConScape.jl | free energy | CPU, float64 | 1.06 s, ρ = 0.93 | 51.6 s, ρ = 0.81 | 197 s, ρ = 0.91 |  |  |
     | eco-connectivity | least-cost path | CPU, float32 | 0.579 s, ρ = 0.98 | 4.84 s, ρ = 0.81 | 10.8 s, ρ = 0.97 | 180 s, ρ = 0.97 | 725 s, ρ = 0.97 |
@@ -175,7 +176,7 @@ On the largest synthetic raster that JAXScape on the GPU and the other tool both
 
 | Tool | Tier | Compared with JAXScape under | Raster | Warm runtime of the tool | Warm runtime of JAXScape | Speed-up | Spearman's ρ |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| ConScape.jl | 3 | least-cost path | 1024² | 404 s | 2 s | 202 | 0.78 |
+| ConScape.jl | 3 | least-cost path | 1024² | 404 s | 2.00 s | 202 | 0.78 |
 | EcoScape | 3 | least-cost path | 8192² | 1620 s | 128 s | 13 | 0.75 |
 | samc | 3 | resistance | 4096² | 989 s | 68.5 s | 14 | 0.55 |
 | Omniscape.jl | 3 | normalized sensitivity (K = −R) | 8192² | 2170 s | 538 s | 4.0 | 0.94 |
@@ -188,9 +189,9 @@ On the largest synthetic raster that JAXScape on the GPU and the other tool both
     | --- | --- | --- | --- | --- | --- | --- | --- |
     | JAXScape | resistance | GPU, float32, GeometricMultigridCGSolver(rtol=3e-4) | 0.561 s | 5.21 s | 4.76 s | 68.5 s | 268 s |
     | JAXScape | resistance | CPU, float32, GeometricMultigridCGSolver(rtol=3e-4) | 39.9 s | 369 s | 317 s | timeout | skipped |
-    | JAXScape | least-cost path | GPU, float32 | 0.154 s | 1.25 s | 2 s | 32.5 s | 128 s |
+    | JAXScape | least-cost path | GPU, float32 | 0.154 s | 1.25 s | 2.00 s | 32.5 s | 128 s |
     | JAXScape | least-cost path | CPU, float32 | 7.56 s | 67.7 s | 101 s | 1510 s | timeout |
-    | JAXScape | normalized sensitivity (K = −R) | GPU, float32, GeometricMultigridCGSolver(rtol=3e-4) | 1.1 s | 9.36 s | 9.39 s | 136 s | 538 s |
+    | JAXScape | normalized sensitivity (K = −R) | GPU, float32, GeometricMultigridCGSolver(rtol=3e-4) | 1.10 s | 9.36 s | 9.39 s | 136 s | 538 s |
     | JAXScape | normalized sensitivity (K = −R) | CPU, float32, GeometricMultigridCGSolver(rtol=3e-4) | 78.8 s | 663 s | 628 s | timeout | skipped |
     | ConScape.jl | free energy | CPU, float64 | 1.74 s, ρ = 0.84 | failed | 404 s, ρ = 0.78 |  |  |
     | EcoScape | least-cost path | GPU, float32 | 7.72 s, ρ = 0.76 | 13.7 s, ρ = 0.93 | 42.6 s, ρ = 0.75 | 439 s, ρ = 0.76 | 1620 s, ρ = 0.75 |
@@ -260,13 +261,13 @@ The approximations of resistance distance, each on the raster of its row above, 
 
     | Question | Distance | dtype | Solver | 256² | Maryland | 1024² | 4096² | 8192² |
     | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-    | distance calculation | resistance | float32 | GeometricMultigridCGSolver | 0.038 s, error 6.4e-05 |  | 0.423 s, error 2.7e-04 | 6.79 s, error 1.3e-03 | oom |
+    | distance calculation | resistance | float32 | GeometricMultigridCGSolver | 0.0380 s, error 6.4e-05 |  | 0.423 s, error 2.7e-04 | 6.79 s, error 1.3e-03 | oom |
     | distance calculation | resistance | float32 | CholmodSolver | 0.621 s, error 9.5e-06 |  | 24.4 s, error 1.2e-04 | 851 s, error 2.7e-04 | oom |
     | distance calculation | resistance | float32 | CuDSSSolver | 0.271 s, error 1.0e-04 |  | 5.38 s, error 2.5e-03 | oom | skipped |
     | distance calculation | resistance | float32 | AMJaxCGSolver | 0.444 s, error 5.8e-05 |  | 6.88 s, error 2.1e-04 | oom | skipped |
     | distance calculation | resistance | float32 | dense | oom |  | skipped | skipped | skipped |
     | distance calculation | resistance | float64 | GeometricMultigridCGSolver | 0.0718 s, error 1.7e-07 |  | 0.568 s, error 2.2e-07 | oom | skipped |
-    | distance calculation | resistance | float64 | CholmodSolver | 0.674 s, error 0.0e+00 |  | 25 s, error 0.0e+00 | oom | skipped |
+    | distance calculation | resistance | float64 | CholmodSolver | 0.674 s, error 0.0e+00 |  | 25.0 s, error 0.0e+00 | oom | skipped |
     | distance calculation | resistance | float64 | CuDSSSolver | 0.276 s, error 2.2e-13 |  | 5.43 s, error 3.0e-12 | oom | skipped |
     | distance calculation | resistance | float64 | AMJaxCGSolver | 0.463 s, error 5.0e-07 |  | 7.23 s, error 9.4e-07 | oom | skipped |
     | distance calculation | resistance | float64 | dense | oom |  | skipped | skipped | skipped |
@@ -285,7 +286,7 @@ The approximations of resistance distance, each on the raster of its row above, 
     | connectivity analysis | resistance | float64 | CuDSSSolver | 80.9 s, error 5.8e-14 |  |  |  |  |
     | connectivity analysis | resistance | float64 | AMJaxCGSolver | oom |  |  |  |  |
     | connectivity analysis | resistance | float64 | dense | failed |  |  |  |  |
-    | connectivity analysis | resistance | float64 | SpielmanApproximation(epsilon=0.15), GeometricMultigridCGSolver(rtol=3e-4) | 0.663 s, error 6.5e-02 | 4.5 s | 4.61 s | 64.5 s | 248 s |
+    | connectivity analysis | resistance | float64 | SpielmanApproximation(epsilon=0.15), GeometricMultigridCGSolver(rtol=3e-4) | 0.663 s, error 6.5e-02 | 4.50 s | 4.61 s | 64.5 s | 248 s |
     | connectivity analysis | resistance | float64 | SpielmanApproximation(epsilon=0.15), CuDSSSolver | 1.56 s, error 6.5e-02 | 4.11 s | 6.73 s | 74.2 s | 330 s |
     | sensitivity analysis | resistance | float32 | GeometricMultigridCGSolver | 106 s, error 6.1e-04 |  |  |  |  |
     | sensitivity analysis | resistance | float32 | CholmodSolver | timeout |  |  |  |  |
@@ -338,4 +339,4 @@ The approximations of resistance distance, each on the raster of its row above, 
 - **Rasters**: in the distance calculation, every raster of its distance; in the windowed analyses, 256² under exact resistance distance and 256², Maryland, 1024², 4096² and 8192² under `SpielmanApproximation(epsilon=0.15)` with `GeometricMultigridCGSolver(rtol=3e-4)` and with `CuDSSSolver`.
 - **Error**: in the distance calculation, the largest relative error with respect to the float64 reference of the distance calculation; in the windowed analyses, the relative L2 error $\lVert m - m_{\mathrm{ref}} \rVert_2 / \lVert m_{\mathrm{ref}} \rVert_2$ of the map $m$ with respect to the map $m_{\mathrm{ref}}$ of exact resistance distance in float64 with `CuDSSSolver` on the same tiles, measured on 256² alone. In the figure of error, errors below $10^{-16}$ are drawn at $10^{-16}$.
 - **Time limit**: a call stops after 15 min, and under `SpielmanApproximation(epsilon=0.15)` after 1 h.
-- **Not run**: free-energy distance in float32; free-energy distance with `GeometricMultigridCGSolver` or `AMJaxCGSolver`.
+- **Not run**: free-energy distance in float32; free-energy distance with `GeometricMultigridCGSolver` or `AMJaxCGSolver`. In float32, JAXScape resolves no free-energy distance between sites across the raster, at any theta. The iterative solvers `GeometricMultigridCGSolver` and `AMJaxCGSolver` resolve no free-energy distance in either dtype: as the docstring of `FreeEnergyDistance` states, they need tolerances far below their defaults to resolve the small entries of $Z$ between distant vertices.
