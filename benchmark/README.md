@@ -15,8 +15,8 @@ every command from this directory:
 uv sync
 ./install.sh                                  # the pinned toolchains and the Maryland raster
 uv run python run.py "$(mktemp -d)" --smoke   # every cell once, on 32 x 32 rasters, small windows
-nohup uv run python run.py results/v0.0.18 > run.log 2>&1 &   # the full run
-uv run python report.py results/v0.0.18      # the figures and the page
+nohup uv run python run.py results/v0.0.20 > run.log 2>&1 &   # the full run
+uv run python report.py results/v0.0.20      # the figures and the page
 uv run pytest                                 # tests of the runner and the report
 ```
 
@@ -62,15 +62,16 @@ a later release, change the pin, run, and report.
   Julia and R adapters, and `reference.py` computes the float64 reference of
   the distance calculation.
 - `results/<run>/`: `records.csv`, the configuration of the run `config.json`,
-  smoke settings applied, the environment snapshot `environment.json`, the
-  references of each question, the logs of the cells and the maps of the
-  windowed analyses (neither committed): those of JAXScape's GPU cells, and
-  the other tools' maps of Maryland. The report writes one figure per
-  question, `distance.png`, `connectivity.png` and `sensitivity.png`, the
-  Maryland figure `maryland.png`, which it draws when the run directory holds
-  its maps, the figures of the solver view, `solvers.png` and
-  `solver-errors.png`, and the page `index.md`, whose settings come from
-  `config.json`.
+  smoke settings applied, the environment snapshot `environment.json`,
+  `reruns.csv`, the records of the other runs of the cells that ran more than
+  once (see "Publish a run"), the references of each question, the logs of the
+  cells and the maps of the windowed analyses (neither committed): those of
+  JAXScape's GPU cells, and the other tools' maps of Maryland. The report
+  writes one figure per question, `distance.png`, `connectivity.png` and
+  `sensitivity.png`, the Maryland figure `maryland.png`, which it draws when
+  the run directory holds its maps, the figures of the solver view,
+  `solvers.png` and `solver-errors.png`, and the page `index.md`, whose
+  settings come from `config.json`.
 
 ## The cell record
 
@@ -147,9 +148,22 @@ GeometricMultigridCGSolver = {}
 `docs/benchmark` links to the published run directory, whose `index.md` is the
 Benchmark page. To publish a run, report it with `--publish`, which points the
 link at it, and commit both: the link, and the run's `records.csv`,
-`config.json`, `environment.json`, figures and page. Its logs, maps,
-references and `run.log` stay out of the repository.
+`config.json`, `environment.json`, `reruns.csv` if any, figures and page. Its
+logs, maps, references and `run.log` stay out of the repository.
+
+Before publishing, compare each cell that sets a speed-up of the "Why
+JAXScape?" table of the root `README.md` with the same cell of the previous
+published run, when the tool has the same version in both runs. A cell whose
+warm runtime differs from it by more than 20 %, in either direction, runs
+again in a new process: with `run.py`, into a new run directory, under a copy
+of the run's configuration that keeps the cell alone, with the reference or
+the map of JAXScape that the cell is measured against copied into the new
+directory. Of the runs of such a cell, `records.csv` keeps the one with the
+smallest warm runtime of the tool, which gives the smallest speed-up of
+JAXScape, and `reruns.csv`, in the format of `records.csv`, holds the records
+of the others. The page lists each cell that ran more than once with the warm
+runtime of each run.
 
 ```bash
-uv run python report.py results/v0.0.18 --publish
+uv run python report.py results/v0.0.20 --publish
 ```
