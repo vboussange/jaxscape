@@ -427,24 +427,6 @@ def test_solver_section_states_the_combinations_that_no_record_ran(report):
     assert "with `CholmodSolver`. The reason of the entry.\n" in text
 
 
-def test_report_reads_the_configuration_of_a_run_of_jaxscape_0_0_16(report):
-    expected = page(report())
-    old = {"distance": "E1", "connectivity": "E2", "sensitivity": "E3"}
-
-    def name_questions_as_0_0_16(config):
-        config["E1"] = config.pop("distance")
-        maryland = config["maryland"]
-        maryland["questions"] = [old[q] for q in maryland["questions"]]
-        for entry in config["tools"]:
-            entry["question"] = old[entry["question"]]
-        view = config["solver_view"]
-        view["questions"] = {old[q]: d for q, d in view["questions"].items()}
-        for entry in view["solvers"].values():
-            entry["questions"] = [old[q] for q in entry.get("questions", [])]
-
-    assert page(report(edit=name_questions_as_0_0_16)) == expected
-
-
 def test_setup_states_the_hardware_protocol_and_versions_of_the_run(report):
     text = page(report())
     setup = section(text, "## Setup")

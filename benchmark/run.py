@@ -47,8 +47,7 @@ from scipy.stats import spearmanr
 HERE = Path(__file__).resolve().parent
 # The fields of a cell record, the contract between the runner and the report,
 # and the type of their values; the first ones, up to `case`, are the key of
-# the cell. `times_s` holds the times of the timed calls. Records of earlier
-# runs may hold other fields, which `read_records` leaves out.
+# the cell. `times_s` holds the times of the timed calls.
 KEY = ("view", "question", "tool", "distance", "device", "dtype", "solver", "case")
 FIELDS = {
     **dict.fromkeys(KEY, str),
@@ -284,10 +283,7 @@ def append_record(path, record):
 
 
 def read_records(path):
-    """Return the records of a records file (see `append_record`).
-
-    A record holds the fields of `FIELDS` that the file has.
-    """
+    """Return the records of a records file (see `append_record`)."""
 
     def parse(kind, text):
         if text == "":
@@ -298,11 +294,7 @@ def read_records(path):
 
     with open(path, newline="") as file:
         return [
-            {
-                field: parse(FIELDS[field], text)
-                for field, text in row.items()
-                if field in FIELDS
-            }
+            {field: parse(FIELDS[field], text) for field, text in row.items()}
             for row in csv.DictReader(file)
         ]
 
